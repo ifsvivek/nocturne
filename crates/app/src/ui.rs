@@ -102,24 +102,14 @@ pub fn chip(s: &str, accent: bool) -> Div {
 }
 const R_CHIP: f32 = 4.0;
 
-/// Full-width band: hairline divider below, content in a centered column between two rails.
+/// Full-width band: hairline divider below, content spans the window.
 pub fn band(content: impl IntoElement) -> Div {
     div()
         .w_full()
         .flex_none()
         .border_b_1()
         .border_color(t::hairline())
-        .flex()
-        .justify_center()
-        .child(
-            div()
-                .w_full()
-                .max_w(px(t::COL_W))
-                .border_l_1()
-                .border_r_1()
-                .border_color(t::hairline())
-                .child(content),
-        )
+        .child(content)
 }
 
 /// Section heading: bold title + muted paragraph on the left, mono annotation on the right.

@@ -57,7 +57,7 @@ enum HRow {
     Nav,
     Hero,
     Resume,
-    Libs,
+    NextUp,
     Latest(usize),
 }
 
@@ -70,6 +70,8 @@ struct Page {
     rows: Vec<HomeRow>,
     resume: Load<Vec<Media>>,
     resume_scroll: ScrollHandle,
+    nextup: Load<Vec<Media>>,
+    nextup_scroll: ScrollHandle,
     row: usize,
     col: usize,
     // Grid.
@@ -91,8 +93,8 @@ impl Page {
         if !self.resume.items().is_empty() {
             v.push(HRow::Resume);
         }
-        if !self.libs.items().is_empty() {
-            v.push(HRow::Libs);
+        if !self.nextup.items().is_empty() {
+            v.push(HRow::NextUp);
         }
         v.extend((0..self.rows.len()).map(HRow::Latest));
         v
@@ -100,9 +102,10 @@ impl Page {
 
     fn row_items(&self, k: HRow) -> &[Media] {
         match k {
-            HRow::Nav | HRow::Libs => self.libs.items(),
+            HRow::Nav => self.libs.items(),
             HRow::Hero => &[],
             HRow::Resume => self.resume.items(),
+            HRow::NextUp => self.nextup.items(),
             HRow::Latest(i) => self.rows.get(i).map_or(&[], |r| r.items.items()),
         }
     }
@@ -118,7 +121,7 @@ impl Page {
     /// Item shown in the hero: the focused poster, else the newest of the first row.
     fn hero_item(&self) -> Option<Media> {
         let k = self.layout().get(self.row).copied()?;
-        let focused = matches!(k, HRow::Resume | HRow::Latest(_))
+        let focused = matches!(k, HRow::Resume | HRow::NextUp | HRow::Latest(_))
             .then(|| self.row_items(k).get(self.col).cloned())
             .flatten();
         focused.or_else(|| {
@@ -278,6 +281,8 @@ impl Root {
             rows: vec![],
             resume: Load::Loading,
             resume_scroll: ScrollHandle::new(),
+            nextup: Load::Loading,
+            nextup_scroll: ScrollHandle::new(),
             row: 1,
             col: 0,
             items: Load::Loading,
@@ -294,6 +299,12 @@ impl Root {
             (View::Home, _) => {
                 let s2 = src.clone();
                 let s4 = src.clone();
+                let s5 = src.clone();
+                self.run(cx, async move { s5.next_up().await }, move |t, r, _| {
+                    if let Some(p) = t.page_mut(pid) {
+                        p.nextup = r.map_or(Load::Failed, Load::Ready);
+                    }
+                });
                 self.run(cx, async move { s4.resume().await }, move |t, r, _| {
                     if let Some(p) = t.page_mut(pid) {
                         p.resume = r.map_or(Load::Failed, Load::Ready);
@@ -723,14 +734,8 @@ impl Root {
                 let mut act = None;
                 if let Some(d) = dir {
                     let n = p.row_len(kind);
-                    // Library cells sit in a 3-wide grid; every other row is one line.
-                    let cols = if kind == HRow::Libs { 3 } else { n.max(1) };
-                    let c = nav::step(p.col, cols, n, d);
-                    let moved = match d {
-                        Dir::Left | Dir::Right => true,
-                        Dir::Up | Dir::Down => kind == HRow::Libs && c != p.col,
-                    };
-                    if moved {
+                    let c = nav::step(p.col, n.max(1), n, d);
+                    if matches!(d, Dir::Left | Dir::Right) {
                         p.col = c;
                     } else {
                         p.row = match d {
@@ -744,6 +749,7 @@ impl Root {
                     p.page_scroll.scroll_to_item(p.row.saturating_sub(1));
                     match kind {
                         HRow::Resume => p.resume_scroll.scroll_to_item(p.col),
+                        HRow::NextUp => p.nextup_scroll.scroll_to_item(p.col),
                         HRow::Latest(i) => p.rows[i].scroll.scroll_to_item(p.col),
                         _ => {}
                     }
@@ -751,10 +757,10 @@ impl Root {
                     act = match kind {
                         HRow::Hero if p.col == 0 => Some(Act::PlayHero),
                         HRow::Hero => p.hero_item().map(Act::Open),
-                        HRow::Nav | HRow::Libs => {
-                            p.row_items(kind).get(p.col).cloned().map(Act::Open)
+                        HRow::Nav => p.row_items(kind).get(p.col).cloned().map(Act::Open),
+                        HRow::Resume | HRow::NextUp => {
+                            p.row_items(kind).get(p.col).cloned().map(Act::Play)
                         }
-                        HRow::Resume => p.row_items(kind).get(p.col).cloned().map(Act::Play),
                         HRow::Latest(_) => p.row_items(kind).get(p.col).cloned().map(Act::Open),
                     };
                 }
@@ -1248,21 +1254,25 @@ impl Root {
     // ---- hero (shared by Home and Detail) ----
 
     fn colw(&self) -> f32 {
-        f32::from(self.win.width).min(t::COL_W) - 2.0
+        f32::from(self.win.width)
     }
 
-    /// Centered hero band: chips, big headline, muted subline, buttons, then the backdrop
-    /// framed like an app window (hairline frame, dim title-bar dots, soft blue glow).
+    /// Full-bleed hero: backdrop fills the width, scrims fade it into the page, text sits
+    /// bottom-left. `frac` is the share of window height it may take.
     fn hero_band(
         &mut self,
         m: &Media,
         eyebrow: String,
         buttons: Div,
+        frac: f32,
         cx: &mut Context<Self>,
     ) -> Div {
-        let frame_w = (self.colw() - 2.0 * t::PAGE_PAD).min(1040.0);
-        let frame_h = (frame_w * 0.5).round();
-        let backdrop = match self.pic(m, Art::Backdrop, 1600, cx) {
+        let w = f32::from(self.win.width);
+        let h = (w * 9.0 / 16.0)
+            .min(f32::from(self.win.height) * frac)
+            .max(340.0)
+            .round();
+        let backdrop = match self.pic(m, Art::Backdrop, 1920, cx) {
             Pic::Ready(i) => ui::fade_in(
                 div()
                     .size_full()
@@ -1281,7 +1291,6 @@ impl Root {
         let mut chips = div()
             .flex()
             .items_center()
-            .justify_center()
             .gap(px(t::S2))
             .child(ui::chip(&m.kind_label(), true));
         if let Some(y) = m.year {
@@ -1293,81 +1302,61 @@ impl Root {
         for g in m.genres.iter().take(3) {
             chips = chips.child(ui::chip(g, false));
         }
+        let size = (w / 26.0).clamp(40.0, 72.0);
         let sub = m.overview.clone().unwrap_or_else(|| m.meta_line());
         let text = div()
             .flex()
             .flex_col()
-            .items_center()
-            .text_center()
+            .items_start()
             .gap(px(t::S4))
+            .max_w(px(680.0))
             .child(ui::mono(eyebrow))
             .child(chips)
             .child(
                 div()
-                    .max_w(px(860.0))
                     .line_clamp(2)
-                    .text_size(px(t::DISPLAY))
-                    .line_height(px(t::DISPLAY * 1.08))
+                    .text_size(px(size))
+                    .line_height(px(size * 1.08))
                     .font_weight(FontWeight::BOLD)
                     .text_color(t::text())
                     .child(m.title.clone()),
             )
             .child(
                 div()
-                    .max_w(px(600.0))
-                    .line_clamp(2)
+                    .max_w(px(560.0))
+                    .line_clamp(3)
                     .line_height(px(t::BODY_LG * 1.6))
                     .text_size(px(t::BODY_LG))
                     .text_color(t::text_secondary())
                     .child(sub),
             )
             .child(buttons);
-        let dots = div()
-            .flex()
-            .gap(px(6.0))
-            .children((0..3).map(|_| div().size(px(8.0)).rounded_full().bg(t::hairline_strong())));
-        let window_frame = div()
-            .w(px(frame_w))
-            .flex_none()
-            .border_1()
-            .border_color(t::hairline_strong())
-            .rounded(px(t::R_PANEL))
+        let (clear, solid) = (rgba(0x07080c00), rgba(0x07080cff));
+        let layer = || div().absolute().top_0().left_0().size_full();
+        div()
+            .relative()
+            .w_full()
+            .h(px(h))
             .overflow_hidden()
             .bg(t::surface())
-            .shadow(vec![BoxShadow {
-                color: {
-                    let mut c: Hsla = t::glow().into();
-                    c.a = 0.28;
-                    c
-                },
-                offset: point(px(0.0), px(24.0)),
-                blur_radius: px(80.0),
-                spread_radius: px(0.0),
-            }])
+            .child(layer().child(backdrop))
+            .child(layer().bg(linear_gradient(
+                90.0,
+                linear_color_stop(rgba(0x07080cf0), 0.0),
+                linear_color_stop(clear, 0.65),
+            )))
+            .child(layer().bg(linear_gradient(
+                180.0,
+                linear_color_stop(clear, 0.45),
+                linear_color_stop(solid, 1.0),
+            )))
             .child(
                 div()
-                    .h(px(32.0))
-                    .px(px(t::S3))
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .border_b_1()
-                    .border_color(t::hairline())
-                    .child(dots)
-                    .child(ui::mono(format!("nocturne · {}", m.kind_label())))
-                    .child(div().w(px(36.0))),
+                    .absolute()
+                    .left(px(t::PAGE_PAD))
+                    .bottom(px(t::S8))
+                    .child(ui::fade_in(text, format!("herotext-{}", m.id), t::SLOW)),
             )
-            .child(div().w_full().h(px(frame_h)).child(backdrop));
-        div()
-            .pt(px(t::HEADER_H + t::S8))
-            .pb(px(t::S8 * 1.5))
-            .px(px(t::PAGE_PAD))
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap(px(t::S8))
-            .child(ui::fade_in(text, format!("herotext-{}", m.id), t::SLOW))
-            .child(window_frame)
     }
 
     // ---- Home ----
@@ -1382,6 +1371,7 @@ impl Root {
         row: usize,
         focus: Option<usize>,
         play: bool,
+        land: bool,
         (cw, ch): (f32, f32),
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
@@ -1408,18 +1398,34 @@ impl Root {
             }
         }
         for (ci, m) in list.iter().enumerate() {
-            let pic = self.pic(m, Art::Poster, (cw * 2.0) as u32, cx);
+            let art = if land { Art::Landscape } else { Art::Poster };
+            let pic = self.pic(m, art, (cw * 2.0) as u32, cx);
             let target = m.clone();
-            strip = strip.child(
-                ui::poster_cell(Cell {
-                    key: &format!("{key}-{}", m.id),
-                    pic,
-                    title: &m.title,
-                    meta: [m.kind_label(), m.meta_line()]
+            // Landscape captions: series name + mono `S2:E9 · episode title` for episodes.
+            let (title, meta) = match (land, m.kind) {
+                (true, Kind::Episode) => (
+                    m.series_name.clone().unwrap_or_else(|| m.title.clone()),
+                    [m.short_ep(), m.title.clone()]
                         .into_iter()
                         .filter(|s| !s.is_empty())
                         .collect::<Vec<_>>()
                         .join(" · "),
+                ),
+                _ => (
+                    m.title.clone(),
+                    [m.kind_label(), m.meta_line()]
+                        .into_iter()
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · "),
+                ),
+            };
+            strip = strip.child(
+                ui::poster_cell(Cell {
+                    key: &format!("{key}-{}", m.id),
+                    pic,
+                    title: &title,
+                    meta,
                     index: ci,
                     w: cw,
                     h: ch,
@@ -1445,6 +1451,11 @@ impl Root {
     }
 
     fn strip_band(title: &str, text: &str, meta: String, strip: Stateful<Div>) -> Div {
+        let fade = linear_gradient(
+            90.0,
+            linear_color_stop(rgba(0x07080c00), 0.0),
+            linear_color_stop(rgba(0x07080cf0), 1.0),
+        );
         ui::band(
             div()
                 .pt(px(t::S8 * 1.5))
@@ -1455,15 +1466,33 @@ impl Root {
                 .child(ui::section(title, text, meta))
                 .child(
                     div()
+                        .relative()
                         .mx(px(t::PAGE_PAD))
                         .border_t_1()
                         .border_l_1()
                         .border_color(t::hairline())
                         .rounded(px(t::R_PANEL))
                         .overflow_hidden()
-                        .child(strip),
+                        .child(strip)
+                        .child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .right_0()
+                                .h_full()
+                                .w(px(48.0))
+                                .bg(fade),
+                        ),
                 ),
         )
+    }
+
+    /// Card size so a whole number of cards fills the row exactly (`ratio` = height/width).
+    fn row_dims(&self, target: f32, ratio: f32) -> (f32, f32) {
+        let avail = self.colw() - 2.0 * t::PAGE_PAD - 1.0;
+        let cols = nav::columns(avail, target + 2.0 * t::S3, 0.0);
+        let w = (avail / cols as f32).floor() - 2.0 * t::S3;
+        (w, (w * ratio).round())
     }
 
     fn home(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -1487,10 +1516,9 @@ impl Root {
             .iter()
             .map(|r| (r.lib.clone(), r.items.clone(), r.scroll.clone()))
             .collect();
-        let cw = ((self.colw() - 2.0 * t::PAGE_PAD) / 7.0)
-            .clamp(140.0, 210.0)
-            .floor();
-        let size = (cw, (cw * 1.5).round());
+        let size = self.row_dims(190.0, 1.5);
+        let wide = self.row_dims(300.0, 9.0 / 16.0);
+        let nextup = (p.nextup.clone(), p.nextup_scroll.clone());
 
         let hero_el = match hero {
             Some(m) => {
@@ -1520,7 +1548,7 @@ impl Root {
                             cx.notify();
                         }),
                     ));
-                self.hero_band(&m, eyebrow, buttons, cx)
+                self.hero_band(&m, eyebrow, buttons, 0.62, cx)
             }
             None => div()
                 .h(px(420.0))
@@ -1541,109 +1569,40 @@ impl Root {
             .flex_col()
             .child(ui::band(hero_el));
 
-        if !resume.0.items().is_empty() {
-            let n = resume.0.items().len();
-            let s = self.strip(
+        for (key, title, text, (items, handle), hrow, kind) in [
+            (
                 "resume",
-                &resume.0,
-                &resume.1,
-                row_of(HRow::Resume),
-                focus_of(HRow::Resume),
-                true,
-                size,
-                cx,
-            );
-            page = page.child(Self::strip_band(
                 "Continue watching",
                 "Pick up where you left off.",
-                format!("{n} in progress"),
-                s,
-            ));
-        }
-
-        // Library cells (3-up, shared borders), keyboard-reachable.
-        let libs_focus = focus_of(HRow::Libs);
-        let lib_cells: Vec<Stateful<Div>> = {
-            let libs: Vec<(Media, usize)> = rows
-                .iter()
-                .map(|(l, i, _)| (l.clone(), i.items().len()))
-                .collect();
-            let mut v = vec![];
-            for (i, (lib, n)) in libs.into_iter().enumerate() {
-                let pic = self.pic(&lib, Art::Poster, 640, cx);
-                let target = lib.clone();
-                v.push(
-                    ui::feature_cell(ui::Feature {
-                        key: &format!("lib-{i}"),
-                        top_l: format!("0x{:02x}", i + 1),
-                        top_r: lib.kind_label(),
-                        pic: Some(pic),
-                        title: lib.title.clone(),
-                        text: format!("Browse everything in {}, newest first.", lib.title),
-                        foot: if n > 0 {
-                            format!("{n} recent titles")
-                        } else {
-                            String::new()
-                        },
-                        focused: libs_focus == Some(i),
-                    })
-                    .on_click(cx.listener(move |t, _, _, cx| {
-                        t.open_library(target.clone(), cx);
-                        cx.notify();
-                    })),
-                );
+                resume,
+                HRow::Resume,
+                "in progress",
+            ),
+            (
+                "nextup",
+                "Next up",
+                "The next episode of what you're following.",
+                nextup,
+                HRow::NextUp,
+                "up next",
+            ),
+        ] {
+            if items.items().is_empty() {
+                continue;
             }
-            v
-        };
-        if !lib_cells.is_empty() {
-            let n = lib_cells.len();
-            let mut grid = div()
-                .flex()
-                .flex_col()
-                .border_t_1()
-                .border_color(t::hairline());
-            let mut it = lib_cells.into_iter();
-            loop {
-                let chunk: Vec<_> = it.by_ref().take(3).collect();
-                if chunk.is_empty() {
-                    break;
-                }
-                let missing = 3 - chunk.len();
-                let mut r = div().flex();
-                for c in chunk {
-                    r = r.child(c);
-                }
-                for _ in 0..missing {
-                    r = r.child(
-                        div()
-                            .flex_1()
-                            .border_r_1()
-                            .border_b_1()
-                            .border_color(t::hairline()),
-                    );
-                }
-                grid = grid.child(r);
-            }
-            page = page.child(ui::band(
-                div()
-                    .pt(px(t::S8 * 1.5))
-                    .flex()
-                    .flex_col()
-                    .gap(px(t::S6))
-                    .child(ui::section(
-                        "Your libraries",
-                        "Everything you have, one tap away.",
-                        format!("{n} libraries"),
-                    ))
-                    .child(
-                        div()
-                            .mx(px(t::PAGE_PAD))
-                            .mb(px(t::S8 * 1.5))
-                            .border_l_1()
-                            .border_color(t::hairline())
-                            .child(grid),
-                    ),
-            ));
+            let n = items.items().len();
+            let s = self.strip(
+                key,
+                &items,
+                &handle,
+                row_of(hrow),
+                focus_of(hrow),
+                true,
+                true,
+                wide,
+                cx,
+            );
+            page = page.child(Self::strip_band(title, text, format!("{n} {kind}"), s));
         }
 
         for (ri, (lib, items, handle)) in rows.into_iter().enumerate() {
@@ -1657,6 +1616,7 @@ impl Root {
                 &handle,
                 row_of(HRow::Latest(ri)),
                 focus_of(HRow::Latest(ri)),
+                false,
                 false,
                 size,
                 cx,
@@ -1733,13 +1693,8 @@ impl Root {
             .size_full()
             .into_any_element(),
         };
-        let column = div()
-            .w_full()
-            .max_w(px(t::COL_W))
-            .h_full()
-            .border_l_1()
-            .border_r_1()
-            .border_color(t::hairline())
+        div()
+            .size_full()
             .pt(px(t::HEADER_H + t::S8))
             .flex()
             .flex_col()
@@ -1761,12 +1716,7 @@ impl Root {
                     .rounded(px(t::R_PANEL))
                     .overflow_hidden()
                     .child(body),
-            );
-        div()
-            .size_full()
-            .flex()
-            .justify_center()
-            .child(column)
+            )
             .into_any_element()
     }
 
@@ -1849,7 +1799,7 @@ impl Root {
                 cx.notify();
             }),
         ));
-        let hero = self.hero_band(&m, format!("0x01 · {}", m.kind_label()), buttons, cx);
+        let hero = self.hero_band(&m, format!("0x01 · {}", m.kind_label()), buttons, 0.55, cx);
 
         // Metadata as feature cells (only what the server told us).
         let mut facts: Vec<(String, String, String)> = vec![];

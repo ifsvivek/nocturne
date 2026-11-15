@@ -18,6 +18,8 @@ pub enum Kind {
 pub enum Art {
     Poster,
     Backdrop,
+    /// 16:9 thumb: an episode's still, otherwise the backdrop.
+    Landscape,
 }
 
 /// UI-facing media record. Never printed or logged (it holds personal titles).
@@ -116,6 +118,15 @@ impl Media {
             v.push(fmt_runtime(m));
         }
         v.join(" · ")
+    }
+
+    /// "S2:E9" for episodes, "" otherwise.
+    pub fn short_ep(&self) -> String {
+        match (self.season_number, self.number) {
+            (Some(s), Some(e)) => format!("S{s}:E{e}"),
+            (None, Some(e)) => format!("E{e}"),
+            _ => String::new(),
+        }
     }
 
     /// "S1 · E4" style label for episodes, "" otherwise.
@@ -297,6 +308,10 @@ impl Source {
         let (ty, tag) = match art {
             Art::Poster => (jf::ImageType::Primary, m.poster_tag.as_deref()),
             Art::Backdrop => (jf::ImageType::Backdrop, m.backdrop_tag.as_deref()),
+            Art::Landscape if m.kind == Kind::Episode || m.backdrop_tag.is_none() => {
+                (jf::ImageType::Primary, m.poster_tag.as_deref())
+            }
+            Art::Landscape => (jf::ImageType::Backdrop, m.backdrop_tag.as_deref()),
         };
         self.client
             .image_bytes(&m.id, ty, Some(width), tag)
@@ -307,6 +322,11 @@ impl Source {
     /// Items with a saved position, most recently watched first.
     pub async fn resume(&self) -> Result<Vec<Media>, Failed> {
         Self::media(self.client.resume(&self.user, 12).await)
+    }
+
+    /// Next unwatched episode of each followed series.
+    pub async fn next_up(&self) -> Result<Vec<Media>, Failed> {
+        Self::media(self.client.next_up(&self.user, 12).await)
     }
 
     async fn all_episodes(&self, series: &str) -> Result<Vec<Media>, Failed> {

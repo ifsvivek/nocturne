@@ -77,8 +77,6 @@ pub const S8: f32 = 32.0;
 pub const R_XS: f32 = 3.0;
 pub const R_PANEL: f32 = 10.0;
 pub const PAGE_PAD: f32 = 48.0;
-/// Framed content column (rails) on wide windows.
-pub const COL_W: f32 = 1200.0;
 pub const HEADER_H: f32 = 56.0;
 
 // Motion: short, ease-out, never gratuitous.

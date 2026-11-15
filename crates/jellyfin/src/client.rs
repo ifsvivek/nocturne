@@ -474,7 +474,11 @@ mod tests {
         let r: Items = serde_json::from_str(j).unwrap();
         let e = &r.items[0];
         assert_eq!(
-            (e.parent_index_number, e.index_number, e.series_name.as_deref()),
+            (
+                e.parent_index_number,
+                e.index_number,
+                e.series_name.as_deref()
+            ),
             (Some(2), Some(9), Some("Invented Show"))
         );
     }
