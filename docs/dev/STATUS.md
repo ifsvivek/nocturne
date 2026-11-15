@@ -1,6 +1,6 @@
 # NOCTURNE: development status
 
-Maintainer working notes, sanitized for the public tree. User-facing status is in
+Maintainer working notes for the public tree. User-facing status is in
 [FEATURES.md](../FEATURES.md) and [QA_REPORT.md](../QA_REPORT.md); plans are in [ROADMAP.md](../ROADMAP.md).
 
 ## Release state
@@ -19,7 +19,7 @@ Before tagging:
 
 - Linux only. Windows and macOS are possible future work, never claimed as supported.
 - Jellyfin is the first media source; UI copy avoids hard-coding the product name where practical.
-- Dropped by the owner: Live TV/DVR, SyncPlay, DLNA, acting as a cast target, gapless music.
+- Out of scope: Live TV/DVR, SyncPlay, DLNA, acting as a cast target, gapless music.
 - Read-only by default: every server change sits behind one master setting (`allow_server_writes`,
   default off). See [WRITES.md](../WRITES.md).
 - `crates/jellyfin` is GET-only (enforced by `crates/jellyfin/tests/readonly.rs`); admin writes live in

@@ -19,7 +19,7 @@
     <div class="panel">
       <span class="label">VERIFIED vs NOT YET</span>
       <ul class="tick">
-        <li><b>Verified:</b> Arch/CachyOS, Hyprland on Wayland, NVIDIA RTX 3060 laptop GPU, mpv 0.41, Jellyfin 12.x</li>
+        <li><b>Verified:</b> Arch Linux, Hyprland on Wayland, NVIDIA GPU, mpv 0.41, Jellyfin 12.x</li>
         <li><b>Not yet verified:</b> GNOME and KDE sessions, AMD and Intel video decode, the X11 fallback on release builds, other distributions, older Jellyfin servers</li>
       </ul>
     </div>

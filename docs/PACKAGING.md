@@ -1,6 +1,6 @@
 # Packaging
 
-Everything here was tested on Arch Linux (CachyOS), x86_64, Hyprland (Wayland) with Xwayland, mpv 0.41.0, Rust 1.99.
+Everything here was tested on Arch Linux, x86_64, Hyprland (Wayland) with Xwayland, mpv 0.41.0, Rust 1.99.
 Other distributions and architectures are UNVERIFIED.
 
 ## Install paths

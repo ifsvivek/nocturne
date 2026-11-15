@@ -1,8 +1,9 @@
 # In-window GPU video for NOCTURNE: feasibility report
 
 Prototype (historical): `crates/video-proto`, removed once integrated; its code lives on as `crates/player/src/embedded.rs` (see "Integrated" below).
-Environment: Arch/CachyOS, Hyprland 0.57.1 (Wayland), NVIDIA RTX 3060 Laptop (driver 615.78.08) + AMD iGPU,
-180 Hz monitor, scale 1.0, mpv/libmpv 0.41 (client API 2.5), GPUI 0.2.2, `libmpv2` 7.0.1, Rust 1.99.
+Test environment (a single hybrid-graphics machine; other hardware is untested): Arch Linux, Hyprland 0.57.1 (Wayland),
+NVIDIA discrete GPU (proprietary driver 615.78.08) plus AMD iGPU, high-refresh monitor at scale 1.0, mpv/libmpv 0.41
+(client API 2.5), GPUI 0.2.2, `libmpv2` 7.0.1.
 
 ## Recommendation: GO (with caveats)
 
@@ -21,10 +22,11 @@ Caveats (details below):
    of `wl_display`/`wl_surface`, one shared `wl_display`). Pin `gpui = "=0.2.2"`.
 2. Wayland only. GPUI's X11 backend would need a separate implementation, which is not worth it.
 3. HDR is tone-mapped to SDR (no wp_color_management in GPUI), so no HDR passthrough. 4K HDR plays correctly as SDR.
-4. The compositor applies its own window opacity to the whole surface tree (see "Compositing"). For the
-   user's Hyprland config this needs one `opaque` rule for the app class (`nocturne`), the same as mpv/vlc.
+4. The compositor applies its own window opacity to the whole surface tree (see "Compositing"). On
+   compositors configured with window opacity below 1 (for example Hyprland) this needs one `opaque` rule for the app
+   class (`nocturne`), the same as mpv/vlc.
 5. Subsurface resize and the parent GPUI redraw are not atomic: the video can be a frame ahead of the controls.
-6. No fractional-scale test was possible (the only monitor is at 1.0).
+6. No fractional-scale test was possible (the test machine ran at scale 1.0).
 
 Fallback if A is ever rejected: keep the external mpv child (today's design). The best crash-isolated in-window
 alternative is a helper process that renders into dmabufs and hands them to the app (section C), which is a much
@@ -73,14 +75,14 @@ Gotchas found:
 3. `Arc<Mpv>` is dropped last (`mpv_terminate_destroy`). The render context borrows `&Mpv`, so this is enforced by the types.
 
 ## Compositing correctness
-- GPUI alpha on this stack: blade picks `PRE_MULTIPLIED` (or `POST_MULTIPLIED`) composite alpha when the window is
+- GPUI alpha on the tested stack: blade picks `PRE_MULTIPLIED` (or `POST_MULTIPLIED`) composite alpha when the window is
   transparent. The compositor output matches straight maths: red 50% over a yellow video pixel
   (248,237,17) gave (251,127,9); expected (251,118,8)+-rounding. So translucent GPUI UI over video blends correctly.
   The text, rounded button and 63% black control bar all render properly.
 - Transparent hole = simply not painting a background where the video is.
 - Clicks over the video go to GPUI (empty input region), so GPUI hover/click handlers for controls work on top.
-- Hyprland (user config) has `active_opacity 0.92`, `inactive_opacity 0.85` for every window and `fullscreen_opacity 1.0`;
-  mpv/vlc are carved out by class (`opaque = true`) in `custom/rules.lua`. This applies to the WHOLE surface tree, so
+- A compositor configured like Hyprland with `active_opacity 0.92`, `inactive_opacity 0.85` and `fullscreen_opacity 1.0`
+  applies that to every window unless the class is carved out (`opaque = true`, as is usual for mpv/vlc). This applies to the WHOLE surface tree, so
   the video (and letterbox bars) look washed out/see-through windowed and are exact in fullscreen. NOCTURNE needs
   the same carve-out (app_id `nocturne`). Not a code issue, but must be documented for users with such configs.
 - Observed once, also WITHOUT any video (`VP_NOVIDEO=1`): right after the compositor enlarges the window, GPUI's own
@@ -111,7 +113,7 @@ CPU = `top` % of one core (whole process). hwdec = `hwdec-current` from mpv.
 Reading: in-window costs about the same as today's child process (about 1-3 points more CPU: GPUI repainting the progress
 bar plus the render thread). Decoded frames stay in GPU memory (nvdec -> CUDA-GL interop -> GL texture), there is no CPU frame copy.
 Frame pacing: `vf_fps` = source fps, `rendered/s` = source fps, no drops. mpv paces by timer (no display-sync with
-`swap_interval 0`); on this 180 Hz panel 24/30/60 fps content has no visible issues. Strict display-resample judder
+`swap_interval 0`); on a 180 Hz panel 24/30/60 fps content has no visible issues. Strict display-resample judder
 quality was not evaluated.
 HDR: the HEVC PQ clip decodes with nvdec and is tone-mapped to the SDR surface (libplacebo).
 
@@ -219,9 +221,9 @@ provider (core Jellyfin has none); without one the skip chip never appears.
 
 ## Risks
 - Raw-pointer coupling to gpui 0.2.2 internals (`wl_surface`/`wl_display` handles, shared connection). Pin the version; re-test on every gpui bump.
-- NVIDIA/driver specific behaviour (tested only on 615.78.08 + this hybrid laptop; EGL used the NVIDIA GPU, mpv also probed VAAPI on the AMD iGPU via `drmprime`,
+- NVIDIA/driver specific behaviour (tested only on driver 615.78.08 on a hybrid NVIDIA/AMD system; EGL used the NVIDIA GPU, mpv also probed VAAPI on the AMD iGPU via `drmprime`,
   without issue). Needs a pass on AMD/Intel-only machines (vaapi-egl path) before release.
-- User compositor opacity rules, fractional scale (viewport design should be fine, untested), subsurface vs parent resize lag.
+- Compositor opacity rules, fractional scale (viewport design should be fine, untested), subsurface vs parent resize lag.
 - No Vulkan in-process (hard rule above). `hwdec=auto-safe` may still pick vaapi/drmprime on other GPUs, which is OK on GL.
 - mpv option `background`/`background-color` semantics changed in 0.40+; keep the explicit clear.
 
