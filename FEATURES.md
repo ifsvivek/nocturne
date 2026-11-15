@@ -27,6 +27,7 @@ Update this file at every task boundary. Scope risks are listed at the bottom.
 - [ ] Remote images: posters, backdrops, logos, thumbs everywhere, blurhash placeholders
 
 ## Playback (P0/P1)
+- [ ] **Feature-rich video player (user, 2026-11-15; not barebone)**: audio/subtitle menus with styling and delays, speed, chapters on scrub bar, trickplay hover thumbnails, skip intro/credits (media segments), next-episode autoplay, aspect/zoom/picture controls, quality/transcode selector with direct-play fallback, stats overlay, shortcut help, OSD, resume prompt, context menu, screenshot, queue panel, MPRIS and idle inhibit
 - [x] Direct play via mpv (child process), now-playing bar, seek, volume
 - [ ] **PRIORITY (user): in-window GPU video** (mpv video inside the NOCTURNE window with overlay controls, GPU-accelerated, crash-safe). Prototype first, then integrate
 - [ ] Playback progress reporting (start/progress/stop), resume position (user writes)
