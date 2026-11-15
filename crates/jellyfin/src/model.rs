@@ -25,6 +25,9 @@ pub struct Item {
     pub backdrop_image_tags: Vec<String>,
     pub genres: Vec<String>,
     pub user_data: Option<UserData>,
+    /// Browse/detail fields (see `browse.rs`).
+    #[serde(flatten)]
+    pub x: crate::ItemExtra,
 }
 
 /// Per-user playback state (read only; NOCTURNE never writes it back).
@@ -34,6 +37,7 @@ pub struct UserData {
     pub playback_position_ticks: u64,
     pub played: bool,
     pub is_favorite: bool,
+    pub unplayed_item_count: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

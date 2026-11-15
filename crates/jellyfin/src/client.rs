@@ -213,10 +213,14 @@ impl Client {
         max_width: Option<u32>,
         tag: Option<&str>,
     ) -> Result<Vec<u8>> {
-        let url = self.image_url(id, kind, max_width, tag);
-        let path = Url::parse(&url)
-            .map(|u| u.path().to_string())
-            .unwrap_or_default();
+        let url = Url::parse(&self.image_url(id, kind, max_width, tag))
+            .map_err(|_| Error::Config("image url".into()))?;
+        self.fetch(url).await
+    }
+
+    /// Authenticated binary GET of a URL built by this client.
+    pub(crate) async fn fetch(&self, url: Url) -> Result<Vec<u8>> {
+        let path = url.path().to_string();
         let resp = self.http.get(url).send().await.map_err(http_err)?;
         let status = resp.status();
         if !status.is_success() {
@@ -271,7 +275,7 @@ impl Client {
     // ---- internals ----
 
     /// Infallible: `base` was validated in `new`; segments are percent-encoded.
-    fn url(&self, segs: &[&str], pairs: &[(&str, String)]) -> Url {
+    pub(crate) fn url(&self, segs: &[&str], pairs: &[(&str, String)]) -> Url {
         let mut u = self.base.clone();
         u.path_segments_mut()
             .expect("http(s) base can have path segments")
@@ -283,7 +287,11 @@ impl Client {
         u
     }
 
-    async fn get<T: DeserializeOwned>(&self, segs: &[&str], pairs: &[(&str, String)]) -> Result<T> {
+    pub(crate) async fn get<T: DeserializeOwned>(
+        &self,
+        segs: &[&str],
+        pairs: &[(&str, String)],
+    ) -> Result<T> {
         let url = self.url(segs, pairs);
         let path = url.path().to_string();
         let resp = self.http.get(url).send().await.map_err(http_err)?;

@@ -9,10 +9,15 @@
 //! grow writes by accident. Every write action there requires an explicit UI confirmation and
 //! is tested only against a throwaway Jellyfin instance, never the user's real server.
 
+mod browse;
 mod client;
 mod config;
 mod model;
 
+pub use browse::{
+    BrowseQuery, Chapter, ExternalUrl, FilterOptions, ItemExtra, MediaSource, NameId, Person,
+    SearchHint, Stream,
+};
 pub use client::{Client, ImageType, ItemsQuery};
 pub use config::Config;
 pub use model::{Item, Items, PublicInfo, User, UserData};
