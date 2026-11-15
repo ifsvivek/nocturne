@@ -29,6 +29,14 @@ Orchestrator's running log. Update at every task boundary.
 - Cargo.lock to be committed after Task 3 lands.
 - `first_user_id()` needs a user picker if several users exist.
 
+## Decisions from user (2026-11-15)
+- In-window video is the intended final UX, but NOT before browse/detail/playback controls/polish are done. Then: GPUI/libmpv embedding feasibility prototype; report trade-offs before committing. External mpv window = temporary fallback only.
+- `vendor/xattr` = xattr 0.2.3 with a one-line patch (ENOATTR -> ENODATA) because libc dropped ENOATTR on Linux; gpui -> zed-async-tar needs it. Wired via `[patch.crates-io]`; must be committed for reproducible builds. Remove when upstream fixes it. Linux-only.
+- No history rewrite / force-push; old trailer commits stay. Clean commits from now on.
+- Before every push: inspect staged changes AND the resulting diff for credentials, tokens, server addresses, personal filenames, artwork, identifying data. Counts-only logs.
+- Read-only boundary must be documented in the Jellyfin service layer (crate docs + guard test message) so write calls aren't added by accident. (To do in next task.)
+- Scope: reliable polished core first. Tracked follow-ups: subtitles, audio-track selection, watched-state sync (needs write calls; separate explicit decision), hardware-accelerated embedded video.
+
 ## Rules
 - Jellyfin: GET only; tests print counts/booleans, never titles/paths/ids/tokens.
 - Commits: focused, no AI trailers. Max 2 subagents, one at a time by default.
