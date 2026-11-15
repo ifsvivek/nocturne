@@ -25,7 +25,13 @@ icons!(
     "cc",
     "audio",
     "gear",
-    "fullscreen"
+    "fullscreen",
+    "next",
+    "prev",
+    "queue",
+    "pip",
+    "heart",
+    "heart_on"
 );
 
 impl AssetSource for Assets {

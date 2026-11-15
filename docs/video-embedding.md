@@ -195,6 +195,28 @@ screenshot (Ctrl+S, `nocturne-<unix>.png` in the pictures dir).
 Known gaps: the first frames can show black before the first video frame; subsurface resize is not atomic with GPUI's
 repaint (see Resize); AMD/Intel-only and fractional-scale machines are untested; X11 sessions use the external player.
 
+## Stage 2 player (feature-rich)
+
+The player page is its own entity (`crates/app/src/player_view.rs` state, `player_ui.rs` rendering, `player_logic.rs`
+pure rules, `player_mpris.rs` D-Bus). The owner (`Root`) creates it with a `PlayerCtx { client, user, hooks, prefs }`
+and drops it on `PlayerEvent::Closed`. `PlayerHooks` has five methods but the page only calls `set_favorite` /
+`is_favorite`; started/progress/stopped reporting belongs to the app tick.
+
+Shipped: skip intro/credits chip (+ auto-skip of intro/recap with `prefs.auto_skip_intro`), next-episode card with
+countdown and autoplay (`prefs.autoplay_next`, Esc cancels), previous/next, queue panel (series episodes, jump),
+repeat none/one/all, trickplay hover thumbnails, play-method label, quality menu (HLS transcode, auth in
+`http-header-fields` only) with calm direct-play fallback, Jellyfin external subtitles via `sub-add`, friendly track
+names, default audio/subtitle selection from prefs and per-series/season memory (session only), resume prompt,
+subtitle style presets and position (lifted above the controls bar), picture controls (brightness, contrast,
+saturation, gamma, zoom, pan, rotate, deinterlace, HDR tone mapping), normalize/downmix/output device, A-B loop,
+right-click menu, favourite heart, MPRIS (play/pause/stop/next/previous/seek, metadata + poster file in
+`$XDG_RUNTIME_DIR`), idle inhibit via `org.freedesktop.ScreenSaver` while playing.
+
+Limits: the mini player resizes the window to 640x360 (the app's minimum size may clamp it) and cannot stay on top
+(no GPUI/Wayland API; use a compositor rule, e.g. Hyprland `pin` + `float` for class `nocturne`). The external mpv
+backend shows the same controls on a black page, but video is in mpv's own window. Media segments need a server-side
+provider (core Jellyfin has none); without one the skip chip never appears.
+
 ## Risks
 - Raw-pointer coupling to gpui 0.2.2 internals (`wl_surface`/`wl_display` handles, shared connection). Pin the version; re-test on every gpui bump.
 - NVIDIA/driver specific behaviour (tested only on 615.78.08 + this hybrid laptop; EGL used the NVIDIA GPU, mpv also probed VAAPI on the AMD iGPU via `drmprime`,

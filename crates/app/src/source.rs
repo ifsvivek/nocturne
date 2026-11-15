@@ -157,12 +157,6 @@ pub fn pick_episode(eps: &[Media]) -> Option<&Media> {
     eps.iter().find(|e| !e.played).or(eps.first())
 }
 
-/// The episode after `id` in `eps`, if any.
-pub fn episode_after<'a>(eps: &'a [Media], id: &str) -> Option<&'a Media> {
-    let i = eps.iter().position(|e| e.id == id)?;
-    eps.get(i + 1)
-}
-
 pub fn fmt_runtime(min: u32) -> String {
     if min >= 60 {
         format!("{}h {:02}m", min / 60, min % 60)
@@ -339,17 +333,9 @@ impl Source {
         pick_episode(&eps).cloned().ok_or(Failed)
     }
 
-    pub async fn next_episode(&self, ep: &Media) -> Option<Media> {
-        let eps = self.all_episodes(ep.series_id.as_deref()?).await.ok()?;
-        episode_after(&eps, &ep.id).cloned()
-    }
-
-    /// Stream URL (no credentials) and the `Authorization: ...` header line for the player.
-    pub fn stream(&self, id: &str) -> (String, String) {
-        (
-            self.client.stream_url(id),
-            format!("Authorization: {}", self.client.auth_header()),
-        )
+    /// The client and user id, for the player page's own reads.
+    pub fn client(&self) -> (Arc<jf::Client>, String) {
+        (self.client.clone(), self.user.to_string())
     }
 }
 
@@ -424,9 +410,6 @@ mod tests {
         let seen = [ep("a", true), ep("b", true)];
         assert_eq!(pick_episode(&seen).unwrap().id, "a");
         assert!(pick_episode(&[]).is_none());
-        assert_eq!(episode_after(&eps, "a").unwrap().id, "b");
-        assert!(episode_after(&eps, "c").is_none());
-        assert!(episode_after(&eps, "zz").is_none());
     }
 
     #[test]

@@ -1,24 +1,15 @@
 //! Root view: connection state, navigation stack, keyboard, and the screens.
 use crate::admin::{self, Admin};
 use crate::nav::{self, Dir};
-use crate::playback::Now;
-use crate::source::fmt_clock;
+use crate::player_view::{PlayerCtx, PlayerEvent, PlayerView};
 use crate::source::{Art, ConnectError, Kind, Media, Source, sniff};
 use crate::ui::{self, Cell, Pic};
-use crate::video::{self, Aspect, AutoHide, MenuAct, Playback, Pop};
+use crate::video::PlayerPrefs;
 use crate::{bridge, cache::Cache, theme as t};
 use gpui::prelude::*;
 use gpui::*;
-use nocturne_player::{EmbeddedPlayer, Event, Options, Player};
-use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
-use std::cell::Cell as StdCell;
 use std::future::Future;
-use std::rc::Rc;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-
-/// Height of the docked now-playing bar.
-const BAR_H: f32 = 96.0;
 
 #[derive(Clone)]
 enum Load<T> {
@@ -140,13 +131,6 @@ impl Page {
     }
 }
 
-/// Pointer drags on the now-playing bar (fraction 0..1 along the track).
-#[derive(Clone, Copy)]
-enum Drag {
-    Seek(f32),
-    Vol(f32),
-}
-
 enum Act {
     PlayHero,
     Play(Media),
@@ -169,44 +153,11 @@ pub struct Root {
     pub focus: FocusHandle,
     admin: Option<Entity<Admin>>,
     admin_open: bool,
-    playback: Option<Playback>,
-    /// Player page active (embedded video): the window is a hole for the video, controls overlay it.
-    video: bool,
-    /// Embedded player waiting for the next render (needs `&Window` for the raw handles): (url, header).
-    pending: Option<(String, String)>,
-    /// Backend decision, made at the first play. `false` = child-process mpv.
-    embed: Option<bool>,
-    vbounds: Option<Bounds<Pixels>>,
-    hide: AutoHide,
-    ctl_shown: bool,
-    volume: f64,
-    /// We entered fullscreen from the player page; leave it when playback ends.
-    fs_from_video: bool,
-    tracks: Vec<video::Track>,
-    chapters: Vec<(f64, String)>,
-    pop: Option<Pop>,
-    pop_sel: usize,
-    speed: f64,
-    aspect: Aspect,
-    repeat: bool,
-    /// Right-hand time shows total instead of remaining.
-    show_total: bool,
-    osd: Option<(String, Instant)>,
-    stats: bool,
-    stats_rows: Vec<(&'static str, String)>,
-    help: bool,
-    /// Buffered-ahead position (seconds) for the scrub track.
-    cache_end: Option<f64>,
-    now: Option<Now>,
-    /// Bar kept alive briefly after stop so it can slide out.
-    leaving: Option<Now>,
-    bar_gen: u64,
-    track_b: Rc<StdCell<Bounds<Pixels>>>,
-    vol_b: Rc<StdCell<Bounds<Pixels>>>,
-    drag: Option<Drag>,
-    hover_frac: Option<f32>,
-    bar_hover: bool,
-    muted_from: Option<f64>,
+    /// The player page, while something plays.
+    player: Option<Entity<PlayerView>>,
+    _player_sub: Option<Subscription>,
+    /// Leave fullscreen on the next render (the player entered it).
+    fs_exit: bool,
     grain: Arc<Image>,
     dots: Arc<Image>,
     glow: Arc<Image>,
@@ -235,37 +186,9 @@ impl Root {
             focus: cx.focus_handle(),
             admin: None,
             admin_open: false,
-            playback: None,
-            video: false,
-            pending: None,
-            embed: None,
-            vbounds: None,
-            hide: AutoHide::new(Instant::now()),
-            ctl_shown: true,
-            volume: 100.0,
-            fs_from_video: false,
-            tracks: vec![],
-            chapters: vec![],
-            pop: None,
-            pop_sel: 0,
-            speed: 1.0,
-            aspect: Aspect::Auto,
-            repeat: false,
-            show_total: false,
-            osd: None,
-            stats: false,
-            stats_rows: vec![],
-            help: false,
-            cache_end: None,
-            now: None,
-            leaving: None,
-            bar_gen: 0,
-            track_b: Rc::default(),
-            vol_b: Rc::default(),
-            drag: None,
-            hover_frac: None,
-            bar_hover: false,
-            muted_from: None,
+            player: None,
+            _player_sub: None,
+            fs_exit: false,
             grain: ui::grain(),
             dots: ui::dots(),
             glow: ui::glow(),
@@ -283,31 +206,24 @@ impl Root {
             let handle = Window::window_handle(w);
             let this = this.clone();
             if this
-                .read_with(cx, |t, _| t.playback.is_none())
+                .read_with(cx, |t, _| t.player.is_none())
                 .unwrap_or(true)
             {
                 return true;
             }
             cx.spawn(async move |cx| {
-                this.update(cx, |t, _| t.playback = None).ok();
+                this.update(cx, |t, cx| {
+                    if let Some(p) = t.player.take() {
+                        p.update(cx, |p, _| p.shutdown());
+                    }
+                })
+                .ok();
                 cx.update(|cx| cx.quit()).ok();
                 let _ = handle;
             })
             .detach();
             false
         });
-        // Poll the player a few times a second; cheap when nothing is playing.
-        cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor()
-                    .timer(std::time::Duration::from_millis(200))
-                    .await;
-                if this.update(cx, |t, cx| t.tick(cx)).is_err() {
-                    break;
-                }
-            }
-        })
-        .detach();
         me
     }
 
@@ -548,6 +464,32 @@ impl Root {
         .detach();
     }
 
+    /// Hands one playable item to the player page. Nothing here is ever logged.
+    fn play_media(&mut self, m: Media, cx: &mut Context<Self>) {
+        let Some(src) = self.source.clone() else {
+            return;
+        };
+        let (client, user) = src.client();
+        let ctx = PlayerCtx {
+            client,
+            user,
+            hooks: None,
+            prefs: PlayerPrefs::default(),
+        };
+        let view = cx.new(|cx| PlayerView::new(ctx, m, cx));
+        self._player_sub = Some(cx.subscribe(&view, |t, _, ev: &PlayerEvent, cx| {
+            let PlayerEvent::Closed { failed, leave_fs } = ev;
+            t.player = None;
+            t._player_sub = None;
+            t.fs_exit = *leave_fs;
+            if *failed {
+                t.toast("This couldn't be played.", cx);
+            }
+            cx.notify();
+        }));
+        self.player = Some(view);
+    }
+
     /// Play for a focused thing. A series plays its first unwatched (else first) episode.
     fn play_item(&mut self, m: Media, cx: &mut Context<Self>) {
         match m.kind {
@@ -566,505 +508,6 @@ impl Root {
                 );
             }
             _ => self.play_media(m, cx),
-        }
-    }
-
-    /// Hands one playable item to the player. Nothing here is ever logged.
-    fn play_media(&mut self, m: Media, cx: &mut Context<Self>) {
-        let Some(src) = self.source.clone() else {
-            return;
-        };
-        let (url, header) = src.stream(&m.id);
-        if let Some(p) = &self.playback {
-            if p.load(&url, Some(&header)).is_err() {
-                self.stop(cx);
-                return self.toast("This couldn't be played.", cx);
-            }
-        } else if self.embed_wanted() {
-            // Created on the next render, which has the window handles.
-            self.pending = Some((url, header));
-            self.video = true;
-            self.hide.poke(Instant::now());
-        } else if !self.start_external(&url, &header) {
-            return self.toast("This couldn't be played.", cx);
-        }
-        let ep = m.clone();
-        self.leaving = None;
-        if self.now.is_none() {
-            self.bar_gen += 1;
-        }
-        self.muted_from = None;
-        self.now = Some(Now::new(m));
-        if ep.kind == Kind::Episode {
-            self.run(
-                cx,
-                async move { (ep.id.clone(), src.next_episode(&ep).await) },
-                |t, (id, next), _| {
-                    if let Some(n) = t.now.as_mut().filter(|n| n.media.id == id) {
-                        n.next = next;
-                    }
-                },
-            );
-        }
-    }
-
-    fn embed_wanted(&mut self) -> bool {
-        *self.embed.get_or_insert_with(|| {
-            let env = std::env::var("NOCTURNE_VIDEO").ok();
-            let wl = std::env::var_os("WAYLAND_DISPLAY").is_some();
-            video::choose(env.as_deref(), wl) == video::Choice::Embedded
-        })
-    }
-
-    /// Child-process mpv in its own window. False (and everything reset) if it can't play.
-    fn start_external(&mut self, url: &str, header: &str) -> bool {
-        self.video = false;
-        let ok = Player::new(Options::default())
-            .ok()
-            .filter(|p| p.load(url, Some(header)).is_ok());
-        self.playback = ok.map(Playback::External);
-        self.fresh_session();
-        self.playback.is_some()
-    }
-
-    /// Render-time: create the embedded player now that we have the window.
-    fn start_embedded(&mut self, window: &Window, cx: &mut Context<Self>) {
-        let Some((url, header)) = self.pending.take() else {
-            return;
-        };
-        let handles = match (
-            HasDisplayHandle::display_handle(window).map(|h| h.as_raw()),
-            HasWindowHandle::window_handle(window).map(|h| h.as_raw()),
-        ) {
-            (Ok(RawDisplayHandle::Wayland(d)), Ok(RawWindowHandle::Wayland(s))) => {
-                Some((d.display.as_ptr(), s.surface.as_ptr()))
-            }
-            _ => None,
-        };
-        let p = handles
-            .and_then(|(d, s)| EmbeddedPlayer::new(d, s).ok())
-            .filter(|p| p.load(&url, Some(&header)).is_ok());
-        match p {
-            Some(p) => {
-                let _ = p.set_volume(self.volume);
-                self.vbounds = None; // push bounds to the new surface on the next paint
-                self.playback = Some(Playback::Embedded(Box::new(p)));
-                self.fresh_session();
-            }
-            None => {
-                // Calm, counts only: no URLs, no ids.
-                eprintln!("video: embedded unavailable, using the external player");
-                self.embed = Some(false);
-                if !self.start_external(&url, &header) {
-                    self.stop(cx);
-                    self.toast("This couldn't be played.", cx);
-                }
-            }
-        }
-    }
-
-    /// A new mpv instance starts with default speed/aspect/repeat.
-    fn fresh_session(&mut self) {
-        self.speed = 1.0;
-        self.aspect = Aspect::Auto;
-        self.repeat = false;
-        self.pop = None;
-        self.stats = false;
-        self.help = false;
-    }
-
-    fn osd(&mut self, text: impl Into<String>) {
-        self.osd = Some((text.into(), Instant::now()));
-    }
-
-    /// Tracks and chapters of the loaded file (also refreshed when a menu opens: selection changes).
-    fn refresh_meta(&mut self) {
-        let Some(p) = &self.playback else { return };
-        self.tracks = p
-            .prop("track-list")
-            .map(|v| video::parse_tracks(&v))
-            .unwrap_or_default();
-        self.chapters = p
-            .prop("chapter-list")
-            .map(|v| video::parse_chapters(&v))
-            .unwrap_or_default();
-    }
-
-    fn num(&self, name: &str) -> Option<f64> {
-        self.playback.as_ref()?.prop(name)?.as_f64()
-    }
-
-    fn set_speed(&mut self, sp: f64) {
-        if let Some(p) = &self.playback {
-            let _ = p.set("speed", &sp.to_string());
-        }
-        self.speed = sp;
-        self.osd(format!("Speed {}", video::fmt_speed(sp)));
-    }
-
-    fn set_aspect(&mut self, a: Aspect) {
-        if let Some(p) = &self.playback {
-            for (k, v) in a.props() {
-                let _ = p.set(k, v);
-            }
-        }
-        self.aspect = a;
-        self.osd(format!("Aspect {}", a.label()));
-    }
-
-    fn set_repeat(&mut self, on: bool) {
-        if let Some(p) = &self.playback {
-            let _ = p.set("loop-file", if on { "inf" } else { "no" });
-        }
-        self.repeat = on;
-        self.osd(if on { "Repeat one" } else { "Repeat off" });
-    }
-
-    fn set_track(&mut self, prop: &str, id: i64, label: &str) {
-        if let Some(p) = &self.playback {
-            let _ = p.set(prop, &if id == 0 { "no".into() } else { id.to_string() });
-        }
-        self.refresh_meta();
-        self.osd(label);
-    }
-
-    fn add_delay(&mut self, prop: &str, name: &str, d: f64) {
-        let Some(p) = &self.playback else { return };
-        let _ = p.command(&["add", prop, &d.to_string()]);
-        let v = self.num(prop).unwrap_or(0.0);
-        self.osd(format!("{name} delay {}", video::fmt_delay(v)));
-    }
-
-    fn pop_act(&mut self, act: MenuAct, cx: &mut Context<Self>) {
-        match act {
-            MenuAct::Sub(id) => {
-                self.set_track(
-                    "sid",
-                    id,
-                    if id == 0 {
-                        "Subtitles off"
-                    } else {
-                        "Subtitles on"
-                    },
-                );
-                self.pop = None;
-            }
-            MenuAct::Audio(id) => {
-                self.set_track("aid", id, "Audio track changed");
-                self.pop = None;
-            }
-            MenuAct::Speed(s) => {
-                self.set_speed(s);
-                self.pop = Some(Pop::Settings);
-                self.pop_sel = 1;
-            }
-            MenuAct::Aspect(a) => {
-                self.set_aspect(a);
-                self.pop = Some(Pop::Settings);
-                self.pop_sel = 0;
-            }
-            MenuAct::Repeat(r) => {
-                self.set_repeat(r);
-                self.pop = Some(Pop::Settings);
-                self.pop_sel = 2;
-            }
-            MenuAct::Open(p) => {
-                self.pop = Some(p);
-                self.pop_sel = 0;
-            }
-            MenuAct::Info => {
-                self.pop = None;
-                self.stats = true;
-            }
-        }
-        cx.notify();
-    }
-
-    fn toggle_pop(&mut self, p: Pop, cx: &mut Context<Self>) {
-        if self.pop == Some(p) {
-            self.pop = None;
-        } else {
-            self.refresh_meta();
-            let items = video::items(p, &self.tracks, self.speed, self.aspect, self.repeat);
-            self.pop_sel = items.iter().position(|i| i.on).unwrap_or(0);
-            self.pop = Some(p);
-        }
-        self.hide.poke(Instant::now());
-        cx.notify();
-    }
-
-    fn screenshot(&mut self) {
-        let Some(p) = &self.playback else { return };
-        let dir = std::env::var_os("XDG_PICTURES_DIR")
-            .map(std::path::PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join("Pictures")))
-            .filter(|d| d.is_dir())
-            .unwrap_or_else(std::env::temp_dir);
-        let secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs());
-        let file = dir.join(format!("nocturne-{secs}.png"));
-        let ok = p
-            .command(&["screenshot-to-file", &file.to_string_lossy(), "video"])
-            .is_ok();
-        self.osd(if ok {
-            "Screenshot saved"
-        } else {
-            "Screenshot failed"
-        });
-    }
-
-    /// Popover keys. True when consumed.
-    fn pop_key(&mut self, k: &str, cx: &mut Context<Self>) -> bool {
-        let Some(pop) = self.pop else { return false };
-        let items = video::items(pop, &self.tracks, self.speed, self.aspect, self.repeat);
-        match k {
-            "up" => self.pop_sel = self.pop_sel.saturating_sub(1),
-            "down" => self.pop_sel = (self.pop_sel + 1).min(items.len().saturating_sub(1)),
-            "enter" => {
-                if let Some(i) = items.get(self.pop_sel) {
-                    self.pop_act(i.act, cx);
-                }
-            }
-            // Sub-menus go back to Settings; top-level menus close.
-            "escape" => {
-                self.pop =
-                    matches!(pop, Pop::Speed | Pop::Aspect | Pop::Repeat).then_some(Pop::Settings);
-                self.pop_sel = 0;
-            }
-            _ => {}
-        }
-        cx.notify();
-        true
-    }
-
-    fn stop(&mut self, cx: &mut Context<Self>) {
-        self.playback = None; // dropping closes mpv / the video surface
-        self.video = false;
-        self.pending = None;
-        self.pop = None;
-        self.tracks.clear();
-        self.chapters.clear();
-        self.cache_end = None;
-        self.drag = None;
-        self.hover_frac = None;
-        let Some(n) = self.now.take() else { return };
-        self.leaving = Some(n);
-        self.bar_gen += 1;
-        let g = self.bar_gen;
-        cx.spawn(async move |this, cx| {
-            cx.background_executor()
-                .timer(std::time::Duration::from_millis(220))
-                .await;
-            this.update(cx, |t, cx| {
-                if t.bar_gen == g {
-                    t.leaving = None;
-                    cx.notify();
-                }
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    fn track_frac(&self, x: Pixels, b: Bounds<Pixels>) -> f32 {
-        if b.size.width <= px(0.0) {
-            0.0
-        } else {
-            ((x - b.origin.x) / b.size.width).clamp(0.0, 1.0)
-        }
-    }
-
-    fn drag_move(&mut self, x: Pixels, cx: &mut Context<Self>) {
-        match self.drag {
-            Some(Drag::Seek(_)) => {
-                self.drag = Some(Drag::Seek(self.track_frac(x, self.track_b.get())))
-            }
-            Some(Drag::Vol(_)) => {
-                let f = self.track_frac(x, self.vol_b.get());
-                self.drag = Some(Drag::Vol(f));
-                self.muted_from = None;
-                if let Some(p) = &self.playback {
-                    let _ = p.set_volume(f as f64 * 100.0);
-                }
-            }
-            None => return,
-        }
-        cx.notify();
-    }
-
-    fn drag_end(&mut self, cx: &mut Context<Self>) {
-        if let (Some(Drag::Seek(f)), Some(p), Some(d)) = (
-            self.drag.take(),
-            &self.playback,
-            self.now.as_ref().and_then(|n| n.times().1),
-        ) {
-            let _ = p.seek_to(f as f64 * d);
-        }
-        cx.notify();
-    }
-
-    fn mute(&mut self) {
-        let v = self
-            .now
-            .as_ref()
-            .and_then(|n| n.state.as_ref())
-            .map_or(100.0, |s| s.volume);
-        let Some(p) = &self.playback else { return };
-        match self.muted_from.take() {
-            Some(prev) => drop(p.set_volume(prev)),
-            None if v > 0.0 => {
-                self.muted_from = Some(v);
-                let _ = p.set_volume(0.0);
-            }
-            None => drop(p.set_volume(100.0)),
-        }
-    }
-
-    fn tick(&mut self, cx: &mut Context<Self>) {
-        let shown = self.video_controls();
-        if self.video && shown != self.ctl_shown {
-            self.ctl_shown = shown;
-            cx.notify();
-        }
-        let Some(pl) = &self.playback else { return };
-        let (mut failed, mut gone, mut meta) = (false, false, false);
-        if let Some(now) = &mut self.now {
-            for ev in pl.events().try_iter() {
-                match ev {
-                    Event::Loaded => {
-                        meta = true;
-                        now.loaded = true;
-                        if let Some(r) = now.resume_at.take() {
-                            let _ = pl.seek_to(r);
-                        }
-                    }
-                    Event::Failed(_) => failed = true,
-                    Event::Closed => gone = true,
-                    _ => {}
-                }
-            }
-            let st = pl.state();
-            self.volume = st.volume;
-            failed |= now.stalled(st.idle);
-            now.ended = st.eof;
-            if now.state.as_ref() != Some(&st) {
-                now.state = Some(st);
-                cx.notify();
-            }
-        } else {
-            gone = true;
-        }
-        if meta {
-            self.refresh_meta();
-        }
-        self.poll_extras(cx);
-        if failed {
-            self.stop(cx);
-            self.toast("This couldn't be played.", cx);
-            cx.notify();
-        } else if gone {
-            self.stop(cx);
-            cx.notify();
-        }
-    }
-
-    /// Buffered position, stats rows and OSD expiry; cheap, runs from the 200 ms tick.
-    fn poll_extras(&mut self, cx: &mut Context<Self>) {
-        let cache = self.num("demuxer-cache-time");
-        if cache != self.cache_end {
-            self.cache_end = cache;
-            cx.notify();
-        }
-        if self
-            .osd
-            .as_ref()
-            .is_some_and(|(_, t)| t.elapsed() > Duration::from_millis(1600))
-        {
-            self.osd = None;
-            cx.notify();
-        }
-        if self.stats && self.playback.is_some() {
-            self.stats_rows = self.stats_snapshot();
-            cx.notify();
-        }
-    }
-
-    fn stats_snapshot(&self) -> Vec<(&'static str, String)> {
-        let Some(p) = &self.playback else {
-            return vec![];
-        };
-        let g = |n: &str| {
-            p.prop(n)
-                .map(|v| match v {
-                    serde_json::Value::String(s) => s,
-                    serde_json::Value::Number(n) => n.as_f64().map_or(n.to_string(), |f| {
-                        if f.fract() == 0.0 {
-                            format!("{f:.0}")
-                        } else {
-                            format!("{f:.2}")
-                        }
-                    }),
-                    v => v.to_string(),
-                })
-                .unwrap_or_else(|| "-".into())
-        };
-        let kbps = |n: &str| {
-            p.prop(n)
-                .and_then(|v| v.as_f64())
-                .map_or("-".into(), |b| format!("{:.0} kbps", b / 1000.0))
-        };
-        vec![
-            ("Play method", "Direct Play".into()),
-            ("Container", g("file-format")),
-            (
-                "Video",
-                format!(
-                    "{} {}x{} @ {} fps",
-                    g("video-format"),
-                    g("width"),
-                    g("height"),
-                    g("container-fps")
-                ),
-            ),
-            ("Video bitrate", kbps("video-bitrate")),
-            (
-                "Audio",
-                format!(
-                    "{} {}",
-                    g("audio-codec-name"),
-                    g("audio-params/hr-channels")
-                ),
-            ),
-            ("Audio bitrate", kbps("audio-bitrate")),
-            ("Hardware decode", g("hwdec-current")),
-            (
-                "Dropped frames",
-                format!(
-                    "{} (decoder {})",
-                    g("frame-drop-count"),
-                    g("decoder-frame-drop-count")
-                ),
-            ),
-            ("Buffered", format!("{} s", g("demuxer-cache-duration"))),
-        ]
-    }
-
-    fn toggle(&mut self) {
-        if let Some(p) = &self.playback {
-            let _ = p.toggle();
-        }
-    }
-
-    fn seek(&mut self, secs: f64) {
-        if let Some(p) = &self.playback {
-            let _ = p.seek_by(secs);
-        }
-    }
-
-    fn next_episode(&mut self, cx: &mut Context<Self>) {
-        if let Some(n) = self.now.as_ref().and_then(|n| n.next.clone()) {
-            self.play_media(n, cx);
         }
     }
 
@@ -1115,106 +558,10 @@ impl Root {
 
     // ---- keyboard ----
 
-    fn video_controls(&self) -> bool {
-        let hold = self.bar_hover || self.drag.is_some();
-        self.hide.visible(Instant::now(), hold)
-    }
-
-    fn toggle_fullscreen(&mut self, window: &mut Window) {
-        self.fs_from_video = !window.is_fullscreen();
-        window.toggle_fullscreen();
-    }
-
-    /// Player-page keys. True when consumed.
-    fn video_key(
-        &mut self,
-        ev: &KeyDownEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        use video::Key;
-        self.hide.poke(Instant::now());
-        let k = ev.keystroke.key.as_str();
-        if self.pop_key(k, cx) {
-            return true;
-        }
-        let m = &ev.keystroke.modifiers;
-        let Some(key) = video::key(k, m.shift, m.control) else {
-            return false;
-        };
-        let pos = self.now.as_ref().map_or(0.0, |n| n.times().0);
-        match key {
-            Key::Toggle => self.toggle(),
-            Key::Seek(s) => self.seek(s),
-            Key::Volume(d) => {
-                self.muted_from = None;
-                let v = video::bump_volume(self.volume, d);
-                if let Some(p) = &self.playback {
-                    let _ = p.set_volume(v);
-                }
-                self.osd(format!("Volume {}%", v.round()));
-            }
-            Key::Mute => self.mute(),
-            Key::Stop => self.stop(cx),
-            Key::Fullscreen => self.toggle_fullscreen(window),
-            Key::Back if self.help || self.stats => (self.help, self.stats) = (false, false),
-            Key::Back if window.is_fullscreen() => self.toggle_fullscreen(window),
-            Key::Back => self.stop(cx),
-            Key::Next => self.next_episode(cx),
-            Key::Speed(d) => self.set_speed(video::step_speed(self.speed, d)),
-            Key::Frame(d) => {
-                if let Some(p) = &self.playback {
-                    let _ = p.command(&[if d > 0 {
-                        "frame-step"
-                    } else {
-                        "frame-back-step"
-                    }]);
-                }
-            }
-            Key::Chapter(d) => {
-                if let (Some(t), Some(p)) = (
-                    video::chapter_target(&self.chapters, pos, d),
-                    &self.playback,
-                ) {
-                    let _ = p.seek_to(t);
-                    let title = video::chapter_at(&self.chapters, t)
-                        .map(|i| self.chapters[i].1.clone())
-                        .filter(|s| !s.is_empty());
-                    self.osd(title.unwrap_or_else(|| "Chapter".into()));
-                }
-            }
-            Key::SubDelay(d) => self.add_delay("sub-delay", "Subtitle", d),
-            Key::AudioDelay(d) => self.add_delay("audio-delay", "Audio", d),
-            Key::CycleSubs => {
-                self.refresh_meta();
-                let cur = self
-                    .tracks
-                    .iter()
-                    .find(|t| t.kind == video::TrackKind::Sub && t.selected)
-                    .map_or(0, |t| t.id);
-                let next = video::next_sub(&self.tracks, cur);
-                self.set_track(
-                    "sid",
-                    next,
-                    if next == 0 {
-                        "Subtitles off"
-                    } else {
-                        "Subtitles on"
-                    },
-                );
-            }
-            Key::Stats => self.stats = !self.stats,
-            Key::Help => self.help = !self.help,
-            Key::Screenshot => self.screenshot(),
-            Key::Loop => self.set_repeat(!self.repeat),
-        }
-        cx.notify();
-        true
-    }
-
     fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let key = ev.keystroke.key.as_str();
-        if self.video && self.video_key(ev, window, cx) {
+        if let Some(p) = self.player.clone() {
+            p.update(cx, |p, cx| p.on_key(ev, window, cx));
             return;
         }
         if let Phase::Error(e) = self.phase {
@@ -1236,25 +583,6 @@ impl Root {
             self.back();
             cx.notify();
             return;
-        }
-        if self.now.is_some() {
-            let spatial = self
-                .stack
-                .last()
-                .is_some_and(|p| matches!(p.view, View::Home | View::Grid));
-            match key {
-                "space" => self.toggle(),
-                "s" => self.stop(cx),
-                "n" => self.next_episode(cx),
-                // Left/Right navigate grids; elsewhere they seek.
-                "left" if !spatial => self.seek(-10.0),
-                "right" if !spatial => self.seek(30.0),
-                _ => {}
-            }
-            if matches!(key, "space" | "s" | "n") || (!spatial && matches!(key, "left" | "right")) {
-                cx.notify();
-                return;
-            }
         }
         let dir = match key {
             "up" => Some(Dir::Up),
@@ -1538,625 +866,13 @@ impl Root {
             .id("root")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|t, ev, w, cx| t.on_key(ev, w, cx)))
-            .on_mouse_move(cx.listener(|t, e: &MouseMoveEvent, _, cx| {
-                if t.video {
-                    t.hide.poke(Instant::now());
-                    if !t.ctl_shown {
-                        t.ctl_shown = true;
-                        cx.notify();
-                    }
-                }
-                t.drag_move(e.position.x, cx)
-            }))
-            .on_mouse_up(
-                MouseButton::Left,
-                cx.listener(|t, _, _, cx| {
-                    if t.drag.is_some() {
-                        t.drag_end(cx);
-                    }
-                }),
-            )
             .size_full()
             .relative()
             .font_family(t::FONT)
             .text_color(t::text())
     }
 
-    /// Player page: video fills the window (transparent hole), controls overlay it and auto-hide.
-    fn player_page(&mut self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let shown = self.video_controls();
-        self.ctl_shown = shown;
-        let view = cx.entity();
-        let loaded = self.now.as_ref().is_some_and(|n| n.loaded);
-        let bar = shown.then(|| self.now_bar(cx)).flatten();
-        let mut page = self
-            .shell(cx)
-            // Black until the first frame is on its way, else the desktop shows through the hole.
-            .when(!loaded, |d| d.bg(rgb(0x000000)))
-            .when(!shown, |d| d.cursor(CursorStyle::None))
-            .child(
-                canvas(
-                    |b, _, _| b,
-                    move |b, _, window, cx| {
-                        let sf = window.scale_factor();
-                        view.update(cx, |t, cx| {
-                            if t.vbounds == Some(b) {
-                                return;
-                            }
-                            t.vbounds = Some(b);
-                            if let Some(Playback::Embedded(p)) = t.playback.as_mut() {
-                                let f = |v: Pixels| f32::from(v);
-                                p.set_bounds(
-                                    f(b.origin.x),
-                                    f(b.origin.y),
-                                    f(b.size.width),
-                                    f(b.size.height),
-                                    sf,
-                                );
-                                cx.notify(); // parent commit applies the new position
-                            }
-                        });
-                    },
-                )
-                .absolute()
-                .size_full(),
-            )
-            .child(div().id("video-hit").absolute().size_full().on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|t, e: &MouseDownEvent, w, cx| {
-                    // Each press toggles pause; the second press of a double-click undoes the
-                    // first and goes fullscreen.
-                    t.toggle();
-                    if e.click_count == 2 {
-                        t.toggle_fullscreen(w);
-                    }
-                    cx.notify();
-                }),
-            ));
-        for o in self.overlays() {
-            page = page.child(o);
-        }
-        if let Some(bar) = bar {
-            page = page.child(bar);
-        }
-        if let Some(n) = self.note {
-            page = page.child(
-                div()
-                    .absolute()
-                    .top(px(t::S6))
-                    .right(px(t::S6))
-                    .px(px(t::S4))
-                    .py(px(t::S3))
-                    .rounded(px(t::R_PANEL))
-                    .bg(t::raised())
-                    .border_1()
-                    .border_color(t::hairline_strong())
-                    .text_size(px(t::BODY))
-                    .text_color(t::text())
-                    .child(n),
-            );
-        }
-        page
-    }
-
     // ---- now playing ----
-
-    fn now_bar(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let leaving = self.now.is_none();
-        let n = self.now.as_ref().or(self.leaving.as_ref())?;
-        let media = n.media.clone();
-        let (mut pos, dur) = n.times();
-        let st = n.state.as_ref();
-        let paused = st.is_some_and(|s| s.paused);
-        let mut vol = st.map_or(100.0, |s| s.volume);
-        let (loaded, ended, has_next, mut frac) = (n.loaded, n.ended, n.next.is_some(), n.frac());
-        if let (Some(Drag::Seek(f)), Some(d)) = (self.drag, dur) {
-            (frac, pos) = (f, f as f64 * d);
-        }
-        if let Some(Drag::Vol(f)) = self.drag {
-            vol = f as f64 * 100.0;
-        }
-        let tip = self.hover_frac.zip(dur).map(|(f, d)| {
-            let t = f as f64 * d;
-            let mut text = fmt_clock(t);
-            if let Some(i) = video::chapter_at(&self.chapters, t)
-                && !self.chapters[i].1.is_empty()
-            {
-                text = format!("{text} · {}", self.chapters[i].1);
-            }
-            (f, text)
-        });
-        let status = if !loaded {
-            "loading".to_string()
-        } else if ended {
-            "finished".to_string()
-        } else {
-            [
-                media.series_name.clone().unwrap_or_default(),
-                media.episode_label(),
-            ]
-            .into_iter()
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join(" · ")
-        };
-        let right_time = match dur {
-            Some(d) if !self.show_total => format!("-{}", fmt_clock((d - pos).max(0.0))),
-            Some(d) => fmt_clock(d),
-            None => "--:--".into(),
-        };
-        let ends = dur
-            .filter(|_| loaded && !ended)
-            .map(|d| video::ends_at(video::local_hm(), (d - pos).max(0.0), self.speed));
-        let cache_frac = self
-            .cache_end
-            .zip(dur)
-            .map_or(0.0, |(c, d)| (c / d).clamp(0.0, 1.0) as f32);
-        let tick_fracs: Vec<f32> = dur
-            .map(|d| {
-                self.chapters
-                    .iter()
-                    .filter(|c| c.0 > 0.5)
-                    .map(|c| (c.0 / d) as f32)
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let tb = self.track_b.clone();
-        let big = self.bar_hover || matches!(self.drag, Some(Drag::Seek(_)));
-        let th = if big { 8.0 } else { 4.0 };
-        let track = div()
-            .id("np-track")
-            .relative()
-            .flex_1()
-            .min_w_0()
-            .h(px(16.0))
-            .cursor_pointer()
-            .child(
-                div()
-                    .absolute()
-                    .top(px(6.0))
-                    .left_0()
-                    .w_full()
-                    .child(ui::progress_bar(frac, th)),
-            )
-            .child(
-                // Buffered-ahead segment, lighter than the played part.
-                div()
-                    .absolute()
-                    .top(px(6.0))
-                    .left(relative(frac))
-                    .w(relative((cache_frac - frac).max(0.0)))
-                    .h(px(th))
-                    .bg(rgba(0xffffff33)),
-            )
-            .children(tick_fracs.into_iter().map(|f| {
-                div()
-                    .absolute()
-                    .top(px(6.0))
-                    .left(relative(f))
-                    .w(px(2.0))
-                    .h(px(th))
-                    .bg(rgba(0x07080cd0))
-            }))
-            .child(
-                canvas(move |b, _, _| tb.set(b), |_, _, _, _| {})
-                    .absolute()
-                    .size_full(),
-            )
-            .on_hover(cx.listener(|t, h: &bool, _, cx| {
-                t.bar_hover = *h;
-                if !*h {
-                    t.hover_frac = None;
-                }
-                cx.notify();
-            }))
-            .on_mouse_move(cx.listener(|t, e: &MouseMoveEvent, _, cx| {
-                t.hover_frac = Some(t.track_frac(e.position.x, t.track_b.get()));
-                cx.notify();
-            }))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|t, e: &MouseDownEvent, _, cx| {
-                    t.drag = Some(Drag::Seek(t.track_frac(e.position.x, t.track_b.get())));
-                    cx.notify();
-                }),
-            );
-
-        let mut ctl = div()
-            .flex()
-            .items_center()
-            .gap(px(t::S2))
-            .child(ui::ctl_button(
-                "np-back",
-                "icons/back.svg",
-                "10",
-                false,
-                cx.listener(|t, _, _, cx| {
-                    t.seek(-10.0);
-                    cx.notify();
-                }),
-            ))
-            .child(ui::ctl_button(
-                "np-pause",
-                if paused {
-                    "icons/play.svg"
-                } else {
-                    "icons/pause.svg"
-                },
-                "",
-                true,
-                cx.listener(|t, _, _, cx| {
-                    t.toggle();
-                    cx.notify();
-                }),
-            ))
-            .child(ui::ctl_button(
-                "np-fwd",
-                "icons/fwd.svg",
-                "30",
-                false,
-                cx.listener(|t, _, _, cx| {
-                    t.seek(30.0);
-                    cx.notify();
-                }),
-            ));
-        if has_next {
-            ctl = ctl.child(ui::ctl_button(
-                "np-next",
-                "icons/play.svg",
-                "next",
-                ended,
-                cx.listener(|t, _, _, cx| {
-                    t.next_episode(cx);
-                    cx.notify();
-                }),
-            ));
-        }
-        let vb = self.vol_b.clone();
-        let volume = div()
-            .flex()
-            .items_center()
-            .gap(px(t::S2))
-            .child(ui::ctl_button(
-                "np-mute",
-                if vol <= 0.0 {
-                    "icons/mute.svg"
-                } else {
-                    "icons/volume.svg"
-                },
-                "",
-                false,
-                cx.listener(|t, _, _, cx| {
-                    t.mute();
-                    cx.notify();
-                }),
-            ))
-            .child(
-                div()
-                    .id("np-vol")
-                    .relative()
-                    .w(px(84.0))
-                    .h(px(24.0))
-                    .flex()
-                    .items_center()
-                    .cursor_pointer()
-                    .child(
-                        div()
-                            .w_full()
-                            .child(ui::progress_bar((vol / 130.0) as f32, 3.0)),
-                    )
-                    .child(
-                        canvas(move |b, _, _| vb.set(b), |_, _, _, _| {})
-                            .absolute()
-                            .size_full(),
-                    )
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|t, e: &MouseDownEvent, _, cx| {
-                            t.drag = Some(Drag::Vol(0.0));
-                            t.drag_move(e.position.x, cx);
-                        }),
-                    ),
-            )
-            .when(vol > 100.0, |d| {
-                d.child(ui::mono(format!("{}%", vol.round())))
-            });
-        let video = self.video;
-        let menus = div()
-            .flex()
-            .items_center()
-            .gap(px(t::S2))
-            .child(ui::ctl_button(
-                "np-cc",
-                "icons/cc.svg",
-                "",
-                self.pop == Some(Pop::Subs),
-                cx.listener(|t, _, _, cx| t.toggle_pop(Pop::Subs, cx)),
-            ))
-            .child(ui::ctl_button(
-                "np-audio",
-                "icons/audio.svg",
-                "",
-                self.pop == Some(Pop::Audio),
-                cx.listener(|t, _, _, cx| t.toggle_pop(Pop::Audio, cx)),
-            ))
-            .child(volume)
-            .child(ui::ctl_button(
-                "np-gear",
-                "icons/gear.svg",
-                "",
-                matches!(
-                    self.pop,
-                    Some(Pop::Settings | Pop::Speed | Pop::Aspect | Pop::Repeat)
-                ),
-                cx.listener(|t, _, _, cx| t.toggle_pop(Pop::Settings, cx)),
-            ))
-            .when(video, |d| {
-                d.child(ui::ctl_button(
-                    "np-fs",
-                    "icons/fullscreen.svg",
-                    "",
-                    false,
-                    cx.listener(|t, _, w, cx| {
-                        t.toggle_fullscreen(w);
-                        cx.notify();
-                    }),
-                ))
-            })
-            .child(ui::ctl_button(
-                "np-stop",
-                "icons/stop.svg",
-                "",
-                false,
-                cx.listener(|t, _, _, cx| {
-                    t.stop(cx);
-                    cx.notify();
-                }),
-            ));
-        let mut glow = t::glow();
-        glow.a = 0.10;
-        let row1 = div()
-            .h(px(52.0))
-            .flex_none()
-            .px(px(t::S6))
-            .flex()
-            .items_center()
-            .gap(px(t::S4))
-            .child(ctl)
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .items_center()
-                    .gap(px(t::S3))
-                    .child(ends.map_or_else(div, |e| ui::mono(e).flex_none()))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_size(px(14.0))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(t::text())
-                            .child(media.title.clone()),
-                    )
-                    .child(ui::mono(status).truncate()),
-            )
-            .child(menus);
-        let row2 = div()
-            .h(px(36.0))
-            .flex_none()
-            .px(px(t::S6))
-            .flex()
-            .items_center()
-            .gap(px(t::S3))
-            .child(ui::mono(fmt_clock(pos)).flex_none().w(px(52.0)))
-            .child(track)
-            .child(
-                div()
-                    .id("np-remaining")
-                    .flex_none()
-                    .w(px(60.0))
-                    .cursor_pointer()
-                    .child(ui::mono(right_time).text_right())
-                    .on_click(cx.listener(|t, _, _, cx| {
-                        t.show_total = !t.show_total;
-                        cx.notify();
-                    })),
-            );
-        let bar = div()
-            .absolute()
-            .bottom_0()
-            .left_0()
-            .w_full()
-            .h(px(BAR_H))
-            .flex()
-            .flex_col()
-            .border_t_1()
-            .border_color(t::hairline_strong())
-            .occlude()
-            .bg(rgba(if self.video { 0x07080cc4 } else { 0x07080cf5 }))
-            .shadow(vec![BoxShadow {
-                color: glow.into(),
-                offset: point(px(0.0), px(-10.0)),
-                blur_radius: px(36.0),
-                spread_radius: px(0.0),
-            }])
-            .child(row1)
-            .child(row2)
-            .when_some(tip, |d, (f, text)| {
-                let b = self.track_b.get();
-                d.child(
-                    div()
-                        .absolute()
-                        .bottom(px(BAR_H - 52.0 - 4.0 + 4.0))
-                        .left(b.origin.x + b.size.width * f - px(22.0))
-                        .px(px(t::S2))
-                        .py(px(3.0))
-                        .rounded(px(4.0))
-                        .bg(t::raised())
-                        .border_1()
-                        .border_color(t::hairline_strong())
-                        .child(ui::mono(text).text_color(t::text())),
-                )
-            })
-            .when_some(self.pop, |d, p| d.child(self.popover(p, cx)));
-        Some(
-            bar.with_animation(
-                ui::name(format!("np-bar-{}-{leaving}", self.bar_gen)),
-                Animation::new(std::time::Duration::from_millis(200)).with_easing(ease_out_quint()),
-                move |d, v| {
-                    let k = if leaving { v } else { 1.0 - v };
-                    d.bottom(px(-BAR_H * k)).opacity(1.0 - k)
-                },
-            )
-            .into_any_element(),
-        )
-    }
-
-    /// Popover above the controls: translucent panel, hairline border, selected row = accent fill.
-    fn popover(&self, pop: Pop, cx: &mut Context<Self>) -> Stateful<Div> {
-        let rows = video::items(pop, &self.tracks, self.speed, self.aspect, self.repeat);
-        div()
-            .id("np-pop")
-            .occlude()
-            .absolute()
-            .bottom(px(BAR_H + 6.0))
-            .right(px(t::S6))
-            .w(px(340.0))
-            .max_h(px(380.0))
-            .overflow_y_scroll()
-            .p(px(t::S2))
-            .rounded(px(t::R_PANEL))
-            .bg(rgba(0x0b0d14ee))
-            .border_1()
-            .border_color(t::hairline_strong())
-            .flex()
-            .flex_col()
-            .gap(px(2.0))
-            .child(
-                div()
-                    .px(px(t::S3))
-                    .py(px(t::S2))
-                    .child(ui::mono(pop.title().to_uppercase())),
-            )
-            .children(rows.into_iter().enumerate().map(|(i, it)| {
-                let act = it.act;
-                let kb = i == self.pop_sel;
-                div()
-                    .id(("pop-row", i))
-                    .px(px(t::S3))
-                    .py(px(t::S2))
-                    .rounded(px(6.0))
-                    .flex()
-                    .justify_between()
-                    .gap(px(t::S3))
-                    .text_size(px(13.0))
-                    .cursor_pointer()
-                    .when(it.on, |d| d.bg(t::accent()).text_color(t::on_accent()))
-                    .when(!it.on && kb, |d| d.bg(t::glass()))
-                    .when(!it.on, |d| d.hover(|s| s.bg(t::glass())))
-                    .on_click(cx.listener(move |t, _, _, cx| t.pop_act(act, cx)))
-                    .child(div().truncate().child(it.label))
-                    .child(
-                        div()
-                            .flex_none()
-                            .text_color(t::text_secondary())
-                            .child(it.value),
-                    )
-            }))
-    }
-
-    /// Top-left OSD chip, stats panel and key help over the video.
-    fn overlays(&self) -> Vec<AnyElement> {
-        let panel = || {
-            div()
-                .absolute()
-                .rounded(px(t::R_PANEL))
-                .bg(rgba(0x0b0d14e0))
-                .border_1()
-                .border_color(t::hairline_strong())
-                .px(px(t::S4))
-                .py(px(t::S3))
-                .text_size(px(13.0))
-                .text_color(t::text())
-        };
-        let mut v = vec![];
-        if let Some((text, _)) = &self.osd {
-            v.push(
-                panel()
-                    .top(px(t::S6))
-                    .left(px(t::S6))
-                    .py(px(t::S2))
-                    .child(text.clone())
-                    .into_any_element(),
-            );
-        }
-        if self.stats {
-            v.push(
-                panel()
-                    .top(px(t::S6 + 48.0))
-                    .left(px(t::S6))
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .children(self.stats_rows.iter().map(|(k, val)| {
-                        div()
-                            .flex()
-                            .gap(px(t::S4))
-                            .child(div().w(px(130.0)).text_color(t::text_secondary()).child(*k))
-                            .child(val.clone())
-                    }))
-                    .into_any_element(),
-            );
-        }
-        if self.help {
-            let keys = [
-                ("Space / click", "Play / pause"),
-                ("Left / Right", "Seek 10 s"),
-                ("Up / Down", "Volume"),
-                ("m", "Mute"),
-                ("f / double-click", "Fullscreen"),
-                ("Esc", "Close menu, leave fullscreen, stop"),
-                ("[ ]  \\", "Speed down / up / reset"),
-                (", .", "Frame back / forward"),
-                ("PgUp / PgDn", "Previous / next chapter"),
-                ("c", "Cycle subtitles"),
-                ("z x", "Subtitle delay -/+ 100 ms"),
-                ("- =", "Audio delay -/+ 100 ms"),
-                ("l", "Repeat one"),
-                ("n", "Next episode"),
-                ("i", "Playback info"),
-                ("Ctrl+S", "Screenshot"),
-                ("s", "Stop"),
-                ("?", "This help"),
-            ];
-            v.push(
-                panel()
-                    .top(px(t::S6 + 48.0))
-                    .right(px(t::S6))
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .children(keys.iter().map(|(k, d)| {
-                        div()
-                            .flex()
-                            .gap(px(t::S4))
-                            .child(
-                                div()
-                                    .w(px(130.0))
-                                    .font_family(t::MONO)
-                                    .text_color(t::accent_text())
-                                    .child(*k),
-                            )
-                            .child(*d)
-                    }))
-                    .into_any_element(),
-            );
-        }
-        v
-    }
 
     // ---- hero (shared by Home and Detail) ----
 
@@ -2930,15 +1646,28 @@ fn p_loading(rows: &[(Media, Load<Vec<Media>>, ScrollHandle)]) -> bool {
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.win = window.viewport_size();
-        self.start_embedded(window, cx);
-        if !self.video && self.fs_from_video {
-            self.fs_from_video = false;
-            if window.is_fullscreen() {
-                window.toggle_fullscreen();
-            }
+        if std::mem::take(&mut self.fs_exit) && window.is_fullscreen() {
+            window.toggle_fullscreen();
         }
-        if self.video {
-            return self.player_page(cx).into_any_element();
+        if let Some(p) = &self.player {
+            let mut page = self.shell(cx).bg(rgba(0x00000000)).child(p.clone());
+            if let Some(n) = self.note {
+                page = page.child(
+                    div()
+                        .absolute()
+                        .bottom(px(t::S6))
+                        .left(px(t::S6))
+                        .px(px(t::S4))
+                        .py(px(t::S3))
+                        .rounded(px(t::R_PANEL))
+                        .bg(t::raised())
+                        .border_1()
+                        .border_color(t::hairline_strong())
+                        .text_size(px(t::BODY))
+                        .child(n),
+                );
+            }
+            return page.into_any_element();
         }
         let body = match self.phase {
             Phase::Connecting => self.connecting(),
@@ -2995,26 +1724,16 @@ impl Render for Root {
             .bg(t::frame())
             .child(layer(self.glow.clone(), 1.0))
             .child(layer(self.dots.clone(), 0.09))
-            .child(
-                div()
-                    .size_full()
-                    .when(self.now.is_some() || self.leaving.is_some(), |d| {
-                        d.pb(px(BAR_H))
-                    })
-                    .child(body),
-            );
+            .child(div().size_full().child(body));
         if matches!(self.phase, Phase::Ready) {
             root = root.child(self.header(cx));
         }
         root = root.child(layer(self.grain.clone(), 0.02));
-        if let Some(bar) = self.now_bar(cx) {
-            root = root.child(bar);
-        }
         if let Some(n) = self.note {
             root = root.child(
                 div()
                     .absolute()
-                    .bottom(px(t::S6 + if self.now.is_some() { BAR_H } else { 0.0 }))
+                    .bottom(px(t::S6))
                     .right(px(t::S6))
                     .px(px(t::S4))
                     .py(px(t::S3))

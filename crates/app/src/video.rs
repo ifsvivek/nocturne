@@ -5,6 +5,40 @@ use serde_json::Value;
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
+/// Subtitle default rule from the user's playback settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[allow(dead_code)] // variants are chosen by the settings layer
+pub enum SubMode {
+    #[default]
+    Off,
+    /// Only when the audio language differs from the subtitle language (forced track otherwise).
+    ForeignOnly,
+    Always,
+}
+
+/// Playback preferences supplied by the caller (from settings). Languages are ISO 639 codes.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PlayerPrefs {
+    pub audio_lang: Option<String>,
+    pub sub_lang: Option<String>,
+    pub sub_mode: SubMode,
+    pub auto_skip_intro: bool,
+    pub autoplay_next: bool,
+}
+
+/// Account-layer hooks, supplied through `PlayerCtx { hooks, prefs }`. The player page calls ONLY
+/// `set_favorite` / `is_favorite` (heart button). `started`/`progress`/`stopped` are kept for signature
+/// compatibility; playback reporting is driven by the app's own tick. Every method must return
+/// immediately (called on the UI thread): implementations dispatch the work elsewhere.
+#[allow(dead_code)] // started/progress/stopped are driven by the app tick, kept for the shared signature
+pub trait PlayerHooks: Send + Sync {
+    fn started(&self, item_id: &str, position_ticks: i64);
+    fn progress(&self, item_id: &str, position_ticks: i64, paused: bool);
+    fn stopped(&self, item_id: &str, position_ticks: i64);
+    fn set_favorite(&self, item_id: &str, fav: bool);
+    fn is_favorite(&self, item_id: &str) -> bool;
+}
+
 /// How long the controls stay up without mouse movement or keys.
 pub const HIDE_AFTER: Duration = Duration::from_secs(3);
 
@@ -65,6 +99,11 @@ pub enum Key {
     Help,
     Screenshot,
     Loop,
+    Prev,
+    Queue,
+    AbLoop,
+    Mini,
+    Favorite,
 }
 
 /// Player-page key map. `k` is GPUI's key name; `shift`/`ctrl` are the held modifiers.
@@ -77,7 +116,12 @@ pub fn key(k: &str, shift: bool, ctrl: bool) -> Option<Key> {
         ("right", _) => Key::Seek(10.0),
         ("up", _) => Key::Volume(5.0),
         ("down", _) => Key::Volume(-5.0),
+        ("m", _) if shift => Key::Mini,
         ("m", _) => Key::Mute,
+        ("p", _) => Key::Prev,
+        ("u", _) => Key::Queue,
+        ("a", _) => Key::AbLoop,
+        ("h", _) => Key::Favorite,
         ("s", _) => Key::Stop,
         ("f", _) => Key::Fullscreen,
         ("escape", _) => Key::Back,
@@ -175,6 +219,8 @@ pub struct Track {
     pub forced: bool,
     pub external: bool,
     pub selected: bool,
+    /// Friendly name from the server's stream list; replaces the built label.
+    pub name: Option<String>,
 }
 
 /// Audio/subtitle entries of mpv's `track-list`.
@@ -202,13 +248,14 @@ pub fn parse_tracks(v: &Value) -> Vec<Track> {
                 forced: b("forced"),
                 external: b("external"),
                 selected: b("selected"),
+                name: None,
             })
         })
         .collect()
 }
 
 /// ISO 639 code to a name for the common cases; anything else is shown as given.
-fn language(code: &str) -> String {
+pub fn language(code: &str) -> String {
     match code {
         "" | "und" => "Unknown".into(),
         "eng" | "en" => "English".into(),
@@ -239,6 +286,9 @@ fn channel_layout(n: i64) -> String {
 impl Track {
     /// Audio: `Japanese - EAC3 - 5.1 - Default`; subtitles: `English - Forced - SUBRIP`.
     pub fn label(&self) -> String {
+        if let Some(n) = &self.name {
+            return n.clone();
+        }
         let mut p = vec![language(&self.lang)];
         if !self.title.is_empty() {
             p.push(self.title.clone());
@@ -406,6 +456,12 @@ pub enum Pop {
     Speed,
     Aspect,
     Repeat,
+    Quality,
+    Picture,
+    SubStyle,
+    AudioFx,
+    Tone,
+    Devices,
 }
 
 impl Pop {
@@ -417,18 +473,131 @@ impl Pop {
             Pop::Speed => "Playback Speed",
             Pop::Aspect => "Aspect Ratio",
             Pop::Repeat => "Repeat Mode",
+            Pop::Quality => "Quality",
+            Pop::Picture => "Picture",
+            Pop::SubStyle => "Subtitle Style",
+            Pop::AudioFx => "Audio Options",
+            Pop::Tone => "HDR Tone Mapping",
+            Pop::Devices => "Audio Output",
+        }
+    }
+    /// Sub-menus of Settings go back to it; top-level menus close.
+    pub fn is_sub(self) -> bool {
+        !matches!(self, Pop::Subs | Pop::Audio | Pop::Settings)
+    }
+    /// Settings (or its sub-menus) are showing: the gear button is lit.
+    pub fn in_settings(self) -> bool {
+        !matches!(self, Pop::Subs | Pop::Audio)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Repeat {
+    Off,
+    One,
+    All,
+}
+
+impl Repeat {
+    pub fn label(self) -> &'static str {
+        match self {
+            Repeat::Off => "None",
+            Repeat::One => "Repeat One",
+            Repeat::All => "Repeat All",
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+pub const TONES: [&str; 6] = ["auto", "bt.2390", "hable", "mobius", "reinhard", "clip"];
+pub const PIC_NAMES: [&str; 4] = ["Brightness", "Contrast", "Saturation", "Gamma"];
+pub const PIC_PROPS: [&str; 4] = ["brightness", "contrast", "saturation", "gamma"];
+
+/// Everything the menus show besides the track list. Plain values, so rows are pure to test.
+#[derive(Clone, PartialEq)]
+pub struct Settings {
+    pub speed: f64,
+    pub aspect: Aspect,
+    pub repeat: Repeat,
+    pub quality: crate::player_logic::Quality,
+    pub sub_style: usize,
+    /// User's base subtitle position (0 top, 100 bottom).
+    pub sub_pos: i64,
+    /// Brightness, contrast, saturation, gamma (-100..100).
+    pub pic: [i64; 4],
+    /// Zoom in 10 % steps (video-zoom = log2(1 + steps/10)); pan in 5 % steps.
+    pub zoom: i64,
+    pub pan: [i64; 2],
+    pub rotate: i64,
+    pub deint: bool,
+    pub tone: usize,
+    pub normalize: bool,
+    pub downmix: bool,
+    /// (mpv device name, description) and the selected name.
+    pub devices: Vec<(String, String)>,
+    pub device: String,
+    /// 0 off, 1 A set, 2 looping A-B.
+    pub ab: u8,
+    /// Jellyfin said this item can be transcoded (has a source id): the Quality menu is live.
+    pub can_quality: bool,
+    pub method: &'static str,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            speed: 1.0,
+            aspect: Aspect::Auto,
+            repeat: Repeat::Off,
+            quality: crate::player_logic::Quality::Original,
+            sub_style: 0,
+            sub_pos: 100,
+            pic: [0; 4],
+            zoom: 0,
+            pan: [0; 2],
+            rotate: 0,
+            deint: false,
+            tone: 0,
+            normalize: false,
+            downmix: false,
+            devices: vec![],
+            device: String::new(),
+            ab: 0,
+            can_quality: false,
+            method: "Direct Play",
+        }
+    }
+}
+
+impl Settings {
+    /// mpv `video-zoom` (log2) for the zoom steps.
+    pub fn zoom_log2(&self) -> f64 {
+        (1.0 + self.zoom as f64 / 10.0).max(0.1).log2()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum MenuAct {
     /// Track id; 0 = off.
     Sub(i64),
     Audio(i64),
     Speed(f64),
     Aspect(Aspect),
-    Repeat(bool),
+    Repeat(Repeat),
+    Quality(crate::player_logic::Quality),
+    SubStyle(usize),
+    SubPos(i64),
+    /// Picture property index (see `PIC_NAMES`) and direction.
+    Pic(usize, i8),
+    Zoom(i8),
+    Pan(usize, i8),
+    Rotate,
+    Deint,
+    Tone(usize),
+    Normalize,
+    Downmix,
+    Device(usize),
+    AbLoop,
+    ResetPicture,
     Open(Pop),
     Info,
 }
@@ -439,7 +608,10 @@ pub struct Item {
     /// Right-aligned muted value (settings list).
     pub value: String,
     pub on: bool,
+    /// Click / Enter / Right.
     pub act: MenuAct,
+    /// Left key and the minus button of stepper rows.
+    pub dec: Option<MenuAct>,
 }
 
 fn item(label: impl Into<String>, on: bool, act: MenuAct) -> Item {
@@ -448,11 +620,31 @@ fn item(label: impl Into<String>, on: bool, act: MenuAct) -> Item {
         value: String::new(),
         on,
         act,
+        dec: None,
     }
 }
 
-/// Rows of a menu. `speed`/`aspect`/`repeat` are the current settings.
-pub fn items(pop: Pop, tracks: &[Track], speed: f64, aspect: Aspect, repeat: bool) -> Vec<Item> {
+fn row(l: &str, v: impl Into<String>, a: MenuAct) -> Item {
+    Item {
+        value: v.into(),
+        ..item(l, false, a)
+    }
+}
+
+fn step(l: &str, v: impl Into<String>, dec: MenuAct, inc: MenuAct) -> Item {
+    Item {
+        dec: Some(dec),
+        ..row(l, v, inc)
+    }
+}
+
+fn onoff(b: bool) -> &'static str {
+    if b { "On" } else { "Off" }
+}
+
+/// Rows of a menu.
+pub fn items(pop: Pop, tracks: &[Track], s: &Settings) -> Vec<Item> {
+    use crate::player_logic::Quality;
     match pop {
         Pop::Subs => {
             let subs: Vec<_> = tracks.iter().filter(|t| t.kind == TrackKind::Sub).collect();
@@ -465,6 +657,7 @@ pub fn items(pop: Pop, tracks: &[Track], speed: f64, aspect: Aspect, repeat: boo
                 subs.iter()
                     .map(|t| item(t.label(), t.selected, MenuAct::Sub(t.id))),
             );
+            v.push(row("Subtitle Style", "", MenuAct::Open(Pop::SubStyle)));
             v
         }
         Pop::Audio => tracks
@@ -474,43 +667,140 @@ pub fn items(pop: Pop, tracks: &[Track], speed: f64, aspect: Aspect, repeat: boo
             .collect(),
         Pop::Speed => SPEEDS
             .iter()
-            .map(|s| item(fmt_speed(*s), (*s - speed).abs() < 1e-6, MenuAct::Speed(*s)))
+            .map(|x| {
+                item(
+                    fmt_speed(*x),
+                    (*x - s.speed).abs() < 1e-6,
+                    MenuAct::Speed(*x),
+                )
+            })
             .collect(),
         Pop::Aspect => Aspect::ALL
             .iter()
-            .map(|a| item(a.label(), *a == aspect, MenuAct::Aspect(*a)))
+            .map(|a| item(a.label(), *a == s.aspect, MenuAct::Aspect(*a)))
             .collect(),
-        Pop::Repeat => vec![
-            item("None", !repeat, MenuAct::Repeat(false)),
-            item("Repeat One", repeat, MenuAct::Repeat(true)),
+        Pop::Repeat => [Repeat::Off, Repeat::One, Repeat::All]
+            .into_iter()
+            .map(|r| item(r.label(), r == s.repeat, MenuAct::Repeat(r)))
+            .collect(),
+        Pop::Quality => Quality::ALL
+            .iter()
+            .map(|q| item(q.label(), *q == s.quality, MenuAct::Quality(*q)))
+            .collect(),
+        Pop::SubStyle => {
+            let mut v: Vec<Item> = crate::player_logic::SUB_STYLES
+                .iter()
+                .enumerate()
+                .map(|(i, st)| item(st.name, i == s.sub_style, MenuAct::SubStyle(i)))
+                .collect();
+            v.push(step(
+                "Position",
+                format!("{}%", s.sub_pos),
+                MenuAct::SubPos(-5),
+                MenuAct::SubPos(5),
+            ));
+            v
+        }
+        Pop::Picture => {
+            let mut v: Vec<Item> = (0..4)
+                .map(|i| {
+                    step(
+                        PIC_NAMES[i],
+                        s.pic[i].to_string(),
+                        MenuAct::Pic(i, -1),
+                        MenuAct::Pic(i, 1),
+                    )
+                })
+                .collect();
+            v.push(step(
+                "Zoom",
+                format!("{}%", 100 + s.zoom * 10),
+                MenuAct::Zoom(-1),
+                MenuAct::Zoom(1),
+            ));
+            v.push(step(
+                "Pan horizontal",
+                format!("{:+}%", s.pan[0] * 5),
+                MenuAct::Pan(0, -1),
+                MenuAct::Pan(0, 1),
+            ));
+            v.push(step(
+                "Pan vertical",
+                format!("{:+}%", s.pan[1] * 5),
+                MenuAct::Pan(1, -1),
+                MenuAct::Pan(1, 1),
+            ));
+            v.push(row("Rotate", format!("{} deg", s.rotate), MenuAct::Rotate));
+            v.push(row("Deinterlace", onoff(s.deint), MenuAct::Deint));
+            v.push(row(
+                "HDR Tone Mapping",
+                TONES[s.tone % TONES.len()],
+                MenuAct::Open(Pop::Tone),
+            ));
+            v.push(row("Reset picture", "", MenuAct::ResetPicture));
+            v
+        }
+        Pop::Tone => TONES
+            .iter()
+            .enumerate()
+            .map(|(i, t)| item(*t, i == s.tone, MenuAct::Tone(i)))
+            .collect(),
+        Pop::AudioFx => vec![
+            row("Normalize volume", onoff(s.normalize), MenuAct::Normalize),
+            row("Downmix to stereo", onoff(s.downmix), MenuAct::Downmix),
+            row(
+                "Output device",
+                s.devices
+                    .iter()
+                    .find(|d| d.0 == s.device)
+                    .map_or("Auto", |d| d.1.as_str()),
+                MenuAct::Open(Pop::Devices),
+            ),
         ],
+        Pop::Devices => s
+            .devices
+            .iter()
+            .enumerate()
+            .map(|(i, d)| item(d.1.clone(), d.0 == s.device, MenuAct::Device(i)))
+            .collect(),
         Pop::Settings => {
-            let row = |l: &str, v: String, a| Item {
-                label: l.into(),
-                value: v,
-                on: false,
-                act: a,
-            };
-            vec![
-                row(
-                    "Aspect Ratio",
-                    aspect.label().into(),
-                    MenuAct::Open(Pop::Aspect),
-                ),
+            let mut v = vec![];
+            if s.can_quality {
+                v.push(row(
+                    "Quality",
+                    s.quality.label(),
+                    MenuAct::Open(Pop::Quality),
+                ));
+            }
+            v.extend([
+                row("Picture", "", MenuAct::Open(Pop::Picture)),
+                row("Audio Options", "", MenuAct::Open(Pop::AudioFx)),
+                row("Subtitle Style", "", MenuAct::Open(Pop::SubStyle)),
+                row("Aspect Ratio", s.aspect.label(), MenuAct::Open(Pop::Aspect)),
                 row(
                     "Playback Speed",
-                    fmt_speed(speed),
+                    fmt_speed(s.speed),
                     MenuAct::Open(Pop::Speed),
                 ),
+                row("Repeat Mode", s.repeat.label(), MenuAct::Open(Pop::Repeat)),
                 row(
-                    "Repeat Mode",
-                    if repeat { "One" } else { "None" }.into(),
-                    MenuAct::Open(Pop::Repeat),
+                    "A-B Loop",
+                    ["Off", "A set", "Looping"][s.ab.min(2) as usize],
+                    MenuAct::AbLoop,
                 ),
-                row("Playback Info", String::new(), MenuAct::Info),
-            ]
+                row("Playback Info", s.method, MenuAct::Info),
+            ]);
+            v
         }
     }
+}
+
+/// Settings row index of a sub-menu (so Esc/selection returns to where you were).
+pub fn settings_index(tracks: &[Track], s: &Settings, sub: Pop) -> usize {
+    items(Pop::Settings, tracks, s)
+        .iter()
+        .position(|i| i.act == MenuAct::Open(sub))
+        .unwrap_or(0)
 }
 
 /// Next subtitle track id in the cycle off -> first -> ... -> last -> off. `cur` 0 = off.
@@ -588,11 +878,12 @@ mod tests {
         assert_eq!(t[1].label(), "English - Commentary - AAC - Stereo");
         assert_eq!(t[2].label(), "English - SUBRIP - Default");
         assert_eq!(t[3].label(), "Spanish - Forced - External - ASS");
-        let subs = items(Pop::Subs, &t, 1.0, Aspect::Auto, false);
+        let st = Settings::default();
+        let subs = items(Pop::Subs, &t, &st);
         assert_eq!(subs[0].label, "Off");
         assert!(subs[0].on, "no subtitle selected means Off is on");
-        assert_eq!(subs.len(), 3);
-        let audio = items(Pop::Audio, &t, 1.0, Aspect::Auto, false);
+        assert_eq!(subs.len(), 4, "off, two tracks, style entry");
+        let audio = items(Pop::Audio, &t, &st);
         assert!(audio[0].on && !audio[1].on);
         assert_eq!(audio[1].act, MenuAct::Audio(2));
         assert_eq!(next_sub(&t, 0), 1);
@@ -654,14 +945,64 @@ mod tests {
 
     #[test]
     fn settings_menu_shows_current_values() {
-        let s = items(Pop::Settings, &[], 1.5, Aspect::R16x9, true);
-        assert_eq!(s[0].value, "16:9");
-        assert_eq!(s[1].value, "1.5x");
-        assert_eq!(s[2].value, "One");
-        assert_eq!(s[3].act, MenuAct::Info);
-        let a = items(Pop::Aspect, &[], 1.0, Aspect::Fill, false);
+        let mut st = Settings {
+            speed: 1.5,
+            aspect: Aspect::R16x9,
+            repeat: Repeat::All,
+            ..Default::default()
+        };
+        let s = items(Pop::Settings, &[], &st);
+        let v = |l: &str| s.iter().find(|i| i.label == l).unwrap().value.clone();
+        assert_eq!(v("Aspect Ratio"), "16:9");
+        assert_eq!(v("Playback Speed"), "1.5x");
+        assert_eq!(v("Repeat Mode"), "Repeat All");
+        assert!(
+            s.iter().all(|i| i.label != "Quality"),
+            "no transcode source, no quality row"
+        );
+        st.can_quality = true;
+        assert_eq!(items(Pop::Settings, &[], &st)[0].label, "Quality");
+        let a = items(
+            Pop::Aspect,
+            &[],
+            &Settings {
+                aspect: Aspect::Fill,
+                ..Default::default()
+            },
+        );
         assert_eq!(a.iter().filter(|i| i.on).count(), 1);
         assert_eq!(Aspect::Fill.props()[1], ("panscan", "1"));
+    }
+
+    #[test]
+    fn picture_and_audio_rows() {
+        let st = Settings {
+            pic: [10, 0, -20, 0],
+            zoom: 2,
+            normalize: true,
+            ..Default::default()
+        };
+        let p = items(Pop::Picture, &[], &st);
+        assert_eq!(p[0].value, "10");
+        assert_eq!(p[0].dec, Some(MenuAct::Pic(0, -1)));
+        assert_eq!(p[0].act, MenuAct::Pic(0, 1));
+        assert_eq!(p[4].value, "120%");
+        assert!((st.zoom_log2() - 1.2f64.log2()).abs() < 1e-9);
+        let a = items(Pop::AudioFx, &[], &st);
+        assert_eq!(a[0].value, "On");
+        assert_eq!(a[2].value, "Auto", "no device picked");
+        let st = Settings {
+            devices: vec![("pulse/x".into(), "Speakers".into())],
+            device: "pulse/x".into(),
+            ..Default::default()
+        };
+        assert_eq!(items(Pop::AudioFx, &[], &st)[2].value, "Speakers");
+        assert!(items(Pop::Devices, &[], &st)[0].on);
+        assert_eq!(
+            settings_index(&[], &st, Pop::Speed),
+            4,
+            "Picture, Audio, SubStyle, Aspect, Speed"
+        );
     }
 
     #[test]
@@ -677,5 +1018,8 @@ mod tests {
         assert_eq!(key("/", false, false), None);
         assert_eq!(key("pagedown", false, false), Some(Key::Chapter(1)));
         assert_eq!(key("a", false, true), None);
+        assert_eq!(key("m", true, false), Some(Key::Mini));
+        assert_eq!(key("m", false, false), Some(Key::Mute));
+        assert_eq!(key("p", false, false), Some(Key::Prev));
     }
 }
