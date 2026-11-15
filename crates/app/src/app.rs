@@ -184,6 +184,14 @@ impl Page {
         }
     }
 
+    /// Home was reached with the mouse: the keyboard focus must not stay on a nav entry the
+    /// keys left it on (the header would then light up that library instead of Home).
+    fn drop_nav_focus(&mut self) {
+        if self.row == 0 {
+            (self.row, self.col) = (1, 0);
+        }
+    }
+
     fn layout(&self) -> Vec<HRow> {
         let mut v = vec![HRow::Nav, HRow::Hero];
         if self.show.0 && !self.resume.items().is_empty() {
@@ -2121,6 +2129,9 @@ impl Root {
             cx.listener(|t, _, _, cx| {
                 t.close_admin(cx);
                 t.stack.truncate(1);
+                if let Some(home) = t.stack.first_mut() {
+                    home.drop_nav_focus();
+                }
                 cx.notify();
             }),
         ));
