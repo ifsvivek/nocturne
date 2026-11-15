@@ -8,6 +8,7 @@ Orchestrator's running log. Update at every task boundary.
 
 ## Done
 - [x] Repo: private GitHub repo, README, .gitignore, .env.example
+- [x] Task 4/4b: playback via mpv, now-playing bar (icons, scrub, volume), Continue Watching, jellyfin reads (resume, image_bytes, user data). In-process libmpv gpu output crashed the app on stop (NVIDIA SIGSEGV), so `nocturne-player` now runs the `mpv` binary as a CHILD PROCESS over JSON IPC (gpu-next, hwdec auto-safe, crash-isolated; headers via IPC not argv). libmpv2 dep removed; the embedding prototype will need libmpv again. Reviewed: 4 smoke tests, 10-cycle windowed run OK.
 - [x] Task 5a: `crates/jellyfin-admin` (admin reads, writes, `Confirmed` token for destructive ops) + `scripts/test-jellyfin.sh` throwaway instance on :8097 + 4-layer `TestServerGuard`. 8/8 live tests on throwaway only. Reviewed.
 - [x] Task 3: `crates/app` GPUI shell, theme (hairline/mono/blue), home hero, library grid, detail, bridge (tokio runtime). No component lib used: gpui-kit/gpui-component need `gpui-pre`, incompatible with gpui 0.2.2. Reviewed: audit clean, 14 tests, visually matches reference. vendor/xattr committed.
 - [x] Task 2: `crates/player` (libmpv2, own-window playback, state+event API, headless tests, live test OK) + Jellyfin base_url validation (reviewed)
@@ -28,6 +29,8 @@ Orchestrator's running log. Update at every task boundary.
 - Auth header for mpv passed via `http-header-fields`, not `api_key` in URLs.
 
 ## Follow-ups
+- LAYOUT (user, 2026-11-15): app must use full window width/height (no 1200px column); full-bleed hero, landscape Continue Watching/Next Up rows, adaptive grids. Assigned to the Admin-UI engineer as its first step. Add `/Shows/NextUp` read.
+- Player: mpv's own window keybindings stay active (q quits the mpv window); `--no-config` ignores the user's mpv.conf. Decide later if the embedding prototype changes this.
 - `scripts/test-jellyfin.sh`: `/tmp/?*` case pattern also matches `/tmp/..`; reject any `..` in NOCTURNE_JF_TEST_DIR before `reset` does rm -rf.
 - Git: origin has pre-amend commit 44c389d; merge origin/main (no force-push) after Task 4 finishes, audit full range before pushing.
 - `jellyfin-admin` depends on `nocturne_jellyfin::Config`; keep its fields stable.
