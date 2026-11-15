@@ -8,6 +8,7 @@ use crate::sync::NEED_WRITES;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Sec {
+    Next,
     Cast,
     Chapters,
     Similar,
@@ -17,7 +18,8 @@ pub(super) enum Sec {
 }
 
 impl Sec {
-    const ALL: [Sec; 6] = [
+    const ALL: [Sec; 7] = [
+        Sec::Next,
         Sec::Kids,
         Sec::Kids2,
         Sec::Chapters,
@@ -34,11 +36,13 @@ impl Sec {
             Sec::Extras => 3,
             Sec::Kids => 4,
             Sec::Kids2 => 5,
+            Sec::Next => 6,
         }
     }
 
     fn title(self, kind: Kind) -> (&'static str, &'static str) {
         match (self, kind) {
+            (Sec::Next, _) => ("Next up", "Pick up this show where you left off."),
             (Sec::Cast, _) => ("Cast & crew", "Select a person for their filmography."),
             (Sec::Chapters, _) => ("Chapters", "Jump straight to a scene."),
             (Sec::Similar, _) => (
@@ -72,6 +76,16 @@ pub(super) enum DAct {
     Prev,
     Next,
     Series,
+    More,
+}
+
+/// Entries of the More menu on a detail page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum MoreAct {
+    FromStart,
+    Watched,
+    Fav,
+    Info,
 }
 
 #[derive(Clone)]
@@ -85,7 +99,7 @@ pub(super) enum Chip {
 pub(super) fn actions(m: &Media, has_prev: bool, has_next: bool) -> Vec<DAct> {
     use DAct::*;
     let mut v = match m.kind {
-        Kind::Movie | Kind::Video | Kind::Audio => vec![Play, Watched, Fav],
+        Kind::Movie | Kind::Video | Kind::Audio => vec![Play, Watched, Fav, More],
         Kind::Episode => {
             let mut v = vec![Play, Watched, Fav];
             if has_prev {
@@ -97,6 +111,7 @@ pub(super) fn actions(m: &Media, has_prev: bool, has_next: bool) -> Vec<DAct> {
             if m.series_id.is_some() {
                 v.push(Series);
             }
+            v.push(More);
             v
         }
         Kind::Series => vec![Play, Watched, Fav],
@@ -130,6 +145,7 @@ fn spec(a: DAct, m: &Media) -> (&'static str, &'static str, bool) {
         DAct::Prev => ("d-prev", "\u{2039} Previous", false),
         DAct::Next => ("d-next", "Next \u{203A}", false),
         DAct::Series => ("d-series", "Go to series", false),
+        DAct::More => ("d-more", "More \u{2026}", false),
     }
 }
 
@@ -157,6 +173,7 @@ impl Page {
             Sec::Extras => self.extras.items(),
             Sec::Kids => self.kids.items(),
             Sec::Kids2 => self.kids2.items(),
+            Sec::Next => self.nextup.items(),
         }
     }
 
@@ -164,7 +181,7 @@ impl Page {
     fn card_grid(&self) -> bool {
         self.media
             .as_ref()
-            .is_some_and(|m| matches!(m.kind, Kind::Series | Kind::Season))
+            .is_some_and(|m| matches!(m.kind, Kind::Series | Kind::Season | Kind::BoxSet))
     }
 
     fn has_list(&self) -> bool {
@@ -337,6 +354,13 @@ impl Root {
         let (s, i) = (src.clone(), id.clone());
         match kind {
             Kind::Series => {
+                let (s2, i2) = (s.clone(), i.clone());
+                load(
+                    self,
+                    Box::new(|p, l| p.nextup = l),
+                    Box::pin(async move { s2.series_next_up(&i2).await }),
+                    cx,
+                );
                 self.run(cx, async move { s.seasons(&i).await }, move |t, r, cx| {
                     let first = r.as_ref().ok().and_then(|v| v.first().cloned());
                     if let Some(p) = t.page_mut(pid) {
@@ -441,6 +465,10 @@ impl Root {
             DAct::Shuffle => self.play_list(list, true, cx),
             DAct::Watched => self.toggle_played(&m, cx),
             DAct::Fav => self.toggle_fav(&m, cx),
+            DAct::More if self.more_items().is_empty() => {
+                self.toast("Nothing more to do here.", cx)
+            }
+            DAct::More => self.more = Some(0),
             DAct::Prev => {
                 if let Some(e) = neigh.0 {
                     self.open_any(e, cx)
@@ -464,6 +492,152 @@ impl Root {
         cx.notify();
     }
 
+    /// What the More menu offers for the open page; server changes only when they are allowed.
+    pub(super) fn more_items(&self) -> Vec<(&'static str, MoreAct)> {
+        let Some(p) = self.stack.last() else {
+            return vec![];
+        };
+        let Some(m) = &p.media else { return vec![] };
+        let playable = matches!(
+            m.kind,
+            Kind::Movie | Kind::Episode | Kind::Video | Kind::Audio
+        );
+        let mut v = vec![];
+        if playable {
+            v.push(("Play from beginning", MoreAct::FromStart));
+        }
+        if playable && self.hooks.can_write() {
+            v.push((
+                if m.played {
+                    "Mark as unwatched"
+                } else {
+                    "Mark as watched"
+                },
+                MoreAct::Watched,
+            ));
+        }
+        if self.hooks.can_write() {
+            v.push((
+                if m.favorite {
+                    "Remove from favourites"
+                } else {
+                    "Add to favourites"
+                },
+                MoreAct::Fav,
+            ));
+        }
+        if p.full.as_ref().is_some_and(|f| !f.info.is_empty()) {
+            v.push(("Media info", MoreAct::Info));
+        }
+        v
+    }
+
+    pub(super) fn more_act(&mut self, a: MoreAct, cx: &mut Context<Self>) {
+        self.more = None;
+        let Some(m) = self.stack.last().and_then(|p| p.media.clone()) else {
+            return;
+        };
+        match a {
+            MoreAct::FromStart => {
+                let m = Media {
+                    resume_s: None,
+                    ..m
+                };
+                self.play_media(m, vec![], cx);
+            }
+            MoreAct::Watched => self.toggle_played(&m, cx),
+            MoreAct::Fav => self.toggle_fav(&m, cx),
+            MoreAct::Info => self.info_open = true,
+        }
+        cx.notify();
+    }
+
+    /// Keys while the More menu or the media info panel is up. Always consumes the key.
+    pub(super) fn more_key(&mut self, key: &str, cx: &mut Context<Self>) {
+        if self.info_open {
+            if matches!(key, "escape" | "backspace" | "enter" | "i") {
+                self.info_open = false;
+            }
+        } else if let Some(sel) = self.more {
+            let items = self.more_items();
+            match key {
+                "escape" | "backspace" => self.more = None,
+                "up" => self.more = Some(sel.saturating_sub(1)),
+                "down" => self.more = Some((sel + 1).min(items.len().saturating_sub(1))),
+                "enter" => {
+                    if let Some((_, a)) = items.get(sel) {
+                        self.more_act(*a, cx);
+                    }
+                }
+                _ => {}
+            }
+        }
+        cx.notify();
+    }
+
+    /// The More menu or the media info panel, over a click-away layer.
+    pub(super) fn more_overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let panel = div()
+            .occlude()
+            .rounded(px(t::R_PANEL))
+            .border_1()
+            .border_color(t::hairline_strong())
+            .bg(t::surface());
+        let body = if self.info_open {
+            let full = self.stack.last()?.full.as_ref()?;
+            panel
+                .id("media-info")
+                .w(px(760.0))
+                .max_h(px(560.0))
+                .overflow_y_scroll()
+                .child(info_table(full))
+                .into_any_element()
+        } else {
+            let sel = self.more?;
+            let mut p = panel.w(px(280.0)).p(px(t::S2)).flex().flex_col();
+            for (i, (label, act)) in self.more_items().into_iter().enumerate() {
+                p = p.child(
+                    div()
+                        .id(("more-item", i))
+                        .px(px(t::S3))
+                        .py(px(t::S2))
+                        .rounded(px(6.0))
+                        .text_size(px(t::BODY))
+                        .cursor_pointer()
+                        .when(i == sel, |d| {
+                            d.bg(t::accent_tint()).text_color(t::accent_text())
+                        })
+                        .hover(|s| s.bg(t::glass()))
+                        .on_click(cx.listener(move |t, _, _, cx| t.more_act(act, cx)))
+                        .child(label),
+                );
+            }
+            p.into_any_element()
+        };
+        Some(
+            div()
+                .id("more-away")
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(rgba(0x00000066))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|t, _, _, cx| {
+                        t.more = None;
+                        t.info_open = false;
+                        cx.notify();
+                    }),
+                )
+                .child(body)
+                .into_any_element(),
+        )
+    }
+
     fn do_chip(&mut self, c: Chip, cx: &mut Context<Self>) {
         match c {
             Chip::Genre(g) => self.open_browse(scope_tag("genre", &g, &g), cx),
@@ -484,7 +658,7 @@ impl Root {
                     self.play_item(pm, cx);
                 }
             }
-            Sec::Extras => self.play_item(m, cx),
+            Sec::Extras | Sec::Next => self.play_item(m, cx),
             _ => self.open_any(m, cx),
         }
     }
@@ -696,7 +870,7 @@ impl Root {
                 .last()
                 .map(|p| p.dscroll[s.idx()].clone())
                 .unwrap_or_default();
-            let land = s == Sec::Chapters || s == Sec::Extras;
+            let land = matches!(s, Sec::Chapters | Sec::Extras | Sec::Next);
             let dims = if land {
                 self.row_dims(300.0, 9.0 / 16.0)
             } else {
@@ -1018,7 +1192,7 @@ impl Root {
                     },
                 ),
             )),
-            Load::Ready(v) if matches!(m.kind, Kind::Series | Kind::Season) => {
+            Load::Ready(v) if matches!(m.kind, Kind::Series | Kind::Season | Kind::BoxSet) => {
                 let avail = self.colw() - 2.0 * t::PAGE_PAD;
                 let cols = nav::fit_cols(avail, 340.0);
                 if let Some(p) = self.stack.last_mut() {
@@ -1519,14 +1693,17 @@ mod tests {
     #[test]
     fn actions_by_kind() {
         use DAct::*;
-        assert_eq!(actions(&m("Movie"), false, false), [Play, Watched, Fav]);
+        assert_eq!(
+            actions(&m("Movie"), false, false),
+            [Play, Watched, Fav, More]
+        );
         assert_eq!(
             actions(&m("Episode"), true, true),
-            [Play, Watched, Fav, Prev, Next, Series]
+            [Play, Watched, Fav, Prev, Next, Series, More]
         );
         assert_eq!(
             actions(&m("Episode"), false, false),
-            [Play, Watched, Fav, Series]
+            [Play, Watched, Fav, Series, More]
         );
         assert_eq!(actions(&m("Series"), false, false), [Play, Fav]);
         assert_eq!(actions(&m("Season"), false, false), [Play, Series]);

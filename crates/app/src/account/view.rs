@@ -56,6 +56,35 @@ fn heading(eyebrow: &str, title: String, body: Option<String>) -> Div {
         }))
 }
 
+/// Where the README's getting-started section lives.
+const DOCS_URL: &str = "https://github.com/ifsvivek/nocturne#readme";
+
+/// Three short steps for a first launch.
+fn steps() -> Div {
+    let line = |n: &'static str, s: &'static str| {
+        div()
+            .flex()
+            .gap(px(t::S3))
+            .text_size(px(t::BODY))
+            .text_color(t::text_secondary())
+            .child(ui::mono(n))
+            .child(s)
+    };
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(t::S1))
+        .child(line(
+            "01",
+            "Type your server's address, like http://192.168.1.10:8096.",
+        ))
+        .child(line(
+            "02",
+            "Sign in with your account, or approve with Quick Connect.",
+        ))
+        .child(line("03", "Pick something and press play."))
+}
+
 fn note(msg: Option<&'static str>) -> Option<Div> {
     msg.map(|m| {
         div()
@@ -120,6 +149,7 @@ impl Accounts {
                 "Where is your media?".into(),
                 Some("Enter the address of your server.".into()),
             ))
+            .child(steps())
             .child(self.field(
                 "conn-f",
                 0,
@@ -174,11 +204,42 @@ impl Accounts {
                         .bg(if on { t::accent_tint() } else { rgba(0) })
                         .cursor_pointer()
                         .hover(|s| s.bg(t::glass()))
+                        .justify_between()
                         .child(ui::mono(s.clone()).text_color(t::text()))
+                        .child(
+                            div()
+                                .id(ui::name(format!("srv-forget-{i}")))
+                                .px(px(t::S2))
+                                .text_size(px(t::CAPTION + 1.0))
+                                .text_color(t::text_secondary())
+                                .cursor_pointer()
+                                .hover(|s| s.text_color(t::danger()))
+                                .tooltip(ui::tip(
+                                    "Forget this server and its saved sign-in (Delete)",
+                                ))
+                                .on_click(cx.listener(move |a, _, _, cx| {
+                                    a.forget(i, cx);
+                                    cx.stop_propagation();
+                                }))
+                                .child("Forget"),
+                        )
                         .on_click(cx.listener(move |a, _, _, cx| a.pick(i, cx))),
                 );
             }
         }
+        p = p.child(div().h(px(1.0)).bg(t::hairline())).child(
+            div()
+                .id("conn-docs")
+                .text_size(px(t::CAPTION + 1.0))
+                .text_color(t::text_secondary())
+                .cursor_pointer()
+                .hover(|s| s.text_color(t::accent_text()))
+                .tooltip(ui::tip("Open the setup guide in your browser"))
+                .on_click(|_, _, _| {
+                    let _ = std::process::Command::new("xdg-open").arg(DOCS_URL).spawn();
+                })
+                .child("New here? Read the setup guide in the README."),
+        );
         frame(p)
     }
 

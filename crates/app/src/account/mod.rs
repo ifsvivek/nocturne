@@ -291,6 +291,25 @@ impl Accounts {
         cx.notify();
     }
 
+    /// Remove remembered server `i` and its saved login from this device.
+    pub fn forget(&mut self, i: usize, cx: &mut Context<Self>) {
+        let Some(url) = self.st.servers.get(i).cloned() else {
+            return;
+        };
+        self.servers = Servers::load().unwrap_or_default();
+        self.servers.forget(&url);
+        let _ = self.servers.save(); // calm: a failed save only brings the entry back next launch
+        bridge::spawn(async move {
+            let _ = tokio::task::spawn_blocking(move || nocturne_session::delete(&url)).await;
+        });
+        self.st.servers.remove(i);
+        let typed = self.st.connect.fields[0].value.clone();
+        self.st.switch_server(self.servers.servers.clone());
+        self.st.connect.fields[0].value = typed;
+        cx.emit(Event::Notice("Server forgotten."));
+        cx.notify();
+    }
+
     /// The server rejected the stored login mid-session: forget it, show the login form with a
     /// calm note.
     pub fn session_expired(&mut self, cx: &mut Context<Self>) {
@@ -439,6 +458,11 @@ impl Accounts {
         }
         match self.st.stage {
             Stage::Active => {}
+            Stage::Connect
+                if key == "delete" && self.st.connect.focus > self.st.connect.fields.len() =>
+            {
+                self.forget(self.st.connect.focus - self.st.connect.fields.len() - 1, cx);
+            }
             Stage::Connect => {
                 let text = paste.then(clip).flatten();
                 if let Some(t) = text {

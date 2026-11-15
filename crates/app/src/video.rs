@@ -7,7 +7,6 @@ use std::time::{Duration, Instant};
 
 /// Subtitle default rule from the user's playback settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[allow(dead_code)] // variants are chosen by the settings layer
 pub enum SubMode {
     #[default]
     Off,
@@ -30,7 +29,6 @@ pub struct PlayerPrefs {
 /// `set_favorite` / `is_favorite` (heart button). `started`/`progress`/`stopped` are kept for signature
 /// compatibility; playback reporting is driven by the app's own tick. Every method must return
 /// immediately (called on the UI thread): implementations dispatch the work elsewhere.
-#[allow(dead_code)] // started/progress/stopped are driven by the app tick, kept for the shared signature
 pub trait PlayerHooks: Send + Sync {
     fn started(&self, item_id: &str, position_ticks: i64);
     fn progress(&self, item_id: &str, position_ticks: i64, paused: bool);

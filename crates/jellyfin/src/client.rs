@@ -242,6 +242,13 @@ impl Client {
             .await
     }
 
+    /// The next unwatched episode of one series (`GET /Shows/NextUp?seriesId=`), at most one item.
+    pub async fn series_next_up(&self, user_id: &str, series_id: &str) -> Result<Items> {
+        let mut pairs = next_up_pairs(user_id, 1).to_vec();
+        pairs.push(("seriesId", series_id.to_string()));
+        self.get(&["Shows", "NextUp"], &pairs).await
+    }
+
     /// Authenticated image download (GET). The URL is built here from the item id, so the
     /// auth header can only ever go to the configured server.
     pub async fn image_bytes(

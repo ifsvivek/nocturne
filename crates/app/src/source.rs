@@ -653,6 +653,11 @@ impl Source {
         Self::media(self.client.next_up(&self.user, 12).await)
     }
 
+    /// The episode to watch next in one series, if any.
+    pub async fn series_next_up(&self, series: &str) -> Result<Vec<Media>, Failed> {
+        Self::media(self.client.series_next_up(&self.user, series).await)
+    }
+
     async fn all_episodes(&self, series: &str) -> Result<Vec<Media>, Failed> {
         Self::media(self.client.episodes(&self.user, series, None).await)
     }

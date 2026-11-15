@@ -111,7 +111,7 @@ struct Page {
     /// Focused detail row / column (see `ui_detail::DRow`).
     drow: usize,
     dcol: usize,
-    dscroll: [ScrollHandle; 6],
+    dscroll: [ScrollHandle; 7],
     /// Episode-card columns as last drawn.
     dcols: usize,
 }
@@ -265,6 +265,9 @@ pub struct Root {
     disk: Option<Arc<DiskCache>>,
     /// The server stopped answering: banner, retry with backoff, cached pages stay up.
     offline: Option<Offline>,
+    /// Detail page More menu: selected entry; and the media info panel.
+    more: Option<usize>,
+    info_open: bool,
 }
 
 /// Reconnect state while the server is unreachable.
@@ -331,6 +334,8 @@ impl Root {
             search_scroll: ScrollHandle::new(),
             disk: None,
             offline: None,
+            more: None,
+            info_open: false,
         };
         me.disk = DiskCache::default_dir().map(|d| {
             Arc::new(DiskCache::open(
@@ -360,10 +365,14 @@ impl Root {
         _w.on_window_should_close(cx, move |w, cx| {
             let handle = Window::window_handle(w);
             let this = this.clone();
-            if this
-                .read_with(cx, |t, _| t.player.is_none())
-                .unwrap_or(true)
-            {
+            // Settings are saved on every change; one last save covers anything pending.
+            let idle = this
+                .read_with(cx, |t, _| {
+                    t.settings.save();
+                    t.player.is_none()
+                })
+                .unwrap_or(true);
+            if idle {
                 return true;
             }
             cx.spawn(async move |cx| {
@@ -495,6 +504,8 @@ impl Root {
         self.settings_open = false;
         self.menu = false;
         self.session = None;
+        self.more = None;
+        self.info_open = false;
         self.hooks = Arc::new(SyncHooks::new(None, false, false));
         self.phase = Phase::Account;
     }
@@ -1313,6 +1324,9 @@ impl Root {
             a.update(cx, |a, cx| a.on_key(ev, cx));
             cx.notify();
             return;
+        }
+        if self.more.is_some() || self.info_open {
+            return self.more_key(key, cx);
         }
         if self.settings_open {
             return self.settings_key(key, cx);
@@ -2581,6 +2595,11 @@ impl Render for Root {
         }
         if self.search.is_some() && matches!(self.phase, Phase::Ready) {
             root = root.child(self.search_overlay(cx));
+        }
+        if matches!(self.phase, Phase::Ready)
+            && let Some(o) = self.more_overlay(cx)
+        {
+            root = root.child(o);
         }
         if let Some(a) = self.accounts.clone().filter(|a| a.read(cx).dialog_open()) {
             root = root.child(a);

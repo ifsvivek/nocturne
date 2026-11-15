@@ -38,6 +38,11 @@ fn main() {
                 // Transparent so the video subsurface below shows through; every normal screen paints
                 // an opaque background (Root), only the player page leaves a hole.
                 window_background: WindowBackgroundAppearance::Transparent,
+                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                    None,
+                    size(px(1280.0), px(800.0)),
+                    cx,
+                ))),
                 window_min_size: Some(size(px(800.0), px(560.0))),
                 ..Default::default()
             };
