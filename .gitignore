@@ -11,3 +11,6 @@ secrets/
 .idea/
 .vscode/
 .DS_Store
+# design reference images (local only)
+/reference/
+/openlogi.org_*.png
