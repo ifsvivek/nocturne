@@ -466,8 +466,14 @@ mod tests {
         assert!(u.contains("VideoBitrate=4000000") && u.contains("MaxHeight=720"));
         assert!(!u.contains("tok123") && !u.contains("api_key"));
         assert!(!u.contains("AllowVideoStreamCopy"));
-        let t2 = Transcode { allow_copy: true, ..t };
-        assert!(c.transcode_url("abc", &t2).contains("AllowVideoStreamCopy=true"));
+        let t2 = Transcode {
+            allow_copy: true,
+            ..t
+        };
+        assert!(
+            c.transcode_url("abc", &t2)
+                .contains("AllowVideoStreamCopy=true")
+        );
         assert_eq!(
             c.trickplay_url("abc", 320, 2, "s1"),
             "http://jf.test:8096/Videos/abc/Trickplay/320/2.jpg?mediaSourceId=s1"
@@ -491,7 +497,11 @@ mod tests {
         assert!(p.media_sources[0].media_streams[2].is_external);
         assert_eq!(p.trickplay_for(400).unwrap().1.width, 320);
         assert_eq!(p.trickplay_for(1000).unwrap().1.width, 640);
-        assert_eq!(p.trickplay_for(100).unwrap().1.width, 320, "narrowest when all too wide");
+        assert_eq!(
+            p.trickplay_for(100).unwrap().1.width,
+            320,
+            "narrowest when all too wide"
+        );
         assert!(PlayItem::default().trickplay_for(400).is_none());
         let s: RawSegments = serde_json::from_str(
             r#"{"Items":[{"Type":"Intro","StartTicks":10,"EndTicks":50},{"Type":"Outro","StartTicks":5,"EndTicks":5},{"Type":"Weird","StartTicks":1,"EndTicks":2}]}"#,

@@ -16,8 +16,10 @@ mod play;
 
 pub use client::{Client, ImageType, ItemsQuery};
 pub use config::Config;
-pub use play::{MediaSource, MediaStream, PlayItem, Segment, SegmentKind, Transcode, TrickplayInfo};
 pub use model::{Item, Items, PublicInfo, User, UserData};
+pub use play::{
+    MediaSource, MediaStream, PlayItem, Segment, SegmentKind, Transcode, TrickplayInfo,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
