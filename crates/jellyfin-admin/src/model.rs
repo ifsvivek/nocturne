@@ -114,14 +114,20 @@ pub struct ScheduledTask {
     pub last_execution_result: Option<TaskResult>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+/// A scheduled-task trigger; also the shape the server accepts back (see `edit::validate_trigger`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase", default)]
 pub struct TaskTrigger {
+    /// `DailyTrigger`, `WeeklyTrigger`, `IntervalTrigger` or `StartupTrigger`.
     #[serde(rename = "Type")]
     pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub time_of_day_ticks: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub interval_ticks: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub day_of_week: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_runtime_ticks: Option<i64>,
 }
 
@@ -267,6 +273,31 @@ pub struct NetworkConfig {
     #[serde(rename = "EnableIPv6")]
     pub enable_ipv6: bool,
     pub enable_remote_access: bool,
+    /// LAN networks (CIDR or address) the server treats as local.
+    pub local_network_subnets: Vec<String>,
+    /// Addresses the server binds to; empty = all interfaces.
+    pub local_network_addresses: Vec<String>,
+}
+
+/// Plugin catalog entry (`GET /Packages`; the server uses lowercase keys here).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Package {
+    pub name: String,
+    pub description: String,
+    pub category: String,
+    pub owner: String,
+    pub guid: String,
+    /// Newest first.
+    pub versions: Vec<PackageVersion>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct PackageVersion {
+    pub version: String,
+    #[serde(rename = "repositoryUrl")]
+    pub repository_url: String,
 }
 
 /// API key. `Debug` redacts the token.

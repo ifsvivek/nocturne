@@ -1,17 +1,21 @@
 //! Jellyfin admin client: reads that need admin rights, and every write.
 //!
 //! `nocturne-jellyfin` stays strictly read-only; all mutation lives here, in [`write`].
-//! Destructive writes (`delete_*`, `set_user_password`, `reset_user_password`, `restart_server`)
+//! Destructive writes (`delete_*`, `remove_*`, `set_network`, `set_user_password`, `reset_user_password`, `restart_server`)
 //! take a [`Confirmed`] token that UI code may only mint after the user said yes.
 //! Writes are tested ONLY against the throwaway server from `scripts/test-jellyfin.sh`
 //! (see [`guard::TestServerGuard`]), never the user's real server.
 
 mod client;
+mod edit;
 pub mod guard;
+#[cfg(test)]
+mod mock;
 mod model;
 mod write;
 
 pub use client::{AdminClient, tail_lines};
+pub use edit::*;
 pub use model::*;
 pub use nocturne_jellyfin::Config;
 pub use write::ConfigPatch;
@@ -44,6 +48,9 @@ pub enum Error {
     Http(reqwest::Error),
     #[error("server returned status {status} for {path}")]
     Status { status: u16, path: String },
+    /// A value was refused before anything was sent to the server.
+    #[error("invalid: {0}")]
+    Invalid(String),
     #[error("test guard: {0}")]
     Guard(String),
 }

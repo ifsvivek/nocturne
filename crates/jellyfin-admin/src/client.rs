@@ -166,6 +166,22 @@ impl AdminClient {
             .await
     }
 
+    /// READ `GET /System/Configuration/network` as raw JSON (used for read-modify-write).
+    pub async fn network_config_raw(&self) -> Result<serde_json::Value> {
+        self.get(&["System", "Configuration", "network"], &[]).await
+    }
+
+    /// READ `GET /System/Configuration/branding` as raw JSON.
+    pub async fn branding_raw(&self) -> Result<serde_json::Value> {
+        self.get(&["System", "Configuration", "branding"], &[])
+            .await
+    }
+
+    /// READ `GET /Packages`: the plugin catalog (needs the server to reach its repositories).
+    pub async fn packages(&self) -> Result<Vec<crate::Package>> {
+        self.get(&["Packages"], &[]).await
+    }
+
     /// READ `GET /Backup` (server 10.11+; an error on older servers).
     pub async fn backups(&self) -> Result<Vec<serde_json::Value>> {
         self.get(&["Backup"], &[]).await

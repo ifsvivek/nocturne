@@ -4,7 +4,8 @@
 //! Output policy: counts and booleans only.
 
 use nocturne_jellyfin_admin::guard::TestServerGuard;
-use nocturne_jellyfin_admin::{AdminClient, ConfigPatch, Confirmed};
+use nocturne_jellyfin_admin::{AdminClient, ConfigPatch, Confirmed, NetworkEdit, TaskTrigger};
+use serde_json::json;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
@@ -19,7 +20,7 @@ fn yes() -> Confirmed {
 fn test_url() -> String {
     format!(
         "http://127.0.0.1:{}",
-        nocturne_jellyfin_admin::guard::TEST_PORT
+        nocturne_jellyfin_admin::guard::test_port()
     )
 }
 
@@ -63,7 +64,10 @@ async fn reads() {
     let _g = SERVER.read().await;
     let c = TestServerGuard::connect().await.unwrap();
     let info = c.system_info().await.unwrap();
-    assert!(!info.version.is_empty() && info.web_socket_port_number == 8097);
+    assert!(
+        !info.version.is_empty()
+            && info.web_socket_port_number == nocturne_jellyfin_admin::guard::test_port()
+    );
     let log = c.activity_log(0, 5).await.unwrap();
     assert!(!log.items.is_empty() && log.total_record_count >= log.items.len() as u32);
     let page2 = c.activity_log(1, 1).await.unwrap();
@@ -105,7 +109,10 @@ async fn reads() {
     c.devices().await.unwrap();
     assert!(c.item_counts().await.unwrap().movie_count <= 1000);
     let net = c.network_config().await.unwrap();
-    assert_eq!(net.internal_http_port, 8097);
+    assert_eq!(
+        net.internal_http_port,
+        nocturne_jellyfin_admin::guard::test_port()
+    );
 }
 
 #[tokio::test]
@@ -304,6 +311,255 @@ async fn server_config_update() {
         c.server_config().await.unwrap().log_file_retention_days,
         orig.log_file_retention_days
     );
+}
+
+#[tokio::test]
+#[ignore]
+async fn branding_roundtrip() {
+    let _g = SERVER.read().await;
+    let c = TestServerGuard::connect().await.unwrap();
+    let orig = c.branding().await.unwrap();
+    c.set_branding(Some("Hello from tests"), Some("body{margin:0}"), None)
+        .await
+        .unwrap();
+    let b = c.branding().await.unwrap();
+    assert_eq!(b.login_disclaimer.as_deref(), Some("Hello from tests"));
+    assert_eq!(b.custom_css.as_deref(), Some("body{margin:0}"));
+    c.set_branding(
+        Some(orig.login_disclaimer.as_deref().unwrap_or("")),
+        Some(orig.custom_css.as_deref().unwrap_or("")),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        c.branding().await.unwrap().custom_css.unwrap_or_default(),
+        orig.custom_css.unwrap_or_default()
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn network_safe_edits() {
+    let _g = SERVER.read().await;
+    let c = TestServerGuard::connect().await.unwrap();
+    let orig = c.network_config().await.unwrap();
+    // refused before sending
+    assert!(
+        c.set_network(&NetworkEdit::HttpPort(0), yes())
+            .await
+            .is_err()
+    );
+    assert!(
+        c.set_network(&NetworkEdit::LanNetworks(vec!["bogus".into()]), yes())
+            .await
+            .is_err()
+    );
+    c.set_network(
+        &NetworkEdit::LanNetworks(vec!["192.168.77.0/24".into()]),
+        yes(),
+    )
+    .await
+    .unwrap();
+    c.set_network(
+        &NetworkEdit::RemoteAccess(!orig.enable_remote_access),
+        yes(),
+    )
+    .await
+    .unwrap();
+    let n = c.network_config().await.unwrap();
+    assert_eq!(n.local_network_subnets, ["192.168.77.0/24"]);
+    assert_eq!(n.enable_remote_access, !orig.enable_remote_access);
+    assert_eq!(
+        n.internal_http_port, orig.internal_http_port,
+        "ports untouched"
+    );
+    assert_eq!(n.local_network_addresses, orig.local_network_addresses);
+    c.set_network(
+        &NetworkEdit::LanNetworks(orig.local_network_subnets.clone()),
+        yes(),
+    )
+    .await
+    .unwrap();
+    c.set_network(&NetworkEdit::RemoteAccess(orig.enable_remote_access), yes())
+        .await
+        .unwrap();
+    let n = c.network_config().await.unwrap();
+    assert_eq!(n.local_network_subnets, orig.local_network_subnets);
+    assert_eq!(n.enable_remote_access, orig.enable_remote_access);
+}
+
+#[tokio::test]
+#[ignore]
+async fn task_triggers_edit() {
+    let _g = SERVER.read().await;
+    let c = TestServerGuard::connect().await.unwrap();
+    let t = c
+        .scheduled_tasks()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|t| t.key == "DeleteCacheFiles")
+        .expect("a task to edit");
+    let before = t.triggers.clone();
+    c.add_task_trigger(&t.id, TaskTrigger::weekly("friday", "04:45").unwrap())
+        .await
+        .unwrap();
+    let now = c.scheduled_task(&t.id).await.unwrap().triggers;
+    assert_eq!(now.len(), before.len() + 1);
+    assert_eq!(now.last().unwrap().describe(), "Friday at 04:45");
+    let ix = now.len() - 1;
+    c.replace_task_trigger(&t.id, ix, TaskTrigger::every_minutes(120).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        c.scheduled_task(&t.id).await.unwrap().triggers[ix].describe(),
+        "Every 2 h"
+    );
+    c.delete_task_trigger(&t.id, ix, yes()).await.unwrap();
+    let after = c.scheduled_task(&t.id).await.unwrap().triggers;
+    assert_eq!(after, before, "back to the original list");
+    assert!(c.delete_task_trigger(&t.id, 99, yes()).await.is_err());
+}
+
+#[tokio::test]
+#[ignore]
+async fn trickplay_edit() {
+    let _g = SERVER.read().await;
+    let c = TestServerGuard::connect().await.unwrap();
+    let orig = c.server_config().await.unwrap();
+    let q = orig.extra["TrickplayOptions"]["JpegQuality"].clone();
+    assert!(
+        c.set_trickplay_field("JpegQuality", json!(1000))
+            .await
+            .is_err()
+    );
+    c.set_trickplay_field("JpegQuality", json!(61))
+        .await
+        .unwrap();
+    c.set_trickplay_field("WidthResolutions", json!([240, 320]))
+        .await
+        .unwrap();
+    let t = c.server_config().await.unwrap().extra["TrickplayOptions"].clone();
+    assert_eq!(
+        (t["JpegQuality"].clone(), t["WidthResolutions"].clone()),
+        (json!(61), json!([240, 320]))
+    );
+    assert_eq!(
+        t["TileWidth"], orig.extra["TrickplayOptions"]["TileWidth"],
+        "others untouched"
+    );
+    c.set_trickplay_field("JpegQuality", q).await.unwrap();
+    c.set_trickplay_field(
+        "WidthResolutions",
+        orig.extra["TrickplayOptions"]["WidthResolutions"].clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        c.server_config().await.unwrap().extra["TrickplayOptions"],
+        orig.extra["TrickplayOptions"]
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn library_add_edit_remove() {
+    let _g = SERVER.read().await;
+    let c = TestServerGuard::connect().await.unwrap();
+    let name = uniq("Tmp Library");
+    let dir = |n: &str| format!("/tmp/nocturne-jf-live-{n}");
+    let (d1, d2) = (dir("a"), dir("b"));
+    std::fs::create_dir_all(&d1).unwrap();
+    std::fs::create_dir_all(&d2).unwrap();
+    c.add_library(&name, "homevideos", &d1).await.unwrap();
+    let find = || async {
+        c.virtual_folders()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|l| l.name == name)
+    };
+    let lib = find().await.expect("library created");
+    assert_eq!(lib.collection_type.as_deref(), Some("homevideos"));
+    assert_eq!(lib.locations, std::slice::from_ref(&d1));
+    c.add_library_path(&name, &d2).await.unwrap();
+    assert_eq!(find().await.unwrap().locations.len(), 2);
+    c.set_library_option(&lib.item_id, "EnableRealtimeMonitor", json!(true))
+        .await
+        .unwrap();
+    c.set_library_option(&lib.item_id, "AutomaticRefreshIntervalDays", json!(7))
+        .await
+        .unwrap();
+    let o = find().await.unwrap().library_options;
+    assert_eq!(
+        (
+            o["EnableRealtimeMonitor"].clone(),
+            o["AutomaticRefreshIntervalDays"].clone()
+        ),
+        (json!(true), json!(7))
+    );
+    assert_eq!(
+        o["PathInfos"].as_array().unwrap().len(),
+        2,
+        "paths survive an option edit"
+    );
+    c.remove_library_path(&name, &d2, yes()).await.unwrap();
+    assert_eq!(find().await.unwrap().locations, std::slice::from_ref(&d1));
+    c.remove_library(&name, yes()).await.unwrap();
+    assert!(find().await.is_none());
+    assert!(
+        d1.starts_with("/tmp") && std::path::Path::new(&d1).exists(),
+        "media folders are never deleted"
+    );
+    std::fs::remove_dir_all(&d1).ok();
+    std::fs::remove_dir_all(&d2).ok();
+    assert!(c.add_library("x", "movies", "relative").await.is_err());
+}
+
+/// Installs a small catalog plugin into the throwaway (needs internet on the server), restarts
+/// it, disables/enables the plugin, then uninstalls it. Exclusive: it restarts the server.
+#[tokio::test]
+#[ignore]
+async fn plugin_install_disable_uninstall() {
+    let _g = SERVER.write().await;
+    let c = TestServerGuard::connect().await.unwrap();
+    let cat = c.packages().await.unwrap();
+    let pkg = cat
+        .iter()
+        .find(|p| p.name == "Local Intros")
+        .expect("catalog entry");
+    assert!(!pkg.versions.is_empty());
+    c.install_package(pkg).await.unwrap();
+    let restart = |c: AdminClient| async move {
+        c.restart_server(yes()).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        for _ in 0..60 {
+            if c.system_info().await.is_ok() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+        panic!("throwaway did not come back");
+    };
+    restart(c.clone()).await;
+    let find = || async {
+        c.plugins()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|p| p.name == "Local Intros")
+    };
+    let p = find().await.expect("installed plugin listed after restart");
+    assert!(p.can_uninstall);
+    c.set_plugin_enabled(&p.id, &p.version, false)
+        .await
+        .unwrap();
+    assert_ne!(find().await.unwrap().status, "Active");
+    c.set_plugin_enabled(&p.id, &p.version, true).await.unwrap();
+    c.uninstall_plugin(&p.id, &p.version, yes()).await.unwrap();
+    restart(c.clone()).await;
+    assert!(find().await.is_none(), "uninstalled");
 }
 
 #[tokio::test]

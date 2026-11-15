@@ -10,8 +10,18 @@
 use crate::{AdminClient, Config, Error, Result};
 use reqwest::Url;
 
-/// Port used by `scripts/test-jellyfin.sh`.
+/// Default port used by `scripts/test-jellyfin.sh`.
 pub const TEST_PORT: u16 = 8097;
+
+/// Port the tests may talk to: `NOCTURNE_JF_TEST_PORT` (a second throwaway) or [`TEST_PORT`].
+/// Never 8096, the usual port of a real server.
+pub fn test_port() -> u16 {
+    std::env::var("NOCTURNE_JF_TEST_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .filter(|p| *p != 8096)
+        .unwrap_or(TEST_PORT)
+}
 
 pub struct TestServerGuard;
 
@@ -46,9 +56,10 @@ impl TestServerGuard {
     /// Pure URL check (see module docs, rules 2 and 3).
     pub fn check_url(url: &str, real: &[String]) -> Result<()> {
         let hp = host_port(url).ok_or_else(|| Error::Guard("unparsable test URL".into()))?;
-        if !hp.0.is_loopback() || hp.1 != TEST_PORT {
+        if !hp.0.is_loopback() || hp.1 != test_port() {
             return Err(Error::Guard(format!(
-                "test URL must be loopback port {TEST_PORT}"
+                "test URL must be loopback port {}",
+                test_port()
             )));
         }
         if real.iter().filter_map(|u| host_port(u)).any(|r| r == hp) {

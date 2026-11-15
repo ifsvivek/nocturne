@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Throwaway Jellyfin for NOCTURNE admin tests. NEVER touches /var/lib/jellyfin, ~/.config or port 8096.
 # Usage: scripts/test-jellyfin.sh {start|stop|reset|status}
+# Set NOCTURNE_JF_TEST_PORT (and NOCTURNE_JF_TEST_DIR) to run a second instance next to the default one.
 # Everything (data, config, secrets, media, env file) lives under $NOCTURNE_JF_TEST_DIR (default /tmp/nocturne-jf-test).
 set -euo pipefail
 
 T="${NOCTURNE_JF_TEST_DIR:-/tmp/nocturne-jf-test}"
-PORT=8097
+PORT="${NOCTURNE_JF_TEST_PORT:-8097}"
 URL="http://127.0.0.1:$PORT"
 ENVF="$T/test.env"
 PIDF="$T/jellyfin.pid"
