@@ -93,11 +93,9 @@ body::after {
 .tag-accent { @apply text-accent-ink ring-accent/40; }
 @media (max-width: 639px) { .tag { @apply px-1.5 text-[0.5rem] tracking-[0.08em]; margin-left: 8px; } }
 
-/* Read-only: a focus ring on the real OFF switch (96.1% / 58.6% of the capture). */
-.reticle, .callout { position: absolute; z-index: 2; pointer-events: none; top: 58.6%; }
-.reticle { left: 96.1%; width: 4.6%; height: 26%; transform: translate(-50%, -50%); @apply rounded-sm ring-2 ring-accent; }
-.callout { right: 7.5%; transform: translateY(-50%); @apply rounded-sm bg-black/90 px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.2em] whitespace-nowrap text-accent-ink ring-1 ring-accent/40 ring-inset; }
-@media (max-width: 639px) { .reticle, .callout { display: none; } }
+/* Read-only: a focus ring on the words "Off by default." in the settings-crop capture (4.3% / 83.5% of it). */
+.reticle { position: absolute; z-index: 2; pointer-events: none; left: 4.3%; top: 83.5%; width: 5.8%; height: 11%; transform: translate(-50%, -50%); @apply rounded-sm ring-2 ring-accent; }
+@media (max-width: 639px) { .reticle { display: none; } }
 
 @keyframes open { from { clip-path: inset(50% 0 50% 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes title-in { from { opacity: 0; letter-spacing: 0.7em; } }

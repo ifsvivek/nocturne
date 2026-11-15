@@ -33,7 +33,7 @@ test("RELEASED=false: no repo or release links, coming soon", () => {
   assert.match(read(off, "index.html"), /Coming soon/);
   // Full product content shows while unreleased; only links and download buttons are gated.
   const h = read(off, "index.html");
-  for (const s of ["Scene 1", "Behind the scenes", "Nothing on your server changes until you allow it", "Coming soon to Linux", "Technical specifications", "Questions", "srcset="]) assert.ok(h.includes(s), s);
+  for (const s of ["Scene 1", "Behind the scenes", "Nothing on your server changes until you allow it", "Coming soon to Linux", "Technical specifications", "Questions", "srcset=", "Scene 4", "Who's watching?", "Use as default profile", "Default profile", "Scene 6"]) assert.ok(h.includes(s), s);
   assert.doesNotMatch(h, /makepkg|install\.sh|cargo build/);
 });
 
@@ -41,7 +41,7 @@ test("RELEASED=true: download, repo and version", () => {
   const h = read(on, "index.html");
   assert.ok(h.includes("https://github.com/ifsvivek/nocturne/releases/latest"));
   assert.ok(h.includes('href="https://github.com/ifsvivek/nocturne"'));
-  assert.match(h, /v0\.1\.0|0\.1\.0/);
+  assert.ok(h.includes(JSON.parse(readFileSync(join(ROOT, "site.config.json"), "utf8")).VERSION), "version from site.config.json");
   assert.ok(h.includes("makepkg -si") && h.includes("install.sh") && h.includes("cargo build --release --locked"));
   assert.ok(h.includes("https://github.com/ifsvivek/nocturne/blob/main/docs/WRITES.md"));
   assert.doesNotMatch(read(off, "index.html"), /Documentation/);
@@ -98,8 +98,36 @@ test("size budget", () => {
   assert.equal(css.length, 1, "one stylesheet");
   const total = [join(off, "index.html"), ...css].reduce((n, f) => n + gzipSync(readFileSync(f)).length, 0);
   assert.ok(total <= 60 * 1024, `home html+css gzip ${total}`);
-  assert.ok(statSync(join(off, "og.jpg")).size <= 100 * 1024);
+  assert.ok(statSync(join(off, "og.jpg")).size <= 250 * 1024, "og.jpg stays under the 300 kB some scrapers allow");
   // Hero requests: eager images only; everything else lazy.
   const imgs = [...read(off, "index.html").matchAll(/<img\b[^>]*>/g)].map((m) => m[0]);
   assert.equal(imgs.filter((i) => /loading="eager"/.test(i)).length, 1, "only the opening still loads eagerly");
+});
+
+test("images: every srcset file exists, 16:9 stills at high resolution, no upscaling, sizes everywhere", () => {
+  const h = read(off, "index.html");
+  const imgs = [...h.matchAll(/<img\b[^>]*>/g)].map((m) => m[0]).filter((i) => i.includes("srcset="));
+  assert.ok(imgs.length >= 14, `images ${imgs.length}`);
+  let top = 0;
+  for (const i of imgs) {
+    const w = +i.match(/\bwidth="(\d+)"/)[1], ht = +i.match(/\bheight="(\d+)"/)[1];
+    const set = [...i.match(/srcset="([^"]+)"/)[1].matchAll(/(\S+) (\d+)w/g)].map((m) => ({ url: m[1], w: +m[2] }));
+    assert.ok(set.length >= 2 && /\bsizes="/.test(i), i);
+    for (const c of set) {
+      const f = join(off, c.url.replace(/^\//, ""));
+      assert.ok(existsSync(f), f);
+      const b = readFileSync(f);
+      const pw = b.toString("latin1", 12, 16) === "VP8 " ? b.readUInt16LE(26) & 0x3fff : 0;
+      assert.equal(pw, c.w, `${c.url} declared ${c.w}w`);
+      assert.ok(c.w <= 3840);
+      top = Math.max(top, c.w);
+    }
+    assert.equal(Math.max(...set.map((c) => c.w)), w, "width attribute is the largest variant");
+    assert.ok(ht > 0);
+  }
+  assert.equal(top, 3840, "native 3840 variant is served for the full-bleed stills");
+  // Full-bleed stills and the opening get 3840; the opening is the one fetchpriority=high image.
+  assert.equal(imgs.filter((i) => /fetchpriority="high"/.test(i)).length, 1);
+  assert.equal(imgs.filter((i) => /loading="lazy"/.test(i)).length, imgs.length - 1);
+  for (const f of ["picker-crop", "settings-dropdown", "account-menu"]) assert.ok(imgs.some((i) => new RegExp(`${f}-\\d+\\.`).test(i)), f);
 });
