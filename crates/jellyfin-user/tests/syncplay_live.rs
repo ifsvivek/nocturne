@@ -73,6 +73,9 @@ async fn two_members_group_lifecycle() {
     eprintln!("clock offset {:.2} ms, ping {} ms", t.offset(), t.ping());
     assert!(t.offset().abs() < 50.0);
 
+    // Integer ping (the server rejected fractions in the past); both members report one.
+    alice.api.syncplay_ping(t.ping(), c).await.unwrap();
+
     // alice creates, bob sees it listed and joins.
     alice.api.syncplay_new("live-sync-test", c).await.unwrap();
     let g = alice
@@ -215,4 +218,108 @@ async fn two_members_group_lifecycle() {
     );
     alice.task.abort();
     bob.task.abort();
+}
+
+/// Server 12.x waits for EVERY member's Ready; one silent member holds the group, and the
+/// server gives up on the waiting after about 30 s (jellyfin#18121). Takes ~40 s.
+#[tokio::test]
+#[ignore]
+async fn group_waits_for_the_silent_member_then_times_out() {
+    let _guard = TestServerGuard::connect().await.expect("guard refused");
+    let c = UserConfirmed::i_have_asked_the_user();
+    let url = var("NOCTURNE_JF_TEST_URL");
+    let alice = Member::new(&url, "alice", "NOCTURNE_JF_TEST_ALICE_PW").await;
+    let bob = Member::new(&url, "bob", "NOCTURNE_JF_TEST_BOB_PW").await;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    alice.api.syncplay_new("live-wait-test", c).await.unwrap();
+    let g = alice
+        .wait("GroupJoined", |m| match m {
+            Incoming::Group(GroupUpdate::GroupJoined(g)) => Some(g.clone()),
+            _ => None,
+        })
+        .await;
+    bob.api.syncplay_join(&g.group_id, c).await.unwrap();
+    bob.wait("bob joined", |m| {
+        matches!(m, Incoming::Group(GroupUpdate::GroupJoined(_))).then_some(())
+    })
+    .await;
+    let reader = Client::new(Config {
+        base_url: url.clone(),
+        token: var("NOCTURNE_JF_TEST_TOKEN"),
+    })
+    .unwrap();
+    let uid = reader.first_user_id().await.unwrap();
+    let movies = reader
+        .items(
+            &uid,
+            &ItemsQuery {
+                include_types: vec!["Movie".into()],
+                recursive: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    alice
+        .api
+        .syncplay_set_new_queue(
+            &NewQueue {
+                item_ids: vec![movies.items[0].id.clone()],
+                start_index: 0,
+                start_ticks: 0,
+            },
+            c,
+        )
+        .await
+        .unwrap();
+    let q = alice
+        .wait("PlayQueue", |m| match m {
+            Incoming::Group(GroupUpdate::PlayQueue(q)) => Some(q.clone()),
+            _ => None,
+        })
+        .await;
+    let pli = q.playing().unwrap().playlist_item_id.clone();
+    // Only alice answers Ready; bob stays silent.
+    let r = Report {
+        when_ms: now_ms(),
+        pos_ticks: 0,
+        playing: false,
+        playlist_item_id: pli,
+    };
+    alice.api.syncplay_report(false, &r, c).await.unwrap();
+    let start = std::time::Instant::now();
+    let mut unpaused_at = None;
+    while start.elapsed() < Duration::from_secs(40) {
+        while let Ok(SocketEvent::Message(m)) = alice.rx.try_recv() {
+            match m {
+                Incoming::Command(c) => {
+                    eprintln!(
+                        "  [{:>5.1}s] command {:?}",
+                        start.elapsed().as_secs_f32(),
+                        c.command
+                    );
+                    if c.command == CommandKind::Unpause {
+                        unpaused_at.get_or_insert(start.elapsed().as_secs_f32());
+                    }
+                }
+                Incoming::Group(GroupUpdate::StateUpdate { state, reason }) => {
+                    eprintln!(
+                        "  [{:>5.1}s] state {state:?} ({reason})",
+                        start.elapsed().as_secs_f32()
+                    );
+                }
+                _ => {}
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    // Observed on Jellyfin 12.4: held (Pause) until the 30 s group-wait timeout, then it starts
+    // without the silent member (an Unpause); it does not stay paused.
+    let t = unpaused_at.expect("the group never started");
+    assert!(
+        (25.0..40.0).contains(&t),
+        "started after {t} s, expected about 30"
+    );
+    alice.api.syncplay_leave(c).await.unwrap();
+    bob.api.syncplay_leave(c).await.unwrap();
 }
