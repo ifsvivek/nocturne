@@ -44,6 +44,7 @@ pub struct Media {
     pub resume_s: Option<f64>,
     pub duration_s: Option<f64>,
     pub played: bool,
+    pub favorite: bool,
 }
 
 impl Media {
@@ -83,6 +84,7 @@ impl Media {
                 .filter(|s| *s > 0.0),
             duration_s: i.run_time_ticks.map(|t| t as f64 / TICKS_PER_S),
             played: i.user_data.as_ref().is_some_and(|u| u.played),
+            favorite: i.user_data.as_ref().is_some_and(|u| u.is_favorite),
         }
     }
 
@@ -253,6 +255,16 @@ pub struct Source {
 }
 
 impl Source {
+    /// A logged-in session: the user id is known, so nothing is asked of the server yet.
+    pub fn with_user(cfg: jf::Config, user_id: &str) -> Result<Self, ConnectError> {
+        let client = jf::Client::new(cfg).map_err(|e| classify(&e))?;
+        Ok(Self {
+            client: Arc::new(client),
+            user: user_id.into(),
+            gate: Arc::new(Semaphore::new(6)),
+        })
+    }
+
     /// `None` means no usable configuration was found.
     pub async fn connect(cfg: Option<jf::Config>) -> Result<Self, ConnectError> {
         let client =
@@ -403,6 +415,7 @@ mod tests {
         i.user_data = Some(jf::UserData {
             playback_position_ticks: 25 * 10_000_000,
             played: false,
+            ..Default::default()
         });
         let m = Media::from_item(&i);
         assert_eq!(m.progress(), Some(0.25));

@@ -1,10 +1,13 @@
+mod account;
 mod admin;
 mod app;
 mod assets;
 mod bridge;
 mod cache;
+mod hooks;
 mod nav;
 mod playback;
+mod settings;
 mod source;
 mod theme;
 mod ui;

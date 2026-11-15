@@ -3,6 +3,64 @@ use crate::source::Media;
 use nocturne_player::State;
 use std::time::{Duration, Instant};
 
+/// How often a playing item is reported to the server.
+const REPORT_EVERY: Duration = Duration::from_secs(10);
+/// A jump larger than this against the expected position counts as a seek.
+const SEEK_JUMP: f64 = 3.0;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Tick {
+    Started,
+    Progress,
+}
+
+struct Last {
+    id: String,
+    at: Instant,
+    pos: f64,
+    paused: bool,
+    /// Latest position seen (reported or not), for the final "stopped" report.
+    seen: f64,
+}
+
+/// Decides when a playing item is reported: once at start, every 10 s, and at once on pause,
+/// resume or seek. Pure (the caller owns the clock and does the sending).
+#[derive(Default)]
+pub struct Reporter(Option<Last>);
+
+impl Reporter {
+    pub fn tick(&mut self, now: Instant, id: &str, pos: f64, paused: bool) -> Option<Tick> {
+        let cur = Last {
+            id: id.into(),
+            at: now,
+            pos,
+            paused,
+            seen: pos,
+        };
+        let Some(l) = self.0.as_mut().filter(|l| l.id == id) else {
+            self.0 = Some(cur);
+            return Some(Tick::Started);
+        };
+        l.seen = pos;
+        let dt = now.duration_since(l.at);
+        let expect = if l.paused {
+            l.pos
+        } else {
+            l.pos + dt.as_secs_f64()
+        };
+        if l.paused != paused || (pos - expect).abs() > SEEK_JUMP || dt >= REPORT_EVERY {
+            self.0 = Some(cur);
+            return Some(Tick::Progress);
+        }
+        None
+    }
+
+    /// The item reported as started and its last position (seconds), forgotten.
+    pub fn stop(&mut self) -> Option<(String, f64)> {
+        self.0.take().map(|l| (l.id, l.seen))
+    }
+}
+
 pub struct Now {
     pub media: Media,
     pub state: Option<State>,
@@ -54,6 +112,63 @@ impl Now {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reporter_start_interval_pause_seek_stop() {
+        let t0 = Instant::now();
+        let at = |s: u64| t0 + Duration::from_secs(s);
+        let mut r = Reporter::default();
+        assert_eq!(r.tick(at(0), "a", 5.0, false), Some(Tick::Started));
+        assert_eq!(r.tick(at(1), "a", 6.0, false), None);
+        assert_eq!(
+            r.tick(at(9), "a", 14.0, false),
+            None,
+            "quiet between reports"
+        );
+        assert_eq!(
+            r.tick(at(10), "a", 15.0, false),
+            Some(Tick::Progress),
+            "every 10 s"
+        );
+        assert_eq!(
+            r.tick(at(11), "a", 16.0, true),
+            Some(Tick::Progress),
+            "pause"
+        );
+        assert_eq!(r.tick(at(15), "a", 16.0, true), None, "paused and still");
+        assert_eq!(
+            r.tick(at(16), "a", 16.0, false),
+            Some(Tick::Progress),
+            "resume"
+        );
+        assert_eq!(
+            r.tick(at(17), "a", 90.0, false),
+            Some(Tick::Progress),
+            "seek forward"
+        );
+        assert_eq!(
+            r.tick(at(18), "a", 10.0, false),
+            Some(Tick::Progress),
+            "seek back"
+        );
+        assert_eq!(
+            r.tick(at(19), "b", 0.0, false),
+            Some(Tick::Started),
+            "new item"
+        );
+        assert_eq!(r.tick(at(20), "b", 1.5, false), None);
+        assert_eq!(
+            r.stop(),
+            Some(("b".into(), 1.5)),
+            "stop carries the last position seen"
+        );
+        assert_eq!(r.stop(), None);
+        assert_eq!(
+            r.tick(at(21), "b", 0.0, false),
+            Some(Tick::Started),
+            "after stop it starts again"
+        );
+    }
 
     fn now() -> Now {
         Now::new(crate::source::Media::from_item(&Default::default()))

@@ -1,7 +1,10 @@
 //! Root view: connection state, navigation stack, keyboard, and the screens.
+use crate::account::{self, Accounts};
 use crate::admin::{self, Admin};
+use crate::hooks::{PlayerHooks, SyncHooks, ticks};
 use crate::nav::{self, Dir};
-use crate::playback::Now;
+use crate::playback::{Now, Reporter, Tick};
+use crate::settings::{ROWS, Settings};
 use crate::source::fmt_clock;
 use crate::source::{Art, ConnectError, Kind, Media, Source, sniff};
 use crate::ui::{self, Cell, Pic};
@@ -9,6 +12,8 @@ use crate::video::{self, Aspect, AutoHide, MenuAct, Playback, Pop};
 use crate::{bridge, cache::Cache, theme as t};
 use gpui::prelude::*;
 use gpui::*;
+use nocturne_jellyfin_admin::AdminClient;
+use nocturne_jellyfin_user::{Session, UserClient};
 use nocturne_player::{EmbeddedPlayer, Event, Options, Player};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::cell::Cell as StdCell;
@@ -78,6 +83,8 @@ struct Page {
     nextup_scroll: ScrollHandle,
     /// An `Admin` entry follows the libraries in the nav row.
     admin: bool,
+    /// Home sections switched on in Settings: continue watching, next up, latest.
+    show: (bool, bool, bool),
     row: usize,
     col: usize,
     // Grid.
@@ -96,13 +103,15 @@ struct Page {
 impl Page {
     fn layout(&self) -> Vec<HRow> {
         let mut v = vec![HRow::Nav, HRow::Hero];
-        if !self.resume.items().is_empty() {
+        if self.show.0 && !self.resume.items().is_empty() {
             v.push(HRow::Resume);
         }
-        if !self.nextup.items().is_empty() {
+        if self.show.1 && !self.nextup.items().is_empty() {
             v.push(HRow::NextUp);
         }
-        v.extend((0..self.rows.len()).map(HRow::Latest));
+        if self.show.2 {
+            v.extend((0..self.rows.len()).map(HRow::Latest));
+        }
         v
     }
 
@@ -154,6 +163,8 @@ enum Act {
 }
 
 enum Phase {
+    /// Login mode: the account screens (connect, sign in, restore) own the window.
+    Account,
     Connecting,
     Error(ConnectError),
     Ready,
@@ -214,6 +225,26 @@ pub struct Root {
     win: Size<Pixels>,
     note: Option<&'static str>,
     note_gen: u64,
+    /// Developer-token mode (`NOCTURNE_JF_TOKEN`): no login, read-only.
+    dev: bool,
+    accounts: Option<Entity<Accounts>>,
+    session: Option<(String, Session)>,
+    hooks: Arc<SyncHooks>,
+    reporter: Reporter,
+    settings: Settings,
+    settings_open: bool,
+    settings_sel: usize,
+    menu: bool,
+    menu_sel: usize,
+}
+
+/// Account menu entries.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AcctAct {
+    Settings,
+    Password,
+    Switch,
+    SignOut,
 }
 
 /// Image cell chrome: padding both sides + caption block, used for row heights.
@@ -273,8 +304,32 @@ impl Root {
             win: size(px(1280.0), px(800.0)),
             note: None,
             note_gen: 0,
+            dev: false,
+            accounts: None,
+            session: None,
+            hooks: Arc::new(SyncHooks::new(None, true)),
+            reporter: Reporter::default(),
+            settings: Settings::load(),
+            settings_open: false,
+            settings_sel: 0,
+            menu: false,
+            menu_sel: 0,
         };
-        me.connect(cx);
+        me.dev = me.cfg.is_some();
+        if me.dev {
+            me.connect(cx);
+        } else {
+            me.phase = Phase::Account;
+            let acct = cx.new(|cx| Accounts::new(true, cx));
+            cx.subscribe(&acct, |t, _, ev: &account::Event, cx| match ev {
+                account::Event::SignedIn { url, session } => {
+                    t.activate(url.clone(), session.clone(), cx)
+                }
+                account::Event::Notice(n) => t.toast(n, cx),
+            })
+            .detach();
+            me.accounts = Some(acct);
+        }
         // Teardown order: the video subsurface must go before the window, and not from inside the
         // compositor's close event (joining the render thread there deadlocks). So while a video
         // is up, veto the close, drop the video from a task, then remove the window ourselves.
@@ -289,7 +344,15 @@ impl Root {
                 return true;
             }
             cx.spawn(async move |cx| {
-                this.update(cx, |t, _| t.playback = None).ok();
+                this.update(cx, |t, _| {
+                    t.report_stop();
+                    t.playback = None;
+                })
+                .ok();
+                // Let the final progress report leave before the process exits.
+                cx.background_executor()
+                    .timer(Duration::from_millis(400))
+                    .await;
                 cx.update(|cx| cx.quit()).ok();
                 let _ = handle;
             })
@@ -350,6 +413,372 @@ impl Root {
         });
     }
 
+    // ---- accounts and sync ----
+
+    /// A login is ready (typed, Quick Connect or restored): build the source and show Home.
+    fn activate(&mut self, url: String, s: Session, cx: &mut Context<Self>) {
+        let cfg = nocturne_jellyfin::Config {
+            base_url: url.clone(),
+            token: s.access_token.clone(),
+        };
+        let Ok(src) = Source::with_user(cfg.clone(), &s.user_id) else {
+            return self.toast("This server address can't be used.", cx);
+        };
+        self.hooks = Arc::new(SyncHooks::new(
+            UserClient::from_session(&url, &s).ok(),
+            self.settings.sync_progress,
+        ));
+        self.source = Some(src);
+        self.images = Cache::new(600);
+        self.stack.clear();
+        self.admin_open = false;
+        // The admin section follows the account's own rights, with the session's token.
+        self.admin = s
+            .is_admin
+            .then(|| AdminClient::new(cfg).ok())
+            .flatten()
+            .map(|c| cx.new(|_| Admin::new(c)));
+        self.session = Some((url, s));
+        self.phase = Phase::Ready;
+        self.push(View::Home, None, cx);
+        if self
+            .accounts
+            .as_ref()
+            .is_some_and(|a| a.read(cx).keyring_down())
+        {
+            self.toast(account::KEYRING_NOTE, cx);
+        }
+    }
+
+    /// Back to the account screens: stop playback, drop everything tied to the login.
+    fn leave_session(&mut self, cx: &mut Context<Self>) {
+        self.stop(cx);
+        self.leaving = None;
+        self.source = None;
+        self.stack.clear();
+        self.admin = None;
+        self.admin_open = false;
+        self.settings_open = false;
+        self.menu = false;
+        self.session = None;
+        self.hooks = Arc::new(SyncHooks::new(None, true));
+        self.phase = Phase::Account;
+    }
+
+    fn sign_out(&mut self, cx: &mut Context<Self>) {
+        let client = self
+            .session
+            .as_ref()
+            .and_then(|(u, s)| UserClient::from_session(u, s).ok());
+        self.leave_session(cx);
+        if let Some(a) = self.accounts.clone() {
+            a.update(cx, |a, cx| a.sign_out(client, cx));
+        }
+    }
+
+    fn switch_server(&mut self, cx: &mut Context<Self>) {
+        self.leave_session(cx);
+        if let Some(a) = self.accounts.clone() {
+            a.update(cx, |a, cx| a.switch_server(cx));
+        }
+    }
+
+    fn menu_items(&self) -> Vec<(&'static str, AcctAct)> {
+        let mut v = vec![("Settings", AcctAct::Settings)];
+        if !self.dev {
+            v.extend([
+                ("Change password", AcctAct::Password),
+                ("Switch server", AcctAct::Switch),
+                ("Sign out", AcctAct::SignOut),
+            ]);
+        }
+        v
+    }
+
+    fn menu_act(&mut self, act: AcctAct, cx: &mut Context<Self>) {
+        self.menu = false;
+        match act {
+            AcctAct::Settings => {
+                self.close_admin(cx);
+                self.settings_open = true;
+                self.settings_sel = 0;
+            }
+            AcctAct::Password => {
+                let client = self
+                    .session
+                    .as_ref()
+                    .and_then(|(u, s)| UserClient::from_session(u, s).ok());
+                if let (Some(c), Some(a)) = (client, self.accounts.clone()) {
+                    a.update(cx, |a, cx| a.open_password(c, cx));
+                }
+            }
+            AcctAct::Switch => self.switch_server(cx),
+            AcctAct::SignOut => self.sign_out(cx),
+        }
+        cx.notify();
+    }
+
+    /// Settings row `i` stepped; applies at once and is saved.
+    fn cycle_setting(&mut self, i: usize, dir: i32, cx: &mut Context<Self>) {
+        self.settings.cycle(i, dir);
+        self.settings.save();
+        self.hooks.sync.store(
+            self.settings.sync_progress,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        let show = self.settings.home();
+        for p in &mut self.stack {
+            p.show = show;
+            p.row = p.row.min(p.layout().len() - 1);
+        }
+        cx.notify();
+    }
+
+    fn settings_key(&mut self, key: &str, cx: &mut Context<Self>) {
+        match key {
+            "escape" | "backspace" => self.settings_open = false,
+            "up" => self.settings_sel = self.settings_sel.saturating_sub(1),
+            "down" => self.settings_sel = (self.settings_sel + 1).min(ROWS - 1),
+            "left" => self.cycle_setting(self.settings_sel, -1, cx),
+            "right" | "enter" | "space" => self.cycle_setting(self.settings_sel, 1, cx),
+            _ => {}
+        }
+        cx.notify();
+    }
+
+    fn menu_key(&mut self, key: &str, cx: &mut Context<Self>) {
+        let items = self.menu_items();
+        match key {
+            "escape" | "a" => self.menu = false,
+            "up" => self.menu_sel = self.menu_sel.saturating_sub(1),
+            "down" => self.menu_sel = (self.menu_sel + 1).min(items.len() - 1),
+            "enter" => {
+                if let Some((_, act)) = items.get(self.menu_sel) {
+                    self.menu_act(*act, cx);
+                }
+            }
+            _ => {}
+        }
+        cx.notify();
+    }
+
+    /// Apply `f` to every copy of item `id` the UI holds, so optimistic changes show everywhere.
+    fn patch(&mut self, id: &str, f: impl Fn(&mut Media)) {
+        let hit = |m: &mut Media| {
+            if m.id == id {
+                f(m)
+            }
+        };
+        let list = |l: &mut Load<Vec<Media>>| {
+            if let Load::Ready(v) = l {
+                v.iter_mut().for_each(hit);
+            }
+        };
+        for p in &mut self.stack {
+            p.media.iter_mut().for_each(hit);
+            for l in [
+                &mut p.resume,
+                &mut p.nextup,
+                &mut p.items,
+                &mut p.seasons,
+                &mut p.episodes,
+            ] {
+                list(l);
+            }
+            p.rows.iter_mut().for_each(|r| list(&mut r.items));
+        }
+        if let Some(n) = self.now.as_mut() {
+            hit(&mut n.media);
+        }
+    }
+
+    fn toggle_played(&mut self, m: &Media, cx: &mut Context<Self>) {
+        if !self.hooks.sync_on() {
+            let why = if self.hooks.can_write() {
+                "Watch sync is off. Turn it on in Settings."
+            } else {
+                "Sign in to keep watched state on the server."
+            };
+            return self.toast(why, cx);
+        }
+        let v = !m.played;
+        self.patch(&m.id, |x| {
+            x.played = v;
+            if v {
+                x.resume_s = None;
+            }
+        });
+        self.hooks.set_played(&m.id, v);
+        self.toast(
+            if v {
+                "Marked as watched."
+            } else {
+                "Marked as unwatched."
+            },
+            cx,
+        );
+    }
+
+    fn toggle_fav(&mut self, m: &Media, cx: &mut Context<Self>) {
+        if !self.hooks.can_write() {
+            return self.toast("Sign in to save favourites.", cx);
+        }
+        let v = !m.favorite;
+        self.hooks.seed_favorite(&m.id, m.favorite);
+        self.hooks.set_favorite(&m.id, v);
+        self.patch(&m.id, |x| x.favorite = v);
+        self.toast(
+            if v {
+                "Added to favourites."
+            } else {
+                "Removed from favourites."
+            },
+            cx,
+        );
+    }
+
+    /// Failed writes come back from the bridge: undo the optimistic change and say so calmly.
+    fn drain_reverts(&mut self, cx: &mut Context<Self>) {
+        for r in self.hooks.drain() {
+            self.patch(&r.id, |m| {
+                m.played = r.played.unwrap_or(m.played);
+                m.favorite = r.fav.unwrap_or(m.favorite);
+            });
+            self.toast("Couldn't save that change, so it was undone.", cx);
+            cx.notify();
+        }
+    }
+
+    /// The item under the focus ring / selection on the current page.
+    fn focus_media(&self) -> Option<Media> {
+        let p = self.stack.last()?;
+        match p.view {
+            View::Home => match p.layout().get(p.row).copied()? {
+                HRow::Hero => p.hero_item(),
+                HRow::Nav => None,
+                k => p.row_items(k).get(p.col).cloned(),
+            },
+            View::Grid => p.items.items().get(p.sel).cloned(),
+            View::Detail if p.media.as_ref().is_some_and(|m| m.is_series()) => {
+                p.episodes.items().get(p.ep_sel).cloned()
+            }
+            View::Detail => p.media.clone(),
+        }
+    }
+
+    /// After playback the Home rows move (a new Continue Watching entry, a next episode):
+    /// look again shortly, once the server has the final report.
+    fn refresh_resume(&mut self, cx: &mut Context<Self>) {
+        let (Some(src), Some(pid)) = (self.source.clone(), self.stack.first().map(|p| p.pid))
+        else {
+            return;
+        };
+        if !self.hooks.sync_on() {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(900))
+                .await;
+            let (s1, s2) = (src.clone(), src);
+            let h = bridge::spawn(async move { (s1.resume().await, s2.next_up().await) });
+            if let Ok((r, n)) = h.await {
+                this.update(cx, |t, cx| {
+                    if let Some(p) = t.page_mut(pid) {
+                        p.resume = r.map_or(Load::Failed, Load::Ready);
+                        p.nextup = n.map_or(Load::Failed, Load::Ready);
+                    }
+                    cx.notify();
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+
+    /// Progress reporting: started once, every 10 s, and on pause/resume/seek. Gated by Settings.
+    fn sync_tick(&mut self) {
+        let Some(n) = self.now.as_ref().filter(|n| n.loaded) else {
+            return;
+        };
+        let Some(pos) = n.state.as_ref().and_then(|s| s.position) else {
+            return;
+        };
+        let paused = n.state.as_ref().is_some_and(|s| s.paused);
+        let id = n.media.id.clone();
+        match self.reporter.tick(Instant::now(), &id, pos, paused) {
+            Some(Tick::Started) => self.hooks.started(&id, ticks(pos)),
+            Some(Tick::Progress) => self.hooks.progress(&id, ticks(pos), paused),
+            None => {}
+        }
+    }
+
+    fn report_stop(&mut self) {
+        if let Some((id, pos)) = self.reporter.stop() {
+            self.hooks.stopped(&id, ticks(pos));
+        }
+    }
+
+    /// Heart and check chips on a poster: always shown when set, on hover otherwise.
+    fn chips(&self, m: &Media, cx: &mut Context<Self>) -> Div {
+        let chip = |id: String, glyph: &'static str, on: bool, t_: Media, fav: bool| {
+            div()
+                .id(ui::name(id))
+                .size(px(24.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_full()
+                .bg(rgba(0x07080ccc))
+                .border_1()
+                .border_color(if on {
+                    t::accent()
+                } else {
+                    t::hairline_strong()
+                })
+                .text_size(px(13.0))
+                .text_color(if on {
+                    t::accent_text()
+                } else {
+                    t::text_secondary()
+                })
+                .cursor_pointer()
+                .occlude()
+                .hover(|s| s.border_color(t::accent()))
+                .when(!on, |d| d.invisible().group_hover("card", |s| s.visible()))
+                .on_click(cx.listener(move |t, _, _, cx| {
+                    if fav {
+                        t.toggle_fav(&t_, cx);
+                    } else {
+                        t.toggle_played(&t_, cx);
+                    }
+                    cx.notify();
+                }))
+                .child(glyph)
+        };
+        let pad = t::S3 + t::S2;
+        div()
+            .absolute()
+            .top(px(pad))
+            .right(px(pad))
+            .flex()
+            .gap(px(t::S1))
+            .child(chip(
+                format!("fav-{}", m.id),
+                if m.favorite { "\u{2665}" } else { "\u{2661}" },
+                m.favorite,
+                m.clone(),
+                true,
+            ))
+            .child(chip(
+                format!("seen-{}", m.id),
+                "\u{2713}",
+                m.played,
+                m.clone(),
+                false,
+            ))
+    }
+
     fn page_mut(&mut self, pid: u64) -> Option<&mut Page> {
         self.stack.iter_mut().find(|p| p.pid == pid)
     }
@@ -371,6 +800,7 @@ impl Root {
             nextup: Load::Loading,
             nextup_scroll: ScrollHandle::new(),
             admin: self.admin.is_some(),
+            show: self.settings.home(),
             row: 1,
             col: 0,
             items: Load::Loading,
@@ -515,6 +945,8 @@ impl Root {
 
     /// Leave Admin (if open) before navigating elsewhere.
     fn close_admin(&mut self, cx: &mut Context<Self>) {
+        self.settings_open = false;
+        self.menu = false;
         if self.admin_open {
             self.admin_open = false;
             if let Some(a) = self.admin.clone() {
@@ -589,6 +1021,8 @@ impl Root {
             return self.toast("This couldn't be played.", cx);
         }
         let ep = m.clone();
+        self.report_stop(); // a previous item ends here (no-op when nothing was playing)
+        self.hooks.seed_favorite(&m.id, m.favorite);
         self.leaving = None;
         if self.now.is_none() {
             self.bar_gen += 1;
@@ -839,6 +1273,7 @@ impl Root {
     }
 
     fn stop(&mut self, cx: &mut Context<Self>) {
+        self.report_stop();
         self.playback = None; // dropping closes mpv / the video surface
         self.video = false;
         self.pending = None;
@@ -849,6 +1284,7 @@ impl Root {
         self.drag = None;
         self.hover_frac = None;
         let Some(n) = self.now.take() else { return };
+        self.refresh_resume(cx);
         self.leaving = Some(n);
         self.bar_gen += 1;
         let g = self.bar_gen;
@@ -922,6 +1358,7 @@ impl Root {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
+        self.drain_reverts(cx);
         let shown = self.video_controls();
         if self.video && shown != self.ctl_shown {
             self.ctl_shown = shown;
@@ -955,6 +1392,7 @@ impl Root {
         } else {
             gone = true;
         }
+        self.sync_tick();
         if meta {
             self.refresh_meta();
         }
@@ -1217,6 +1655,25 @@ impl Root {
         if self.video && self.video_key(ev, window, cx) {
             return;
         }
+        if let Some(a) = self.accounts.clone()
+            && (matches!(self.phase, Phase::Account) || a.read(cx).dialog_open())
+        {
+            a.update(cx, |a, cx| a.on_key(ev, cx));
+            cx.notify();
+            return;
+        }
+        if self.settings_open {
+            return self.settings_key(key, cx);
+        }
+        if self.menu {
+            return self.menu_key(key, cx);
+        }
+        if key == "a" && matches!(self.phase, Phase::Ready) && !self.admin_open {
+            self.menu = true;
+            self.menu_sel = 0;
+            cx.notify();
+            return;
+        }
         if let Phase::Error(e) = self.phase {
             if matches!(key, "enter" | "r") && e != ConnectError::NotConfigured {
                 self.connect(cx);
@@ -1255,6 +1712,18 @@ impl Root {
                 cx.notify();
                 return;
             }
+        }
+        if matches!(key, "w" | "f")
+            && matches!(self.phase, Phase::Ready)
+            && let Some(m) = self.focus_media()
+        {
+            if key == "w" {
+                self.toggle_played(&m, cx);
+            } else {
+                self.toggle_fav(&m, cx);
+            }
+            cx.notify();
+            return;
         }
         let dir = match key {
             "up" => Some(Dir::Up),
@@ -1457,7 +1926,191 @@ impl Root {
                     .child(ui::wordmark(t::CAPTION + 1.0))
                     .child(nav),
             )
-            .child(ui::mono("YOUR MEDIA. YOUR NIGHT."))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(t::S4))
+                    .child(ui::mono("YOUR MEDIA. YOUR NIGHT."))
+                    .child(self.avatar(cx)),
+            )
+    }
+
+    /// Initial in a hairline circle; opens the account menu.
+    fn avatar(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let name = self
+            .session
+            .as_ref()
+            .map_or("dev", |(_, s)| s.user_name.as_str());
+        div()
+            .id("avatar")
+            .size(px(32.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_full()
+            .border_1()
+            .border_color(if self.menu {
+                t::accent()
+            } else {
+                t::hairline_strong()
+            })
+            .bg(t::raised())
+            .font_family(t::MONO)
+            .text_size(px(t::CAPTION + 1.0))
+            .text_color(t::accent_text())
+            .cursor_pointer()
+            .hover(|s| s.border_color(t::accent()))
+            .on_click(cx.listener(|t, _, _, cx| {
+                t.menu = !t.menu;
+                t.menu_sel = 0;
+                cx.notify();
+            }))
+            .child(ui::initial(name))
+    }
+
+    /// Dropdown under the avatar: who and where, then the account actions.
+    fn account_menu(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let (name, server) = self
+            .session
+            .as_ref()
+            .map_or(("Developer token".into(), "read-only".into()), |(u, s)| {
+                (s.user_name.clone(), u.clone())
+            });
+        let mut p = div()
+            .id("acct-menu")
+            .absolute()
+            .top(px(t::HEADER_H + 4.0))
+            .right(px(t::PAGE_PAD))
+            .w(px(260.0))
+            .p(px(t::S2))
+            .flex()
+            .flex_col()
+            .gap(px(2.0))
+            .rounded(px(t::R_PANEL))
+            .border_1()
+            .border_color(t::hairline_strong())
+            .bg(t::surface())
+            .occlude()
+            .child(
+                div()
+                    .px(px(t::S3))
+                    .py(px(t::S2))
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.0))
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(px(t::BODY))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(name),
+                    )
+                    .child(div().truncate().child(ui::mono(server))),
+            )
+            .child(div().h(px(1.0)).bg(t::hairline()));
+        for (i, (label, act)) in self.menu_items().into_iter().enumerate() {
+            let on = i == self.menu_sel;
+            p = p.child(
+                div()
+                    .id(("acct-item", i))
+                    .px(px(t::S3))
+                    .py(px(t::S2))
+                    .rounded(px(6.0))
+                    .text_size(px(t::BODY))
+                    .cursor_pointer()
+                    .when(on, |d| d.bg(t::accent_tint()).text_color(t::accent_text()))
+                    .hover(|s| s.bg(t::glass()))
+                    .on_click(cx.listener(move |t, _, _, cx| t.menu_act(act, cx)))
+                    .child(label),
+            );
+        }
+        // Click anywhere else closes it.
+        div()
+            .id("acct-away")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|t, _, _, cx| {
+                    t.menu = false;
+                    cx.notify();
+                }),
+            )
+            .child(p)
+    }
+
+    /// Settings screen: one row per preference; click or Enter steps it, changes apply and save at once.
+    fn settings_page(&self, cx: &mut Context<Self>) -> AnyElement {
+        let mut list = div().flex().flex_col();
+        for (i, r) in self.settings.rows().into_iter().enumerate() {
+            let on = i == self.settings_sel;
+            list = list.child(
+                div()
+                    .id(("set-row", i))
+                    .px(px(t::S6))
+                    .py(px(t::S4))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(t::S6))
+                    .border_b_1()
+                    .border_color(t::hairline())
+                    .bg(if on { t::accent_tint() } else { rgba(0) })
+                    .cursor_pointer()
+                    .hover(|s| s.bg(t::glass()))
+                    .on_click(cx.listener(move |t, _, _, cx| {
+                        t.settings_sel = i;
+                        t.cycle_setting(i, 1, cx);
+                    }))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.0))
+                            .child(
+                                div()
+                                    .text_size(px(t::BODY))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(r.label),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(t::CAPTION + 1.0))
+                                    .text_color(t::text_secondary())
+                                    .child(r.hint),
+                            ),
+                    )
+                    .child(ui::chip(&r.value, on)),
+            );
+        }
+        div()
+            .id("settings")
+            .size_full()
+            .overflow_y_scroll()
+            .pt(px(t::HEADER_H + t::S8))
+            .pb(px(t::S8))
+            .flex()
+            .flex_col()
+            .gap(px(t::S6))
+            .child(ui::section(
+                "Settings",
+                "Changes apply immediately and are saved on this device.",
+                "Esc to go back".into(),
+            ))
+            .child(
+                div()
+                    .mx(px(t::PAGE_PAD))
+                    .border_t_1()
+                    .border_l_1()
+                    .border_color(t::hairline())
+                    .rounded(px(t::R_PANEL))
+                    .overflow_hidden()
+                    .child(list),
+            )
+            .into_any_element()
     }
 
     fn centered(&self) -> Div {
@@ -2339,6 +2992,8 @@ impl Root {
                     focused: focus == Some(ci),
                     progress: m.progress(),
                 })
+                .group("card")
+                .child(self.chips(m, cx))
                 .on_hover(cx.listener(move |t, hov: &bool, _, cx| {
                     if *hov {
                         t.hover_home(row, ci, cx);
@@ -2412,7 +3067,7 @@ impl Root {
             )
             .into_any_element();
         }
-        let (row, col, scroll) = (p.row, p.col, p.page_scroll.clone());
+        let (row, col, scroll, show) = (p.row, p.col, p.page_scroll.clone(), p.show);
         let lay = p.layout();
         let focus_of = |k: HRow| (lay.get(row) == Some(&k)).then_some(col);
         let row_of = |k: HRow| lay.iter().position(|x| *x == k).unwrap_or(0);
@@ -2423,8 +3078,9 @@ impl Root {
             .iter()
             .map(|r| (r.lib.clone(), r.items.clone(), r.scroll.clone()))
             .collect();
-        let size = self.row_dims(190.0, 1.5);
-        let wide = self.row_dims(300.0, 9.0 / 16.0);
+        let k = self.settings.density.card() / 176.0;
+        let size = self.row_dims(190.0 * k, 1.5);
+        let wide = self.row_dims(300.0 * k, 9.0 / 16.0);
         let nextup = (p.nextup.clone(), p.nextup_scroll.clone());
 
         let hero_el = match hero {
@@ -2494,7 +3150,8 @@ impl Root {
                 "up next",
             ),
         ] {
-            if items.items().is_empty() {
+            let shown = if hrow == HRow::Resume { show.0 } else { show.1 };
+            if !shown || items.items().is_empty() {
                 continue;
             }
             let n = items.items().len();
@@ -2513,6 +3170,9 @@ impl Root {
         }
 
         for (ri, (lib, items, handle)) in rows.into_iter().enumerate() {
+            if !show.2 {
+                break;
+            }
             let meta = match &items {
                 Load::Ready(v) => format!("{} · {} titles", lib.kind_label(), v.len()),
                 _ => lib.kind_label(),
@@ -2553,7 +3213,7 @@ impl Root {
         let kind = p.media.as_ref().map(|m| m.kind_label()).unwrap_or_default();
         let n = p.items.items().len();
         let avail = self.colw() - 2.0 * t::PAGE_PAD - 1.0;
-        self.cols = nav::columns(avail, 176.0 + 2.0 * t::S3, 0.0);
+        self.cols = nav::columns(avail, self.settings.density.card() + 2.0 * t::S3, 0.0);
         let cols = self.cols;
         let cell_w = (avail / cols as f32).floor();
         let (w, h) = (
@@ -2660,6 +3320,8 @@ impl Root {
                     focused: idx == sel,
                     progress: m.progress(),
                 })
+                .group("card")
+                .child(self.chips(m, cx))
                 .on_hover(cx.listener(move |t, hov: &bool, _, cx| {
                     if *hov
                         && let Some(p) = t.stack.last_mut()
@@ -2706,6 +3368,36 @@ impl Root {
                 cx.notify();
             }),
         ));
+        let (mw, mf) = (m.clone(), m.clone());
+        let buttons = buttons
+            .child(ui::pill_button(
+                "detail-seen",
+                if m.played {
+                    "Watched \u{2713}"
+                } else {
+                    "Mark watched"
+                },
+                false,
+                false,
+                cx.listener(move |t, _, _, cx| {
+                    t.toggle_played(&mw, cx);
+                    cx.notify();
+                }),
+            ))
+            .child(ui::pill_button(
+                "detail-fav",
+                if m.favorite {
+                    "\u{2665} Favourite"
+                } else {
+                    "\u{2661} Favourite"
+                },
+                false,
+                false,
+                cx.listener(move |t, _, _, cx| {
+                    t.toggle_fav(&mf, cx);
+                    cx.notify();
+                }),
+            ));
         let hero = self.hero_band(&m, format!("0x01 · {}", m.kind_label()), buttons, 0.55, cx);
 
         // Metadata as feature cells (only what the server told us).
@@ -2941,6 +3633,10 @@ impl Render for Root {
             return self.player_page(cx).into_any_element();
         }
         let body = match self.phase {
+            Phase::Account => match self.accounts.clone() {
+                Some(a) => a.into_any_element(),
+                None => self.connecting(),
+            },
             Phase::Connecting => self.connecting(),
             Phase::Error(ConnectError::NotConfigured) => self.splash(
                 "Connect a media source",
@@ -2960,6 +3656,7 @@ impl Render for Root {
                 true,
                 cx,
             ),
+            Phase::Ready if self.settings_open => self.settings_page(cx),
             Phase::Ready if self.admin_open && self.admin.is_some() => ui::fade_in(
                 div().size_full().children(self.admin.clone()),
                 "admin-page".into(),
@@ -3007,8 +3704,14 @@ impl Render for Root {
             root = root.child(self.header(cx));
         }
         root = root.child(layer(self.grain.clone(), 0.02));
+        if self.menu && matches!(self.phase, Phase::Ready) {
+            root = root.child(self.account_menu(cx));
+        }
         if let Some(bar) = self.now_bar(cx) {
             root = root.child(bar);
+        }
+        if let Some(a) = self.accounts.clone().filter(|a| a.read(cx).dialog_open()) {
+            root = root.child(a);
         }
         if let Some(n) = self.note {
             root = root.child(
