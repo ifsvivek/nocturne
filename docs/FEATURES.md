@@ -60,7 +60,7 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] Access and limits per user: library access, feature switches (remote access, playback, transcoding, remuxing, downloads, deletion, collections, subtitles, public sharing, hidden), maximum parental rating, blocked and allowed tags, remote bitrate limit, session limit, failed-sign-in lockout, profile image upload / remove, display preferences (read only). Jellyfin has no password length or expiry rules, so none are offered
 
 ## Not planned
-Live TV / DVR, SyncPlay, DLNA, acting as a cast target, gapless music playback, Windows and macOS builds.
+Live TV / DVR, DLNA, acting as a cast target, gapless music playback, Windows and macOS builds.
 
 ## Platform and quality
 - [x] Full-window responsive layout, keyboard-first navigation, loading / empty / error states
