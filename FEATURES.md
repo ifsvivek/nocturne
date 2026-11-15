@@ -47,7 +47,8 @@ Update this file at every task boundary. Scope risks are listed at the bottom.
 - [ ] Quick Connect authorize, devices/sessions of own account
 
 ## Admin dashboard (P1, in progress)
-- [~] Dashboard (server info, sessions, tasks, activity), Users, Libraries, Tasks, Sessions/Devices, Settings basics, API keys, plugins list, logs
+- [x] Admin shell + sidebar; Dashboard, Users (create/disable/admin/password/delete), Libraries list/scan, Scheduled Tasks start/stop, Devices, Activity, API Keys, Logs, Plugins (read), General/Metadata/Resume/Streaming (editable), Branding/Networking (read-only)
+- [ ] Admin gaps: Libraries Display/NFO, Transcoding, Trickplay, Backups, editable Branding/Networking, task triggers, plugin install/enable, library add/remove/edit
 - [ ] Users: policy details (library access, parental rating, features, remote access, bitrate limits, sync play, live TV), profile image, password policy
 - [ ] Libraries: add/remove library, paths, type, metadata providers, image fetchers, real-time monitor, schedule, chapter images, trickplay settings, NFO, subtitles downloaders, languages
 - [ ] Playback settings: transcoding (hardware acceleration, ffmpeg path, thread count, tone mapping, throttling), resume, streaming bitrate, trickplay
