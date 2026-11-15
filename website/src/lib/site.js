@@ -34,6 +34,10 @@ const ALT = {
   playback: "In-window playback with the player controls drawn over the video",
   settings: "Settings, including the switch that allows changes to the server",
   "admin-dashboard": "The administrator dashboard inside the same app",
+  "search-crop": "The search palette listing matching movies, shows and episodes",
+  "settings-crop": "The setting Allow NOCTURNE to change data on the server, switched off",
+  "controls-crop": "The player control bar: seek, play, chapters, audio, subtitles and volume",
+  "admin-crop": "Admin dashboard: server details, library counts, sessions and recent activity",
 };
 // Image props for one screenshot: src (largest), srcset, intrinsic size and alt, so layout never shifts.
 export function shot(key) {

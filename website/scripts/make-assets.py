@@ -15,6 +15,18 @@ for f in sorted(glob.glob(f"{SRC}/*.webp")):
     for w in (480, 960, 1440):
         im.resize((w, round(im.height * w / im.width)), Image.LANCZOS).save(f"{OUT}/{base}-{w}.webp", quality=78, method=6)
 
+# Close-ups cut from the same captures (box in 1920x1200 pixels), so small screens and detail tiles stay readable.
+CROPS = {
+    "search-crop": ("05-search", (560, 60, 1360, 620)),
+    "settings-crop": ("07-settings", (20, 180, 1900, 500)),
+    "controls-crop": ("06-playback", (0, 1100, 1920, 1200)),
+    "admin-crop": ("08-admin-dashboard", (250, 50, 1880, 1110)),
+}
+for key, (src, box) in CROPS.items():
+    im = Image.open(f"{SRC}/{src}.webp").convert("RGB").crop(box)
+    for w in sorted({min(x, im.width) for x in (480, 960, 1440)}):
+        im.resize((w, round(im.height * w / im.width)), Image.LANCZOS).save(f"{OUT}/{key}-{w}.webp", quality=80, method=6)
+
 # OG image 1200x630: indigo night, real player + home screenshots, wordmark.
 W, H = 1200, 630
 bg = Image.new("RGB", (W, H), (7, 8, 12))
