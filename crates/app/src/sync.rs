@@ -9,6 +9,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+/// Seconds to wait before reconnect attempt `n` (0-based): 2, 4, 8, 16, then every 30.
+pub fn backoff_secs(n: u32) -> u64 {
+    (2u64 << n.min(4)).min(30)
+}
+
 /// 1 tick = 100 ns.
 pub fn ticks(secs: f64) -> i64 {
     (secs.max(0.0) * 10_000_000.0) as i64
@@ -289,6 +294,13 @@ mod tests {
         assert_eq!(ticks(90.5), 905_000_000);
         assert_eq!(ticks(-3.0), 0);
         assert_eq!(ticks(0.0), 0);
+    }
+
+    #[test]
+    fn backoff_grows_then_caps() {
+        let v: Vec<u64> = (0..8).map(backoff_secs).collect();
+        assert_eq!(v, [2, 4, 8, 16, 30, 30, 30, 30]);
+        assert_eq!(backoff_secs(u32::MAX), 30);
     }
 
     #[test]

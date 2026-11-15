@@ -263,6 +263,16 @@ pub struct Root {
     search_sel: usize,
     search_scroll: ScrollHandle,
     disk: Option<Arc<DiskCache>>,
+    /// The server stopped answering: banner, retry with backoff, cached pages stay up.
+    offline: Option<Offline>,
+}
+
+/// Reconnect state while the server is unreachable.
+struct Offline {
+    /// Failed reconnect attempts so far (drives the backoff).
+    tries: u32,
+    next: Instant,
+    probing: bool,
 }
 
 /// Account menu entries.
@@ -320,6 +330,7 @@ impl Root {
             search_sel: 0,
             search_scroll: ScrollHandle::new(),
             disk: None,
+            offline: None,
         };
         me.disk = DiskCache::default_dir().map(|d| {
             Arc::new(DiskCache::open(
@@ -758,6 +769,138 @@ impl Root {
     fn tick(&mut self, cx: &mut Context<Self>) {
         self.drain_reverts(cx);
         self.sync_tick(cx);
+        self.watch_connection(cx);
+    }
+
+    /// 401 mid-session goes back to sign-in; no answer shows the banner and reconnects with backoff.
+    fn watch_connection(&mut self, cx: &mut Context<Self>) {
+        let Some(src) = self.source.clone() else {
+            return;
+        };
+        match src.health() {
+            nocturne_jellyfin::Health::Unauthorized => self.session_rejected(cx),
+            nocturne_jellyfin::Health::Unreachable => {
+                let off = self.offline.get_or_insert_with(|| Offline {
+                    tries: 0,
+                    next: Instant::now() + Duration::from_secs(crate::sync::backoff_secs(0)),
+                    probing: false,
+                });
+                cx.notify();
+                if off.probing || Instant::now() < off.next {
+                    return;
+                }
+                off.probing = true;
+                self.run(cx, async move { src.ping().await }, |t, ok, _| {
+                    if let Some(o) = t.offline.as_mut() {
+                        o.probing = false;
+                        o.tries += 1;
+                        o.next = Instant::now()
+                            + Duration::from_secs(crate::sync::backoff_secs(o.tries));
+                    }
+                    let _ = ok; // success shows up as Health::Ok on the next tick
+                });
+            }
+            nocturne_jellyfin::Health::Ok => {
+                if self.offline.take().is_some() {
+                    self.toast("Back online.", cx);
+                    self.retry_page(cx);
+                    cx.notify();
+                }
+            }
+        }
+    }
+
+    /// The token is no longer valid: drop the session and say so calmly.
+    fn session_rejected(&mut self, cx: &mut Context<Self>) {
+        self.offline = None;
+        if self.session.is_none() {
+            // Developer-token mode has no login to return to.
+            self.source = None;
+            self.phase = Phase::Error(ConnectError::Rejected);
+            return cx.notify();
+        }
+        self.leave_session(cx);
+        if let Some(a) = self.accounts.clone() {
+            a.update(cx, |a, cx| a.session_expired(cx));
+        }
+        cx.notify();
+    }
+
+    /// Load the current page again (after a failure or a reconnect).
+    fn retry_page(&mut self, cx: &mut Context<Self>) {
+        let Some(p) = self.stack.last() else { return };
+        let (pid, view, media) = (p.pid, p.view, p.media.clone());
+        match (view, media) {
+            (View::Home, _) => self.load_home(pid, cx),
+            (View::Grid, _) => self.browse_reload(pid, cx),
+            (View::Detail, Some(m)) => self.load_detail(pid, m, cx),
+            _ => {}
+        }
+    }
+
+    /// A centred message with a way to try again.
+    fn failed_view(&self, msg: &str, cx: &mut Context<Self>) -> Div {
+        self.centered()
+            .child(
+                div()
+                    .text_size(px(t::BODY))
+                    .text_color(t::text_secondary())
+                    .child(msg.to_string()),
+            )
+            .child(ui::pill_button(
+                "retry-page",
+                "Try again",
+                true,
+                false,
+                cx.listener(|t, _, _, cx| {
+                    t.retry_page(cx);
+                    cx.notify();
+                }),
+            ))
+    }
+
+    /// Non-blocking: the page underneath stays usable.
+    fn offline_banner(&self, cx: &mut Context<Self>) -> Div {
+        let wait = self.offline.as_ref().map_or(0, |o| {
+            o.next.saturating_duration_since(Instant::now()).as_secs() + 1
+        });
+        div()
+            .absolute()
+            .top(px(t::HEADER_H + t::S2))
+            .left_0()
+            .w_full()
+            .flex()
+            .justify_center()
+            .child(
+                div()
+                    .px(px(t::S4))
+                    .py(px(t::S2))
+                    .flex()
+                    .items_center()
+                    .gap(px(t::S4))
+                    .rounded(px(t::R_PANEL))
+                    .bg(t::raised())
+                    .border_1()
+                    .border_color(t::hairline_strong())
+                    .text_size(px(t::BODY))
+                    .child(format!(
+                        "Can't reach your server. Showing what's already loaded. Retrying in {wait}s."
+                    ))
+                    .child(ui::action_button(
+                        "offline-retry".into(),
+                        "Retry now",
+                        true,
+                        false,
+                        false,
+                        false,
+                        cx.listener(|t, _, _, cx| {
+                            if let Some(o) = t.offline.as_mut() {
+                                o.next = Instant::now();
+                            }
+                            cx.notify();
+                        }),
+                    )),
+            )
     }
 
     /// Progress reporting: started once, every 10 s, and on pause/resume/seek. Gated by Settings.
@@ -880,57 +1023,67 @@ impl Root {
         pid
     }
 
+    /// The Home rows. Safe to call again: it starts every row over.
+    fn load_home(&mut self, pid: u64, cx: &mut Context<Self>) {
+        let Some(src) = self.source.clone() else {
+            return;
+        };
+        if let Some(p) = self.page_mut(pid) {
+            (p.libs, p.resume, p.nextup) = (Load::Loading, Load::Loading, Load::Loading);
+            p.rows.clear();
+        }
+        let s2 = src.clone();
+        let s4 = src.clone();
+        let s5 = src.clone();
+        self.run(cx, async move { s5.next_up().await }, move |t, r, _| {
+            if let Some(p) = t.page_mut(pid) {
+                p.nextup = r.map_or(Load::Failed, Load::Ready);
+            }
+        });
+        self.run(cx, async move { s4.resume().await }, move |t, r, _| {
+            if let Some(p) = t.page_mut(pid) {
+                p.resume = r.map_or(Load::Failed, Load::Ready);
+            }
+        });
+        self.run(cx, async move { src.libraries().await }, move |t, r, cx| {
+            let Ok(libs) = r else {
+                if let Some(p) = t.page_mut(pid) {
+                    p.libs = Load::Failed;
+                }
+                return;
+            };
+            if let Some(p) = t.page_mut(pid) {
+                p.rows = libs
+                    .iter()
+                    .map(|l| HomeRow {
+                        lib: l.clone(),
+                        items: Load::Loading,
+                        scroll: ScrollHandle::new(),
+                    })
+                    .collect();
+                p.libs = Load::Ready(libs.clone());
+            }
+            for lib in libs {
+                let (s3, id) = (s2.clone(), lib.id.clone());
+                t.run(cx, async move { s3.latest(&lib).await }, move |t, r, _| {
+                    if let Some(row) = t
+                        .page_mut(pid)
+                        .and_then(|p| p.rows.iter_mut().find(|x| x.lib.id == id))
+                    {
+                        row.items = r.map_or(Load::Failed, Load::Ready);
+                    }
+                });
+            }
+        });
+    }
+
     fn push(&mut self, view: View, media: Option<Media>, cx: &mut Context<Self>) {
         let Some(src) = self.source.clone() else {
             return;
         };
         let pid = self.push_page(view, media.clone());
         match (view, media) {
-            (View::Home, _) => {
-                let s2 = src.clone();
-                let s4 = src.clone();
-                let s5 = src.clone();
-                self.run(cx, async move { s5.next_up().await }, move |t, r, _| {
-                    if let Some(p) = t.page_mut(pid) {
-                        p.nextup = r.map_or(Load::Failed, Load::Ready);
-                    }
-                });
-                self.run(cx, async move { s4.resume().await }, move |t, r, _| {
-                    if let Some(p) = t.page_mut(pid) {
-                        p.resume = r.map_or(Load::Failed, Load::Ready);
-                    }
-                });
-                self.run(cx, async move { src.libraries().await }, move |t, r, cx| {
-                    let Ok(libs) = r else {
-                        if let Some(p) = t.page_mut(pid) {
-                            p.libs = Load::Failed;
-                        }
-                        return;
-                    };
-                    if let Some(p) = t.page_mut(pid) {
-                        p.rows = libs
-                            .iter()
-                            .map(|l| HomeRow {
-                                lib: l.clone(),
-                                items: Load::Loading,
-                                scroll: ScrollHandle::new(),
-                            })
-                            .collect();
-                        p.libs = Load::Ready(libs.clone());
-                    }
-                    for lib in libs {
-                        let (s3, id) = (s2.clone(), lib.id.clone());
-                        t.run(cx, async move { s3.latest(&lib).await }, move |t, r, _| {
-                            if let Some(row) = t
-                                .page_mut(pid)
-                                .and_then(|p| p.rows.iter_mut().find(|x| x.lib.id == id))
-                            {
-                                row.items = r.map_or(Load::Failed, Load::Ready);
-                            }
-                        });
-                    }
-                });
-            }
+            (View::Home, _) => self.load_home(pid, cx),
             (View::Detail, Some(m)) => self.load_detail(pid, m, cx),
             _ => {}
         }
@@ -2182,10 +2335,9 @@ impl Root {
             return div().into_any_element();
         };
         if matches!(p.libs, Load::Failed) {
-            return Self::note_text(
-                "This couldn't be loaded. Check your connection, then restart.",
-            )
-            .into_any_element();
+            return self
+                .failed_view("Your library couldn't be loaded.", cx)
+                .into_any_element();
         }
         let (row, col, scroll, show) = (p.row, p.col, p.page_scroll.clone(), p.show);
         let lay = p.layout();
@@ -2413,6 +2565,9 @@ impl Render for Root {
             .child(div().size_full().child(body));
         if matches!(self.phase, Phase::Ready) {
             root = root.child(self.header(cx));
+            if self.offline.is_some() {
+                root = root.child(self.offline_banner(cx));
+            }
             if !self.admin_open
                 && !self.settings_open
                 && let Some(c) = self.crumbs(cx)

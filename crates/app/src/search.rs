@@ -71,6 +71,8 @@ pub struct Search {
     pub results: Vec<(Group, Vec<Media>)>,
     pub sel: usize,
     pub loading: bool,
+    /// The last request failed (not the same as "no results").
+    pub failed: bool,
     epoch: u64,
     /// Query the current `results` answer.
     answered: String,
@@ -96,6 +98,7 @@ impl Search {
             return None;
         }
         self.loading = true;
+        self.failed = false;
         Some(q)
     }
 
@@ -109,6 +112,16 @@ impl Search {
         self.loading = false;
         self.sel = 0;
         true
+    }
+
+    /// The request for the newest edit failed: say so instead of showing an empty list.
+    pub fn failed(&mut self, epoch: u64) {
+        if epoch == self.epoch {
+            self.loading = false;
+            self.failed = true;
+            self.results.clear();
+            self.answered.clear();
+        }
     }
 
     /// Results in display order, for keyboard selection.
@@ -125,7 +138,7 @@ impl Search {
 
     /// Nothing found for a finished, non-empty query.
     pub fn empty(&self) -> bool {
-        !self.loading && !self.answered.is_empty() && self.results.is_empty()
+        !self.loading && !self.failed && !self.answered.is_empty() && self.results.is_empty()
     }
 }
 

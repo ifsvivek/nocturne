@@ -31,8 +31,10 @@ impl Root {
                     },
                     move |t, r, _| {
                         if let Some(s) = t.search.as_mut() {
-                            // A failed request leaves the box empty, not stuck on "searching".
-                            s.arrived(epoch, &q, r.unwrap_or_default());
+                            match r {
+                                Ok(items) => drop(s.arrived(epoch, &q, items)),
+                                Err(_) => s.failed(epoch),
+                            }
                         }
                     },
                 );
@@ -112,6 +114,7 @@ impl Root {
     }
 
     pub(super) fn search_overlay(&mut self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let failed = self.search.as_ref().is_some_and(|s| s.failed);
         let (query, loading, empty, groups, sel) = match &self.search {
             Some(s) => (
                 s.query.clone(),
@@ -155,6 +158,10 @@ impl Root {
                         .child(div().text_size(px(t::BODY)).child(r)),
                 );
             }
+        } else if failed {
+            list = list.child(note(
+                "Search couldn't reach your server. Keep typing to try again.",
+            ));
         } else if empty {
             list = list.child(note("No results. Try fewer or different words."));
         } else if groups.is_empty() {

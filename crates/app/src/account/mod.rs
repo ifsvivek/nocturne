@@ -291,6 +291,20 @@ impl Accounts {
         cx.notify();
     }
 
+    /// The server rejected the stored login mid-session: forget it, show the login form with a
+    /// calm note.
+    pub fn session_expired(&mut self, cx: &mut Context<Self>) {
+        let url = self.st.url.clone();
+        bridge::spawn(async move {
+            let _ = tokio::task::spawn_blocking(move || nocturne_session::delete(&url)).await;
+        });
+        self.qc_secret = None;
+        self.dialog = None;
+        self.st.signed_out();
+        self.st.msg = Some(MSG_EXPIRED);
+        cx.notify();
+    }
+
     /// Log out on the server, delete the keyring entry, show the login form.
     pub fn sign_out(&mut self, client: Option<UserClient>, cx: &mut Context<Self>) {
         let url = self.st.url.clone();

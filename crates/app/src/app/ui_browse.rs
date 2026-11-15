@@ -600,7 +600,7 @@ impl Root {
         let tabs = br.tabs.clone();
         let (cur_tab, coll) = (br.tab, br.scope.collection.clone());
         let body: AnyElement = if br.failed {
-            Self::note_text("This couldn't be loaded. Press Esc to go back and try again.")
+            self.failed_view("This couldn't be loaded.", cx)
                 .into_any_element()
         } else if loading {
             div()

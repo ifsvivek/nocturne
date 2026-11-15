@@ -19,7 +19,7 @@ pub use browse::{
     BrowseQuery, Chapter, ExternalUrl, FilterOptions, ItemExtra, MediaSource, NameId, Person,
     SearchHint, Stream,
 };
-pub use client::{Client, ImageType, ItemsQuery};
+pub use client::{Client, Health, ImageType, ItemsQuery};
 pub use config::Config;
 pub use model::{Item, Items, PublicInfo, User, UserData};
 pub use play::{MediaStream, PlayItem, Segment, SegmentKind, Transcode, TrickplayInfo};

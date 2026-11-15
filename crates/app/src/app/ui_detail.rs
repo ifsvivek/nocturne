@@ -707,6 +707,30 @@ impl Root {
                 self.detail_strip(s, items, &handle, focus_of(DRow::Strip(s)), land, dims, cx);
             page = page.child(Self::strip_band(title, text, format!("{n}"), strip));
         }
+        if m.kind == Kind::Person
+            && let Some(p) = self.stack.last()
+        {
+            let all = [&p.kids, &p.kids2];
+            let any_items = all.iter().any(|l| !l.items().is_empty());
+            if !any_items {
+                page = if all.iter().any(|l| matches!(l, Load::Loading)) {
+                    page.child(ui::band(div().p(px(t::S6)).child(ui::mono("loading"))))
+                } else if all.iter().any(|l| matches!(l, Load::Failed)) {
+                    page.child(ui::band(
+                        div()
+                            .h(px(220.0))
+                            .child(self.failed_view("This couldn't be loaded.", cx)),
+                    ))
+                } else {
+                    page.child(ui::band(
+                        div()
+                            .p(px(t::S6))
+                            .text_color(t::text_secondary())
+                            .child("Nothing in your library features this person."),
+                    ))
+                };
+            }
+        }
         if !full.info.is_empty() {
             page = page.child(ui::band(info_table(&full)));
         }
@@ -982,9 +1006,17 @@ impl Root {
             Load::Loading => page.child(ui::band(div().p(px(t::S6)).child(ui::mono("loading")))),
             Load::Failed => page.child(ui::band(
                 div()
-                    .p(px(t::S6))
-                    .text_color(t::text_secondary())
-                    .child("This couldn't be loaded."),
+                    .h(px(220.0))
+                    .child(self.failed_view("This couldn't be loaded.", cx)),
+            )),
+            Load::Ready(v) if v.is_empty() => page.child(ui::band(
+                div().p(px(t::S6)).text_color(t::text_secondary()).child(
+                    if m.kind == Kind::Series {
+                        "No episodes have been added yet."
+                    } else {
+                        "Nothing in here yet."
+                    },
+                ),
             )),
             Load::Ready(v) if matches!(m.kind, Kind::Series | Kind::Season) => {
                 let avail = self.colw() - 2.0 * t::PAGE_PAD;

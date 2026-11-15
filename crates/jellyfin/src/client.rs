@@ -2,7 +2,19 @@ use crate::play::RawSegments;
 use crate::{Config, Error, Item, Items, PlayItem, PublicInfo, Result, Segment, Transcode, User};
 use reqwest::{Url, header};
 use serde::de::DeserializeOwned;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
+
+/// What the latest requests say about the connection (shared by every clone of a `Client`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Health {
+    Ok,
+    /// The server answered 401: the token is no longer valid.
+    Unauthorized,
+    /// No answer (connect error, timeout) or a gateway error.
+    Unreachable,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageType {
@@ -83,6 +95,7 @@ pub struct Client {
     base: Url,
     token: String,
     device_id: String,
+    health: Arc<AtomicU8>,
 }
 
 impl std::fmt::Debug for Client {
@@ -116,7 +129,28 @@ impl Client {
             base,
             token: cfg.token,
             device_id,
+            health: Arc::new(AtomicU8::new(Health::Ok as u8)),
         })
+    }
+
+    /// The connection state as the most recent requests left it.
+    pub fn health(&self) -> Health {
+        match self.health.load(Ordering::Relaxed) {
+            1 => Health::Unauthorized,
+            2 => Health::Unreachable,
+            _ => Health::Ok,
+        }
+    }
+
+    /// Record one outcome. 401 sticks (until a new client); an answer clears `Unreachable`.
+    fn note(&self, status: Option<u16>) {
+        let h = match status {
+            Some(401) => Health::Unauthorized,
+            Some(502..=504) | None => Health::Unreachable,
+            Some(_) if self.health() == Health::Unauthorized => return,
+            Some(_) => Health::Ok,
+        };
+        self.health.store(h as u8, Ordering::Relaxed);
     }
 
     /// Full `Authorization` header value, for handing to mpv (`http-header-fields`).
@@ -225,14 +259,7 @@ impl Client {
     /// Authenticated binary GET of a URL built by this client.
     pub(crate) async fn fetch(&self, url: Url) -> Result<Vec<u8>> {
         let path = url.path().to_string();
-        let resp = self.http.get(url).send().await.map_err(http_err)?;
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(Error::Status {
-                status: status.as_u16(),
-                path,
-            });
-        }
+        let resp = self.send(url, path).await?;
         Ok(resp.bytes().await.map_err(http_err)?.to_vec())
     }
 
@@ -258,18 +285,10 @@ impl Client {
         index: u32,
         source_id: &str,
     ) -> Result<Vec<u8>> {
-        let url = self.trickplay_url(id, width, index, source_id);
-        let path = Url::parse(&url)
-            .map(|u| u.path().to_string())
-            .unwrap_or_default();
-        let resp = self.http.get(url).send().await.map_err(http_err)?;
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(Error::Status {
-                status: status.as_u16(),
-                path,
-            });
-        }
+        let url = Url::parse(&self.trickplay_url(id, width, index, source_id))
+            .map_err(|_| Error::Config("trickplay url".into()))?;
+        let path = url.path().to_string();
+        let resp = self.send(url, path).await?;
         Ok(resp.bytes().await.map_err(http_err)?.to_vec())
     }
 
@@ -367,6 +386,25 @@ impl Client {
         u
     }
 
+    /// One GET: records the outcome for `health()`, and turns a non-2xx answer into `Error::Status`.
+    async fn send(&self, url: Url, path: String) -> Result<reqwest::Response> {
+        let resp = self.http.get(url).send().await.map_err(|e| {
+            if e.is_connect() || e.is_timeout() {
+                self.note(None);
+            }
+            http_err(e)
+        })?;
+        let status = resp.status();
+        self.note(Some(status.as_u16()));
+        if !status.is_success() {
+            return Err(Error::Status {
+                status: status.as_u16(),
+                path,
+            });
+        }
+        Ok(resp)
+    }
+
     pub(crate) async fn get<T: DeserializeOwned>(
         &self,
         segs: &[&str],
@@ -374,14 +412,7 @@ impl Client {
     ) -> Result<T> {
         let url = self.url(segs, pairs);
         let path = url.path().to_string();
-        let resp = self.http.get(url).send().await.map_err(http_err)?;
-        let status = resp.status();
-        if !status.is_success() {
-            return Err(Error::Status {
-                status: status.as_u16(),
-                path,
-            });
-        }
+        let resp = self.send(url, path).await?;
         resp.json().await.map_err(http_err)
     }
 }
@@ -419,6 +450,23 @@ mod tests {
             token: "tok123".into(),
         })
         .unwrap()
+    }
+
+    #[test]
+    fn health_follows_outcomes() {
+        let c = client();
+        assert_eq!(c.health(), Health::Ok);
+        c.note(None);
+        assert_eq!(c.health(), Health::Unreachable);
+        c.note(Some(404)); // an answer, even a miss, means the server is there
+        assert_eq!(c.health(), Health::Ok);
+        c.note(Some(503));
+        assert_eq!(c.health(), Health::Unreachable);
+        c.note(Some(401));
+        assert_eq!(c.health(), Health::Unauthorized);
+        c.note(Some(200));
+        assert_eq!(c.health(), Health::Unauthorized, "401 sticks");
+        assert_eq!(c.clone().health(), Health::Unauthorized, "shared by clones");
     }
 
     #[test]

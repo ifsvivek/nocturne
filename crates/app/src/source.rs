@@ -663,6 +663,16 @@ impl Source {
         pick_episode(&eps).cloned().ok_or(Failed)
     }
 
+    /// What the latest requests say about the connection.
+    pub fn health(&self) -> jf::Health {
+        self.client.health()
+    }
+
+    /// A cheap unauthenticated read, used to notice the server coming back.
+    pub async fn ping(&self) -> bool {
+        self.client.public_info().await.is_ok()
+    }
+
     /// The client and user id, for the player page's own reads.
     pub fn client(&self) -> (Arc<jf::Client>, String) {
         (self.client.clone(), self.user.to_string())
