@@ -3,6 +3,7 @@
 # secrets / local config — never commit Jellyfin credentials
 .env
 .env.*
+!.env.example
 *.local.toml
 nocturne.local.*
 secrets/
@@ -19,3 +20,6 @@ secrets/
 
 # local-only research notes (not published)
 /docs/research/
+
+# personal agent/workflow notes (not published)
+/CLAUDE.local.md
