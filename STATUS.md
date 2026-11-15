@@ -8,6 +8,7 @@ Orchestrator's running log. Update at every task boundary.
 
 ## Done
 - [x] Repo: private GitHub repo, README, .gitignore, .env.example
+- [x] Task 5a: `crates/jellyfin-admin` (admin reads, writes, `Confirmed` token for destructive ops) + `scripts/test-jellyfin.sh` throwaway instance on :8097 + 4-layer `TestServerGuard`. 8/8 live tests on throwaway only. Reviewed.
 - [x] Task 3: `crates/app` GPUI shell, theme (hairline/mono/blue), home hero, library grid, detail, bridge (tokio runtime). No component lib used: gpui-kit/gpui-component need `gpui-pre`, incompatible with gpui 0.2.2. Reviewed: audit clean, 14 tests, visually matches reference. vendor/xattr committed.
 - [x] Task 2: `crates/player` (libmpv2, own-window playback, state+event API, headless tests, live test OK) + Jellyfin base_url validation (reviewed)
 - [x] Task 1: workspace + read-only `nocturne-jellyfin` client (reviewed, tests green, pushed)
@@ -27,6 +28,9 @@ Orchestrator's running log. Update at every task boundary.
 - Auth header for mpv passed via `http-header-fields`, not `api_key` in URLs.
 
 ## Follow-ups
+- `scripts/test-jellyfin.sh`: `/tmp/?*` case pattern also matches `/tmp/..`; reject any `..` in NOCTURNE_JF_TEST_DIR before `reset` does rm -rf.
+- Git: origin has pre-amend commit 44c389d; merge origin/main (no force-push) after Task 4 finishes, audit full range before pushing.
+- `jellyfin-admin` depends on `nocturne_jellyfin::Config`; keep its fields stable.
 - Windowed (non-headless) mpv with gpu-next not yet exercised; verify during integration.
 - `Client::auth_header()` is the value only; callers prefix `Authorization: ` for `Player::load`.
 - Cargo.lock to be committed after Task 3 lands.
