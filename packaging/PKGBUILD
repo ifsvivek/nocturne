@@ -17,7 +17,7 @@ options=(!lto) # aws-lc-sys C objects built with -flto cannot be linked by rustc
 makedepends=(cargo pkgconf)
 # libmpv2-sys uses pregenerated bindings (no clang/bindgen); it only needs libmpv to link, shipped by `mpv`.
 makedepends+=(mpv)
-source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('3c01fbc914dfddcdcde5fff8e3b6a5614a69aaa3e53835aa559d5b8f844ebb33')
 
 prepare() {
