@@ -1,0 +1,83 @@
+name: Bug report
+description: Something in NOCTURNE does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. NOCTURNE is an unofficial Linux client for Jellyfin. Please do not paste access tokens,
+        server addresses, usernames or personal media titles anywhere in this issue.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: NOCTURNE version
+      description: Release version, or the commit if built from source.
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution
+      description: For example Arch Linux, Fedora 42, Ubuntu 24.04.
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Session type
+      description: Output of `echo $XDG_SESSION_TYPE`.
+      options: ["Wayland", "X11", "Other / not sure"]
+    validations:
+      required: true
+  - type: input
+    id: compositor
+    attributes:
+      label: Compositor or desktop environment
+      description: Optional, for example GNOME, KDE Plasma, sway.
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver
+      description: For example NVIDIA proprietary 5xx, Mesa (RADV) 25.x, Intel Mesa.
+    validations:
+      required: true
+  - type: input
+    id: mpv
+    attributes:
+      label: mpv / libmpv version
+      description: Output of `mpv --version`.
+    validations:
+      required: true
+  - type: input
+    id: jellyfin
+    attributes:
+      label: Jellyfin server version
+    validations:
+      required: true
+  - type: dropdown
+    id: video
+    attributes:
+      label: Video backend
+      options: ["In-window (default on Wayland)", "External mpv window (NOCTURNE_VIDEO=external or X11)", "Not relevant"]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Terminal output from running `nocturne`. Remove access tokens, API keys, server addresses and usernames
+        before pasting; if you are unsure, describe the output instead.
+      render: text

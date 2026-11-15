@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: archlinux:base-devel
+    steps:
+      # Build dependencies from docs/PACKAGING.md (mpv provides libmpv.so.2).
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed git rust pkgconf mpv dbus fontconfig freetype2 libglvnd libxcb \
+            libxkbcommon libxkbcommon-x11 vulkan-icd-loader wayland
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: test
+        run: cargo test --workspace --locked
