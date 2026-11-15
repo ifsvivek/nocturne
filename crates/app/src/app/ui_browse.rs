@@ -1119,7 +1119,7 @@ impl Root {
         };
         let end = ((r + 1) * cols).min(br.names.len());
         let mut row = div().h(px(NAME_ROW_H)).flex();
-        for i in r * cols..end {
+        for (i, item) in br.names.iter().enumerate().take(end).skip(r * cols) {
             let on = i == sel;
             row = row.child(
                 div()
@@ -1154,7 +1154,7 @@ impl Root {
                             .text_size(px(t::BODY))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(if on { t::text() } else { t::text_secondary() })
-                            .child(br.names[i].label.clone()),
+                            .child(item.label.clone()),
                     )
                     .child(ui::mono(format!("0x{:02x}", i + 1))),
             );

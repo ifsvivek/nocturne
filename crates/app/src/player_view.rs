@@ -669,8 +669,8 @@ impl PlayerView {
 
     fn apply_pic(&mut self) {
         let s = self.set.clone();
-        for i in 0..4 {
-            self.setp(video::PIC_PROPS[i], &s.pic[i].to_string());
+        for (prop, v) in video::PIC_PROPS.iter().zip(s.pic.iter()) {
+            self.setp(prop, &v.to_string());
         }
         self.setp("video-zoom", &s.zoom_log2().to_string());
         self.setp("video-pan-x", &(s.pan[0] as f64 * 0.05).to_string());
