@@ -95,7 +95,8 @@ describe("worker responses", () => {
       assert.equal(r.headers.get("vary"), null);
     }
     assert.match(base.headers.get("etag"), /^"[0-9a-f]{12}"$/);
-    assert.match(base.headers.get("cache-control"), /max-age=300, must-revalidate/);
+    assert.match(base.headers.get("cache-control"), /max-age=300, must-revalidate, no-transform/);
+    for (const p of ["/privacy", "/nope"]) assert.match((await get(wOff, p)).headers.get("cache-control"), /no-transform/, p);
     assert.equal((await get(wOff, "/", { headers: { "if-none-match": base.headers.get("etag") } })).status, 304);
     // binaries are real bytes: PNG signature, exact length
     const png = Buffer.from(await (await get(wOff, "/og.png", { headers: { "accept-encoding": "br" } })).arrayBuffer());

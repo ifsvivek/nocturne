@@ -20,6 +20,8 @@ const TYPES = {
 };
 const IMMUTABLE = "public, max-age=31536000, immutable";
 const SHORT = "public, max-age=300, must-revalidate";
+// no-transform stops Cloudflare rewriting HTML (e.g. auto-injected Web Analytics beacon).
+const HTML = "public, max-age=300, must-revalidate, no-transform";
 const MEDIUM = "public, max-age=3600, must-revalidate";
 const hash = (b) => createHash("sha256").update(b).digest("hex").slice(0, 12);
 
@@ -75,7 +77,7 @@ export function pack({ siteDir = join(ROOT, "build"), outDir = join(ROOT, "dist"
       continue; // inlined into every page, never requested
     }
 
-    const cache = rel.startsWith("/_app/immutable/") ? IMMUTABLE : ext === ".html" || ext === ".txt" || ext === ".xml" ? SHORT : MEDIUM;
+    const cache = rel.startsWith("/_app/immutable/") ? IMMUTABLE : ext === ".html" ? HTML : ext === ".txt" || ext === ".xml" ? SHORT : MEDIUM;
     const text = /^(text|application\/xml|image\/svg)/.test(type);
     table[path] = {
       type, cache, csp, status, hidden,
@@ -145,7 +147,7 @@ export default {
     }
     const a = Object.hasOwn(ASSETS, path) ? ASSETS[path] : undefined;
     if (!a || a.hidden) {
-      return respond(ASSETS["/404"], request, 404, { "Cache-Control": "public, max-age=60", "X-Robots-Tag": "noindex" });
+      return respond(ASSETS["/404"], request, 404, { "Cache-Control": "public, max-age=60, no-transform", "X-Robots-Tag": "noindex" });
     }
     return respond(a, request, a.status || 200);
   },
