@@ -3,9 +3,12 @@
 </script>
 
 <Seo title="Not found: NOCTURNE" description="This page does not exist." robots="noindex" />
-<div class="wrap min-h-[60vh] max-w-[720px] py-[clamp(48px,8vw,96px)]">
-  <p class="label">Error 404</p>
-  <h1 class="mt-3 text-[clamp(2rem,5vw,3rem)] font-normal leading-[1.1] tracking-tight">Lost in the dark</h1>
-  <p class="mt-5 text-lg text-ink-2">There is nothing at this address.</p>
-  <p class="mt-6"><a class="btn" href="/">Back to NOCTURNE</a></p>
-</div>
+<section class="relative isolate overflow-hidden">
+  <div class="drift pointer-events-none absolute -inset-x-[15%] -top-[30%] -z-10 h-[120%] bg-[radial-gradient(ellipse_40%_45%_at_70%_30%,rgb(75_85_224/0.35),transparent_70%)]" aria-hidden="true"></div>
+  <div class="wrap grid min-h-[70dvh] content-center py-[clamp(64px,10vw,128px)]">
+    <p class="label rise">Error 404</p>
+    <h1 class="display rise d1 mt-6 max-w-[14ch]">Lost in the dark.</h1>
+    <p class="lede rise d2 mt-6">There is nothing at this address.</p>
+    <p class="rise d3 m-0 mt-10"><a class="btn" href="/">Back to NOCTURNE <i aria-hidden="true">&rarr;</i></a></p>
+  </div>
+</section>

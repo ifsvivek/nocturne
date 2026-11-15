@@ -1,7 +1,7 @@
 // Builds the site (RELEASED false and true) with vite and checks the emitted files.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { before, test } from "node:test";
@@ -33,7 +33,7 @@ test("RELEASED=false: no repo or release links, coming soon", () => {
   assert.match(read(off, "index.html"), /Coming soon/);
   // Full product content shows while unreleased; only links and download buttons are gated.
   const h = read(off, "index.html");
-  for (const s of ["A tour of the app", "Read-only until you say otherwise", "Requirements and install", "Questions", "srcset="]) assert.ok(h.includes(s), s);
+  for (const s of ["The whole library, one window.", "Read-only until you say otherwise", "Requirements and install", "Questions", "srcset="]) assert.ok(h.includes(s), s);
   assert.doesNotMatch(h, /makepkg|install\.sh|cargo build/);
 });
 
@@ -68,6 +68,10 @@ test("required copy, no JS, no inline style", () => {
     assert.doesNotMatch(readFileSync(f, "utf8"), /<script\b|<style\b|\sstyle=/i, f);
   }
   assert.doesNotMatch(h, /\b(Windows|macOS)\b/);
+  // One self-hosted font, preloaded, and the stylesheet points at the same hashed file.
+  const font = h.match(/<link rel="preload" href="([^"]+\.woff2)" as="font"/)?.[1];
+  assert.ok(font && existsSync(join(off, font)), "preloaded font file");
+  assert.ok(files(off).filter((f) => f.endsWith(".css")).some((f) => readFileSync(f, "utf8").includes(font)), "css uses the preloaded font");
 });
 
 test("no external origins except upstream credit links", () => {
@@ -83,7 +87,7 @@ test("no personal data patterns", () => {
 
 test("_headers carries the strict CSP and no-transform", () => {
   const h = read(off, "_headers");
-  assert.match(h, /Content-Security-Policy: default-src 'none'; style-src 'self'; manifest-src 'self'; img-src 'self' data:/);
+  assert.match(h, /Content-Security-Policy: default-src 'none'; style-src 'self'; manifest-src 'self'; img-src 'self' data:; font-src 'self';/);
   assert.match(h, /frame-ancestors 'none'/);
   assert.doesNotMatch(h, /unsafe-eval|unsafe-inline/);
   for (const k of ["Strict-Transport-Security", "Referrer-Policy: no-referrer", "X-Content-Type-Options: nosniff", "Permissions-Policy", "no-transform"]) assert.ok(h.includes(k), k);

@@ -4,8 +4,8 @@
 </script>
 
 <header class="sticky top-3 z-50 mt-3">
-  <div class="wrap flex h-14 items-center gap-4 rounded-full border border-white/10 bg-frame/75 pl-5 pr-2 shadow-[inset_0_1px_0_rgb(255_255_255/0.06),0_18px_50px_-28px_rgb(75_85_224/0.5)] backdrop-blur-xl">
-    <a class="inline-flex items-center gap-2.5 font-mono text-[0.84rem] font-semibold tracking-[0.22em] text-ink no-underline" href="/" aria-label="NOCTURNE home">
+  <div class="wrap flex h-14 items-center gap-4 rounded-full bg-frame/70 pl-5 pr-2 ring-1 ring-white/10 ring-inset shadow-[inset_0_1px_0_rgb(255_255_255/0.06),0_20px_50px_-30px_rgb(0_0_0/0.9)] backdrop-blur-xl">
+    <a class="inline-flex items-center gap-2.5 text-[0.86rem] font-semibold tracking-[0.24em] text-ink no-underline hover:text-white" href="/" aria-label="NOCTURNE home">
       <img src="/icon.svg" width="24" height="24" alt=""><span>NOCTURNE</span>
     </a>
     <nav class="ml-auto hidden gap-0.5 md:flex" aria-label="Primary">
@@ -14,7 +14,7 @@
       {/each}
     </nav>
     <div class="ml-auto flex-none md:ml-0">
-      {#if RELEASED}<a class="btn btn-sm" href={RELEASES}>Download</a>{:else}<span class="chip">Coming soon</span>{/if}
+      {#if RELEASED}<a class="btn btn-sm" href={RELEASES}>Download</a>{:else}<span class="chip min-h-9 text-[0.7rem]">Coming soon</span>{/if}
     </div>
   </div>
 </header>

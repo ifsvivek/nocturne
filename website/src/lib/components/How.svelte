@@ -1,22 +1,42 @@
 <script>
+  import { shot } from "#lib/site.js";
+  const video = shot("playback");
+  const controls = shot("controls-crop");
   const steps = [
-    ["Your Jellyfin server", "Your library, your users. NOCTURNE talks only to the server you configure."],
-    ["NOCTURNE", "A native GPUI app: browse, search, details, the player UI and the admin dashboard."],
-    ["libmpv", "Decodes and renders into a surface under the window. The controls are drawn on top."],
+    ["Your server", "NOCTURNE talks only to the Jellyfin server you configure. Browsing and playback only read from it."],
+    ["Controls, drawn by GPUI", "The whole interface is a native GPUI app rendered on the GPU: libraries, details, the player controls and the admin dashboard."],
+    ["A transparent window", "The window is transparent and paints nothing where the video sits, so the picture underneath shows through."],
+    ["Video, by libmpv", "libmpv decodes and renders through OpenGL and EGL into a Wayland subsurface below the window. On X11, video plays in an external mpv window instead."],
   ];
 </script>
 
-<section id="how" class="border-t border-line py-[clamp(56px,8vw,112px)] [content-visibility:auto] [contain-intrinsic-size:auto_420px]" aria-labelledby="how-h">
-  <div class="wrap">
-    <h2 id="how-h" class="h2 reveal max-w-[22ch]">How it works</h2>
-    <ol class="m-0 mt-12 grid list-none gap-10 p-0 md:grid-cols-3 md:gap-0">
-      {#each steps as [name, text], i}
-        <li class="reveal relative grid content-start gap-3 md:pr-10">
-          <span class="relative block h-px w-full bg-gradient-to-r from-accent/70 via-line-strong to-transparent {i === 2 ? 'md:to-transparent' : ''}" aria-hidden="true"></span>
-          <strong class="text-xl font-medium tracking-tight {i === 1 ? 'text-accent-ink' : ''}">{name}</strong>
-          <span class="max-w-[34ch] text-ink-2">{text}</span>
-        </li>
-      {/each}
-    </ol>
+<section id="how" class="section relative isolate overflow-hidden rule" aria-labelledby="how-h">
+  <div class="pool right-[-10%] top-[20%] size-[560px] bg-indigo/20" aria-hidden="true"></div>
+  <div class="wrap grid items-center gap-16 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+    <div>
+      <h2 id="how-h" class="h2 reveal">How it works</h2>
+      <ol class="m-0 mt-10 grid list-none gap-0 p-0">
+        {#each steps as [name, text], i}
+          <li class="reveal grid gap-1.5 border-l py-4 pl-6 {i === 0 ? 'border-accent' : 'border-line-strong'}">
+            <strong class="text-[1.06rem] font-semibold text-ink">{name}</strong>
+            <span class="max-w-[46ch] text-ink-2">{text}</span>
+          </li>
+        {/each}
+      </ol>
+    </div>
+
+    <!-- Exploded view of the window, top to bottom: controls, transparent window, video. -->
+    <figure class="explode reveal m-0 grid aspect-[1/0.82] place-items-center">
+      <div class="explode-stack relative aspect-[16/10] w-[78%] max-sm:w-[86%]">
+        <div class="layer-1 absolute inset-0">
+          <img class="size-full rounded-xl object-cover shadow-[0_60px_80px_-30px_rgb(0_0_0/0.9)] ring-1 ring-white/10" src={video.src} srcset={video.srcset} sizes="(min-width: 1024px) 560px, 86vw" alt={video.alt} width={video.width} height={video.height} loading="lazy" decoding="async">
+        </div>
+        <div class="layer-2 absolute inset-0 rounded-xl bg-[linear-gradient(140deg,rgb(255_255_255/0.07),rgb(255_255_255/0.01))] ring-1 ring-white/30"></div>
+        <div class="layer-3 absolute inset-0 flex items-end rounded-xl ring-1 ring-accent/40">
+          <img class="w-full rounded-b-xl mix-blend-screen" src={controls.src} srcset={controls.srcset} sizes="(min-width: 1024px) 560px, 86vw" alt={controls.alt} width={controls.width} height={controls.height} loading="lazy" decoding="async">
+        </div>
+      </div>
+      <figcaption class="sr-only">The video path as three layers: libmpv video at the bottom, the transparent GPUI window above it, the GPUI controls on top.</figcaption>
+    </figure>
   </div>
 </section>

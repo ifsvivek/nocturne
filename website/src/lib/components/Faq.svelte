@@ -9,13 +9,17 @@
   ];
 </script>
 
-<section id="faq" class="border-t border-line py-[clamp(64px,9vw,136px)]" aria-labelledby="faq-h">
-  <div class="wrap grid gap-10 min-[900px]:grid-cols-[4fr_8fr] min-[900px]:gap-16">
-    <h2 id="faq-h" class="h2 reveal min-[900px]:sticky min-[900px]:top-28 min-[900px]:self-start">Questions</h2>
-    <div class="reveal border-t border-line">
+<!-- Every answer is open: six short answers read faster in a grid than behind six clicks. -->
+<section id="faq" class="section rule" aria-labelledby="faq-h">
+  <div class="wrap grid gap-12 lg:grid-cols-[minmax(0,4fr)_minmax(0,8fr)] lg:gap-16">
+    <h2 id="faq-h" class="h2 reveal lg:sticky lg:top-32 lg:self-start">Questions</h2>
+    <dl class="m-0 grid gap-x-12 gap-y-12 md:grid-cols-2">
       {#each items as [q, a]}
-        <details class="faq"><summary>{q}</summary><div><p>{a}</p></div></details>
+        <div class="reveal">
+          <dt class="text-[1.06rem] font-semibold leading-snug text-ink">{q}</dt>
+          <dd class="m-0 mt-3 text-pretty text-ink-2">{a}</dd>
+        </div>
       {/each}
-    </div>
+    </dl>
   </div>
 </section>

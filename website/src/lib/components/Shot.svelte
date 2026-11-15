@@ -1,11 +1,11 @@
 <script>
   import { shot } from "#lib/site.js";
-  // name: screenshot key; sizes: the <img> sizes attribute; fit: extra classes to crop (object-cover) in fixed-height tiles.
-  let { name, sizes = "100vw", eager = false, hover = true, fit = "", class: cls = "" } = $props();
+  // name: screenshot key; sizes: the <img> sizes attribute; fit: extra <img> classes (object-cover crops in fixed tiles).
+  let { name, sizes = "100vw", eager = false, fit = "", class: cls = "" } = $props();
   const s = shot(name);
 </script>
 
-<figure class="frame {hover ? 'frame-hover' : ''} {cls}">
+<figure class="frame {cls}">
   <img class={fit} src={s.src} srcset={s.srcset} {sizes} alt={s.alt} width={s.width} height={s.height}
-    loading={eager ? "eager" : "lazy"} fetchpriority={eager ? "high" : "auto"} decoding={eager ? "sync" : "async"}>
+    loading={eager ? "eager" : "lazy"} fetchpriority={eager ? "high" : "auto"} decoding="async">
 </figure>

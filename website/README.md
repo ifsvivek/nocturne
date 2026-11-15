@@ -1,10 +1,11 @@
 # NOCTURNE website
 
-Static site for `nocturne.ifsvivek.in`: SvelteKit (Svelte 5, `adapter-static`, every page prerendered with `csr = false`, so no JavaScript ships) and Tailwind CSS v4, served by a Cloudflare Worker with static assets. System fonts only, no third-party requests.
+Static site for `nocturne.ifsvivek.in`: SvelteKit (Svelte 5, `adapter-static`, every page prerendered with `csr = false`, so no JavaScript ships) and Tailwind CSS v4, served by a Cloudflare Worker with static assets. One self-hosted font, no third-party requests.
 
-- `src/routes/` pages (`/`, `/privacy`, `/404`); `src/lib/components/` sections (Hero, Tour, How, Safety, Install, Faq, Limits); `src/app.css` design tokens from `crates/app/src/theme.rs`, film grain and all motion.
-- Motion is CSS only: hero load-in cascade, slow gradient drift, scroll-driven reveal and parallax (`animation-timeline`, content simply shows where unsupported), all disabled under `prefers-reduced-motion`.
-- `static/` favicon, `og.jpg`, `manifest.webmanifest`, `robots.txt`, `sitemap.xml`, and `_headers` (strict CSP, HSTS, Referrer-Policy, `no-transform` so Cloudflare does not rewrite HTML). The CSP has one addition for the manifest: `manifest-src 'self'`.
+- `src/routes/` pages (`/`, `/privacy`, `/404`); `src/lib/components/` sections: Hero (split, two windows in perspective), Tour (browse bento, overlapping detail windows, the playback "theatre", admin), How (an exploded view of the real video layers: libmpv video, transparent window, GPUI controls), Safety, Install, Faq, Limits; `src/app.css` design tokens from `crates/app/src/theme.rs`, type scale, film grain and all motion.
+- Type: Geist variable (SIL OFL 1.1, licence in `src/lib/fonts/OFL.txt`), latin subset woff2 from the Fontsource package, `font-display: swap`, preloaded from `+layout.svelte`; Vite hashes it into `_app/immutable/`. Code uses the system monospace.
+- Motion is CSS only: hero load-in cascade, slow gradient drift, and scroll-driven reveals, hero parallax, the theatre growing to full size and the exploded layers separating (`animation-timeline`). Content is visible by default: the scroll-driven parts sit inside `@supports (animation-timeline: view())` and everything is off under `prefers-reduced-motion`. Avoid `filter` in text keyframes; headless Chrome left blurred text unpainted.
+- `static/` favicon, `og.jpg`, `manifest.webmanifest`, `robots.txt`, `sitemap.xml`, and `_headers` (strict CSP, HSTS, Referrer-Policy, `no-transform` so Cloudflare does not rewrite HTML). The CSP adds `manifest-src 'self'` for the manifest and `font-src 'self'` for the font.
 - `wrangler.jsonc` serves `build/` on the custom domain.
 
 ## RELEASED flag
@@ -13,7 +14,7 @@ Static site for `nocturne.ifsvivek.in`: SvelteKit (Svelte 5, `adapter-static`, e
 
 ## Screenshots and images
 
-Demo-library WebP captures live in `src/lib/screens/NN-name.webp` (1920x1200); `NN-name` maps to the keys in `src/lib/site.js` (`shot("home")`, alt text there). `python3 scripts/make-assets.py` (needs Pillow) writes the 480/960/1440 px variants to `src/lib/screens/sized/` (used for `srcset`) and rebuilds `static/og.jpg` from the real screenshots. Re-run it after replacing a screenshot. Hero images load eagerly with `fetchpriority=high`; all others are lazy, and every `<img>` has width and height.
+Demo-library WebP captures live in `src/lib/screens/NN-name.webp` (1920x1200); `NN-name` maps to the keys in `src/lib/site.js` (`shot("home")`, alt text there). `python3 scripts/make-assets.py` (needs Pillow) writes the 480/960/1440 px variants to `src/lib/screens/sized/` (used for `srcset`), cuts the close-ups listed in `CROPS` (search palette, the server-changes setting, the player control bar, the admin dashboard) from the same captures, and rebuilds `static/og.jpg` from the real screenshots. Re-run it after replacing a screenshot. Hero images load eagerly with `fetchpriority=high`; all others are lazy, and every `<img>` has width and height.
 
 ## Commands
 
@@ -28,4 +29,6 @@ Deploy with `CLOUDFLARE_ACCOUNT_ID` and an API token in the environment; nothing
 
 ## Performance
 
-No JavaScript, system fonts, no third-party requests. Home page: about 7 kB gzip HTML, about 8 kB gzip CSS, then images on demand (hero pair about 33 kB at desktop width; all eight screenshots about 200 kB across the page; OG image 36 kB). Re-measure with Lighthouse after deploy.
+No JavaScript, no third-party requests. Home page: about 8.5 kB gzip HTML, 8.6 kB gzip CSS, 29 kB font, then images on demand: at 1440 px wide the hero pair is 16 kB and the whole page 134 kB (403 kB on a 2x screen); a 390 px phone at 3x loads about 190 kB. Re-measure with Lighthouse after deploy.
+
+Preview locally: `npm run build && python3 -m http.server -d build`, then screenshot with `google-chrome-stable --headless=new --force-prefers-reduced-motion --disable-features=LazyImageLoading --screenshot=out.png --window-size=1440,11000 http://127.0.0.1:8000/` (headless time can freeze the load-in animations, and lazy images do not load in one tall capture without that flag).
