@@ -313,6 +313,148 @@ pub fn validate_library_option(key: &str, v: &Value) -> Result<()> {
     }
 }
 
+// ---- metadata and image providers ----
+
+/// One fetcher of a library type, in the order the server tries them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fetcher {
+    pub name: String,
+    pub enabled: bool,
+}
+
+fn names(v: &Value) -> Vec<String> {
+    v.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|x| x.as_str().map(str::to_string))
+        .collect()
+}
+
+fn type_entry<'a>(options: &'a Value, item_type: &str) -> Option<&'a Value> {
+    options["TypeOptions"]
+        .as_array()?
+        .iter()
+        .find(|t| t["Type"] == item_type)
+}
+
+/// The fetchers of `item_type` as the library has them now (`images` picks image over metadata
+/// fetchers): the server's order first, then providers it offers that the library does not know
+/// yet. A library with no stored entry uses the server's defaults.
+pub fn current_fetchers(
+    options: &Value,
+    item_type: &str,
+    avail: &crate::AvailableType,
+    images: bool,
+) -> Vec<Fetcher> {
+    let offered = if images {
+        &avail.image_fetchers
+    } else {
+        &avail.metadata_fetchers
+    };
+    let (on, order) = if images {
+        ("ImageFetchers", "ImageFetcherOrder")
+    } else {
+        ("MetadataFetchers", "MetadataFetcherOrder")
+    };
+    let Some(e) = type_entry(options, item_type) else {
+        return offered
+            .iter()
+            .map(|p| Fetcher {
+                name: p.name.clone(),
+                enabled: p.default_enabled,
+            })
+            .collect();
+    };
+    let (enabled, stored) = (names(&e[on]), names(&e[order]));
+    let known = |n: &String| offered.iter().any(|p| &p.name == n);
+    let mut list: Vec<String> = stored.into_iter().filter(known).collect();
+    for p in offered {
+        if !list.contains(&p.name) {
+            list.push(p.name.clone());
+        }
+    }
+    list.into_iter()
+        .map(|n| Fetcher {
+            enabled: enabled.contains(&n),
+            name: n,
+        })
+        .collect()
+}
+
+/// Validate `list` against what the server offers and write it into `options`. The other kind
+/// of fetcher of the same type is kept (or materialised from the defaults), never emptied.
+pub fn apply_fetchers(
+    options: &mut Value,
+    item_type: &str,
+    avail: &crate::AvailableType,
+    images: bool,
+    list: &[Fetcher],
+) -> Result<()> {
+    let offered = if images {
+        &avail.image_fetchers
+    } else {
+        &avail.metadata_fetchers
+    };
+    let mut seen: Vec<&str> = list.iter().map(|f| f.name.as_str()).collect();
+    seen.sort_unstable();
+    let mut want: Vec<&str> = offered.iter().map(|p| p.name.as_str()).collect();
+    want.sort_unstable();
+    if seen != want {
+        return bad("the list must contain every provider the server offers, once each");
+    }
+    let (other_images, kinds) = (!images, ["Metadata", "Image"]);
+    let pick = |i: bool| kinds[usize::from(i)];
+    let other = current_fetchers(options, item_type, avail, other_images);
+    let mut entry = match type_entry(options, item_type) {
+        Some(e) => e.clone(),
+        None => json!({"Type": item_type}),
+    };
+    let put = |e: &mut Value, imgs: bool, l: &[Fetcher]| {
+        e[format!("{}Fetchers", pick(imgs))] = json!(
+            l.iter()
+                .filter(|f| f.enabled)
+                .map(|f| &f.name)
+                .collect::<Vec<_>>()
+        );
+        e[format!("{}FetcherOrder", pick(imgs))] =
+            json!(l.iter().map(|f| &f.name).collect::<Vec<_>>());
+    };
+    put(&mut entry, images, list);
+    put(&mut entry, other_images, &other);
+    let types = options["TypeOptions"].take();
+    let mut types = types.as_array().cloned().unwrap_or_default();
+    match types.iter_mut().find(|t| t["Type"] == item_type) {
+        Some(t) => *t = entry,
+        None => types.push(entry),
+    }
+    options["TypeOptions"] = json!(types);
+    Ok(())
+}
+
+/// Flip fetcher `i` on or off; the last enabled fetcher may be turned off (a library can have none).
+pub fn toggle_fetcher(list: &mut [Fetcher], i: usize) -> Result<()> {
+    list.get_mut(i)
+        .map(|f| f.enabled = !f.enabled)
+        .ok_or_else(|| Error::Invalid("no such provider".into()))
+}
+
+/// Move fetcher `i` one place up (`up`) or down.
+pub fn move_fetcher(list: &mut [Fetcher], i: usize, up: bool) -> Result<()> {
+    let j = if up { i.checked_sub(1) } else { Some(i + 1) };
+    match j.filter(|j| *j < list.len() && i < list.len()) {
+        Some(j) => {
+            list.swap(i, j);
+            Ok(())
+        }
+        None => bad("cannot move it further"),
+    }
+}
+
+/// Local metadata readers (NFO and so on) the library has switched off.
+pub fn disabled_readers(options: &Value) -> Vec<String> {
+    names(&options["DisabledLocalMetadataReaders"])
+}
+
 /// Library kinds the server accepts; `mixed` is sent as no type.
 pub const LIBRARY_TYPES: [&str; 8] = [
     "movies",
@@ -433,6 +575,59 @@ mod tests {
                 .is_ok(),
             "empty = all interfaces"
         );
+    }
+
+    fn avail() -> crate::AvailableType {
+        serde_json::from_value(json!({"Type":"Movie",
+            "MetadataFetchers":[{"Name":"A","DefaultEnabled":true},{"Name":"B","DefaultEnabled":false}],
+            "ImageFetchers":[{"Name":"X","DefaultEnabled":true}]}))
+        .unwrap()
+    }
+
+    #[test]
+    fn fetchers_default_toggle_move_and_apply() {
+        let mut o = json!({"Keep": 1, "TypeOptions": []});
+        let mut l = current_fetchers(&o, "Movie", &avail(), false);
+        assert_eq!(
+            l,
+            [
+                Fetcher {
+                    name: "A".into(),
+                    enabled: true
+                },
+                Fetcher {
+                    name: "B".into(),
+                    enabled: false
+                }
+            ]
+        );
+        toggle_fetcher(&mut l, 1).unwrap();
+        move_fetcher(&mut l, 1, true).unwrap();
+        assert!(move_fetcher(&mut l, 0, true).is_err() && move_fetcher(&mut l, 1, false).is_err());
+        assert!(toggle_fetcher(&mut l, 5).is_err());
+        apply_fetchers(&mut o, "Movie", &avail(), false, &l).unwrap();
+        let e = &o["TypeOptions"][0];
+        assert_eq!(e["MetadataFetcherOrder"], json!(["B", "A"]));
+        assert_eq!(e["MetadataFetchers"], json!(["B", "A"]));
+        assert_eq!(
+            e["ImageFetchers"],
+            json!(["X"]),
+            "image fetchers materialised, not emptied"
+        );
+        assert_eq!(o["Keep"], 1);
+        // reading back gives the same list; a provider the server added later is appended
+        assert_eq!(current_fetchers(&o, "Movie", &avail(), false), l);
+        let mut a2 = avail();
+        a2.metadata_fetchers.push(crate::Provider {
+            name: "C".into(),
+            default_enabled: true,
+        });
+        assert_eq!(current_fetchers(&o, "Movie", &a2, false).len(), 3);
+        // unknown or missing names are refused
+        let mut bad_l = l.clone();
+        bad_l[0].name = "Z".into();
+        assert!(apply_fetchers(&mut o, "Movie", &avail(), false, &bad_l).is_err());
+        assert!(apply_fetchers(&mut o, "Movie", &avail(), false, &l[..1]).is_err());
     }
 
     #[test]

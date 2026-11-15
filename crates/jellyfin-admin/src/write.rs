@@ -425,6 +425,89 @@ impl AdminClient {
             .ok_or_else(|| Error::Invalid("no such library".into()))?
             .library_options;
         o[key] = value;
+        self.put_library_options(item_id, o).await
+    }
+
+    /// WRITE `POST /Library/VirtualFolders/Name`: rename a library (its content and options are kept).
+    /// The server gives the renamed library a new item id once its refresh has run, so re-list
+    /// before using `VirtualFolder::item_id` again.
+    pub async fn rename_library(&self, name: &str, new_name: &str) -> Result<()> {
+        edit::validate_library_name(new_name)?;
+        let new_name = new_name.trim();
+        if self
+            .virtual_folders()
+            .await?
+            .iter()
+            .any(|f| f.name.eq_ignore_ascii_case(new_name))
+        {
+            return Err(Error::Invalid(
+                "a library with that name already exists".into(),
+            ));
+        }
+        let q = [
+            ("name", name.to_string()),
+            ("newName", new_name.to_string()),
+            ("refreshLibrary", "true".into()),
+        ];
+        self.send(
+            Method::POST,
+            &["Library", "VirtualFolders", "Name"],
+            &q,
+            None,
+        )
+        .await
+        .map(drop)
+    }
+
+    /// WRITE `POST /Library/VirtualFolders/LibraryOptions` for one item type: order and enable
+    /// its metadata (or image) fetchers. `list` must name every fetcher the server offers for
+    /// that type, once each; everything else in the library options is sent back unchanged.
+    pub async fn set_library_fetchers(
+        &self,
+        item_id: &str,
+        item_type: &str,
+        images: bool,
+        list: &[edit::Fetcher],
+    ) -> Result<()> {
+        let f = self
+            .virtual_folders()
+            .await?
+            .into_iter()
+            .find(|f| f.item_id == item_id)
+            .ok_or_else(|| Error::Invalid("no such library".into()))?;
+        let avail = self
+            .available_library_options(f.collection_type.as_deref())
+            .await?;
+        let ty = avail
+            .type_options
+            .iter()
+            .find(|t| t.kind == item_type)
+            .ok_or_else(|| Error::Invalid("this library has no such item type".into()))?;
+        let mut o = f.library_options;
+        edit::apply_fetchers(&mut o, item_type, ty, images, list)?;
+        self.put_library_options(item_id, o).await
+    }
+
+    /// WRITE `POST /Library/VirtualFolders/LibraryOptions`: switch a local metadata reader
+    /// (such as NFO) on or off for a library.
+    pub async fn set_local_reader(&self, item_id: &str, reader: &str, on: bool) -> Result<()> {
+        let mut o = self
+            .virtual_folders()
+            .await?
+            .into_iter()
+            .find(|f| f.item_id == item_id)
+            .ok_or_else(|| Error::Invalid("no such library".into()))?
+            .library_options;
+        let mut off = edit::disabled_readers(&o);
+        off.retain(|n| n != reader);
+        if !on {
+            off.push(reader.to_string());
+        }
+        o["DisabledLocalMetadataReaders"] = json!(off);
+        self.put_library_options(item_id, o).await
+    }
+
+    async fn put_library_options(&self, item_id: &str, o: serde_json::Value) -> Result<()> {
         let body = json!({"Id": item_id, "LibraryOptions": o});
         self.send(
             Method::POST,
@@ -720,6 +803,71 @@ mod tests {
             p[5].1,
             json!({"Id":"L1","LibraryOptions":{"EnableRealtimeMonitor":true,"PathInfos":[{"Path":"/m"}]}})
         );
+    }
+
+    #[tokio::test]
+    async fn library_rename_fetchers_and_readers() {
+        let folders = r#"[{"Name":"Films","ItemId":"L1","CollectionType":"movies","LibraryOptions":{"Keep":1}},{"Name":"Other","ItemId":"L2"}]"#;
+        let avail = r#"{"TypeOptions":[{"Type":"Movie","MetadataFetchers":[{"Name":"A","DefaultEnabled":true},{"Name":"B","DefaultEnabled":true}],"ImageFetchers":[{"Name":"X","DefaultEnabled":true}]}]}"#;
+        let (c, log) = serve(vec![
+            ("GET", "/Library/VirtualFolders", 200, folders.into()),
+            ("GET", "/Libraries/AvailableOptions", 200, avail.into()),
+            ("POST", "/Library/VirtualFolders/Name", 204, String::new()),
+            (
+                "POST",
+                "/Library/VirtualFolders/LibraryOptions",
+                204,
+                String::new(),
+            ),
+        ])
+        .await;
+        assert!(
+            c.rename_library("Films", "other").await.is_err(),
+            "name taken"
+        );
+        assert!(c.rename_library("Films", "a/b").await.is_err());
+        c.rename_library("Films", "Movies").await.unwrap();
+        let f = |n: &str, on| edit::Fetcher {
+            name: n.into(),
+            enabled: on,
+        };
+        assert!(
+            c.set_library_fetchers("L1", "Movie", false, &[f("A", true)])
+                .await
+                .is_err()
+        );
+        assert!(
+            c.set_library_fetchers("L1", "Show", false, &[])
+                .await
+                .is_err()
+        );
+        c.set_library_fetchers("L1", "Movie", false, &[f("B", true), f("A", false)])
+            .await
+            .unwrap();
+        c.set_local_reader("L1", "Nfo", false).await.unwrap();
+        let reqs: Vec<_> = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.0 != "GET")
+            .cloned()
+            .collect();
+        assert_eq!(
+            reqs[0].1,
+            "/Library/VirtualFolders/Name?name=Films&newName=Movies&refreshLibrary=true"
+        );
+        let b: Value = serde_json::from_str(&reqs[1].2).unwrap();
+        let t = &b["LibraryOptions"]["TypeOptions"][0];
+        assert_eq!(t["MetadataFetchers"], json!(["B"]));
+        assert_eq!(t["MetadataFetcherOrder"], json!(["B", "A"]));
+        assert_eq!(t["ImageFetchers"], json!(["X"]));
+        assert_eq!(b["LibraryOptions"]["Keep"], 1);
+        let b: Value = serde_json::from_str(&reqs[2].2).unwrap();
+        assert_eq!(
+            b["LibraryOptions"]["DisabledLocalMetadataReaders"],
+            json!(["Nfo"])
+        );
+        assert_eq!(reqs.len(), 3, "refused edits sent nothing");
     }
 
     #[tokio::test]

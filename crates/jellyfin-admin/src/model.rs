@@ -300,6 +300,38 @@ pub struct PackageVersion {
     pub repository_url: String,
 }
 
+/// One provider the server offers (`GET /Libraries/AvailableOptions`).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct Provider {
+    pub name: String,
+    pub default_enabled: bool,
+}
+
+/// What the server can fetch for one item type (movie, series, album, ...).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct AvailableType {
+    #[serde(rename = "Type")]
+    pub kind: String,
+    pub metadata_fetchers: Vec<Provider>,
+    pub image_fetchers: Vec<Provider>,
+    pub supported_image_types: Vec<String>,
+}
+
+/// `GET /Libraries/AvailableOptions`: every provider this server (and its plugins) offers for a
+/// library content type.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct AvailableOptions {
+    pub metadata_savers: Vec<Provider>,
+    pub metadata_readers: Vec<Provider>,
+    pub subtitle_fetchers: Vec<Provider>,
+    pub lyric_fetchers: Vec<Provider>,
+    pub media_segment_providers: Vec<Provider>,
+    pub type_options: Vec<AvailableType>,
+}
+
 /// A plugin repository (`GET /Repositories`): the manifest the server reads its catalog from.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase", default)]

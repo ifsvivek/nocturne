@@ -10,6 +10,7 @@ pub enum Section {
     Branding,
     Users,
     Libraries,
+    Providers,
     Metadata,
     Resume,
     Streaming,
@@ -26,12 +27,13 @@ pub enum Section {
 }
 
 /// Sidebar order; keyboard Up/Down walks this list.
-pub const ALL: [Section; 18] = [
+pub const ALL: [Section; 19] = [
     Section::Dashboard,
     Section::General,
     Section::Branding,
     Section::Users,
     Section::Libraries,
+    Section::Providers,
     Section::Metadata,
     Section::Resume,
     Section::Streaming,
@@ -49,7 +51,6 @@ pub const ALL: [Section; 18] = [
 
 pub enum Row {
     Group(&'static str),
-    Sub(&'static str),
     /// (section, indented under the previous entry)
     Item(Section, bool),
 }
@@ -63,8 +64,8 @@ pub const SIDEBAR: [Row; 23] = [
     Item(S::Branding, false),
     Item(S::Users, false),
     Item(S::Libraries, false),
+    Item(S::Providers, true),
     Item(S::Metadata, true),
-    Sub("Playback"),
     Item(S::Resume, true),
     Item(S::Streaming, true),
     Item(S::Transcoding, true),
@@ -90,6 +91,7 @@ impl Section {
             Section::Branding => "Branding",
             Section::Users => "Users",
             Section::Libraries => "Libraries",
+            Section::Providers => "Providers",
             Section::Metadata => "Metadata",
             Section::Resume => "Resume",
             Section::Streaming => "Streaming",
@@ -139,6 +141,33 @@ impl<T> L<T> {
     }
 }
 
+/// A library together with the providers the server offers for its content type.
+pub struct LibProviders {
+    pub folder: VirtualFolder,
+    pub avail: AvailableOptions,
+}
+
+/// Every library with what the server offers for it (one `AvailableOptions` read per content type).
+pub async fn library_providers(c: &AdminClient) -> Result<Vec<LibProviders>> {
+    let mut seen: Vec<(Option<String>, AvailableOptions)> = vec![];
+    let mut out = vec![];
+    for folder in c.virtual_folders().await? {
+        let hit = seen.iter().find(|(t, _)| *t == folder.collection_type);
+        let avail = match hit {
+            Some((_, a)) => a.clone(),
+            None => {
+                let a = c
+                    .available_library_options(folder.collection_type.as_deref())
+                    .await?;
+                seen.push((folder.collection_type.clone(), a.clone()));
+                a
+            }
+        };
+        out.push(LibProviders { folder, avail });
+    }
+    Ok(out)
+}
+
 #[derive(Default)]
 pub struct Data {
     pub system: L<SystemInfo>,
@@ -151,6 +180,7 @@ pub struct Data {
     pub plugins: L<Vec<Plugin>>,
     pub packages: L<Vec<Package>>,
     pub repos: L<Vec<Repository>>,
+    pub providers: L<Vec<LibProviders>>,
     pub logs: L<Vec<LogFile>>,
     pub branding: L<Branding>,
     pub config: L<ServerConfig>,
@@ -176,6 +206,7 @@ pub enum Msg {
     Plugins(Option<Vec<Plugin>>),
     Packages(Option<Vec<Package>>),
     Repos(Option<Vec<Repository>>),
+    Providers(Option<Vec<LibProviders>>),
     Logs(Option<Vec<LogFile>>),
     Branding(Option<Branding>),
     Config(Option<ServerConfig>),
@@ -200,6 +231,7 @@ impl Data {
             Msg::Plugins(v) => self.plugins.set(v),
             Msg::Packages(v) => self.packages.set(v),
             Msg::Repos(v) => self.repos.set(v),
+            Msg::Providers(v) => self.providers.set(v),
             Msg::Logs(v) => self.logs.set(v),
             Msg::Branding(v) => self.branding.set(v),
             Msg::Config(v) => self.config.set(v),

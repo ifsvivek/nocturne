@@ -3,7 +3,8 @@
 use super::Admin;
 use super::act::{Act, Brand, Cfg, Net, Tp, TrigKind};
 use super::fmt::{bytes, short, when};
-use super::state::{Data, L, Section};
+use super::state::{Data, L, LibProviders, Section};
+use nocturne_jellyfin_admin::edit::{self, Fetcher};
 
 pub struct Btn {
     pub label: String,
@@ -86,6 +87,7 @@ impl Admin {
             Section::Branding => branding(d),
             Section::Users => users(d),
             Section::Libraries => libraries(d),
+            Section::Providers => providers(d),
             Section::Metadata => config_page(d, |c| {
                 vec![
                     text_row(
@@ -391,6 +393,14 @@ fn libraries(d: &Data) -> Model {
         detail.extend(f.locations.iter().map(|p| ("PATH", p.clone())));
         detail.push(("REFRESH", f.refresh_status.clone().unwrap_or("Idle".into())));
         let o = &f.library_options;
+        detail.push((
+            "METADATA REFRESH",
+            match o["AutomaticRefreshIntervalDays"].as_i64().unwrap_or(0) {
+                0 => "never automatically".into(),
+                n => format!("every {n} days"),
+            },
+        ));
+        detail.push(("LIBRARY SCAN", scan_schedule(d)));
         for (k, key) in [
             ("TRICKPLAY IMAGES", "EnableTrickplayImageExtraction"),
             ("CHAPTER IMAGES", "EnableChapterImageExtraction"),
@@ -430,10 +440,28 @@ fn libraries(d: &Data) -> Model {
     m
 }
 
+/// When the server scans for new files: the triggers of its "Scan Media Library" task. The
+/// schedule is server wide, not per library; edit it under Scheduled Tasks.
+fn scan_schedule(d: &Data) -> String {
+    let Some(t) = d
+        .tasks
+        .get()
+        .and_then(|t| t.iter().find(|t| t.key == "RefreshLibrary"))
+    else {
+        return "see Scheduled Tasks".into();
+    };
+    if t.triggers.is_empty() {
+        return "no schedule (server wide task)".into();
+    }
+    let l: Vec<_> = t.triggers.iter().map(|x| x.describe()).collect();
+    format!("{} (server wide task)", l.join(", "))
+}
+
 /// Buttons of one library: scan, folders, the common options, remove.
 fn lib_acts(f: &nocturne_jellyfin_admin::VirtualFolder) -> Vec<Btn> {
     let t = (f.item_id.clone(), f.name.clone());
     let mut v = vec![b("Refresh", Act::RefreshFolder(t.clone()))];
+    v.push(b("Rename", Act::RenameLibrary(t.clone())));
     v.push(b("Add folder", Act::AddLibPath(t.clone())));
     if f.locations.len() > 1 {
         for (i, p) in f.locations.iter().enumerate() {
@@ -461,11 +489,135 @@ fn lib_acts(f: &nocturne_jellyfin_admin::VirtualFolder) -> Vec<Btn> {
     }
     let days = o["AutomaticRefreshIntervalDays"].as_i64().unwrap_or(0);
     v.push(b(
-        format!("Auto refresh: {days} d"),
+        format!("Refresh metadata every: {days} d"),
         Act::LibRefreshDays(t.clone(), days.to_string()),
     ));
     v.push(bd("Remove library", Act::RemoveLibrary(t)));
     v
+}
+
+/// Per library and item type: the metadata and image fetchers in the order the server tries
+/// them, plus local readers. Only what the server offers is listed; what it lacks is said so.
+fn providers(d: &Data) -> Model {
+    let mut m = Model {
+        status: status(&d.providers),
+        ..Default::default()
+    };
+    for lp in d.providers.get().into_iter().flatten() {
+        provider_rows(&mut m, lp);
+    }
+    if m.status.is_none() && m.items.is_empty() {
+        m.status = Some("There are no libraries yet.");
+    }
+    m
+}
+
+fn provider_rows(m: &mut Model, lp: &LibProviders) {
+    let f = &lp.folder;
+    let t = (f.item_id.clone(), f.name.clone());
+    let kind = f.collection_type.as_deref().unwrap_or("mixed");
+    let note = |m: &mut Model, g: String, title: &str, sub: String| {
+        let mut it = row(title, sub, vec![]);
+        it.group = Some(g);
+        m.items.push(it);
+    };
+    for ty in &lp.avail.type_options {
+        for images in [false, true] {
+            let what = if images {
+                "Image fetchers"
+            } else {
+                "Metadata fetchers"
+            };
+            let group = format!("{} · {} · {what}", f.name, ty.kind);
+            let offered = if images {
+                &ty.image_fetchers
+            } else {
+                &ty.metadata_fetchers
+            };
+            if offered.is_empty() {
+                note(
+                    m,
+                    group,
+                    "None offered",
+                    format!(
+                        "This server has no {} for {} items. A plugin may add some.",
+                        what.to_lowercase(),
+                        ty.kind
+                    ),
+                );
+                continue;
+            }
+            let list = edit::current_fetchers(&f.library_options, &ty.kind, ty, images);
+            for (i, p) in list.iter().enumerate() {
+                let change = |l: Vec<Fetcher>, what_changes: String| {
+                    Act::Fetchers(t.clone(), ty.kind.clone(), images, what_changes, l)
+                };
+                let mut acts = vec![];
+                let mut l = list.clone();
+                if edit::toggle_fetcher(&mut l, i).is_ok() {
+                    acts.push(b(
+                        if p.enabled { "Turn off" } else { "Turn on" },
+                        change(
+                            l,
+                            format!(
+                                "{} {}",
+                                if p.enabled { "Turn off" } else { "Turn on" },
+                                p.name
+                            ),
+                        ),
+                    ));
+                }
+                for (up, label) in [(true, "Move up"), (false, "Move down")] {
+                    let mut l = list.clone();
+                    if edit::move_fetcher(&mut l, i, up).is_ok() {
+                        acts.push(b(label, change(l, format!("{label}: {}", p.name))));
+                    }
+                }
+                let mut it = row(&p.name, format!("priority {}", i + 1), acts);
+                it.chips = vec![(if p.enabled { "on" } else { "off" }.into(), p.enabled)];
+                it.group = Some(group.clone());
+                m.items.push(it);
+            }
+        }
+    }
+    let readers = edit::disabled_readers(&f.library_options);
+    for r in &lp.avail.metadata_readers {
+        let on = !readers.contains(&r.name);
+        let mut it = row(
+            &r.name,
+            "reads metadata files stored next to your media".into(),
+            vec![b(
+                if on { "Turn off" } else { "Turn on" },
+                Act::Reader(t.clone(), r.name.clone(), !on),
+            )],
+        );
+        it.chips = vec![(if on { "on" } else { "off" }.into(), on)];
+        it.group = Some(format!("{} · Local metadata readers", f.name));
+        m.items.push(it);
+    }
+    let names = |l: &[nocturne_jellyfin_admin::Provider]| {
+        if l.is_empty() {
+            "none installed".to_string()
+        } else {
+            l.iter()
+                .map(|p| p.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+    };
+    for (title, l) in [
+        ("Subtitle providers", &lp.avail.subtitle_fetchers),
+        ("Lyric providers", &lp.avail.lyric_fetchers),
+        ("Media segment providers", &lp.avail.media_segment_providers),
+        ("Metadata savers", &lp.avail.metadata_savers),
+    ] {
+        note(
+            m,
+            format!("{} · {kind} · Offered by this server (read only)", f.name),
+            title,
+            names(l),
+        );
+    }
 }
 
 fn transcoding(d: &Data) -> Model {
@@ -1111,6 +1263,88 @@ mod tests {
             .collect();
         assert_eq!(acts, [("Enable", false), ("Remove", true)]);
         assert_eq!(m.items[0].group.as_deref(), Some("Repositories"));
+    }
+
+    #[test]
+    fn provider_rows_follow_what_the_server_offers() {
+        use nocturne_jellyfin_admin::{AvailableOptions, AvailableType, Provider, VirtualFolder};
+        let p = |n: &str, on| Provider {
+            name: n.into(),
+            default_enabled: on,
+        };
+        let lp = LibProviders {
+            folder: VirtualFolder {
+                name: "Films".into(),
+                item_id: "L".into(),
+                collection_type: Some("movies".into()),
+                ..Default::default()
+            },
+            avail: AvailableOptions {
+                metadata_readers: vec![p("Nfo", true)],
+                type_options: vec![AvailableType {
+                    kind: "Movie".into(),
+                    metadata_fetchers: vec![p("A", true), p("B", false)],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        };
+        let d = data_with(|d| d.providers = L::Ready(vec![lp]));
+        let m = providers(&d);
+        let labels = |i: usize| {
+            m.items[i]
+                .acts
+                .iter()
+                .map(|a| a.label.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            m.items[0].group.as_deref(),
+            Some("Films · Movie · Metadata fetchers")
+        );
+        assert_eq!(
+            labels(0),
+            ["Turn off", "Move down"],
+            "first row cannot move up"
+        );
+        assert_eq!(
+            labels(1),
+            ["Turn on", "Move up"],
+            "last row cannot move down"
+        );
+        assert_eq!(
+            m.items[2].title, "None offered",
+            "image fetchers missing: said so"
+        );
+        assert_eq!(m.items[3].title, "Nfo");
+        assert!(
+            m.items.iter().skip(4).all(|i| i.acts.is_empty()),
+            "the rest is read only"
+        );
+        // Move down on A makes the list B, A with both states kept
+        let Act::Fetchers(_, ty, images, _, l) = &m.items[0].acts[1].act else {
+            panic!()
+        };
+        assert_eq!((ty.as_str(), *images), ("Movie", false));
+        assert_eq!(
+            l.iter()
+                .map(|f| (f.name.as_str(), f.enabled))
+                .collect::<Vec<_>>(),
+            [("B", false), ("A", true)]
+        );
+    }
+
+    #[test]
+    fn library_rows_show_the_scan_schedule() {
+        let d = data_with(|d| {
+            d.tasks = L::Ready(vec![nocturne_jellyfin_admin::ScheduledTask {
+                key: "RefreshLibrary".into(),
+                triggers: vec![TaskTrigger::every_minutes(720).unwrap()],
+                ..Default::default()
+            }]);
+        });
+        assert_eq!(scan_schedule(&d), "Every 12 h (server wide task)");
+        assert_eq!(scan_schedule(&Data::default()), "see Scheduled Tasks");
     }
 
     #[test]

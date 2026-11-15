@@ -187,6 +187,19 @@ impl AdminClient {
         self.get(&["Repositories"], &[]).await
     }
 
+    /// READ `GET /Libraries/AvailableOptions`: the providers offered for a library content type
+    /// (`None` = the generic list the server returns without a type).
+    pub async fn available_library_options(
+        &self,
+        content_type: Option<&str>,
+    ) -> Result<crate::AvailableOptions> {
+        let mut q = vec![("isNewLibrary", "false".to_string())];
+        if let Some(t) = content_type {
+            q.push(("libraryContentType", t.into()));
+        }
+        self.get(&["Libraries", "AvailableOptions"], &q).await
+    }
+
     /// READ `GET /Backup` (server 10.11+; an error on older servers).
     pub async fn backups(&self) -> Result<Vec<serde_json::Value>> {
         self.get(&["Backup"], &[]).await

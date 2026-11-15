@@ -656,13 +656,6 @@ impl Admin {
                         .pb(px(t::S2))
                         .child(ui::mono(ui::tracked(g))),
                 ),
-                Row::Sub(g) => d.child(
-                    div()
-                        .pl(px(t::S6 + t::S4))
-                        .pt(px(t::S2))
-                        .pb(px(t::S1))
-                        .child(ui::mono(g.to_string())),
-                ),
                 Row::Item(s, indent) => {
                     let s = *s;
                     let on = self.st.section == s;
@@ -752,6 +745,9 @@ impl Render for Admin {
             Section::Branding => "Login message, custom styling and splash screen.",
             Section::Users => "Accounts, access and passwords.",
             Section::Libraries => "Add and remove libraries, their folders and options.",
+            Section::Providers => {
+                "Metadata and image providers per library: what the server offers, in the order it tries them."
+            }
             Section::Metadata => "Where metadata comes from.",
             Section::Resume => "When playback counts as started or finished.",
             Section::Streaming => "Limits for streaming outside your network.",

@@ -3,6 +3,7 @@
 use super::confirm::{Dialog, Field};
 use nocturne_jellyfin_admin::{
     AdminClient, ConfigPatch, Confirmed, Error, NetworkEdit, Package, Result, TaskTrigger, edit,
+    edit::Fetcher,
 };
 use serde_json::{Value, json};
 
@@ -370,6 +371,11 @@ pub enum Act {
     /// (library, path)
     RemoveLibPath(Tgt, String),
     RemoveLibrary(Tgt),
+    RenameLibrary(Tgt),
+    /// (library, item type, images?, what changes, the whole new list)
+    Fetchers(Tgt, String, bool, String, Vec<Fetcher>),
+    /// (library, reader name, enable)
+    Reader(Tgt, String, bool),
     /// (library, option key, label, new value)
     LibOption(Tgt, &'static str, &'static str, bool),
     LibRefreshDays(Tgt, String),
@@ -494,6 +500,15 @@ impl Act {
             RemoveLibPath((_, n), p) => d("Remove folder", format!("{n} will stop indexing {p}. The files stay where they are."), "Remove folder", true),
             RemoveLibrary((_, n)) => d("Remove library", format!("This removes the library {n} and its metadata from the server. Your media files are not deleted. It cannot be undone."), "Remove library", true)
                 .field(Field::typed("Type the library name to confirm", n)),
+            RenameLibrary((_, n)) => d("Rename library", format!("Give the library {n} a new name. Its media and settings are kept; the server refreshes it afterwards."), "Rename", false)
+                .field(text("New name", n).checked(is_name)),
+            Fetchers((_, n), ty, images, what, _) => d(
+                if *images { "Image fetchers" } else { "Metadata fetchers" },
+                format!("{what} for {ty} items in {n}. The server tries enabled providers from the top; the change applies to the next refresh of that library."),
+                "Save",
+                false,
+            ),
+            Reader((_, n), r, on) => d("Local metadata reader", format!("Turn the {r} reader {} for the library {n}.", if *on { "on" } else { "off" }), "Save", false),
             LibOption((_, n), _, label, on) => d(label, format!("Turn {label} {} for the library {n}.", if *on { "on" } else { "off" }), "Save", false),
             LibRefreshDays((_, n), v) => {
                 let mut f = text("Days (0 = never)", v).checked(|s| s.parse::<i64>().is_ok_and(|n| n <= 3650));
@@ -537,6 +552,7 @@ impl Act {
             }
             (EditNet(..) | NetFlag(..), _) => "Saved. Restart the server to apply it.",
             (AddTrigger(..) | EditTrigger(..) | DeleteTrigger(..), _) => "Triggers updated.",
+            (RenameLibrary(_), _) => "Library renamed.",
             (AddLibrary, _) => "Library added. Scanning has started.",
             (RemoveLibrary(_), _) => "Library removed.",
             (AddLibPath(..) | RemoveLibPath(..), _) => "Folders updated.",
@@ -603,6 +619,11 @@ pub async fn exec(c: AdminClient, act: Act, v: Vec<String>, ok: Confirmed) -> Re
         AddLibPath((_, n)) => c.add_library_path(&n, &v[0]).await,
         RemoveLibPath((_, n), p) => c.remove_library_path(&n, &p, ok).await,
         RemoveLibrary((_, n)) => c.remove_library(&n, ok).await,
+        RenameLibrary((_, n)) => c.rename_library(&n, &v[0]).await,
+        Fetchers((id, _), ty, images, _, list) => {
+            c.set_library_fetchers(&id, &ty, images, &list).await
+        }
+        Reader((id, _), r, on) => c.set_local_reader(&id, &r, on).await,
         LibOption((id, _), key, _, on) => c.set_library_option(&id, key, json!(on)).await,
         LibRefreshDays((id, _), _) => {
             let days = v[0].parse::<i64>().unwrap_or(-1);
@@ -727,6 +748,17 @@ mod tests {
         assert!(d.valid());
         assert_eq!(Tp::Scan.value("blocking"), json!("Blocking"));
         assert_eq!(Tp::List.value("320, 640"), json!([320, 640]));
+    }
+
+    #[test]
+    fn rename_dialog_checks_the_name() {
+        let mut d = Act::RenameLibrary(tgt()).dialog();
+        assert_eq!(d.fields[0].value, "Name");
+        type_into(&mut d, 0, "a/b");
+        assert!(!d.valid());
+        type_into(&mut d, 0, "Films 2");
+        assert!(d.valid());
+        assert_eq!(d.values(), ["Films 2"]);
     }
 
     #[test]

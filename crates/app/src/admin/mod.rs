@@ -146,7 +146,11 @@ impl Admin {
             }
             Branding => rd!(self, cx, Branding, |c| c.branding()),
             Users => rd!(self, cx, Users, |c| c.users()),
-            Libraries => rd!(self, cx, Folders, |c| c.virtual_folders()),
+            Libraries => {
+                rd!(self, cx, Folders, |c| c.virtual_folders());
+                rd!(self, cx, Tasks, |c| c.scheduled_tasks());
+            }
+            Providers => rd!(self, cx, Providers, |c| state::library_providers(&c)),
             Metadata | Resume | Streaming | Trickplay => {
                 rd!(self, cx, Config, |c| c.server_config())
             }

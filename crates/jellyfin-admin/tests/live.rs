@@ -651,3 +651,95 @@ async fn plugin_repositories_roundtrip() {
     c.remove_plugin_repository(url, yes()).await.unwrap();
     assert_eq!(c.plugin_repositories().await.unwrap(), before);
 }
+
+#[tokio::test]
+#[ignore]
+async fn library_rename_and_providers() {
+    let _g = SERVER.read().await;
+    let c = TestServerGuard::connect().await.unwrap();
+    let (name, renamed) = (uniq("Prov Library"), uniq("Renamed Library"));
+    let dir = "/tmp/nocturne-jf-live-prov";
+    std::fs::create_dir_all(dir).unwrap();
+    c.add_library(&name, "movies", dir).await.unwrap();
+    let find = |n: String| {
+        let c = c.clone();
+        async move {
+            c.virtual_folders()
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|l| l.name == n)
+        }
+    };
+    assert!(find(name.clone()).await.is_some(), "created");
+    c.rename_library(&name, &renamed).await.unwrap();
+    assert!(find(name.clone()).await.is_none());
+    // the renamed library gets a new item id once the server has refreshed it
+    let mut lib2 = None;
+    for _ in 0..40 {
+        lib2 = find(renamed.clone())
+            .await
+            .filter(|l| !l.item_id.is_empty());
+        if lib2.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    let lib2 = lib2.expect("renamed library with an id");
+    let lib = lib2.clone();
+    assert!(c.rename_library(&renamed, &renamed).await.is_err());
+
+    // what the server offers for movies, then reorder and disable one metadata fetcher
+    let avail = c.available_library_options(Some("movies")).await.unwrap();
+    let movie = avail
+        .type_options
+        .iter()
+        .find(|t| t.kind == "Movie")
+        .unwrap();
+    assert!(movie.metadata_fetchers.len() >= 2 && !movie.image_fetchers.is_empty());
+    let mut list = nocturne_jellyfin_admin::edit::current_fetchers(
+        &lib2.library_options,
+        "Movie",
+        movie,
+        false,
+    );
+    let first = list[0].name.clone();
+    nocturne_jellyfin_admin::edit::move_fetcher(&mut list, 0, false).unwrap();
+    nocturne_jellyfin_admin::edit::toggle_fetcher(&mut list, 0).unwrap();
+    let second_was = (list[0].name.clone(), list[0].enabled);
+    c.set_library_fetchers(&lib.item_id, "Movie", false, &list)
+        .await
+        .unwrap();
+    let o = find(renamed.clone()).await.unwrap().library_options;
+    let back = nocturne_jellyfin_admin::edit::current_fetchers(&o, "Movie", movie, false);
+    assert_eq!(back, list, "order and enabled state persisted");
+    assert_eq!(back[1].name, first);
+    assert_eq!((back[0].name.clone(), back[0].enabled), second_was);
+    let imgs = nocturne_jellyfin_admin::edit::current_fetchers(&o, "Movie", movie, true);
+    assert!(
+        imgs.iter().any(|f| f.enabled),
+        "image fetchers were not emptied by a metadata edit"
+    );
+    // image fetchers
+    let mut il = imgs.clone();
+    nocturne_jellyfin_admin::edit::toggle_fetcher(&mut il, 0).unwrap();
+    c.set_library_fetchers(&lib.item_id, "Movie", true, &il)
+        .await
+        .unwrap();
+    let o = find(renamed.clone()).await.unwrap().library_options;
+    assert_eq!(
+        nocturne_jellyfin_admin::edit::current_fetchers(&o, "Movie", movie, true),
+        il
+    );
+    // local readers
+    c.set_local_reader(&lib.item_id, "Nfo", false)
+        .await
+        .unwrap();
+    let o = find(renamed.clone()).await.unwrap().library_options;
+    assert_eq!(
+        nocturne_jellyfin_admin::edit::disabled_readers(&o),
+        ["Nfo".to_string()]
+    );
+    c.remove_library(&renamed, yes()).await.unwrap();
+    std::fs::remove_dir_all(dir).ok();
+}
