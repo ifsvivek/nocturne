@@ -24,6 +24,8 @@ pub enum Kind {
     Audio,
     Photo,
     Book,
+    /// A plain folder or photo album: opens as a grid of its children.
+    Folder,
     Video,
     Other,
 }
@@ -97,6 +99,7 @@ impl Media {
             "Audio" | "AudioBook" => Kind::Audio,
             "Photo" => Kind::Photo,
             "Book" => Kind::Book,
+            "Folder" | "PhotoAlbum" => Kind::Folder,
             "Video" | "MusicVideo" | "Trailer" => Kind::Video,
             _ => Kind::Other,
         };
@@ -226,6 +229,7 @@ impl Media {
             Kind::Audio => "track".into(),
             Kind::Photo => "photo".into(),
             Kind::Book => "book".into(),
+            Kind::Folder => "folder".into(),
             Kind::Video => "video".into(),
             Kind::Other => "item".into(),
         }

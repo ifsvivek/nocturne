@@ -13,17 +13,19 @@ pub enum Section {
     Metadata,
     Resume,
     Streaming,
+    Transcoding,
     Devices,
     Activity,
     Plugins,
     Networking,
     ApiKeys,
+    Backups,
     Logs,
     Tasks,
 }
 
 /// Sidebar order; keyboard Up/Down walks this list.
-pub const ALL: [Section; 15] = [
+pub const ALL: [Section; 17] = [
     Section::Dashboard,
     Section::General,
     Section::Branding,
@@ -32,11 +34,13 @@ pub const ALL: [Section; 15] = [
     Section::Metadata,
     Section::Resume,
     Section::Streaming,
+    Section::Transcoding,
     Section::Devices,
     Section::Activity,
     Section::Plugins,
     Section::Networking,
     Section::ApiKeys,
+    Section::Backups,
     Section::Logs,
     Section::Tasks,
 ];
@@ -50,7 +54,7 @@ pub enum Row {
 
 use Row::*;
 use Section as S;
-pub const SIDEBAR: [Row; 20] = [
+pub const SIDEBAR: [Row; 22] = [
     Group("Server"),
     Item(S::Dashboard, false),
     Item(S::General, false),
@@ -61,6 +65,7 @@ pub const SIDEBAR: [Row; 20] = [
     Sub("Playback"),
     Item(S::Resume, true),
     Item(S::Streaming, true),
+    Item(S::Transcoding, true),
     Group("Devices"),
     Item(S::Devices, false),
     Item(S::Activity, false),
@@ -69,6 +74,7 @@ pub const SIDEBAR: [Row; 20] = [
     Group("Advanced"),
     Item(S::Networking, false),
     Item(S::ApiKeys, false),
+    Item(S::Backups, false),
     Item(S::Logs, false),
     Item(S::Tasks, false),
 ];
@@ -84,6 +90,8 @@ impl Section {
             Section::Metadata => "Metadata",
             Section::Resume => "Resume",
             Section::Streaming => "Streaming",
+            Section::Transcoding => "Transcoding",
+            Section::Backups => "Backups",
             Section::Devices => "Devices",
             Section::Activity => "Activity",
             Section::Plugins => "Plugins",
@@ -143,6 +151,8 @@ pub struct Data {
     pub keys: L<Vec<ApiKey>>,
     pub counts: L<ItemCounts>,
     pub network: L<NetworkConfig>,
+    pub encoding: L<serde_json::Value>,
+    pub backups: L<Vec<serde_json::Value>>,
     /// Last viewed log: (file name, already trimmed text).
     pub log: Option<(String, String)>,
 }
@@ -164,6 +174,8 @@ pub enum Msg {
     Keys(Option<Vec<ApiKey>>),
     Counts(Option<ItemCounts>),
     Network(Option<NetworkConfig>),
+    Encoding(Option<serde_json::Value>),
+    Backups(Option<Vec<serde_json::Value>>),
     Log(String, Option<String>),
 }
 
@@ -184,6 +196,8 @@ impl Data {
             Msg::Keys(v) => self.keys.set(v),
             Msg::Counts(v) => self.counts.set(v),
             Msg::Network(v) => self.network.set(v),
+            Msg::Encoding(v) => self.encoding.set(v),
+            Msg::Backups(v) => self.backups.set(v),
             Msg::Log(name, text) => {
                 if let Some(t) = text {
                     self.log = Some((name, t));

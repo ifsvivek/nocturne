@@ -126,6 +126,8 @@ pub enum Act {
     CreateKey,
     DeleteKey(Tgt),
     EditCfg(Cfg, String),
+    /// Transcoding setting: (JSON key, label, numeric, current value).
+    EditEnc(&'static str, String, bool, String),
     ToggleQuickConnect(bool),
     Restart,
     Shutdown,
@@ -182,6 +184,11 @@ impl Act {
                 f.numeric = numeric;
                 d(t, b.into(), "Save", false).field(f)
             }
+            EditEnc(_, label, numeric, v) => {
+                let mut f = text("Value", v);
+                f.numeric = *numeric;
+                d(label, "Change this transcoding setting. It applies to new streams.".into(), "Save", false).field(f)
+            }
             ToggleQuickConnect(on) => d("Quick Connect", if *on { "Allow signing in with Quick Connect codes." } else { "Stop allowing Quick Connect sign-in." }.into(), "Save", false),
             Shutdown => d("Shut down server", "The server stops now and stays off until someone starts it again on the machine it runs on. Everything playing stops.".into(), "Shut down server", true),
             Restart => d("Restart server", "The server restarts now. Everything playing stops and clients reconnect.".into(), "Restart server", true),
@@ -234,6 +241,14 @@ pub async fn exec(c: AdminClient, act: Act, v: Vec<String>, ok: Confirmed) -> Re
         CreateKey => c.create_api_key(&v[0]).await.map(drop),
         DeleteKey((tok, _)) => c.delete_api_key(&tok, ok).await,
         EditCfg(f, _) => c.set_server_config(&f.patch(&v[0])).await,
+        EditEnc(key, _, numeric, _) => {
+            let val = if numeric {
+                serde_json::json!(v[0].parse::<i64>().unwrap_or(-1))
+            } else {
+                serde_json::json!(v[0])
+            };
+            c.set_encoding_field(key, val).await
+        }
         ToggleQuickConnect(on) => {
             c.set_server_config(&ConfigPatch {
                 quick_connect_available: Some(on),

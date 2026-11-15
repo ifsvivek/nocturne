@@ -111,7 +111,7 @@ struct Page {
     /// Focused detail row / column (see `ui_detail::DRow`).
     drow: usize,
     dcol: usize,
-    dscroll: [ScrollHandle; 7],
+    dscroll: [ScrollHandle; 8],
     /// Episode-card columns as last drawn.
     dcols: usize,
 }
@@ -268,6 +268,8 @@ pub struct Root {
     /// Detail page More menu: selected entry; and the media info panel.
     more: Option<usize>,
     info_open: bool,
+    /// Photo viewer: the photos to step through, the shown one and the zoom factor.
+    photo: Option<(Vec<Media>, usize, f32)>,
 }
 
 /// Reconnect state while the server is unreachable.
@@ -336,6 +338,7 @@ impl Root {
             offline: None,
             more: None,
             info_open: false,
+            photo: None,
         };
         me.disk = DiskCache::default_dir().map(|d| {
             Arc::new(DiskCache::open(
@@ -506,6 +509,7 @@ impl Root {
         self.session = None;
         self.more = None;
         self.info_open = false;
+        self.photo = None;
         self.hooks = Arc::new(SyncHooks::new(None, false, false));
         self.phase = Phase::Account;
     }
@@ -788,6 +792,10 @@ impl Root {
         let Some(src) = self.source.clone() else {
             return;
         };
+        // The admin client has its own connection; its 401 means the same token is dead.
+        if self.admin.as_ref().is_some_and(|a| a.read(cx).rejected()) {
+            return self.session_rejected(cx);
+        }
         match src.health() {
             nocturne_jellyfin::Health::Unauthorized => self.session_rejected(cx),
             nocturne_jellyfin::Health::Unreachable => {
@@ -1227,6 +1235,10 @@ impl Root {
     fn play_item(&mut self, m: Media, cx: &mut Context<Self>) {
         match m.kind {
             Kind::Library | Kind::Season => {}
+            Kind::Photo => self.photo_open(m),
+            Kind::Book | Kind::Folder | Kind::Person | Kind::Other => {
+                self.toast("Not playable in NOCTURNE yet.", cx)
+            }
             Kind::Series => {
                 let Some(src) = self.source.clone() else {
                     return;
@@ -1324,6 +1336,9 @@ impl Root {
             a.update(cx, |a, cx| a.on_key(ev, cx));
             cx.notify();
             return;
+        }
+        if self.photo.is_some() {
+            return self.photo_key(key, cx);
         }
         if self.more.is_some() || self.info_open {
             return self.more_key(key, cx);
@@ -1592,7 +1607,7 @@ impl Root {
             .justify_between()
             .border_b_1()
             .border_color(t::hairline())
-            .bg(rgba(0x07080cb3))
+            .bg(rgba(0x07080ce6))
             .child(
                 div()
                     .flex()
@@ -2079,7 +2094,8 @@ impl Root {
         let w = f32::from(self.win.width);
         let h = (w * 9.0 / 16.0)
             .min(f32::from(self.win.height) * frac)
-            .max(340.0)
+            // Tall enough for the eyebrow, logo, overview and buttons below the nav and breadcrumbs.
+            .max(500.0)
             .round();
         let hero_art = if m.backdrop_tag.is_none() && m.kind == Kind::Episode {
             Art::Landscape
@@ -2226,7 +2242,16 @@ impl Root {
             .flex()
             .overflow_x_scroll()
             .track_scroll(handle);
-        if list.is_empty() {
+        if matches!(items, Load::Ready(_)) && list.is_empty() {
+            strip = strip.child(
+                div()
+                    .h(px(ch.min(120.0)))
+                    .flex()
+                    .items_center()
+                    .px(px(t::S3))
+                    .child(ui::mono("nothing here yet".to_string())),
+            );
+        } else if list.is_empty() {
             let loading = matches!(items, Load::Loading);
             for i in 0..8 {
                 strip = strip.child(ui::poster_cell(Cell {
@@ -2374,19 +2399,32 @@ impl Root {
                 let eyebrow = format!("0x00 · {}", m.kind_label());
                 let (m1, m2) = (m.clone(), m.clone());
                 let hero_focus = focus_of(HRow::Hero);
+                let verb = if m.kind == Kind::Photo {
+                    "View"
+                } else {
+                    "Play"
+                };
                 let buttons = div()
                     .flex()
                     .gap(px(t::S3))
-                    .child(ui::pill_button(
-                        "hero-play",
-                        "Play",
-                        true,
-                        hero_focus == Some(0),
-                        cx.listener(move |t, _, _, cx| {
-                            t.play_item(m1.clone(), cx);
-                            cx.notify();
+                    .children(
+                        (!matches!(
+                            m.kind,
+                            Kind::Book | Kind::Folder | Kind::Person | Kind::Other
+                        ))
+                        .then(|| {
+                            ui::pill_button(
+                                "hero-play",
+                                verb,
+                                true,
+                                hero_focus == Some(0),
+                                cx.listener(move |t, _, _, cx| {
+                                    t.play_item(m1.clone(), cx);
+                                    cx.notify();
+                                }),
+                            )
                         }),
-                    ))
+                    )
                     .child(ui::pill_button(
                         "hero-more",
                         "More info",
@@ -2599,6 +2637,9 @@ impl Render for Root {
         if matches!(self.phase, Phase::Ready)
             && let Some(o) = self.more_overlay(cx)
         {
+            root = root.child(o);
+        }
+        if let Some(o) = self.photo_overlay(cx) {
             root = root.child(o);
         }
         if let Some(a) = self.accounts.clone().filter(|a| a.read(cx).dialog_open()) {

@@ -62,6 +62,11 @@ impl Admin {
         }
     }
 
+    /// The admin token got a 401: the app must return to sign-in.
+    pub fn rejected(&self) -> bool {
+        self.client.rejected()
+    }
+
     pub fn open(&mut self, cx: &mut Context<Self>) {
         self.st.in_side = true;
         self.go(Section::Dashboard, cx);
@@ -136,6 +141,8 @@ impl Admin {
             Users => rd!(self, cx, Users, |c| c.users()),
             Libraries => rd!(self, cx, Folders, |c| c.virtual_folders()),
             Metadata | Resume | Streaming => rd!(self, cx, Config, |c| c.server_config()),
+            Transcoding => rd!(self, cx, Encoding, |c| c.encoding_config()),
+            Backups => rd!(self, cx, Backups, |c| c.backups()),
             Devices => rd!(self, cx, Devices, |c| c.devices()),
             Activity => rd!(self, cx, Activity, |c| c.activity_log(0, 100)),
             Plugins => rd!(self, cx, Plugins, |c| c.plugins()),
@@ -187,7 +194,7 @@ impl Admin {
         };
         let m = self.model();
         match (key, dir) {
-            ("escape" | "backspace", _) if !self.st.in_side => {
+            ("backspace", _) if !self.st.in_side => {
                 (self.st.in_side, self.st.on_toolbar) = (true, false);
             }
             ("escape" | "backspace", _) => {

@@ -130,6 +130,8 @@ impl Admin {
                     Cfg::BitrateLimit,
                 )]
             }),
+            Section::Transcoding => transcoding(d),
+            Section::Backups => backups(d),
             Section::Devices => devices(d),
             Section::Activity => activity(d),
             Section::Plugins => plugins(d),
@@ -364,6 +366,29 @@ fn libraries(d: &Data) -> Model {
         let mut detail = vec![("TYPE", f.collection_type.clone().unwrap_or("mixed".into()))];
         detail.extend(f.locations.iter().map(|p| ("PATH", p.clone())));
         detail.push(("REFRESH", f.refresh_status.clone().unwrap_or("Idle".into())));
+        let o = &f.library_options;
+        for (k, key) in [
+            ("TRICKPLAY IMAGES", "EnableTrickplayImageExtraction"),
+            ("CHAPTER IMAGES", "EnableChapterImageExtraction"),
+            ("REAL-TIME MONITOR", "EnableRealtimeMonitor"),
+            ("SAVE NFO FILES", "SaveLocalMetadata"),
+            ("EMBEDDED TITLES", "EnableEmbeddedTitles"),
+        ] {
+            if let Some(v) = o[key].as_bool() {
+                detail.push((k, yes(v)));
+            }
+        }
+        if let Some(sv) = o["MetadataSavers"].as_array() {
+            let names: Vec<_> = sv.iter().filter_map(|x| x.as_str()).collect();
+            detail.push((
+                "METADATA SAVERS",
+                if names.is_empty() {
+                    "none".into()
+                } else {
+                    names.join(", ")
+                },
+            ));
+        }
         m.items.push(Item {
             title: f.name.clone(),
             sub: format!(
@@ -380,6 +405,69 @@ fn libraries(d: &Data) -> Model {
             )],
             ..Default::default()
         });
+    }
+    m
+}
+
+fn transcoding(d: &Data) -> Model {
+    let mut m = Model {
+        status: status(&d.encoding),
+        ..Default::default()
+    };
+    let Some(c) = d.encoding.get() else { return m };
+    let s = |k: &str| c[k].as_str().unwrap_or_default().to_string();
+    let n = |k: &str| c[k].as_i64().unwrap_or_default();
+    let on = |k: &str| yes(c[k].as_bool().unwrap_or(false));
+    let edit = |title: &str, key: &'static str, numeric: bool, v: String| {
+        row(
+            title,
+            v.clone(),
+            vec![b("Edit", Act::EditEnc(key, title.to_string(), numeric, v))],
+        )
+    };
+    m.items = vec![
+        edit(
+            "Hardware acceleration",
+            "HardwareAccelerationType",
+            false,
+            s("HardwareAccelerationType"),
+        ),
+        edit(
+            "Transcode threads (-1 = auto)",
+            "EncodingThreadCount",
+            true,
+            n("EncodingThreadCount").to_string(),
+        ),
+        edit(
+            "Throttle delay (seconds)",
+            "ThrottleDelaySeconds",
+            true,
+            n("ThrottleDelaySeconds").to_string(),
+        ),
+        row("FFmpeg path", s("EncoderAppPathDisplay"), vec![]),
+        row("Transcode temp path", s("TranscodingTempPath"), vec![]),
+        row("Throttle transcodes", on("EnableThrottling"), vec![]),
+        row("Tone mapping", on("EnableTonemapping"), vec![]),
+        row("Hardware encoding", on("EnableHardwareEncoding"), vec![]),
+    ];
+    m
+}
+
+fn backups(d: &Data) -> Model {
+    let mut m = Model {
+        status: status(&d.backups),
+        ..Default::default()
+    };
+    for b in d.backups.get().into_iter().flatten() {
+        let name = b["Path"].as_str().unwrap_or("backup").to_string();
+        m.items.push(row(
+            &name,
+            b["DateCreated"].as_str().unwrap_or_default().to_string(),
+            vec![],
+        ));
+    }
+    if m.status.is_none() && m.items.is_empty() {
+        m.status = Some("No backups on this server.");
     }
     m
 }

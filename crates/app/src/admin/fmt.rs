@@ -35,7 +35,9 @@ pub fn when(iso: Option<&str>) -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
+    // Jellyfin sends year 0001 for "never": anything before 2000 counts as never.
     iso.and_then(parse_iso)
+        .filter(|t| *t > 946_684_800)
         .map_or("never".into(), |t| ago(t, now))
 }
 
@@ -54,6 +56,11 @@ pub fn short(id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn year_one_is_never() {
+        assert_eq!(when(Some("0001-01-01T00:00:00Z")), "never");
+    }
 
     #[test]
     fn iso_and_ago() {

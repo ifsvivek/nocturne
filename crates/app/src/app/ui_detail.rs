@@ -15,11 +15,13 @@ pub(super) enum Sec {
     Extras,
     Kids,
     Kids2,
+    Seasons,
 }
 
 impl Sec {
-    const ALL: [Sec; 7] = [
+    const ALL: [Sec; 8] = [
         Sec::Next,
+        Sec::Seasons,
         Sec::Kids,
         Sec::Kids2,
         Sec::Chapters,
@@ -37,12 +39,14 @@ impl Sec {
             Sec::Kids => 4,
             Sec::Kids2 => 5,
             Sec::Next => 6,
+            Sec::Seasons => 7,
         }
     }
 
     fn title(self, kind: Kind) -> (&'static str, &'static str) {
         match (self, kind) {
             (Sec::Next, _) => ("Next up", "Pick up this show where you left off."),
+            (Sec::Seasons, _) => ("Seasons", "Open a season on its own."),
             (Sec::Cast, _) => ("Cast & crew", "Select a person for their filmography."),
             (Sec::Chapters, _) => ("Chapters", "Jump straight to a scene."),
             (Sec::Similar, _) => (
@@ -77,6 +81,7 @@ pub(super) enum DAct {
     Next,
     Series,
     More,
+    View,
 }
 
 /// Entries of the More menu on a detail page.
@@ -123,6 +128,7 @@ pub(super) fn actions(m: &Media, has_prev: bool, has_next: bool) -> Vec<DAct> {
             v
         }
         Kind::BoxSet | Kind::Playlist | Kind::MusicAlbum => vec![PlayAll, Shuffle, Fav],
+        Kind::Photo => vec![View, Fav],
         _ => vec![Fav],
     };
     if m.kind == Kind::Series || m.kind == Kind::Season {
@@ -146,6 +152,7 @@ fn spec(a: DAct, m: &Media) -> (&'static str, &'static str, bool) {
         DAct::Next => ("d-next", "Next \u{203A}", false),
         DAct::Series => ("d-series", "Go to series", false),
         DAct::More => ("d-more", "More \u{2026}", false),
+        DAct::View => ("d-view", "View", true),
     }
 }
 
@@ -174,6 +181,9 @@ impl Page {
             Sec::Kids => self.kids.items(),
             Sec::Kids2 => self.kids2.items(),
             Sec::Next => self.nextup.items(),
+            // Redundant for a single season: the tabs already cover it.
+            Sec::Seasons if self.seasons.items().len() > 1 => self.seasons.items(),
+            Sec::Seasons => &[],
         }
     }
 
@@ -296,6 +306,8 @@ impl Root {
     pub(super) fn open_any(&mut self, m: Media, cx: &mut Context<Self>) {
         match m.kind {
             Kind::Library => self.open_library(m, cx),
+            Kind::Photo => self.photo_open(m),
+            Kind::Folder => self.open_browse(crate::app::ui_browse::scope_folder(&m), cx),
             Kind::Genre => self.open_browse(scope_tag("genre", &m.title, &m.title), cx),
             Kind::Studio => self.open_browse(scope_tag("studio", &m.id, &m.title), cx),
             _ => self.push(View::Detail, Some(m), cx),
@@ -461,6 +473,7 @@ impl Root {
                 None => self.toast("Nothing to play here yet.", cx),
             },
             DAct::Play => self.play_item(m, cx),
+            DAct::View => self.photo_open(m),
             DAct::PlayAll => self.play_list(list, false, cx),
             DAct::Shuffle => self.play_list(list, true, cx),
             DAct::Watched => self.toggle_played(&m, cx),
@@ -819,6 +832,14 @@ impl Root {
                 .when(off, |d| d.opacity(0.4).tooltip(ui::tip(NEED_WRITES))),
             );
         }
+        if m.kind == Kind::Book {
+            buttons = buttons.child(
+                div()
+                    .py(px(t::S3))
+                    .text_color(t::text_secondary())
+                    .child("Not playable in NOCTURNE yet."),
+            );
+        }
         let eyebrow = if m.kind == Kind::Episode {
             format!(
                 "0x01 · {} · {}",
@@ -1131,7 +1152,10 @@ impl Root {
         );
         let list_focus = focus == Some(DRow::List);
         let meta = if m.kind == Kind::Series {
-            format!("{} seasons", seasons.items().len())
+            match seasons.items().len() {
+                1 => "1 season".to_string(),
+                n => format!("{n} seasons"),
+            }
         } else {
             episodes.items().len().to_string()
         };
@@ -1676,6 +1700,96 @@ fn info_table(f: &Full) -> Div {
     d
 }
 
+// ---- photo viewer ----
+
+impl Root {
+    /// Open the viewer on `m`, stepping through the photos of the grid it came from (if any).
+    pub(super) fn photo_open(&mut self, m: Media) {
+        let siblings: Vec<Media> = self
+            .stack
+            .iter()
+            .rev()
+            .filter_map(|p| p.br.as_deref())
+            .find(|b| b.slots.iter().flatten().any(|x| x.id == m.id))
+            .map(|b| {
+                b.slots
+                    .iter()
+                    .flatten()
+                    .filter(|x| x.kind == Kind::Photo)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        let at = siblings.iter().position(|x| x.id == m.id);
+        self.photo = Some(match at {
+            Some(i) => (siblings, i, 1.0),
+            None => (vec![m], 0, 1.0),
+        });
+    }
+
+    pub(super) fn photo_key(&mut self, key: &str, cx: &mut Context<Self>) {
+        let Some((items, i, z)) = self.photo.as_mut() else {
+            return;
+        };
+        match key {
+            "escape" | "backspace" => self.photo = None,
+            "left" | "p" if *i > 0 => (*i, *z) = (*i - 1, 1.0),
+            "right" | "n" if *i + 1 < items.len() => (*i, *z) = (*i + 1, 1.0),
+            "=" | "+" | "up" => *z = (*z * 1.25).min(4.0),
+            "-" | "down" => *z = (*z / 1.25).max(1.0),
+            "0" => *z = 1.0,
+            _ => {}
+        }
+        cx.notify();
+    }
+
+    pub(super) fn photo_overlay(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (items, i, z) = self.photo.clone()?;
+        let m = items.get(i)?;
+        let (w, h) = (f32::from(self.win.width), f32::from(self.win.height));
+        let img_el: AnyElement = match self.pic(m, Art::Poster, 2560, cx) {
+            Pic::Ready(img_data) => div()
+                .w(px(w * z))
+                .h(px(h * z))
+                .flex_none()
+                .child(img(img_data).size_full().object_fit(ObjectFit::Contain))
+                .into_any_element(),
+            _ => ui::mono("loading".to_string()).into_any_element(),
+        };
+        Some(
+            div()
+                .id("photo-viewer")
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .occlude()
+                .bg(rgb(0x000000))
+                .flex()
+                .items_center()
+                .justify_center()
+                .overflow_hidden()
+                .child(img_el)
+                .child(
+                    div()
+                        .absolute()
+                        .bottom(px(t::S6))
+                        .left_0()
+                        .w_full()
+                        .flex()
+                        .justify_center()
+                        .child(ui::mono(format!(
+                            "{}  {}/{}  \u{2190} \u{2192} step  + - zoom  esc close",
+                            m.title,
+                            i + 1,
+                            items.len()
+                        ))),
+                )
+                .into_any_element(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1726,5 +1840,14 @@ mod tests {
         let mut ids: Vec<usize> = shuffled(v).iter().map(|x| x.id.parse().unwrap()).collect();
         ids.sort_unstable();
         assert_eq!(ids, (0..50).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn photos_and_books_have_no_play_button() {
+        assert_eq!(
+            actions(&m("Photo"), false, false),
+            vec![DAct::View, DAct::Fav]
+        );
+        assert_eq!(actions(&m("Book"), false, false), vec![DAct::Fav]);
     }
 }

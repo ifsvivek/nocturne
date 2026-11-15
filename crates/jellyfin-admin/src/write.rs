@@ -213,6 +213,20 @@ impl AdminClient {
             .map(drop)
     }
 
+    /// WRITE `POST /System/Configuration/encoding`: read-modify-write of one field.
+    pub async fn set_encoding_field(&self, key: &str, value: serde_json::Value) -> Result<()> {
+        let mut c = self.encoding_config().await?;
+        c[key] = value;
+        self.send(
+            Method::POST,
+            &["System", "Configuration", "encoding"],
+            &[],
+            Some(c),
+        )
+        .await
+        .map(drop)
+    }
+
     /// WRITE `POST /System/Restart`: DESTRUCTIVE, restarts the server process (drops all streams).
     /// The only process-level call here; there is deliberately no shutdown.
     pub async fn restart_server(&self, _: Confirmed) -> Result<()> {

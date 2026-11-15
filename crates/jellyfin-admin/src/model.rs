@@ -146,6 +146,8 @@ pub struct VirtualFolder {
     /// `Idle`, `Queued`, `Active`.
     pub refresh_status: Option<String>,
     pub refresh_progress: Option<f64>,
+    /// Raw library options (display, NFO, trickplay flags); shown read-only.
+    pub library_options: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

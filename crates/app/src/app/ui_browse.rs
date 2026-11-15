@@ -119,6 +119,20 @@ pub(super) fn scope_library(m: &Media) -> Scope {
     }
 }
 
+/// A folder or photo album: its direct children, in a grid.
+pub(super) fn scope_folder(m: &Media) -> Scope {
+    Scope {
+        key: m.id.clone(),
+        title: m.title.clone(),
+        subtitle: "Everything in this folder.".into(),
+        collection: Some("photos".into()),
+        base: BrowseQuery {
+            parent_id: Some(m.id.clone()),
+            ..Default::default()
+        },
+    }
+}
+
 pub(super) fn scope_global(g: Global) -> Scope {
     let (key, title, sub, types, fav): (_, _, _, &[&str], _) = match g {
         Global::Collections => (
@@ -584,7 +598,11 @@ impl Root {
             ((cell_w - 2.0 * t::S3 - 1.0) * ratio).round(),
         );
         let n = br.len();
-        let loading = br.slots.is_empty() && br.total == 0 && !br.failed && !names_tab;
+        // An empty answer must not look like "still loading": epoch 0 = never requested.
+        let loading = br.slots.is_empty()
+            && !br.failed
+            && !names_tab
+            && (br.epoch == 0 || br.pending.contains(&0));
         let count = if br.failed {
             "unavailable".to_string()
         } else if names_tab {
@@ -623,8 +641,10 @@ impl Root {
         } else if n == 0 {
             Self::note_text(if names_tab && br.options.is_none() {
                 "Loading"
-            } else {
+            } else if br.prefs.filters.active() > 0 || br.letter.is_some() {
                 "Nothing matches. Try clearing a filter."
+            } else {
+                "Nothing here yet."
             })
             .into_any_element()
         } else if names_tab {
@@ -746,6 +766,7 @@ impl Root {
                 }
             )
         };
+        let br_names = br.tab.is_names();
         let mut bar = div()
             .relative()
             .px(px(t::PAGE_PAD))
@@ -758,55 +779,60 @@ impl Root {
                     .flex()
                     .items_center()
                     .gap(px(t::S3))
-                    .child(
-                        ui::action_button(
-                            "tb-sort".into(),
-                            &format!("Sort: {sort_label}"),
-                            false,
-                            false,
-                            menu == Menu::Sort,
-                            fixed,
-                            cx.listener(move |t, _, _, cx| {
-                                if !fixed {
-                                    t.browse_menu(pid, Menu::Sort, cx)
-                                }
-                            }),
+                    // The entry lists (genres, studios, years) have no sort, filter or view type.
+                    .when(!br_names, |d| {
+                        d.child(
+                            ui::action_button(
+                                "tb-sort".into(),
+                                &format!("Sort: {sort_label}"),
+                                false,
+                                false,
+                                menu == Menu::Sort,
+                                fixed,
+                                cx.listener(move |t, _, _, cx| {
+                                    if !fixed {
+                                        t.browse_menu(pid, Menu::Sort, cx)
+                                    }
+                                }),
+                            )
+                            .tooltip(ui::tip("Sort order (O)")),
                         )
-                        .tooltip(ui::tip("Sort order (O)")),
-                    )
-                    .child(
-                        ui::action_button(
-                            "tb-filter".into(),
-                            &if nfilters > 0 {
-                                format!("Filters ({nfilters})")
-                            } else {
-                                "Filters".to_string()
-                            },
-                            nfilters > 0,
-                            false,
-                            menu == Menu::Filter,
-                            false,
-                            cx.listener(move |t, _, _, cx| t.browse_menu(pid, Menu::Filter, cx)),
+                        .child(
+                            ui::action_button(
+                                "tb-filter".into(),
+                                &if nfilters > 0 {
+                                    format!("Filters ({nfilters})")
+                                } else {
+                                    "Filters".to_string()
+                                },
+                                nfilters > 0,
+                                false,
+                                menu == Menu::Filter,
+                                false,
+                                cx.listener(move |t, _, _, cx| {
+                                    t.browse_menu(pid, Menu::Filter, cx)
+                                }),
+                            )
+                            .tooltip(ui::tip("Filter (L)")),
                         )
-                        .tooltip(ui::tip("Filter (L)")),
-                    )
-                    .child({
-                        let mut seg = div().flex().gap(px(t::S1));
-                        for v in ViewKind::ALL {
-                            seg = seg.child(
-                                ui::action_button(
-                                    format!("tb-view-{}", v.label()),
-                                    v.label(),
-                                    v == view,
-                                    false,
-                                    false,
-                                    false,
-                                    cx.listener(move |t, _, _, cx| t.browse_view(pid, v, cx)),
-                                )
-                                .tooltip(ui::tip("View type (V)")),
-                            );
-                        }
-                        seg
+                        .child({
+                            let mut seg = div().flex().gap(px(t::S1));
+                            for v in ViewKind::ALL {
+                                seg = seg.child(
+                                    ui::action_button(
+                                        format!("tb-view-{}", v.label()),
+                                        v.label(),
+                                        v == view,
+                                        false,
+                                        false,
+                                        false,
+                                        cx.listener(move |t, _, _, cx| t.browse_view(pid, v, cx)),
+                                    )
+                                    .tooltip(ui::tip("View type (V)")),
+                                );
+                            }
+                            seg
+                        })
                     })
                     .child(div().flex_1())
                     .child(ui::mono(count)),
@@ -864,7 +890,10 @@ impl Root {
                         })),
                 );
             }
-            bar = bar.child(away(pid, cx)).child(list);
+            // Deferred: the menu must paint over the A-Z strip and the grid below the toolbar.
+            bar = bar
+                .child(deferred(away(pid, cx)).with_priority(1))
+                .child(deferred(list).with_priority(2));
         }
         if let Some(rows) = rows {
             let mut list = panel("filter-menu")
@@ -898,7 +927,10 @@ impl Root {
                         .child(ui::mono(if r.on { "\u{2713}" } else { "" })),
                 );
             }
-            bar = bar.child(away(pid, cx)).child(list);
+            // Deferred: the menu must paint over the A-Z strip and the grid below the toolbar.
+            bar = bar
+                .child(deferred(away(pid, cx)).with_priority(1))
+                .child(deferred(list).with_priority(2));
         }
         bar
     }
@@ -919,7 +951,7 @@ impl Root {
         let end = ((r + 1) * cols).min(br.slots.len());
         let items: Vec<(usize, Option<Media>)> =
             (r * cols..end).map(|i| (i, br.item(i).cloned())).collect();
-        let mut row = div().h(px(row_h)).flex();
+        let mut row = div().w_full().h(px(row_h)).flex();
         for (idx, m) in items {
             let hover = cx.listener(move |t, hov: &bool, _, cx| {
                 if *hov

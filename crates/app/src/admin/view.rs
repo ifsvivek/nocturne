@@ -478,6 +478,9 @@ impl Admin {
                         .children(it.detail.iter().map(|(k, v)| kv(k, v.clone()))),
                 );
             let f = (body_focus && !st.on_toolbar).then_some(st.act);
+            if it.acts.is_empty() && it.text.is_none() && it.detail.is_empty() {
+                panel = panel.child(ui::mono("View only in NOCTURNE.".to_string()));
+            }
             panel = panel.child(self.buttons(&it.acts, f, "act", cx));
             if let Some(txt) = &it.text {
                 panel = panel.child(
@@ -750,6 +753,10 @@ impl Render for Admin {
             Section::Metadata => "Where metadata comes from.",
             Section::Resume => "When playback counts as started or finished.",
             Section::Streaming => "Limits for streaming outside your network.",
+            Section::Transcoding => {
+                "How the server converts video when a client cannot play it as is."
+            }
+            Section::Backups => "Server backups (read only).",
             Section::Devices => "Devices that have signed in.",
             Section::Activity => "Recent events on this server.",
             Section::Plugins => "Installed plugins.",

@@ -5,6 +5,10 @@ use crate::{
 };
 use reqwest::{Method, Url, header};
 use serde::de::DeserializeOwned;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::Duration;
 
 /// Admin Jellyfin client (needs an admin API key). Reads live here; writes are in `write.rs`.
@@ -12,6 +16,8 @@ use std::time::Duration;
 pub struct AdminClient {
     http: reqwest::Client,
     base: Url,
+    /// Set once any request got 401 (token revoked); shared by clones.
+    rejected: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for AdminClient {
@@ -44,7 +50,16 @@ impl AdminClient {
             .default_headers(headers)
             .build()
             .map_err(http_err)?;
-        Ok(Self { http, base })
+        Ok(Self {
+            http,
+            base,
+            rejected: Arc::default(),
+        })
+    }
+
+    /// True once the server answered 401 to any admin request.
+    pub fn rejected(&self) -> bool {
+        self.rejected.load(Ordering::Relaxed)
     }
 
     // ---- reads (every method below is READ: GET only) ----
@@ -145,6 +160,17 @@ impl AdminClient {
         self.get(&["System", "Configuration", "network"], &[]).await
     }
 
+    /// READ `GET /System/Configuration/encoding` (kept as raw JSON: the schema differs by version).
+    pub async fn encoding_config(&self) -> Result<serde_json::Value> {
+        self.get(&["System", "Configuration", "encoding"], &[])
+            .await
+    }
+
+    /// READ `GET /Backup` (server 10.11+; an error on older servers).
+    pub async fn backups(&self) -> Result<Vec<serde_json::Value>> {
+        self.get(&["Backup"], &[]).await
+    }
+
     /// READ `GET /Auth/Keys`.
     pub async fn api_keys(&self) -> Result<Vec<ApiKey>> {
         Ok(self
@@ -184,6 +210,9 @@ impl AdminClient {
         let resp = req.send().await.map_err(http_err)?;
         let status = resp.status();
         if !status.is_success() {
+            if status.as_u16() == 401 {
+                self.rejected.store(true, Ordering::Relaxed);
+            }
             return Err(Error::Status {
                 status: status.as_u16(),
                 path,
