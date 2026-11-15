@@ -118,3 +118,79 @@ pub struct PublicInfo {
     pub version: String,
     pub id: String,
 }
+
+/// One of the account's own sessions (`GET /Sessions`, narrowed to this user).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct OwnSession {
+    pub user_id: String,
+    pub client: String,
+    pub device_name: String,
+    pub device_id: String,
+    pub application_version: String,
+    pub last_activity_date: String,
+    /// True for the session this app is using (set by the client, not the server).
+    #[serde(skip)]
+    pub current: bool,
+}
+
+/// Keep only `user_id`'s sessions and flag the one belonging to `device_id`.
+pub(crate) fn own_sessions(
+    all: Vec<OwnSession>,
+    user_id: &str,
+    device_id: &str,
+) -> Vec<OwnSession> {
+    let mut v: Vec<_> = all
+        .into_iter()
+        .filter(|s| s.user_id == user_id)
+        .map(|mut s| {
+            s.current = s.device_id == device_id;
+            s
+        })
+        .collect();
+    v.sort_by(|a, b| {
+        b.current
+            .cmp(&a.current)
+            .then(b.last_activity_date.cmp(&a.last_activity_date))
+    });
+    // The server lists only sessions it has seen since it started; after a restart our own
+    // restored session can be missing, but we know we are signed in here.
+    if !v.first().is_some_and(|s| s.current) {
+        v.insert(
+            0,
+            OwnSession {
+                user_id: user_id.into(),
+                client: "NOCTURNE".into(),
+                device_name: "Linux".into(),
+                device_id: device_id.into(),
+                application_version: env!("CARGO_PKG_VERSION").into(),
+                current: true,
+                ..Default::default()
+            },
+        );
+    }
+    v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn own_sessions_are_filtered_flagged_and_sorted() {
+        let all: Vec<OwnSession> = serde_json::from_str(
+            r#"[{"UserId":"u","DeviceId":"a","LastActivityDate":"2026-01-01"},
+                {"UserId":"other","DeviceId":"x"},
+                {"UserId":"u","DeviceId":"me","LastActivityDate":"2025-01-01","Future":1},
+                {"UserId":"u","DeviceId":"b","LastActivityDate":"2026-06-01"}]"#,
+        )
+        .unwrap();
+        let v = own_sessions(all, "u", "me");
+        let ids: Vec<_> = v.iter().map(|s| s.device_id.as_str()).collect();
+        assert_eq!(ids, ["me", "b", "a"], "this device first, then newest");
+        assert!(v[0].current && !v[1].current);
+        // our own session missing from the server's list: still shown, first
+        let v = own_sessions(vec![], "u", "me");
+        assert!(v.len() == 1 && v[0].current && v[0].client == "NOCTURNE");
+    }
+}

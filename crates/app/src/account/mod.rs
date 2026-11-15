@@ -22,7 +22,16 @@ pub enum Event {
 
 impl EventEmitter<Event> for Accounts {}
 
+/// What the account dialog is for.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum DlgKind {
+    Password,
+    /// Approve another device's Quick Connect code with this account.
+    Authorize,
+}
+
 struct PwDialog {
+    kind: DlgKind,
     client: UserClient,
     form: Form,
     busy: bool,
@@ -348,6 +357,7 @@ impl Accounts {
             ..Default::default()
         };
         self.dialog = Some(PwDialog {
+            kind: DlgKind::Password,
             client,
             form: Form::new(
                 vec![
@@ -363,8 +373,68 @@ impl Accounts {
         cx.notify();
     }
 
+    /// "Authorize a device": the code another device shows on its Quick Connect screen.
+    pub fn open_authorize(&mut self, client: UserClient, cx: &mut Context<Self>) {
+        self.dialog = Some(PwDialog {
+            kind: DlgKind::Authorize,
+            client,
+            form: Form::new(
+                vec![Fld {
+                    label: "Code shown on the other device",
+                    ..Default::default()
+                }],
+                2,
+            ),
+            busy: false,
+            msg: None,
+        });
+        cx.notify();
+    }
+
+    fn authorize_confirm(&mut self, cx: &mut Context<Self>) {
+        let Some(d) = self.dialog.as_mut().filter(|d| !d.busy) else {
+            return;
+        };
+        let code = d.form.fields[0].value.trim().to_string();
+        if code.is_empty() {
+            d.msg = Some("Type the code the other device is showing.");
+            return;
+        }
+        d.busy = true;
+        d.msg = None;
+        let c = d.client.clone();
+        bridge::run(
+            cx,
+            async move { c.quick_connect_authorize(&code).await },
+            |a, r, cx| match r {
+                Ok(()) => {
+                    a.dialog = None;
+                    cx.emit(Event::Notice("Device approved."));
+                }
+                Err(e) => {
+                    if let Some(d) = a.dialog.as_mut() {
+                        d.busy = false;
+                        d.msg = Some(match e {
+                            Error::Status {
+                                status: 400 | 404, ..
+                            } => "That code wasn't found. Check it and try again.",
+                            _ => "Couldn't approve the device. Try again.",
+                        });
+                    }
+                }
+            },
+        );
+    }
+
     /// Enter on "Change password": the only place the confirmation token is minted.
     fn pw_confirm(&mut self, cx: &mut Context<Self>) {
+        if self
+            .dialog
+            .as_ref()
+            .is_some_and(|d| d.kind == DlgKind::Authorize)
+        {
+            return self.authorize_confirm(cx);
+        }
         let Some(d) = self.dialog.as_mut().filter(|d| !d.busy) else {
             return;
         };

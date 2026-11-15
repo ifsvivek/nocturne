@@ -220,6 +220,14 @@ impl UserClient {
         .await
     }
 
+    /// READ `GET /Sessions`: this account's own sessions (an administrator also gets other
+    /// users' sessions from the server; they are filtered out). Sign-in sessions only; the
+    /// server offers no way to end other devices without admin rights.
+    pub async fn own_sessions(&self) -> Result<Vec<OwnSession>> {
+        let all: Vec<OwnSession> = self.json(Method::GET, &["Sessions"], &[], None).await?;
+        Ok(own_sessions(all, &self.user_id, &device_id()))
+    }
+
     /// WRITE `POST /Sessions/Logout`: invalidates this token on the server.
     pub async fn logout(&self) -> Result<()> {
         self.run(Method::POST, &["Sessions", "Logout"], &[], None)

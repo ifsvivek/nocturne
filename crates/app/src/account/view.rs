@@ -1,7 +1,7 @@
 //! Account screens in the app's design language: centred panel on the grain/glow backdrop,
 //! hairline fields, mono annotations, one primary action per screen.
 use super::state::*;
-use super::{Accounts, PwDialog};
+use super::{Accounts, DlgKind, PwDialog};
 use crate::{theme as t, ui};
 use gpui::prelude::*;
 use gpui::*;
@@ -369,11 +369,22 @@ impl Accounts {
 
     fn pw_dialog(&self, d: &PwDialog, cx: &mut Context<Self>) -> Div {
         let f = &d.form;
-        let mut p = panel().w(px(480.0)).child(heading(
-            "Please confirm",
-            "Change your password".into(),
-            Some("You'll stay signed in on this device.".into()),
-        ));
+        let (title, body, ok_label) = match d.kind {
+            DlgKind::Password => (
+                "Change your password",
+                "You'll stay signed in on this device.",
+                "Change password",
+            ),
+            DlgKind::Authorize => (
+                "Authorize a device",
+                "On the other device choose Quick Connect, then type the code it shows. It signs in as you.",
+                "Authorize",
+            ),
+        };
+        let mut p =
+            panel()
+                .w(px(480.0))
+                .child(heading("Please confirm", title.into(), Some(body.into())));
         for (i, fld) in f.fields.iter().enumerate() {
             p = p.child(self.field(
                 "pw-f",
@@ -405,7 +416,7 @@ impl Accounts {
                 ))
                 .child(ui::action_button(
                     "pw-ok".into(),
-                    "Change password",
+                    ok_label,
                     true,
                     false,
                     f.focus == oi,

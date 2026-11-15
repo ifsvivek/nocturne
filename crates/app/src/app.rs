@@ -1,6 +1,7 @@
 //! Root view: connection state, navigation stack, keyboard, and the screens.
 mod ui_browse;
 mod ui_detail;
+mod ui_help;
 mod ui_search;
 
 use crate::account::{self, Accounts};
@@ -270,6 +271,10 @@ pub struct Root {
     info_open: bool,
     /// Photo viewer: the photos to step through, the shown one and the zoom factor.
     photo: Option<(Vec<Media>, usize, f32)>,
+    /// Shortcut reference overlay (`?`).
+    help_open: bool,
+    /// This account's own sessions overlay (account menu).
+    devices: Option<Load<Vec<nocturne_jellyfin_user::OwnSession>>>,
 }
 
 /// Reconnect state while the server is unreachable.
@@ -285,6 +290,8 @@ struct Offline {
 enum AcctAct {
     Settings,
     Password,
+    Authorize,
+    Devices,
     Switch,
     SignOut,
 }
@@ -339,6 +346,8 @@ impl Root {
             more: None,
             info_open: false,
             photo: None,
+            help_open: false,
+            devices: None,
         };
         me.disk = DiskCache::default_dir().map(|d| {
             Arc::new(DiskCache::open(
@@ -537,11 +546,20 @@ impl Root {
         if !self.dev {
             v.extend([
                 ("Change password", AcctAct::Password),
+                ("Authorize a device", AcctAct::Authorize),
+                ("Your devices", AcctAct::Devices),
                 ("Switch server", AcctAct::Switch),
-                ("Sign out", AcctAct::SignOut),
+                ("Sign out or switch user", AcctAct::SignOut),
             ]);
         }
         v
+    }
+
+    /// Shortcut help sits above everything: drop open menus first.
+    fn close_admin_menus(&mut self) {
+        self.menu = false;
+        self.more = None;
+        self.info_open = false;
     }
 
     fn menu_act(&mut self, act: AcctAct, cx: &mut Context<Self>) {
@@ -552,16 +570,23 @@ impl Root {
                 self.settings_open = true;
                 self.settings_sel = 0;
             }
-            AcctAct::Password if !self.hooks.can_write() => {
+            AcctAct::Devices => self.open_devices(cx),
+            AcctAct::Authorize | AcctAct::Password if !self.hooks.can_write() => {
                 self.toast(self.writes_off(), cx);
             }
-            AcctAct::Password => {
+            AcctAct::Password | AcctAct::Authorize => {
                 let client = self
                     .session
                     .as_ref()
                     .and_then(|(u, s)| UserClient::from_session(u, s).ok());
                 if let (Some(c), Some(a)) = (client, self.accounts.clone()) {
-                    a.update(cx, |a, cx| a.open_password(c, cx));
+                    a.update(cx, |a, cx| {
+                        if act == AcctAct::Authorize {
+                            a.open_authorize(c, cx)
+                        } else {
+                            a.open_password(c, cx)
+                        }
+                    });
                 }
             }
             AcctAct::Switch => self.switch_server(cx),
@@ -1340,6 +1365,14 @@ impl Root {
             cx.notify();
             return;
         }
+        if self.help_open || self.devices.is_some() {
+            if matches!(key, "escape" | "backspace")
+                || ev.keystroke.key_char.as_deref() == Some("?")
+            {
+                self.close_overlays();
+            }
+            return cx.notify();
+        }
         if self.photo.is_some() {
             return self.photo_key(key, cx);
         }
@@ -1378,7 +1411,12 @@ impl Root {
                 return self.search_key(ev, cx);
             }
             let m = &ev.keystroke.modifiers;
-            if (m.control && key == "k") || (key == "/" && !m.control && !m.alt) {
+            if ev.keystroke.key_char.as_deref() == Some("?") {
+                self.close_admin_menus();
+                self.help_open = true;
+                return cx.notify();
+            }
+            if (m.control && key == "k") || (key == "/" && !m.control && !m.alt && !m.shift) {
                 self.close_admin(cx);
                 return self.open_search(cx);
             }
@@ -1868,9 +1906,10 @@ impl Root {
                     .text_size(px(t::BODY))
                     .cursor_pointer()
                     .when(on, |d| d.bg(t::accent_tint()).text_color(t::accent_text()))
-                    .when(act == AcctAct::Password && !writes, |d| {
-                        d.opacity(0.4).tooltip(ui::tip(NEED_WRITES))
-                    })
+                    .when(
+                        matches!(act, AcctAct::Password | AcctAct::Authorize) && !writes,
+                        |d| d.opacity(0.4).tooltip(ui::tip(NEED_WRITES)),
+                    )
                     .hover(|s| s.bg(t::glass()))
                     .on_click(cx.listener(move |t, _, _, cx| t.menu_act(act, cx)))
                     .child(label),
@@ -2652,6 +2691,12 @@ impl Render for Root {
             root = root.child(o);
         }
         if let Some(o) = self.photo_overlay(cx) {
+            root = root.child(o);
+        }
+        if let Some(o) = self.help_overlay(cx) {
+            root = root.child(o);
+        }
+        if let Some(o) = self.devices_overlay(cx) {
             root = root.child(o);
         }
         if let Some(a) = self.accounts.clone().filter(|a| a.read(cx).dialog_open()) {

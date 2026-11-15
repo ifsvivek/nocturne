@@ -3,7 +3,7 @@
 //! carries the page id it was requested for and is dropped if the user has moved on.
 mod act;
 mod confirm;
-mod fmt;
+pub(crate) mod fmt;
 mod model;
 mod state;
 mod view;
@@ -17,6 +17,8 @@ use nocturne_jellyfin_admin::{AdminClient, Config, Confirmed};
 use state::{Msg, POLL_SECS, Section, Shape, State};
 use std::future::Future;
 use std::time::Duration;
+
+pub(crate) use fmt::when;
 
 /// Asks the app to open Settings (the view-only banner's link).
 pub struct OpenSettings;
