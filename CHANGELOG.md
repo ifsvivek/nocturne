@@ -20,7 +20,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
   metadata refresh schedule, and an Access and limits page per user (library access, feature switches, parental
   rating, tags, bitrate and session limits, lockout, profile image, display preferences read).
 
+- Accounts: switch between remembered accounts of a server without a password, add another account, own profile
+  image and display language.
+- Playlists you own: create, add from any item or album, remove, reorder, rename, delete. Music queue with play
+  next, add to queue, reorder, remove, shuffle and repeat, kept for the session.
+
 ### Fixed
+- Top nav no longer lists Collections / Playlists twice; images first seen without tags (search hits) are fetched
+  again once the full item arrives and failed images retry after 30 s; the series hero logo fits its box; the
+  breadcrumb bar covers content scrolled under it.
 - Admin sidebar: the "Playback" sub-heading is gone; the group lists consistently.
 - Typing `/` or `?` inside an admin dialog opened search or help instead of entering the character.
 

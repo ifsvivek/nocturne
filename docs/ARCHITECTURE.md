@@ -5,9 +5,9 @@ NOCTURNE is a Cargo workspace of six crates. The app is the only binary (`noctur
 | Crate | Role | Writes to server? |
 |---|---|---|
 | `crates/jellyfin` | Async read-only Jellyfin client: libraries, items, images, stream URLs. GET only, enforced by `tests/readonly.rs` | never |
-| `crates/jellyfin-user` | User-scope calls: login, Quick Connect, logout, playback reporting, played / favourite, own password | yes, user scope |
+| `crates/jellyfin-user` | User-scope calls: login, Quick Connect, logout, playback reporting, played / favourite, own password, own profile image, display language, own playlists | yes, user scope |
 | `crates/jellyfin-admin` | Admin reads and writes. Destructive calls need a `Confirmed` token; live tests guarded by `TestServerGuard` | yes, admin |
-| `crates/session` | Token in the system keyring (Secret Service), server URLs in `servers.toml`, atomic writes | n/a |
+| `crates/session` | Tokens in the system keyring (Secret Service): the active login per server and one per remembered account; server URLs in `servers.toml`, account names in `accounts.toml`; atomic writes | n/a |
 | `crates/player` | mpv playback: `EmbeddedPlayer` (libmpv in a Wayland subsurface) and `Player` (mpv child process over JSON IPC) | n/a |
 | `crates/app` | GPUI application: views, navigation, settings, caches, admin UI | via the crates above |
 

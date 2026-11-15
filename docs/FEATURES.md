@@ -11,7 +11,7 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] Session-ended handling (401 returns to sign-in), offline banner with retry
 - [~] Developer API-key mode via environment variables (read-only; all writes refused)
 - [x] Authorize another device with Quick Connect; Your devices (read only list of this account's sessions)
-- [ ] User picker / profile switching, profile image, display language (Sign out is the way to switch user)
+- [x] Switch between remembered accounts of a server without a password (tokens in the keyring, `accounts.toml` holds names only); add another account; own profile image set / remove; display language (the `language` entry other Jellyfin apps share). Sign out forgets the account
 
 ## Browsing
 - [x] Home: hero, Continue Watching, Next Up, latest per library
@@ -23,7 +23,7 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] Remote images with blurhash placeholders and a size-capped disk cache
 - [x] Breadcrumbs, back / forward, Esc / Backspace navigation
 - [~] Photos: viewer with prev / next and zoom; folders open as grids
-- [~] Music: browsable, with less depth than movies and shows
+- [~] Music: browsable; a session music queue (Play next, Add to queue from albums, tracks and playlists; reorder, remove, shuffle, repeat in the player queue panel). No album-art queue view
 - [ ] Books and audiobooks: detail page only, not playable
 - [ ] HDR filter (the server exposes none)
 
@@ -36,8 +36,8 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] MPRIS media controls and idle inhibit
 - [x] Resume position; progress, watched and favourite sync (needs server changes on, see WRITES.md)
 - [x] Network buffering watermarks ([buffering.md](buffering.md))
-- [ ] Playlist / collection editing, shuffle and repeat across a queue
-- [ ] Music player features (now playing, album art queue)
+- [x] Playlists you own: create (N on the Playlists page), add from any item or album (More), remove and reorder entries (x, [ ], ]), rename, delete (typed name); collections stay read only
+- [x] Music queue: queue panel (u) with reorder, remove, shuffle and repeat; kept for the session and started from the account menu
 
 ## Settings
 - [x] Settings screen: server-changes master switch, progress sync, buffering, grid density, home sections, language preferences

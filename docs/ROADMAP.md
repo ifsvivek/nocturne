@@ -11,12 +11,11 @@ Honest list of what is missing in 0.1.0 and what is intentionally out of scope. 
 
 **Media types and playback**
 - Books and audiobooks are not playable (detail page only)
-- Music player depth: queue and now-playing UI, album-art views
-- Playlist and collection create, add, remove and reorder
-- Shuffle and repeat across a queue
+- Music: album-art views, a persistent queue across launches, queue editing while browsing (the player owns the screen)
+- Collection create, add, remove and reorder; sharing playlists with other users
 
 **Accounts and settings**
-- User picker / profile switching, display language, own profile image
+- A user picker on the sign-in screen (switching is in the account menu)
 - Theme and accent choice, subtitle appearance presets
 - Ending other sessions of your own account (the server only allows it for administrators)
 
