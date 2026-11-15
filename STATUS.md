@@ -3,7 +3,9 @@
 Orchestrator's running log. Update at every task boundary.
 
 ## Now
-- Planning Task 2: libmpv playback (not yet delegated).
+- Task 2 (agent A): `crates/player` (libmpv2) + Jellyfin base-URL fix — running
+- Task 3 (agent B): `crates/app` GPUI shell, design system, library/detail screens, gpui component lib evaluation — running (parallel, disjoint files)
+- After both: review, integrate Play -> player, then polish. Full autonomy granted by user; no need to ask between tasks. Target: usable app within 1 week.
 
 ## Done
 - [x] Repo: private GitHub repo, README, .gitignore, .env.example
