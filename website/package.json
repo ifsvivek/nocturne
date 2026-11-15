@@ -4,8 +4,9 @@
   "type": "module",
   "license": "GPL-3.0-or-later",
   "scripts": {
-    "build": "vite build && node scripts/build.mjs",
-    "test": "node --test"
+    "build": "vite build",
+    "test": "node --test",
+    "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "4.0.1",
@@ -14,7 +15,8 @@
     "@tailwindcss/vite": "4.3.5",
     "svelte": "5.57.3",
     "tailwindcss": "4.3.5",
-    "vite": "8.3.8"
+    "vite": "8.3.8",
+    "wrangler": "4.162.0"
   },
   "imports": {
     "#lib/*": "./src/lib/*"

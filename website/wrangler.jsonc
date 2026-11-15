@@ -1,9 +1,12 @@
 {
-  // Deployment config. The account is chosen at deploy time with CLOUDFLARE_ACCOUNT_ID (never committed).
+  // Static site served by Workers static assets. The account comes from CLOUDFLARE_ACCOUNT_ID at deploy time.
   "name": "nocturne-website",
-  "main": "dist/worker.js",
   "compatibility_date": "2025-01-01",
   "workers_dev": false,
-  "preview_urls": false,
-  "routes": [{ "pattern": "nocturne.ifsvivek.in", "custom_domain": true }]
+  "routes": [{ "pattern": "nocturne.ifsvivek.in", "custom_domain": true }],
+  "assets": {
+    "directory": "./build",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  }
 }

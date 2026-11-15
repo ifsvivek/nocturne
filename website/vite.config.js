@@ -12,8 +12,6 @@ export default defineConfig({
       // Every page is prerendered with csr=false: zero JavaScript ships, so the CSP has no script source.
       adapter: adapter({ pages: out, assets: out, strict: true }),
       paths: { relative: false },
-      // One inlined stylesheet, no render-blocking request; the worker adds its hash to the CSP.
-      inlineStyleThreshold: Infinity,
     }),
   ],
   build: { assetsInlineLimit: 0 },
