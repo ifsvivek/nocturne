@@ -602,21 +602,25 @@ async fn shutdown_server_stops_it() {
         env!("CARGO_MANIFEST_DIR"),
         "/../../scripts/test-jellyfin.sh"
     );
+    // The script must manage the same instance this test talks to: its directory is the one holding the env file.
+    let dir = std::path::Path::new(&std::env::var("NOCTURNE_JF_TEST_ENV").unwrap())
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let jf = |arg: &str| {
+        let mut c = std::process::Command::new(script);
+        c.arg(arg).env("NOCTURNE_JF_TEST_DIR", &dir);
+        c
+    };
     // The process lingers briefly while shutting down; `start` must not see it as running.
     for _ in 0..30 {
-        let st = std::process::Command::new(script)
-            .arg("status")
-            .output()
-            .unwrap();
+        let st = jf("status").output().unwrap();
         if !st.status.success() {
             break;
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
-    let up = std::process::Command::new(script)
-        .arg("start")
-        .status()
-        .unwrap();
+    let up = jf("start").status().unwrap();
     assert!(up.success(), "could not start the throwaway again");
     assert!(gone, "server still answered after shutdown");
     let mut back = false;
