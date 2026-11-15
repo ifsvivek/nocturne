@@ -51,17 +51,17 @@ fn load_seek_pause_eof() {
     wait("seek", || {
         p.state().position.is_some_and(|x| (0.7..=1.1).contains(&x))
     });
-    assert!(p.state().paused);
+    wait("paused", || p.state().paused);
     let before = p.state().position.unwrap();
     p.seek_by(-0.5).unwrap();
     wait("seek_by", || {
         p.state().position.is_some_and(|x| x < before - 0.3)
     });
     p.toggle().unwrap();
-    assert!(!p.state().paused);
+    wait("unpaused", || !p.state().paused);
 
     p.set_volume(50.0).unwrap();
-    assert_eq!(p.state().volume, 50.0);
+    wait("volume", || p.state().volume == 50.0);
 
     p.seek_to(1.5).unwrap();
     wait("eof", || p.state().eof);
@@ -97,4 +97,43 @@ fn headers_reach_server_and_not_url() {
     wait("failure event", || {
         p.events().try_iter().any(|e| matches!(e, Event::Failed(_)))
     });
+}
+
+#[test]
+fn killed_child_emits_closed_and_next_load_respawns() {
+    let path = std::env::temp_dir().join(format!("nocturne-kill-{}.wav", std::process::id()));
+    std::fs::write(&path, wav(2)).unwrap();
+    let p = Player::new(Options { headless: true }).unwrap();
+    let old = p.child_pid().unwrap();
+    assert!(
+        std::process::Command::new("kill")
+            .args(["-9", &old.to_string()])
+            .status()
+            .unwrap()
+            .success()
+    );
+    wait("closed", || {
+        p.events().try_iter().any(|e| e == Event::Closed)
+    });
+    assert!(p.state().idle);
+
+    p.load(path.to_str().unwrap(), None).unwrap();
+    assert_ne!(p.child_pid().unwrap(), old);
+    wait("duration after respawn", || p.state().duration.is_some());
+    drop(p);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn auth_header_not_on_child_command_line() {
+    let p = Player::new(Options { headless: true }).unwrap();
+    p.load("/nonexistent.wav", Some("Authorization: SECRET-TOKEN-123"))
+        .unwrap();
+    wait("failure", || {
+        p.events().try_iter().any(|e| matches!(e, Event::Failed(_)))
+    });
+    let cmdline = std::fs::read(format!("/proc/{}/cmdline", p.child_pid().unwrap())).unwrap();
+    let s = String::from_utf8_lossy(&cmdline);
+    assert!(!s.contains("SECRET-TOKEN") && !s.contains("Authorization"));
+    assert!(s.contains("--input-ipc-server="));
 }
