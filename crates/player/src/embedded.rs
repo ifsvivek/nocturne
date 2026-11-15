@@ -327,6 +327,22 @@ impl EmbeddedPlayer {
         self.mpv.command("stop", &[]).map_err(e)
     }
 
+    /// Any mpv command, e.g. `command(&["set", "speed", "1.5"])`.
+    pub fn command(&self, args: &[&str]) -> Result<()> {
+        let (name, rest) = args.split_first().ok_or_else(|| e("empty command"))?;
+        self.mpv.command(name, rest).map_err(e)
+    }
+
+    /// Reads one mpv property as JSON, same shape as the child-process player. `None` when unavailable.
+    pub fn prop(&self, name: &str) -> Option<serde_json::Value> {
+        let s = self.mpv.get_property::<String>(name).ok()?;
+        Some(match s.as_str() {
+            "yes" => true.into(),
+            "no" => false.into(),
+            _ => serde_json::from_str(&s).unwrap_or(s.into()),
+        })
+    }
+
     /// Cheap, non-blocking: a snapshot maintained by the event thread.
     pub fn state(&self) -> State {
         crate::lock(&self.state).clone()

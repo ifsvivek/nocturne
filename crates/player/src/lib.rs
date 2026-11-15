@@ -13,6 +13,7 @@ mod embedded;
 pub use embedded::{EmbeddedPlayer, Geometry, geometry};
 
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::net::UnixStream;
@@ -95,7 +96,11 @@ pub struct Player {
     rx: Receiver<Event>,
     conn: Mutex<Option<Conn>>,
     req: AtomicU64,
+    /// Replies awaited by `prop`, keyed by request id (filled by the reader thread).
+    pending: Pending,
 }
+
+type Pending = Arc<Mutex<HashMap<u64, Sender<Value>>>>;
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -123,6 +128,7 @@ impl Player {
             rx,
             conn: Mutex::new(None),
             req: AtomicU64::new(1),
+            pending: Arc::default(),
         };
         *p.conn.lock().unwrap() = Some(p.spawn()?);
         Ok(p)
@@ -182,6 +188,28 @@ impl Player {
 
     pub fn stop(&self) -> Result<()> {
         self.cmd(json!(["stop"]))
+    }
+
+    /// Any mpv command, e.g. `command(&["set", "speed", "1.5"])`.
+    pub fn command(&self, args: &[&str]) -> Result<()> {
+        self.cmd(json!(args))
+    }
+
+    /// Reads one mpv property (JSON). `None` when unavailable or mpv is gone. Blocks up to 300 ms.
+    pub fn prop(&self, name: &str) -> Option<Value> {
+        let id = self.req.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = channel();
+        self.pending.lock().unwrap().insert(id, tx);
+        let line = json!({"command": ["get_property", name], "request_id": id}).to_string() + "\n";
+        let sent = match self.conn.lock().unwrap().as_mut() {
+            Some(c) => c.writer.write_all(line.as_bytes()).is_ok(),
+            None => false,
+        };
+        let v = sent
+            .then(|| rx.recv_timeout(Duration::from_millis(300)).ok())
+            .flatten();
+        self.pending.lock().unwrap().remove(&id);
+        v.filter(|v| !v.is_null())
     }
 
     /// Cheap, non-blocking: a snapshot maintained by the IPC reader thread.
@@ -271,8 +299,13 @@ impl Player {
 
         let alive = Arc::new(AtomicBool::new(true));
         let rd = writer.try_clone().map_err(e)?;
-        let (st, tx, al) = (self.state.clone(), self.tx.clone(), alive.clone());
-        let reader = Some(std::thread::spawn(move || read_loop(rd, st, tx, al)));
+        let (st, tx, al, pe) = (
+            self.state.clone(),
+            self.tx.clone(),
+            alive.clone(),
+            self.pending.clone(),
+        );
+        let reader = Some(std::thread::spawn(move || read_loop(rd, st, tx, al, pe)));
         let mut conn = Conn {
             child,
             writer,
@@ -332,6 +365,7 @@ fn read_loop(
     state: Arc<Mutex<State>>,
     tx: Sender<Event>,
     alive: Arc<AtomicBool>,
+    pending: Pending,
 ) {
     for line in BufReader::new(sock).lines() {
         let Ok(line) = line else { break };
@@ -339,7 +373,18 @@ fn read_loop(
             continue;
         };
         let Some(ev) = v["event"].as_str() else {
-            continue; // command reply
+            // Command reply: hand `data` to a waiting `prop` call.
+            if let Some(tx) = v["request_id"]
+                .as_u64()
+                .and_then(|id| pending.lock().unwrap().remove(&id))
+            {
+                let _ = tx.send(if v["error"] == "success" {
+                    v["data"].clone()
+                } else {
+                    Value::Null
+                });
+            }
+            continue;
         };
         let out = match ev {
             "file-loaded" => Some(Event::Loaded),
