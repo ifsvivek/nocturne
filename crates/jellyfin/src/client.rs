@@ -178,7 +178,10 @@ impl Client {
         series_id: &str,
         season_id: Option<&str>,
     ) -> Result<Items> {
-        let mut p = vec![("userId", user_id.to_string())];
+        let mut p = vec![
+            ("userId", user_id.to_string()),
+            ("fields", "Overview,PrimaryImageAspectRatio".into()),
+        ];
         if let Some(s) = season_id {
             p.push(("seasonId", s.to_string()));
         }

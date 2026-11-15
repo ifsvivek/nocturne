@@ -1,7 +1,10 @@
 //! Media-source boundary. The UI only sees `Media`, `Source` and `ConnectError`;
 //! Jellyfin is the first (and currently only) implementation behind it.
+use crate::detail::Full;
+use crate::imgcache::DiskCache;
 use nocturne_jellyfin as jf;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Semaphore;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11,6 +14,17 @@ pub enum Kind {
     Series,
     Season,
     Episode,
+    BoxSet,
+    Playlist,
+    Person,
+    Genre,
+    Studio,
+    MusicAlbum,
+    MusicArtist,
+    Audio,
+    Photo,
+    Book,
+    Video,
     Other,
 }
 
@@ -20,6 +34,9 @@ pub enum Art {
     Backdrop,
     /// 16:9 thumb: an episode's still, otherwise the backdrop.
     Landscape,
+    /// A chapter thumbnail: `number` is the chapter index, `poster_tag` its image tag.
+    Chapter,
+    Logo,
 }
 
 /// UI-facing media record. Never printed or logged (it holds personal titles).
@@ -45,6 +62,21 @@ pub struct Media {
     pub duration_s: Option<f64>,
     pub played: bool,
     pub favorite: bool,
+    pub official_rating: Option<String>,
+    /// Series/season: episodes not yet watched.
+    pub unplayed: Option<u32>,
+    pub child_count: Option<u32>,
+    /// Blurhashes for the primary and first backdrop image.
+    pub blur_primary: Option<String>,
+    pub blur_backdrop: Option<String>,
+    /// Secondary line: a cast member's role, an album's artist.
+    pub sub: Option<String>,
+    pub added: Option<String>,
+    pub premiere: Option<String>,
+    /// (item id, tag) of the title logo: its own, else the show's.
+    pub logo: Option<(String, String)>,
+    /// Item that owns the backdrop when it is the show's (seasons, episodes).
+    pub backdrop_id: Option<String>,
 }
 
 impl Media {
@@ -55,7 +87,21 @@ impl Media {
             "Season" => Kind::Season,
             "Episode" => Kind::Episode,
             "CollectionFolder" | "UserView" => Kind::Library,
+            "BoxSet" => Kind::BoxSet,
+            "Playlist" => Kind::Playlist,
+            "Person" => Kind::Person,
+            "Genre" | "MusicGenre" => Kind::Genre,
+            "Studio" => Kind::Studio,
+            "MusicAlbum" => Kind::MusicAlbum,
+            "MusicArtist" => Kind::MusicArtist,
+            "Audio" | "AudioBook" => Kind::Audio,
+            "Photo" => Kind::Photo,
+            "Book" => Kind::Book,
+            "Video" | "MusicVideo" | "Trailer" => Kind::Video,
             _ => Kind::Other,
+        };
+        let blur = |ty: &str, tag: Option<&String>| {
+            tag.and_then(|t| i.x.image_blur_hashes.get(ty)?.get(t).cloned())
         };
         Self {
             id: i.id.clone(),
@@ -73,7 +119,11 @@ impl Media {
             number: i.index_number,
             season_number: i.parent_index_number,
             poster_tag: i.image_tags.get("Primary").cloned(),
-            backdrop_tag: i.backdrop_image_tags.first().cloned(),
+            backdrop_tag: i
+                .backdrop_image_tags
+                .first()
+                .or(i.x.parent_backdrop_image_tags.first())
+                .cloned(),
             genres: i.genres.clone(),
             series_id: i.series_id.clone(),
             series_name: i.series_name.clone(),
@@ -85,13 +135,73 @@ impl Media {
             duration_s: i.run_time_ticks.map(|t| t as f64 / TICKS_PER_S),
             played: i.user_data.as_ref().is_some_and(|u| u.played),
             favorite: i.user_data.as_ref().is_some_and(|u| u.is_favorite),
+            official_rating: i.x.official_rating.clone(),
+            unplayed: i.user_data.as_ref().and_then(|u| u.unplayed_item_count),
+            child_count: i.x.child_count.or(i.x.recursive_item_count),
+            blur_primary: blur("Primary", i.image_tags.get("Primary")),
+            blur_backdrop: blur("Backdrop", i.backdrop_image_tags.first()),
+            sub: i
+                .x
+                .album_artist
+                .clone()
+                .or_else(|| i.x.artists.first().cloned()),
+            added: i.x.date_created.clone(),
+            premiere: i.x.premiere_date.clone(),
+            logo: i
+                .image_tags
+                .get("Logo")
+                .map(|t| (i.id.clone(), t.clone()))
+                .or_else(|| {
+                    Some((
+                        i.x.parent_logo_item_id.clone()?,
+                        i.x.parent_logo_image_tag.clone()?,
+                    ))
+                }),
+            backdrop_id: i
+                .backdrop_image_tags
+                .is_empty()
+                .then(|| i.x.parent_backdrop_item_id.clone())
+                .flatten(),
         }
+    }
+
+    /// A search hit (a thin record: enough to show and open).
+    pub fn from_hint(h: &jf::SearchHint) -> Self {
+        let mut m = Self::from_item(&jf::Item {
+            id: h.item_id().to_string(),
+            name: h.name.clone(),
+            kind: h.kind.clone(),
+            production_year: h.production_year,
+            run_time_ticks: h.run_time_ticks,
+            series_name: h.series.clone(),
+            ..Default::default()
+        });
+        m.poster_tag = h.primary_image_tag.clone();
+        m.sub = h
+            .series
+            .clone()
+            .or(h.album_artist.clone())
+            .or(h.album.clone());
+        m
     }
 
     /// Fraction watched (0..1) for a partly watched item.
     pub fn progress(&self) -> Option<f32> {
         let (r, d) = (self.resume_s?, self.duration_s?);
         (!self.played && d > 0.0).then(|| (r / d).clamp(0.0, 1.0) as f32)
+    }
+
+    /// Blurhash of the image `art` will show, if the server has one.
+    pub fn blur_for(&self, art: Art) -> Option<&str> {
+        match art {
+            Art::Poster => self.blur_primary.as_deref(),
+            Art::Backdrop => self.blur_backdrop.as_deref(),
+            Art::Landscape if self.kind == Kind::Episode || self.backdrop_tag.is_none() => {
+                self.blur_primary.as_deref()
+            }
+            Art::Landscape => self.blur_backdrop.as_deref(),
+            Art::Chapter | Art::Logo => None,
+        }
     }
 
     pub fn is_series(&self) -> bool {
@@ -106,8 +216,27 @@ impl Media {
             Kind::Season => "season".into(),
             Kind::Episode => "episode".into(),
             Kind::Library => self.collection.clone().unwrap_or_else(|| "library".into()),
+            Kind::BoxSet => "collection".into(),
+            Kind::Playlist => "playlist".into(),
+            Kind::Person => "person".into(),
+            Kind::Genre => "genre".into(),
+            Kind::Studio => "studio".into(),
+            Kind::MusicAlbum => "album".into(),
+            Kind::MusicArtist => "artist".into(),
+            Kind::Audio => "track".into(),
+            Kind::Photo => "photo".into(),
+            Kind::Book => "book".into(),
+            Kind::Video => "video".into(),
             Kind::Other => "item".into(),
         }
+    }
+
+    /// Something the player can start directly (not a container or a person).
+    pub fn playable(&self) -> bool {
+        matches!(
+            self.kind,
+            Kind::Movie | Kind::Episode | Kind::Audio | Kind::Video
+        )
     }
 
     /// "2021 · 2h 03m" style line (only what is known).
@@ -163,6 +292,12 @@ pub fn pick_episode(eps: &[Media]) -> Option<&Media> {
 pub fn episode_after<'a>(eps: &'a [Media], id: &str) -> Option<&'a Media> {
     let i = eps.iter().position(|e| e.id == id)?;
     eps.get(i + 1)
+}
+
+/// The episode before `id` in `eps`, if any.
+pub fn episode_before<'a>(eps: &'a [Media], id: &str) -> Option<&'a Media> {
+    let i = eps.iter().position(|e| e.id == id)?;
+    i.checked_sub(1).and_then(|j| eps.get(j))
 }
 
 pub fn fmt_runtime(min: u32) -> String {
@@ -252,29 +387,49 @@ pub struct Source {
     client: Arc<jf::Client>,
     user: Arc<str>,
     gate: Arc<Semaphore>,
+    disk: Option<Arc<DiskCache>>,
+    /// Server identity for cache keys (the base URL; hashed, never written as-is).
+    scope: Arc<str>,
+}
+
+/// Backoff before retry `n` (1-based) of a failed image download.
+pub fn backoff(n: u32) -> Duration {
+    Duration::from_millis(300 * 3u64.pow(n.saturating_sub(1)))
 }
 
 impl Source {
     /// A logged-in session: the user id is known, so nothing is asked of the server yet.
     pub fn with_user(cfg: jf::Config, user_id: &str) -> Result<Self, ConnectError> {
+        let scope = cfg.base_url.as_str().into();
         let client = jf::Client::new(cfg).map_err(|e| classify(&e))?;
         Ok(Self {
             client: Arc::new(client),
             user: user_id.into(),
             gate: Arc::new(Semaphore::new(6)),
+            disk: None,
+            scope,
         })
     }
 
     /// `None` means no usable configuration was found.
     pub async fn connect(cfg: Option<jf::Config>) -> Result<Self, ConnectError> {
-        let client =
-            jf::Client::new(cfg.ok_or(ConnectError::NotConfigured)?).map_err(|e| classify(&e))?;
+        let cfg = cfg.ok_or(ConnectError::NotConfigured)?;
+        let scope = cfg.base_url.as_str().into();
+        let client = jf::Client::new(cfg).map_err(|e| classify(&e))?;
         let user = client.first_user_id().await.map_err(|e| classify(&e))?;
         Ok(Self {
             client: Arc::new(client),
             user: user.into(),
             gate: Arc::new(Semaphore::new(6)),
+            disk: None,
+            scope,
         })
+    }
+
+    /// Images are then kept on disk (bounded LRU) between runs.
+    pub fn with_disk(mut self, d: Arc<DiskCache>) -> Self {
+        self.disk = Some(d);
+        self
     }
 
     fn media(r: jf::Result<jf::Items>) -> Result<Vec<Media>, Failed> {
@@ -286,24 +441,12 @@ impl Source {
         Self::media(self.client.libraries(&self.user).await)
     }
 
-    pub async fn children(&self, parent: &Media) -> Result<Vec<Media>, Failed> {
-        Self::media(self.client.items(&self.user, &children_query(parent)).await)
-    }
-
     pub async fn latest(&self, parent: &Media) -> Result<Vec<Media>, Failed> {
         Self::media(
             self.client
                 .items(&self.user, &latest_query(parent, 16))
                 .await,
         )
-    }
-
-    pub async fn detail(&self, id: &str) -> Result<Media, Failed> {
-        self.client
-            .item(&self.user, id)
-            .await
-            .map(|i| Media::from_item(&i))
-            .map_err(|_| Failed)
     }
 
     pub async fn seasons(&self, series: &str) -> Result<Vec<Media>, Failed> {
@@ -314,21 +457,190 @@ impl Source {
         Self::media(self.client.episodes(&self.user, series, Some(season)).await)
     }
 
-    /// Image bytes (GET only). At most a few requests in flight at once.
+    /// Image bytes (GET only). Disk cache first; a failed download is retried with backoff
+    /// (not for 4xx: a missing image stays missing). At most a few requests in flight.
     pub async fn image(&self, m: &Media, art: Art, width: u32) -> Result<Vec<u8>, Failed> {
-        let _permit = self.gate.acquire().await.map_err(|_| Failed)?;
-        let (ty, tag) = match art {
-            Art::Poster => (jf::ImageType::Primary, m.poster_tag.as_deref()),
-            Art::Backdrop => (jf::ImageType::Backdrop, m.backdrop_tag.as_deref()),
+        let own = m.id.as_str();
+        let (id, ty, tag) = match art {
+            Art::Poster => (own, jf::ImageType::Primary, m.poster_tag.as_deref()),
+            Art::Backdrop => (
+                m.backdrop_id.as_deref().unwrap_or(own),
+                jf::ImageType::Backdrop,
+                m.backdrop_tag.as_deref(),
+            ),
+            Art::Logo => match &m.logo {
+                Some((i, t)) => (i.as_str(), jf::ImageType::Logo, Some(t.as_str())),
+                None => return Err(Failed),
+            },
             Art::Landscape if m.kind == Kind::Episode || m.backdrop_tag.is_none() => {
-                (jf::ImageType::Primary, m.poster_tag.as_deref())
+                (own, jf::ImageType::Primary, m.poster_tag.as_deref())
             }
-            Art::Landscape => (jf::ImageType::Backdrop, m.backdrop_tag.as_deref()),
+            Art::Landscape => (
+                m.backdrop_id.as_deref().unwrap_or(own),
+                jf::ImageType::Backdrop,
+                m.backdrop_tag.as_deref(),
+            ),
+            Art::Chapter => (own, jf::ImageType::Primary, m.poster_tag.as_deref()),
         };
+        let tag = tag.ok_or(Failed)?; // no tag = the server has no such image
+        let chapter = (art == Art::Chapter).then_some(m.number.unwrap_or(0));
+        let key = format!(
+            "{}|{}|{ty:?}|{}|{tag}|{width}",
+            self.scope,
+            id,
+            chapter.map_or(String::new(), |c| c.to_string())
+        );
+        if let Some(b) = self.disk.as_ref().and_then(|d| d.get(&key)) {
+            return Ok(b);
+        }
+        let _permit = self.gate.acquire().await.map_err(|_| Failed)?;
+        for attempt in 1..=3u32 {
+            let r = match chapter {
+                Some(i) => self.client.chapter_image(id, i, width, Some(tag)).await,
+                None => {
+                    self.client
+                        .image_bytes(id, ty, Some(width), Some(tag))
+                        .await
+                }
+            };
+            match r {
+                Ok(b) => {
+                    if let Some(d) = &self.disk {
+                        d.put(&key, &b);
+                    }
+                    return Ok(b);
+                }
+                Err(jf::Error::Status {
+                    status: 400..=499, ..
+                }) => return Err(Failed),
+                Err(_) if attempt < 3 => tokio::time::sleep(backoff(attempt)).await,
+                Err(_) => {}
+            }
+        }
+        Err(Failed)
+    }
+
+    // ---- browse ----
+
+    /// One page of a filtered/sorted query plus the server's total.
+    pub async fn browse(&self, q: &jf::BrowseQuery) -> Result<(Vec<Media>, usize), Failed> {
+        let r = self
+            .client
+            .browse(&self.user, q)
+            .await
+            .map_err(|_| Failed)?;
+        Ok((
+            r.items.iter().map(Media::from_item).collect(),
+            r.total_record_count as usize,
+        ))
+    }
+
+    pub async fn filter_options(
+        &self,
+        parent: Option<&str>,
+        types: &[String],
+    ) -> Result<jf::FilterOptions, Failed> {
         self.client
-            .image_bytes(&m.id, ty, Some(width), tag)
+            .filter_options(&self.user, parent, types)
             .await
             .map_err(|_| Failed)
+    }
+
+    /// `(id, name)` of every studio under a parent.
+    pub async fn studios(&self, parent: Option<&str>) -> Result<Vec<(String, String)>, Failed> {
+        let r = self
+            .client
+            .studios(&self.user, parent)
+            .await
+            .map_err(|_| Failed)?;
+        Ok(r.items.into_iter().map(|i| (i.id, i.name)).collect())
+    }
+
+    /// The full record: the item itself plus cast, chapters, streams and the rest.
+    pub async fn full(&self, id: &str) -> Result<(Media, Full), Failed> {
+        let i = self.client.item(&self.user, id).await.map_err(|_| Failed)?;
+        Ok((Media::from_item(&i), Full::from_item(&i)))
+    }
+
+    pub async fn similar(&self, id: &str) -> Result<Vec<Media>, Failed> {
+        Self::media(self.client.similar(&self.user, id, 16).await)
+    }
+
+    /// Local trailers and special features.
+    pub async fn extras(&self, id: &str) -> Result<Vec<Media>, Failed> {
+        let v = self
+            .client
+            .extras(&self.user, id)
+            .await
+            .map_err(|_| Failed)?;
+        Ok(v.iter().map(Media::from_item).collect())
+    }
+
+    pub async fn playlist_items(&self, id: &str) -> Result<Vec<Media>, Failed> {
+        Self::media(self.client.playlist_items(&self.user, id).await)
+    }
+
+    /// Direct children in their natural order (album tracks, collection members, folders).
+    pub async fn ordered_children(&self, id: &str) -> Result<Vec<Media>, Failed> {
+        let q = jf::BrowseQuery {
+            parent_id: Some(id.into()),
+            sort_by: ["ParentIndexNumber", "IndexNumber", "SortName"]
+                .map(String::from)
+                .to_vec(),
+            ..Default::default()
+        };
+        Ok(self.browse(&q).await?.0)
+    }
+
+    /// Everything a person appears in, of one or more types.
+    pub async fn filmography(&self, person: &str, types: &[&str]) -> Result<Vec<Media>, Failed> {
+        let q = jf::BrowseQuery {
+            person_ids: vec![person.into()],
+            include_types: types.iter().map(|t| t.to_string()).collect(),
+            sort_by: vec!["PremiereDate".into(), "SortName".into()],
+            descending: true,
+            recursive: true,
+            limit: Some(60),
+            ..Default::default()
+        };
+        Ok(self.browse(&q).await?.0)
+    }
+
+    /// Albums of an artist, newest first.
+    pub async fn artist_albums(&self, id: &str) -> Result<Vec<Media>, Failed> {
+        let q = jf::BrowseQuery {
+            album_artist_ids: vec![id.into()],
+            include_types: vec!["MusicAlbum".into()],
+            sort_by: vec!["PremiereDate".into(), "SortName".into()],
+            descending: true,
+            recursive: true,
+            ..Default::default()
+        };
+        Ok(self.browse(&q).await?.0)
+    }
+
+    /// Mixed ranked search results (grouped by the caller).
+    pub async fn search(&self, term: &str) -> Result<Vec<Media>, Failed> {
+        let h = self
+            .client
+            .search_hints(&self.user, term, 60)
+            .await
+            .map_err(|_| Failed)?;
+        Ok(h.iter().map(Media::from_hint).collect())
+    }
+
+    /// Episodes before and after `ep` in its series.
+    pub async fn episode_around(&self, ep: &Media) -> (Option<Media>, Option<Media>) {
+        let Some(series) = ep.series_id.as_deref() else {
+            return (None, None);
+        };
+        let Ok(eps) = self.all_episodes(series).await else {
+            return (None, None);
+        };
+        (
+            episode_before(&eps, &ep.id).cloned(),
+            episode_after(&eps, &ep.id).cloned(),
+        )
     }
 
     /// Items with a saved position, most recently watched first.
@@ -393,7 +705,7 @@ mod tests {
             Media::from_item(&item("CollectionFolder")).kind,
             Kind::Library
         );
-        assert_eq!(Media::from_item(&item("Trailer")).kind, Kind::Other);
+        assert_eq!(Media::from_item(&item("Tombstone")).kind, Kind::Other);
     }
 
     #[test]
@@ -440,6 +752,66 @@ mod tests {
         assert_eq!(episode_after(&eps, "a").unwrap().id, "b");
         assert!(episode_after(&eps, "c").is_none());
         assert!(episode_after(&eps, "zz").is_none());
+    }
+
+    #[test]
+    fn episode_neighbours_and_backoff() {
+        let ep = |id: &str| Media {
+            id: id.into(),
+            ..Media::from_item(&item("Episode"))
+        };
+        let eps = [ep("a"), ep("b"), ep("c")];
+        assert_eq!(episode_before(&eps, "b").unwrap().id, "a");
+        assert!(episode_before(&eps, "a").is_none());
+        assert!(episode_before(&eps, "zz").is_none());
+        assert_eq!(backoff(1), Duration::from_millis(300));
+        assert_eq!(backoff(2), Duration::from_millis(900));
+    }
+
+    #[test]
+    fn blurhash_follows_the_art_shown() {
+        let mut i = item("Movie");
+        i.image_tags.insert("Primary".into(), "p".into());
+        i.backdrop_image_tags = vec!["b".into()];
+        i.x.image_blur_hashes.insert(
+            "Primary".into(),
+            [("p".to_string(), "HP".to_string())].into(),
+        );
+        i.x.image_blur_hashes.insert(
+            "Backdrop".into(),
+            [("b".to_string(), "HB".to_string())].into(),
+        );
+        let m = Media::from_item(&i);
+        assert_eq!(m.blur_for(Art::Poster), Some("HP"));
+        assert_eq!(m.blur_for(Art::Backdrop), Some("HB"));
+        assert_eq!(m.blur_for(Art::Landscape), Some("HB"));
+        i.kind = "Episode".into();
+        assert_eq!(Media::from_item(&i).blur_for(Art::Landscape), Some("HP"));
+        assert_eq!(m.blur_for(Art::Chapter), None);
+    }
+
+    #[test]
+    fn new_kinds_and_hints_map() {
+        for (t, k) in [
+            ("BoxSet", Kind::BoxSet),
+            ("Playlist", Kind::Playlist),
+            ("Person", Kind::Person),
+            ("MusicAlbum", Kind::MusicAlbum),
+            ("Audio", Kind::Audio),
+            ("Photo", Kind::Photo),
+        ] {
+            assert_eq!(Media::from_item(&item(t)).kind, k);
+        }
+        let h = jf::SearchHint {
+            id: "old".into(),
+            name: "Hit".into(),
+            kind: "Episode".into(),
+            series: Some("Show".into()),
+            ..Default::default()
+        };
+        let m = Media::from_hint(&h);
+        assert_eq!((m.id.as_str(), m.kind), ("old", Kind::Episode));
+        assert_eq!(m.sub.as_deref(), Some("Show"));
     }
 
     #[test]

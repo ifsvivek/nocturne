@@ -2,7 +2,9 @@
 //! never any secret (the login lives in the keyring). Every field has a default, so a missing,
 //! older or half-written file still loads.
 use crate::hooks::{PlayerPrefs, SubMode};
+use crate::libview::LibPrefs;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub const VERSION: u32 = 1;
@@ -51,6 +53,12 @@ pub struct Settings {
     pub home_next_up: bool,
     pub home_latest: bool,
     pub density: Density,
+    /// Disk image cache cap in MB.
+    pub image_cache_mb: u32,
+    /// Sort, view and flag filters remembered per library (key = library id).
+    pub libs: BTreeMap<String, LibPrefs>,
+    /// Most recent first.
+    pub recent_searches: Vec<String>,
 }
 
 impl Default for Settings {
@@ -67,6 +75,9 @@ impl Default for Settings {
             home_next_up: true,
             home_latest: true,
             density: Density::Comfortable,
+            image_cache_mb: 512,
+            libs: BTreeMap::new(),
+            recent_searches: vec![],
         }
     }
 }
@@ -118,7 +129,9 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `cycle()` index them).
-pub const ROWS: usize = 10;
+pub const ROWS: usize = 11;
+
+const CACHE_MB: [u32; 5] = [128, 256, 512, 1024, 2048];
 
 impl Settings {
     pub fn rows(&self) -> Vec<Row> {
@@ -179,6 +192,11 @@ impl Settings {
                 "How large posters are in rows and grids.",
                 format!("{:?}", self.density),
             ),
+            r(
+                "Image cache",
+                "Disk space for posters and backdrops; oldest are removed first.",
+                format!("{} MB", self.image_cache_mb),
+            ),
         ]
     }
 
@@ -209,6 +227,13 @@ impl Settings {
                     (Comfortable, 1) | (Compact, _) => Spacious,
                     _ => Compact,
                 }
+            }
+            10 => {
+                let i = CACHE_MB
+                    .iter()
+                    .position(|m| *m == self.image_cache_mb)
+                    .unwrap_or(2) as i32;
+                self.image_cache_mb = CACHE_MB[(i + d).rem_euclid(CACHE_MB.len() as i32) as usize];
             }
             _ => {}
         }
@@ -345,6 +370,32 @@ mod tests {
         s.cycle(9, 1);
         assert_eq!(s.density, Density::Compact);
         s.cycle(99, 1); // out of range is a no-op
+        s.cycle(10, 1);
+        assert_eq!(s.image_cache_mb, 1024);
+        s.cycle(10, -1);
+        s.cycle(10, -1);
+        assert_eq!(s.image_cache_mb, 256);
+    }
+
+    #[test]
+    fn library_prefs_and_searches_persist_and_old_files_load() {
+        let d = dir("libs");
+        let p = d.join("settings.toml");
+        let mut s = Settings::default();
+        s.libs.insert(
+            "lib1".into(),
+            LibPrefs {
+                desc: true,
+                ..Default::default()
+            },
+        );
+        s.recent_searches = vec!["alpha".into()];
+        s.save_to(&p).unwrap();
+        assert_eq!(Settings::load_from(&p), s);
+        std::fs::write(&p, "version = 1\nsync_progress = false\n").unwrap();
+        let old = Settings::load_from(&p);
+        assert!(old.libs.is_empty() && old.image_cache_mb == 512);
+        std::fs::remove_dir_all(d).unwrap();
     }
 
     #[test]

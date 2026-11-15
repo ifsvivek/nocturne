@@ -37,6 +37,11 @@ pub struct ItemExtra {
     pub tags: Vec<String>,
     /// Series: the show's own art (used for episodes).
     pub series_primary_image_tag: Option<String>,
+    /// Seasons/episodes borrow the show's logo and backdrop.
+    pub parent_logo_item_id: Option<String>,
+    pub parent_logo_image_tag: Option<String>,
+    pub parent_backdrop_item_id: Option<String>,
+    pub parent_backdrop_image_tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

@@ -12,7 +12,7 @@ path = "src/main.rs"
 gpui = "=0.2.2"
 nocturne-jellyfin = { path = "../jellyfin" }
 nocturne-jellyfin-admin = { path = "../jellyfin-admin" }
-tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time"] }
 nocturne-player = { path = "../player" }
 nocturne-jellyfin-user = { path = "../jellyfin-user" }
 nocturne-session = { path = "../session" }
