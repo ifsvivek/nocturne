@@ -231,6 +231,22 @@ impl NetworkEdit {
     }
 }
 
+// ---- plugin repositories ----
+
+/// A repository needs a name and an http(s) manifest URL. Adding one makes the server download
+/// code from it, so a plain `http://` URL is allowed but the UI warns about it.
+pub fn validate_repository(name: &str, url: &str) -> Result<()> {
+    if name.trim().is_empty() || name.len() > 100 {
+        return bad("a repository needs a name of up to 100 characters");
+    }
+    let ok = reqwest::Url::parse(url.trim())
+        .is_ok_and(|u| matches!(u.scheme(), "http" | "https") && u.host().is_some());
+    if !ok {
+        return bad("the repository address must be an http or https URL");
+    }
+    Ok(())
+}
+
 // ---- trickplay and library options ----
 
 /// Checks one `TrickplayOptions` field before it is written.
@@ -417,6 +433,15 @@ mod tests {
                 .is_ok(),
             "empty = all interfaces"
         );
+    }
+
+    #[test]
+    fn repository_values() {
+        assert!(validate_repository("Mine", "https://r.example/manifest.json").is_ok());
+        assert!(validate_repository("Mine", "http://10.0.0.2/m.json").is_ok());
+        assert!(validate_repository("", "https://r.example/m.json").is_err());
+        assert!(validate_repository("x", "ftp://r.example/m.json").is_err());
+        assert!(validate_repository("x", "not a url").is_err());
     }
 
     #[test]

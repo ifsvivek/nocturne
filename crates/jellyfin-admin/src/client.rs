@@ -182,6 +182,11 @@ impl AdminClient {
         self.get(&["Packages"], &[]).await
     }
 
+    /// READ `GET /Repositories`: the plugin repositories the server reads its catalog from.
+    pub async fn plugin_repositories(&self) -> Result<Vec<crate::Repository>> {
+        self.get(&["Repositories"], &[]).await
+    }
+
     /// READ `GET /Backup` (server 10.11+; an error on older servers).
     pub async fn backups(&self) -> Result<Vec<serde_json::Value>> {
         self.get(&["Backup"], &[]).await

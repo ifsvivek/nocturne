@@ -157,6 +157,7 @@ impl Admin {
             Plugins => {
                 rd!(self, cx, Plugins, |c| c.plugins());
                 rd!(self, cx, Packages, |c| c.packages());
+                rd!(self, cx, Repos, |c| c.plugin_repositories());
             }
             Networking => rd!(self, cx, Network, |c| c.network_config()),
             ApiKeys => rd!(self, cx, Keys, |c| c.api_keys()),

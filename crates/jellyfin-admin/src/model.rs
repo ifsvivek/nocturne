@@ -300,6 +300,15 @@ pub struct PackageVersion {
     pub repository_url: String,
 }
 
+/// A plugin repository (`GET /Repositories`): the manifest the server reads its catalog from.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct Repository {
+    pub name: String,
+    pub url: String,
+    pub enabled: bool,
+}
+
 /// API key. `Debug` redacts the token.
 #[derive(Clone, Default, Deserialize)]
 #[serde(rename_all = "PascalCase", default)]

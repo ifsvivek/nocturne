@@ -2,7 +2,8 @@
 
 use crate::client::AdminClient;
 use crate::{
-    ApiKey, Confirmed, Error, NetworkEdit, Package, Result, TaskTrigger, User, UserPolicy, edit,
+    ApiKey, Confirmed, Error, NetworkEdit, Package, Repository, Result, TaskTrigger, User,
+    UserPolicy, edit,
 };
 use reqwest::Method;
 use serde_json::json;
@@ -451,6 +452,53 @@ impl AdminClient {
             .map(drop)
     }
 
+    /// WRITE `POST /Repositories`: the server replaces the whole list.
+    async fn put_repositories(&self, list: &[Repository]) -> Result<()> {
+        let body = serde_json::to_value(list).expect("repositories serialize");
+        self.send(Method::POST, &["Repositories"], &[], Some(body))
+            .await
+            .map(drop)
+    }
+
+    /// WRITE read-modify-write of the repository list: append one (enabled). The server will
+    /// download plugin code from it, so the UI asks first.
+    pub async fn add_plugin_repository(&self, name: &str, url: &str) -> Result<()> {
+        edit::validate_repository(name, url)?;
+        let (name, url) = (name.trim().to_string(), url.trim().to_string());
+        let mut l = self.plugin_repositories().await?;
+        if l.iter().any(|r| r.url.eq_ignore_ascii_case(&url)) {
+            return Err(Error::Invalid("that repository is already listed".into()));
+        }
+        l.push(Repository {
+            name,
+            url,
+            enabled: true,
+        });
+        self.put_repositories(&l).await
+    }
+
+    /// WRITE read-modify-write of the repository list: switch the repository at `url` on or off.
+    pub async fn set_plugin_repository_enabled(&self, url: &str, on: bool) -> Result<()> {
+        let mut l = self.plugin_repositories().await?;
+        l.iter_mut()
+            .find(|r| r.url == url)
+            .ok_or_else(|| Error::Invalid("no such repository".into()))?
+            .enabled = on;
+        self.put_repositories(&l).await
+    }
+
+    /// WRITE read-modify-write of the repository list: DESTRUCTIVE, removes the repository at
+    /// `url`; its plugins disappear from the catalog (installed plugins stay).
+    pub async fn remove_plugin_repository(&self, url: &str, _: Confirmed) -> Result<()> {
+        let mut l = self.plugin_repositories().await?;
+        let n = l.len();
+        l.retain(|r| r.url != url);
+        if l.len() == n {
+            return Err(Error::Invalid("no such repository".into()));
+        }
+        self.put_repositories(&l).await
+    }
+
     /// WRITE `POST /Packages/Installed/{name}`: the server downloads and installs the newest
     /// version of a catalog package (needs a restart to load).
     pub async fn install_package(&self, p: &Package) -> Result<()> {
@@ -672,6 +720,56 @@ mod tests {
             p[5].1,
             json!({"Id":"L1","LibraryOptions":{"EnableRealtimeMonitor":true,"PathInfos":[{"Path":"/m"}]}})
         );
+    }
+
+    #[tokio::test]
+    async fn repositories_add_toggle_remove() {
+        let list = r#"[{"Name":"Stable","Url":"https://a/m.json","Enabled":true}]"#;
+        let (c, log) = serve(vec![
+            ("GET", "/Repositories", 200, list.into()),
+            ("POST", "/Repositories", 204, String::new()),
+        ])
+        .await;
+        assert!(
+            c.add_plugin_repository("", "https://b/m.json")
+                .await
+                .is_err()
+        );
+        assert!(c.add_plugin_repository("B", "nope").await.is_err());
+        assert!(
+            c.add_plugin_repository("Dup", "HTTPS://A/m.json")
+                .await
+                .is_err(),
+            "duplicates refused"
+        );
+        assert!(posts(&log).is_empty(), "nothing was written");
+        c.add_plugin_repository(" B ", "https://b/m.json")
+            .await
+            .unwrap();
+        c.set_plugin_repository_enabled("https://a/m.json", false)
+            .await
+            .unwrap();
+        assert!(
+            c.set_plugin_repository_enabled("https://x", true)
+                .await
+                .is_err()
+        );
+        c.remove_plugin_repository("https://a/m.json", yes())
+            .await
+            .unwrap();
+        assert!(
+            c.remove_plugin_repository("https://x", yes())
+                .await
+                .is_err()
+        );
+        let p = posts(&log);
+        assert_eq!(p.len(), 3);
+        assert_eq!(
+            p[0].1[1],
+            json!({"Name":"B","Url":"https://b/m.json","Enabled":true})
+        );
+        assert_eq!(p[1].1[0]["Enabled"], false);
+        assert_eq!(p[2].1, json!([]));
     }
 
     #[tokio::test]

@@ -789,7 +789,10 @@ fn activity(d: &Data) -> Model {
 
 fn plugins(d: &Data) -> Model {
     let mut m = Model {
-        toolbar: vec![bd("Restart server to apply", Act::Restart)],
+        toolbar: vec![
+            b("Add repository", Act::RepoAdd),
+            bd("Restart server to apply", Act::Restart),
+        ],
         status: status(&d.plugins),
         ..Default::default()
     };
@@ -830,6 +833,25 @@ fn plugins(d: &Data) -> Model {
         m.items.push(it);
     }
     if m.status.is_none() {
+        for r in d.repos.get().into_iter().flatten() {
+            let mut it = row(
+                &r.name,
+                r.url.clone(),
+                vec![
+                    b(
+                        if r.enabled { "Disable" } else { "Enable" },
+                        Act::RepoEnable(r.url.clone(), r.name.clone(), !r.enabled),
+                    ),
+                    bd("Remove", Act::RepoRemove(r.url.clone(), r.name.clone())),
+                ],
+            );
+            it.chips = vec![(
+                if r.enabled { "enabled" } else { "disabled" }.into(),
+                r.enabled,
+            )];
+            it.group = Some("Repositories".into());
+            m.items.push(it);
+        }
         match &d.packages {
             L::Ready(pk) => {
                 let mut avail: Vec<_> = pk
@@ -1073,6 +1095,22 @@ mod tests {
         assert_eq!(labels(1), ["Enable", "Uninstall"]);
         assert_eq!(m.items.len(), 3, "installed plugins are not offered again");
         assert_eq!(labels(2), ["Install"]);
+        let d = data_with(|d| {
+            d.plugins = L::Ready(vec![]);
+            d.repos = L::Ready(vec![nocturne_jellyfin_admin::Repository {
+                name: "R".into(),
+                url: "https://r/m".into(),
+                enabled: false,
+            }]);
+        });
+        let m = plugins(&d);
+        let acts: Vec<_> = m.items[0]
+            .acts
+            .iter()
+            .map(|a| (a.label.as_str(), a.danger))
+            .collect();
+        assert_eq!(acts, [("Enable", false), ("Remove", true)]);
+        assert_eq!(m.items[0].group.as_deref(), Some("Repositories"));
     }
 
     #[test]

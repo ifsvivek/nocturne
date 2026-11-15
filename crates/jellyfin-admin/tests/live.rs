@@ -629,3 +629,25 @@ async fn shutdown_server_stops_it() {
     }
     assert!(back, "throwaway did not come back");
 }
+
+#[tokio::test]
+#[ignore]
+async fn plugin_repositories_roundtrip() {
+    let _g = SERVER.read().await;
+    let c = TestServerGuard::connect().await.unwrap();
+    let before = c.plugin_repositories().await.unwrap();
+    let url = "https://repo.invalid/nocturne-test/manifest.json";
+    c.add_plugin_repository("Nocturne test", url).await.unwrap();
+    assert!(
+        c.add_plugin_repository("again", url).await.is_err(),
+        "duplicate refused"
+    );
+    let l = c.plugin_repositories().await.unwrap();
+    assert_eq!(l.len(), before.len() + 1);
+    assert!(l.iter().any(|r| r.url == url && r.enabled));
+    c.set_plugin_repository_enabled(url, false).await.unwrap();
+    let l = c.plugin_repositories().await.unwrap();
+    assert!(l.iter().any(|r| r.url == url && !r.enabled));
+    c.remove_plugin_repository(url, yes()).await.unwrap();
+    assert_eq!(c.plugin_repositories().await.unwrap(), before);
+}

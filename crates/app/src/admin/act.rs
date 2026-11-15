@@ -377,6 +377,11 @@ pub enum Act {
     PluginEnable(String, String, String, bool),
     PluginUninstall(String, String, String),
     PluginInstall(Box<Package>),
+    RepoAdd,
+    /// (url, name, enable)
+    RepoEnable(String, String, bool),
+    /// (url, name)
+    RepoRemove(String, String),
     /// Read-only: fetch a log tail (no dialog).
     ViewLog(String),
 }
@@ -499,6 +504,11 @@ impl Act {
             PluginUninstall(_, _, n) => d("Uninstall plugin", format!("{n} will be removed after the server restarts, together with anything it provides."), "Uninstall", true)
                 .field(Field::typed("Type the plugin name to confirm", n)),
             PluginInstall(p) => d("Install plugin", format!("The server downloads {} {} from its plugin repository. It loads after the server restarts.", p.name, p.versions.first().map_or("", |v| &v.version)), "Install", false),
+            RepoAdd => d("Add plugin repository", "The server will download plugins from this address, and plugins run with full access to the server. Only add a repository you trust.".into(), "Add repository", false)
+                .field(text("Name", "").checked(|s| !s.trim().is_empty()))
+                .field(text("Manifest address (http or https)", "https://").checked(|s| edit::validate_repository("x", s).is_ok())),
+            RepoEnable(_, n, on) => d(if *on { "Enable repository" } else { "Disable repository" }, format!("{n} will {} the plugin catalog.", if *on { "be used for" } else { "no longer be used for" }), if *on { "Enable" } else { "Disable" }, false),
+            RepoRemove(_, n) => d("Remove repository", format!("{n} is removed from the list and its plugins leave the catalog. Plugins already installed stay installed."), "Remove repository", true),
             ViewLog(_) => unreachable!("log views have no dialog"),
         };
         dlg.start()
@@ -521,6 +531,7 @@ impl Act {
             (DeleteDevice(_), _) => "Device removed.",
             (CreateKey, _) => "API key created.",
             (DeleteKey(_), _) => "API key deleted.",
+            (RepoAdd | RepoEnable(..) | RepoRemove(..), _) => "Repositories updated.",
             (PluginEnable(..) | PluginUninstall(..) | PluginInstall(_), _) => {
                 "Done. Restart the server to apply it."
             }
@@ -601,6 +612,9 @@ pub async fn exec(c: AdminClient, act: Act, v: Vec<String>, ok: Confirmed) -> Re
         PluginEnable(id, ver, _, on) => c.set_plugin_enabled(&id, &ver, on).await,
         PluginUninstall(id, ver, _) => c.uninstall_plugin(&id, &ver, ok).await,
         PluginInstall(p) => c.install_package(&p).await,
+        RepoAdd => c.add_plugin_repository(&v[0], &v[1]).await,
+        RepoEnable(url, _, on) => c.set_plugin_repository_enabled(&url, on).await,
+        RepoRemove(url, _) => c.remove_plugin_repository(&url, ok).await,
         ViewLog(_) => Ok(()),
     }
 }
@@ -713,6 +727,17 @@ mod tests {
         assert!(d.valid());
         assert_eq!(Tp::Scan.value("blocking"), json!("Blocking"));
         assert_eq!(Tp::List.value("320, 640"), json!([320, 640]));
+    }
+
+    #[test]
+    fn repository_dialogs() {
+        let mut d = Act::RepoAdd.dialog();
+        type_into(&mut d, 0, "Mine");
+        type_into(&mut d, 1, "ftp://x");
+        assert!(!d.valid());
+        type_into(&mut d, 1, "https://r.example/manifest.json");
+        assert!(d.valid() && !d.danger);
+        assert!(Act::RepoRemove("u".into(), "n".into()).dialog().danger);
     }
 
     #[test]
