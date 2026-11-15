@@ -67,6 +67,8 @@ XML
   echo "jellyfin did not become healthy; see $T/stdout.log and $T/log" >&2; exit 1
 }
 
+rnd() { head -c 12 /dev/urandom | base64 | tr -d '/+='; }
+
 seed() { # first run only: wizard, admin, api key, users, library
   local pw; pw=$(head -c 18 /dev/urandom | base64 | tr -d '/+=')
   ( umask 077; printf '%s\n' "$pw" >"$T/admin-password" )
@@ -80,11 +82,28 @@ seed() { # first run only: wizard, admin, api key, users, library
   [[ -n $key ]] || { echo "could not create API key" >&2; exit 1; }
   local u
   for u in alice bob; do
-    api POST /Users/New "$(jq -nc --arg n "$u" --arg p "$(head -c 12 /dev/urandom | base64 | tr -d '/+=')" '{Name:$n,Password:$p}')" "$tok" >/dev/null
+    api POST /Users/New "$(jq -nc --arg n "$u" --arg p "$(rnd)" '{Name:$n,Password:$p}')" "$tok" >/dev/null
   done
   api POST "/Library/VirtualFolders?name=Test%20Movies&collectionType=movies&refreshLibrary=true" \
     "$(jq -nc --arg p "$T/media/Movies" '{LibraryOptions:{PathInfos:[{Path:$p}]}}')" "$tok" >/dev/null
   ( umask 077; printf 'NOCTURNE_JF_TEST_URL=%s\nNOCTURNE_JF_TEST_TOKEN=%s\n' "$URL" "$key" >"$ENVF" )
+}
+
+# Every start (idempotent): Quick Connect on, and alice/bob get KNOWN passwords kept only in test.env (mode 600).
+ensure() {
+  local key; key=$(sed -n 's/^NOCTURNE_JF_TEST_TOKEN=//p' "$ENVF")
+  local cfg; cfg=$(api GET /System/Configuration "" "$key")
+  [[ $(jq -r .QuickConnectAvailable <<<"$cfg") == true ]] ||
+    api POST /System/Configuration "$(jq -c '.QuickConnectAvailable=true' <<<"$cfg")" "$key" >/dev/null
+  local u id pw
+  for u in alice bob; do
+    grep -q "^NOCTURNE_JF_TEST_${u^^}_PW=" "$ENVF" && continue
+    id=$(api GET /Users "" "$key" | jq -r --arg n "$u" '.[] | select(.Name==$n) | .Id')
+    [[ -n $id ]] || { echo "seeded user $u missing" >&2; exit 1; }
+    pw=$(rnd)
+    api POST "/Users/$id/Password" "$(jq -nc --arg p "$pw" '{NewPw:$p}')" "$key" >/dev/null
+    ( umask 077; printf 'NOCTURNE_JF_TEST_%s_PW=%s\n' "${u^^}" "$pw" >>"$ENVF" )
+  done
 }
 
 stop() {
@@ -102,6 +121,7 @@ case "${1:-}" in
       stop; media; launch
       [[ -f $ENVF ]] || seed
     fi
+    ensure
     echo "up: $URL"; echo "export NOCTURNE_JF_TEST_ENV=$ENVF" ;;
   stop) stop; echo stopped ;;
   reset) stop; rm -rf "${T:?}"; echo "removed $T" ;;
