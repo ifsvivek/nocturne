@@ -15,7 +15,7 @@
   <div class="wrap grid items-center gap-16 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
     <div>
       <h2 id="how-h" class="h2 reveal">How it works</h2>
-      <ol class="m-0 mt-10 grid list-none gap-0 p-0">
+      <ol class="stagger m-0 mt-10 grid list-none gap-0 p-0">
         {#each steps as [name, text], i}
           <li class="reveal grid gap-1.5 border-l py-4 pl-6 {i === 0 ? 'border-accent' : 'border-line-strong'}">
             <strong class="text-[1.06rem] font-semibold text-ink">{name}</strong>

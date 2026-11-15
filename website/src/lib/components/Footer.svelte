@@ -41,5 +41,5 @@
       <p class="m-0">Copyright (C) 2026 ifsvivek</p>
     </div>
   </div>
-  <p class="pointer-events-none m-0 mt-10 select-none text-center text-[clamp(4rem,19vw,20rem)] font-bold leading-[0.72] tracking-[-0.05em] text-white/[0.035]" aria-hidden="true">NOCTURNE</p>
+  <p class="lift-word pointer-events-none m-0 mt-10 select-none text-center text-[clamp(4rem,19vw,20rem)] font-bold leading-[0.72] tracking-[-0.05em] text-white/[0.035]" aria-hidden="true">NOCTURNE</p>
 </footer>

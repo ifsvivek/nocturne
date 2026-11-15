@@ -110,12 +110,86 @@ body::after {
 .tag-accent { @apply text-accent-ink ring-accent/40; }
 @media (max-width: 639px) { .tag { @apply text-[0.62rem] px-2; } }
 
+/* Hero night sky: two tiled dot layers, faded out towards the bottom. Drifts slowly when motion is welcome. */
+.stars {
+  position: absolute; inset: 0 0 auto 0; height: 200%; z-index: -10; pointer-events: none; opacity: 0.55;
+  background-image:
+    radial-gradient(1px 1px at 22px 34px, rgb(255 255 255 / 0.7), transparent),
+    radial-gradient(1px 1px at 140px 90px, rgb(255 255 255 / 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 210px 180px, rgb(190 205 255 / 0.6), transparent),
+    radial-gradient(1px 1px at 80px 200px, rgb(255 255 255 / 0.4), transparent),
+    radial-gradient(1px 1px at 300px 60px, rgb(255 255 255 / 0.35), transparent),
+    radial-gradient(1.5px 1.5px at 350px 300px, rgb(255 255 255 / 0.45), transparent);
+  background-size: 260px 260px, 260px 260px, 260px 260px, 380px 380px, 380px 380px, 380px 380px;
+  mask-image: linear-gradient(to bottom, black, transparent 45%);
+}
+
+/* A single light sweep across a window; parked off-frame unless the load-in plays it. */
+.sheen { overflow: hidden; }
+.sheen::before {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; transform: translateX(-130%);
+  background: linear-gradient(105deg, transparent 38%, rgb(255 255 255 / 0.13) 50%, transparent 62%);
+}
+.btn { position: relative; isolation: isolate; overflow: hidden; }
+.btn::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; transform: translateX(-130%);
+  background: linear-gradient(105deg, transparent 30%, rgb(76 141 255 / 0.28) 50%, transparent 70%);
+}
+
+/* Header: a scroll-progress hairline along the bottom of the pill. */
+.progress { position: absolute; left: 1.5rem; right: 1.5rem; bottom: 0; height: 1px; transform: scaleX(0); transform-origin: left;
+  background: linear-gradient(90deg, transparent, var(--color-accent) 30%, var(--color-accent-ink)); }
+
+/* Library tile: the screenshot slowly pans inside its frame. */
+.kenburns { overflow: hidden; }
+
+/* Every way in: two chip rows sliding past each other. Static and wrapped when motion is off. */
+.marquee { mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent); }
+.marquee-track { display: flex; width: max-content; gap: 0.5rem; }
+
+/* Safety: a focus ring locked onto the real OFF switch (96.1% / 58.6% of the capture, inside the 6 px bezel). */
+.reticle, .callout { position: absolute; z-index: 2; pointer-events: none; }
+.reticle {
+  left: calc(0.375rem + (100% - 0.75rem) * 0.961); top: calc(0.375rem + (100% - 0.75rem) * 0.586);
+  width: 4.6%; height: 26%; transform: translate(-50%, -50%);
+  @apply rounded-lg ring-2 ring-accent shadow-[0_0_0_6px_rgb(76_141_255/0.12),0_0_30px_rgb(76_141_255/0.45)];
+}
+.callout {
+  right: calc(0.375rem + (100% - 0.75rem) * 0.039 + 3.6%); top: calc(0.375rem + (100% - 0.75rem) * 0.586); transform: translateY(-50%);
+  @apply rounded-full bg-frame/90 px-3 py-1 text-[0.78rem] font-medium whitespace-nowrap text-accent-ink ring-1 ring-accent/40 ring-inset;
+}
+@media (max-width: 639px) { .reticle, .callout { display: none; } }
+
 @keyframes rise { from { opacity: 0; transform: translateY(24px); } }
 @keyframes settle { from { opacity: 0; transform: translateY(60px) rotateY(-24deg) rotateX(8deg); } }
 @keyframes drift { from { transform: translate3d(-4%, 0, 0) scale(1); } to { transform: translate3d(4%, 5%, 0) scale(1.1); } }
 @keyframes float-up { to { transform: translateY(-90px); } }
 @keyframes reveal { from { opacity: 0; transform: translateY(40px); } }
-@keyframes widen { from { transform: scale(0.86); border-radius: 2rem; } }
+/* The theatre grows and its letterbox opens as it scrolls in. */
+@keyframes widen {
+  from { transform: scale(0.86); clip-path: inset(13% 0 13% 0 round 28px); }
+  to { transform: none; clip-path: inset(-12% -6% -12% -6% round 28px); }
+}
+@keyframes unmask {
+  from { clip-path: inset(-20% -5% 100% -5%); transform: translateY(0.4em); }
+  to { clip-path: inset(-20% -5% -20% -5%); transform: none; }
+}
+@keyframes sweep { from { transform: translateX(-130%); } to { transform: translateX(130%); } }
+@keyframes bob { to { transform: translateY(-12px); } }
+@keyframes sky { to { transform: translateY(-50%); } }
+@keyframes pan { to { transform: scale(1.08) translate(-2.5%, -4%); } }
+@keyframes press {
+  0%, 74%, 100% { transform: none; background-color: rgb(255 255 255 / 0.04); }
+  80%, 88% { transform: translateY(1px); background-color: rgb(76 141 255 / 0.3); color: #fff; }
+}
+@keyframes slide { to { transform: translateX(-50%); } }
+@keyframes depth-back { from { transform: translateY(50px); } to { transform: translateY(-50px); } }
+@keyframes depth-front { from { transform: translateY(130px); } to { transform: translateY(-80px); } }
+@keyframes swing { from { transform: perspective(1600px) rotateY(24deg) rotateX(8deg) translateY(60px) scale(0.92); opacity: 0.2; } }
+@keyframes lock-on { from { transform: translate(-50%, -50%) scale(3); opacity: 0; } }
+@keyframes condense { from { background-color: rgb(7 8 12 / 0.2); box-shadow: none; } }
+@keyframes grow { to { transform: scaleX(1); } }
+@keyframes lift-word { from { transform: translateY(40%); opacity: 0; } }
 /* One 12 s cycle: exploded with labels, fold flat, hold the assembled window, tilt and split again. */
 @keyframes tilt {
   0%, 26% { transform: rotateX(56deg) rotateZ(-32deg); }
@@ -141,14 +215,44 @@ body::after {
   .explode .tag { animation-name: tag-in; }
   .explode:hover * { animation-play-state: paused; }
 
+  .display.rise { animation-name: unmask; animation-duration: 1.3s; }
+  .stars { animation: sky 180s linear infinite; }
+  .sheen::before { animation: sweep 1.8s var(--ease-out-soft) 1.5s both; }
+  .btn:hover::before { animation: sweep 0.9s var(--ease-out-soft); }
+  .bob { animation: bob 7s ease-in-out infinite alternate; }
+  .kenburns img { animation: pan 28s ease-in-out infinite alternate; }
+  .keys kbd { animation: press 5s infinite; }
+  .keys kbd:nth-of-type(2) { animation-delay: 120ms; }
+  .keys kbd:nth-of-type(3) { animation-delay: 2.5s; }
+  .marquee-track { animation: slide 38s linear infinite; }
+  .marquee-track.rev { animation-direction: reverse; animation-duration: 46s; }
+  .marquee:hover .marquee-track { animation-play-state: paused; }
+
   @supports (animation-timeline: view()) {
     .reveal { animation: reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 55%; }
     .float { animation: float-up linear both; animation-timeline: scroll(root); animation-range: 0 900px; }
     .widen { animation: widen linear both; animation-timeline: view(); animation-range: entry 0% cover 45%; }
+    .h2 { animation: unmask linear both; animation-timeline: view(); animation-range: entry 10% entry 75%; }
+    .stagger > * { animation: reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 50%; }
+    .stagger > :nth-child(2) { animation-range: entry 8% entry 58%; }
+    .stagger > :nth-child(3) { animation-range: entry 16% entry 66%; }
+    .stagger > :nth-child(4) { animation-range: entry 24% entry 74%; }
+    .stagger > :nth-child(n+5) { animation-range: entry 32% entry 82%; }
+    .depth-back { animation: depth-back linear both; animation-timeline: view(); animation-range: cover; }
+    .depth-front { animation: depth-front linear both; animation-timeline: view(); animation-range: cover; }
+    .swing { animation: swing linear both; animation-timeline: view(); animation-range: entry 0% cover 40%; }
+    .reticle { animation: lock-on linear both; animation-timeline: view(); animation-range: entry 60% cover 45%; }
+    .callout { animation: reveal linear both; animation-timeline: view(); animation-range: cover 30% cover 50%; }
+    .bar { animation: condense linear both; animation-timeline: scroll(root); animation-range: 0 240px; }
+    .progress { animation: grow linear both; animation-timeline: scroll(root); }
+    .lift-word { animation: lift-word linear both; animation-timeline: view(); animation-range: entry 0% entry 100%; }
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: 0.01ms !important; animation: none !important; }
+  .marquee { mask-image: none; }
+  .marquee-track { width: auto; flex-wrap: wrap; }
+  .marquee-track [aria-hidden] { display: none; }
 }

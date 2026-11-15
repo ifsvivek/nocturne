@@ -14,8 +14,8 @@
       <h2 id="limits-h" class="h2">What it does not do yet</h2>
       <p class="lede mt-5">Early software, version {VERSION}. Here is the honest list.</p>
       <div class="mt-12 grid gap-12 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:gap-16">
-        <div><h3 class="text-[1.06rem] font-semibold">Not implemented</h3><ul class="tick mt-5">{#each missing as m}<li>{m}</li>{/each}</ul></div>
-        <div><h3 class="text-[1.06rem] font-semibold">Rough edges</h3><ul class="tick mt-5">{#each rough as m}<li>{m}</li>{/each}</ul></div>
+        <div><h3 class="text-[1.06rem] font-semibold">Not implemented</h3><ul class="tick stagger mt-5">{#each missing as m}<li>{m}</li>{/each}</ul></div>
+        <div><h3 class="text-[1.06rem] font-semibold">Rough edges</h3><ul class="tick stagger mt-5">{#each rough as m}<li>{m}</li>{/each}</ul></div>
       </div>
     </div>
   </div>

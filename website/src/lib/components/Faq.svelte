@@ -13,7 +13,7 @@
 <section id="faq" class="section rule" aria-labelledby="faq-h">
   <div class="wrap grid gap-12 lg:grid-cols-[minmax(0,4fr)_minmax(0,8fr)] lg:gap-16">
     <h2 id="faq-h" class="h2 reveal lg:sticky lg:top-32 lg:self-start">Questions</h2>
-    <dl class="m-0 grid gap-x-12 gap-y-12 md:grid-cols-2">
+    <dl class="stagger m-0 grid gap-x-12 gap-y-12 md:grid-cols-2">
       {#each items as [q, a]}
         <div class="reveal">
           <dt class="text-[1.06rem] font-semibold leading-snug text-ink">{q}</dt>

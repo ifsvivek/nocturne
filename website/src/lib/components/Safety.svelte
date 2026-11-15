@@ -18,10 +18,13 @@
     </div>
 
     <div class="reveal mt-[clamp(40px,5vw,64px)]">
-      <Shot name="settings-crop" sizes="(min-width: 1260px) 1240px, 100vw" />
+      <Shot name="settings-crop" sizes="(min-width: 1260px) 1240px, 100vw">
+        <span class="reticle" aria-hidden="true"></span>
+        <span class="callout" aria-hidden="true">Off by default</span>
+      </Shot>
     </div>
 
-    <dl class="m-0 mt-[clamp(40px,5vw,64px)] grid gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
+    <dl class="stagger m-0 mt-[clamp(40px,5vw,64px)] grid gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
       {#each facts as [t, d]}
         <div class="reveal rule grid content-start gap-2 pt-6">
           <dt class="font-semibold text-ink">{t}</dt>

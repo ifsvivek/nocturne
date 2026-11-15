@@ -25,7 +25,7 @@
     </div>
 
     <!-- Three ways in, one panel split by hairlines rather than three boxed cards. -->
-    <div class="reveal mt-[clamp(40px,5vw,64px)] grid overflow-hidden rounded-[1.25rem] bg-surface ring-1 ring-line ring-inset lg:grid-cols-3">
+    <div class="reveal mt-[clamp(40px,5vw,64px)] stagger grid overflow-hidden rounded-[1.25rem] bg-surface ring-1 ring-line ring-inset lg:grid-cols-3">
       <div class="p-[clamp(24px,3vw,36px)]">
         <h3 class="h3">Arch Linux</h3>
         <p class="muted mt-2">A PKGBUILD that builds from the source archive of the release tag.</p>
@@ -60,7 +60,7 @@ cargo build --release --locked
             <th scope="col" class="pb-3 pr-6 font-medium">Needs</th><th scope="col" class="pb-3 pr-6 font-medium">Detail</th><th scope="col" class="pb-3 font-medium">Status</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody class="stagger">
           {#each rows as [k, d, st]}
             <tr class="border-t border-line max-md:grid max-md:gap-1 max-md:py-5">
               <th scope="row" class="whitespace-nowrap font-semibold text-ink md:w-40 md:py-5 md:pr-6 md:align-top">{k}</th>

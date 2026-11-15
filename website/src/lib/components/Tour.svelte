@@ -1,6 +1,6 @@
 <script>
   import Shot from "./Shot.svelte";
-  const ways = ["Genres", "Studios", "Years", "Tags", "Collections", "Playlists", "Favourites", "A-Z rail", "Poster, thumb or list"];
+  const rows = [["Genres", "Studios", "Years", "Tags", "Collections"], ["Playlists", "Favourites", "A-Z rail", "Poster, thumb or list"]];
   const player = [
     "Audio and subtitle menus, delays and styling",
     "Speed and picture controls",
@@ -20,7 +20,7 @@
     </div>
 
     <!-- Browse: asymmetric bento, three cells. -->
-    <div class="mt-[clamp(48px,6vw,88px)] grid gap-4 md:grid-cols-2 lg:grid-cols-12 lg:grid-rows-[auto_auto]">
+    <div class="stagger mt-[clamp(48px,6vw,88px)] grid gap-4 md:grid-cols-2 lg:grid-cols-12 lg:grid-rows-[auto_auto]">
       <article class="reveal relative isolate flex min-h-[420px] flex-col overflow-hidden rounded-[1.25rem] bg-surface ring-1 ring-line ring-inset md:col-span-2 lg:col-span-8 lg:row-span-2">
         <div class="pool -right-24 -top-24 size-[420px] bg-indigo/25" aria-hidden="true"></div>
         <div class="max-w-[34rem] p-[clamp(24px,3.4vw,44px)]">
@@ -28,14 +28,14 @@
           <p class="lede mt-3">Home with Continue Watching and Next Up, then paged libraries with sort and filters. Virtualised grids, blurhash placeholders and a disk image cache keep it quick.</p>
         </div>
         <div class="mt-auto pl-[clamp(24px,3.4vw,44px)]">
-          <Shot name="library" sizes="(min-width: 1024px) 780px, 100vw" class="-mb-6 rounded-br-none" />
+          <Shot name="library" sizes="(min-width: 1024px) 780px, 100vw" class="kenburns -mb-6 rounded-br-none" />
         </div>
       </article>
 
       <article class="reveal flex flex-col overflow-hidden rounded-[1.25rem] bg-surface ring-1 ring-line ring-inset lg:col-span-4">
         <div class="p-[clamp(24px,3vw,36px)] pb-5">
           <h3 class="h3">Search from anywhere</h3>
-          <p class="muted mt-2">Press <kbd>Ctrl</kbd> <kbd>K</kbd> or <kbd>/</kbd> on any screen and start typing.</p>
+          <p class="keys muted mt-2">Press <kbd>Ctrl</kbd> <kbd>K</kbd> or <kbd>/</kbd> on any screen and start typing.</p>
         </div>
         <div class="mt-auto px-[clamp(16px,2vw,24px)] pb-[clamp(16px,2vw,24px)]">
           <Shot name="search-crop" sizes="(min-width: 1024px) 380px, (min-width: 768px) 50vw, 100vw" />
@@ -44,9 +44,16 @@
 
       <article class="reveal relative isolate overflow-hidden rounded-[1.25rem] bg-[linear-gradient(150deg,rgb(75_85_224/0.28),rgb(12_14_22/0.4)_60%)] p-[clamp(24px,3vw,36px)] ring-1 ring-white/10 ring-inset lg:col-span-4">
         <h3 class="h3">Every way in</h3>
-        <ul class="m-0 mt-5 flex list-none flex-wrap gap-2 p-0">
-          {#each ways as w}<li class="rounded-full bg-white/[0.06] px-3 py-1 text-sm text-ink ring-1 ring-white/10 ring-inset">{w}</li>{/each}
-        </ul>
+        <!-- Each row repeats its chips four times; the copies are hidden from assistive tech and dropped without motion. -->
+        <div class="marquee -mx-[clamp(24px,3vw,36px)] mt-6 grid gap-2 overflow-hidden">
+          {#each rows as row, r}
+            <ul class="marquee-track m-0 list-none p-0 {r ? 'rev' : ''}">
+              {#each [0, 1, 2, 3] as copy}
+                {#each row as w}<li class="rounded-full bg-white/[0.06] px-3.5 py-1.5 text-sm whitespace-nowrap text-ink ring-1 ring-white/10 ring-inset" aria-hidden={copy ? "true" : undefined}>{w}</li>{/each}
+              {/each}
+            </ul>
+          {/each}
+        </div>
       </article>
     </div>
 
@@ -63,8 +70,8 @@
         </div>
       </div>
       <div class="reveal relative pb-[22%] lg:-mr-[clamp(0px,4vw,64px)]">
-        <Shot name="movie-detail" sizes="(min-width: 1024px) 720px, 84vw" class="w-[84%] ml-auto lift" />
-        <div class="absolute bottom-0 left-0 w-[66%]">
+        <div class="depth-back"><Shot name="movie-detail" sizes="(min-width: 1024px) 720px, 84vw" class="w-[84%] ml-auto lift" /></div>
+        <div class="depth-front absolute bottom-0 left-0 w-[66%]">
           <Shot name="series-episodes" sizes="(min-width: 1024px) 580px, 66vw" class="lift shadow-[0_50px_100px_-30px_rgb(0_0_0/0.95)]" />
         </div>
       </div>
@@ -86,7 +93,7 @@
       </div>
     </div>
     <div class="wrap mt-12">
-      <ul class="tick reveal grid gap-x-12 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+      <ul class="tick stagger grid gap-x-12 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
         {#each player as p}<li>{p}</li>{/each}
       </ul>
     </div>
@@ -94,7 +101,7 @@
 
   <!-- Admin: window left, copy right. -->
   <div class="wrap mt-[clamp(110px,14vw,210px)] grid items-center gap-12 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-16">
-    <div class="reveal lg:-ml-[clamp(0px,4vw,64px)]">
+    <div class="swing lg:-ml-[clamp(0px,4vw,64px)]">
       <Shot name="admin-crop" sizes="(min-width: 1024px) 720px, 100vw" class="lift" />
     </div>
     <div class="reveal">
