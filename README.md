@@ -71,14 +71,6 @@ A clean release build takes several minutes (fat LTO).
 
 ## Usage notes
 
-- **Wayland / Hyprland.** Video plays in a subsurface of the app window, so the compositor's window opacity applies to
-  it. If you set `active_opacity` / `inactive_opacity` below 1, exempt the app id `nocturne`.
-  Hyprland (Lua config):
-    ```lua
-    hl.window_rule({ name = "nocturne-opaque", match = { class = "^nocturne$" }, opaque = true })
-    ```
-    Hyprland (`hyprland.conf`): `windowrule = opaque on, match:class ^(nocturne)$`
-    (older syntax: `windowrulev2 = opaque, class:^(nocturne)$`). Other compositors need the equivalent "opaque" rule.
 - **X11.** In-window video needs Wayland. On other sessions NOCTURNE plays in an external mpv window, which closes
   with the app. `NOCTURNE_VIDEO=external` forces this on Wayland too.
 - **Fonts.** The UI uses Noto Sans and JetBrainsMono Nerd Font if installed, and falls back to system fonts.
