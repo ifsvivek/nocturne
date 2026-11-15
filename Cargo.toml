@@ -5,3 +5,7 @@ members = ["crates/*"]
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
+
+# gpui -> zed-async-tar -> xattr 0.2.3 no longer builds with current libc (ENOATTR removed).
+[patch.crates-io]
+xattr = { path = "vendor/xattr" }
