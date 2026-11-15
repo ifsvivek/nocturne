@@ -7,21 +7,18 @@
 A native, cinematic desktop client for Jellyfin on Linux. Written in Rust with [GPUI](https://www.gpui.rs/),
 playing video in the app window through libmpv. Wayland first.
 
-> **Unofficial. Not affiliated with, endorsed by or sponsored by the Jellyfin project.**
-> NOCTURNE is an independent client that talks to your own Jellyfin server over its public API.
-
 Status: version 0.1.0, early. Linux only. See [docs/ROADMAP.md](docs/ROADMAP.md) for what is missing.
 
 ## Screenshots
 
 Captured against a generated demo library, not personal media.
 
-| | |
-|---|---|
-| ![Home](docs/screenshots/home.webp) | ![Library](docs/screenshots/library.webp) |
-| ![Movie detail](docs/screenshots/detail.webp) | ![Series](docs/screenshots/series.webp) |
-| ![Search](docs/screenshots/search.webp) | ![Player](docs/screenshots/player.webp) |
-| ![Settings](docs/screenshots/settings.webp) | ![Admin](docs/screenshots/admin.webp) |
+|                                               |                                           |
+| --------------------------------------------- | ----------------------------------------- |
+| ![Home](docs/screenshots/home.webp)           | ![Library](docs/screenshots/library.webp) |
+| ![Movie detail](docs/screenshots/detail.webp) | ![Series](docs/screenshots/series.webp)   |
+| ![Search](docs/screenshots/search.webp)       | ![Player](docs/screenshots/player.webp)   |
+| ![Settings](docs/screenshots/settings.webp)   | ![Admin](docs/screenshots/admin.webp)     |
 
 ## What it does
 
@@ -77,11 +74,11 @@ A clean release build takes several minutes (fat LTO).
 - **Wayland / Hyprland.** Video plays in a subsurface of the app window, so the compositor's window opacity applies to
   it. If you set `active_opacity` / `inactive_opacity` below 1, exempt the app id `nocturne`.
   Hyprland (Lua config):
-  ```lua
-  hl.window_rule({ name = "nocturne-opaque", match = { class = "^nocturne$" }, opaque = true })
-  ```
-  Hyprland (`hyprland.conf`): `windowrule = opaque on, match:class ^(nocturne)$`
-  (older syntax: `windowrulev2 = opaque, class:^(nocturne)$`). Other compositors need the equivalent "opaque" rule.
+    ```lua
+    hl.window_rule({ name = "nocturne-opaque", match = { class = "^nocturne$" }, opaque = true })
+    ```
+    Hyprland (`hyprland.conf`): `windowrule = opaque on, match:class ^(nocturne)$`
+    (older syntax: `windowrulev2 = opaque, class:^(nocturne)$`). Other compositors need the equivalent "opaque" rule.
 - **X11.** In-window video needs Wayland. On other sessions NOCTURNE plays in an external mpv window, which closes
   with the app. `NOCTURNE_VIDEO=external` forces this on Wayland too.
 - **Fonts.** The UI uses Noto Sans and JetBrainsMono Nerd Font if installed, and falls back to system fonts.
@@ -132,3 +129,8 @@ GPL-3.0-or-later. See [LICENSE](LICENSE); third-party licences are listed in
 - **[Rust](https://www.rust-lang.org/)** and the crates NOCTURNE builds on, including tokio, reqwest, rustls, serde, zbus,
   keyring, wayland-client and image. The full list with licences is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 - `vendor/xattr` is a patched copy of the [xattr](https://github.com/Stebalien/xattr) crate (MIT / Apache-2.0).
+
+---
+
+> **Unofficial. Not affiliated with, endorsed by or sponsored by the Jellyfin project.**
+> NOCTURNE is an independent client that talks to your own Jellyfin server over its public API.
