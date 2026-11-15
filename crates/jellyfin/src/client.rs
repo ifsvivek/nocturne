@@ -198,6 +198,12 @@ impl Client {
         .await
     }
 
+    /// Next unwatched episode of each series being followed (`GET /Shows/NextUp`).
+    pub async fn next_up(&self, user_id: &str, limit: u32) -> Result<Items> {
+        self.get(&["Shows", "NextUp"], &next_up_pairs(user_id, limit))
+            .await
+    }
+
     /// Authenticated image download (GET). The URL is built here from the item id, so the
     /// auth header can only ever go to the configured server.
     pub async fn image_bytes(
@@ -293,6 +299,10 @@ impl Client {
 }
 
 // Strip the URL from errors so nothing URL-borne (ids, api_key) lands in logs.
+fn next_up_pairs(user_id: &str, limit: u32) -> [(&'static str, String); 2] {
+    [("userId", user_id.into()), ("limit", limit.to_string())]
+}
+
 fn http_err(e: reqwest::Error) -> Error {
     Error::Http(e.without_url())
 }
@@ -451,5 +461,21 @@ mod tests {
         assert_eq!(r.items[1].name, "");
         let p: PublicInfo = serde_json::from_str(r#"{"ServerName":"s","Version":"10"}"#).unwrap();
         assert_eq!(p.version, "10");
+    }
+
+    #[test]
+    fn next_up_request_and_fixture() {
+        assert_eq!(
+            next_up_pairs("u1", 12).map(|(k, v)| format!("{k}={v}")),
+            ["userId=u1", "limit=12"]
+        );
+        let j = r#"{"Items":[{"Id":"e9","Name":"Pilot","Type":"Episode","SeriesName":"Invented Show",
+            "ParentIndexNumber":2,"IndexNumber":9,"ImageTags":{"Primary":"t"},"New":1}],"TotalRecordCount":1}"#;
+        let r: Items = serde_json::from_str(j).unwrap();
+        let e = &r.items[0];
+        assert_eq!(
+            (e.parent_index_number, e.index_number, e.series_name.as_deref()),
+            (Some(2), Some(9), Some("Invented Show"))
+        );
     }
 }
