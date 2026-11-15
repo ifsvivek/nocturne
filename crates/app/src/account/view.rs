@@ -67,8 +67,8 @@ fn steps() -> Div {
             .gap(px(t::S3))
             .text_size(px(t::BODY))
             .text_color(t::text_secondary())
-            .child(ui::mono(n))
-            .child(s)
+            .child(div().flex_none().child(ui::mono(n)))
+            .child(div().flex_1().min_w_0().child(s))
     };
     div()
         .flex()
