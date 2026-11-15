@@ -1,0 +1,26 @@
+# What NOCTURNE changes on your server
+
+By default NOCTURNE only reads. One setting, **Settings > Allow NOCTURNE to change data on the
+server** (`allow_server_writes`, default off), gates every change. Turn it on and the features below
+work, each with its existing confirmation dialog where one exists. Developer API-key mode
+(`NOCTURNE_JF_TOKEN`) refuses all writes whatever the setting says.
+
+| Feature | Needs server changes on | Also needs |
+|---|---|---|
+| Browse, search, details, playback, resume position | no | |
+| Report playback progress (Continue Watching follows you) | yes | **Sync watch progress** on |
+| Mark watched / unwatched (card chip, detail button, `w`) | yes | |
+| Favourite (card chip, detail button, player heart, `f`) | yes | |
+| Change own password | yes | the current password |
+| Admin: scan library, run/stop tasks, users, sessions, server settings, restart, API keys | yes | an administrator account and a confirmation dialog per action |
+| Admin: dashboards, activity, devices, logs, libraries, plugins | no (view only) | an administrator account |
+
+With the switch off, the controls above stay visible but dimmed with the tooltip "Turn on server
+changes in Settings", the keyboard shortcuts show a short notice, and the Admin section is view
+only with a banner linking to the setting.
+
+Signing in and out is separate: it creates and ends this app's own session on the server, which any
+client must do to authenticate. Playlists and collections are read only in NOCTURNE today.
+
+Settings files written before this switch existed (version 1) had progress sync on by default;
+on first load that value is reset to off and the master switch starts off.

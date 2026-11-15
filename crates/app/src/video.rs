@@ -37,6 +37,8 @@ pub trait PlayerHooks: Send + Sync {
     fn stopped(&self, item_id: &str, position_ticks: i64);
     fn set_favorite(&self, item_id: &str, fav: bool);
     fn is_favorite(&self, item_id: &str) -> bool;
+    /// Server changes are allowed (master switch on, real login): the heart is live only then.
+    fn can_write(&self) -> bool;
 }
 
 /// How long the controls stay up without mouse movement or keys.

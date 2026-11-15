@@ -1,8 +1,9 @@
 //! Admin rendering: tab row, dashboard cells, list + detail panel, confirmation dialog, toast.
-use super::Admin;
+use super::act::Act;
 use super::fmt::when;
 use super::model::{Btn, Item, Model};
 use super::state::{L, Row, SIDEBAR, Section};
+use super::{Admin, OpenSettings};
 use crate::{theme as t, ui};
 use gpui::prelude::*;
 use gpui::*;
@@ -379,6 +380,7 @@ impl Admin {
 
     fn buttons(&self, bs: &[Btn], focus: Option<usize>, key: &str, cx: &mut Context<Self>) -> Div {
         let mut d = div().flex().flex_wrap().gap(px(t::S2));
+        let a_writes = self.writes;
         for (i, b) in bs.iter().enumerate() {
             let act = b.act.clone();
             d = d.child(ui::action_button(
@@ -387,7 +389,7 @@ impl Admin {
                 b.primary,
                 b.danger,
                 focus == Some(i),
-                false,
+                !a_writes && !matches!(b.act, Act::ViewLog(_)),
                 cx.listener(move |a, _, _, cx| {
                     a.st.act = i;
                     a.do_act(act.clone(), cx);
@@ -696,6 +698,40 @@ impl Admin {
     }
 }
 
+impl Admin {
+    /// Reads work, writes are off: say so once, with the way out.
+    fn view_only_banner(&self, cx: &mut Context<Self>) -> Div {
+        div()
+            .mx(px(t::PAGE_PAD))
+            .mb(px(t::S3))
+            .px(px(t::S4))
+            .py(px(t::S3))
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(t::S4))
+            .rounded(px(t::R_PANEL))
+            .border_1()
+            .border_color(t::hairline_strong())
+            .bg(t::accent_tint())
+            .child(
+                div()
+                    .text_size(px(t::BODY))
+                    .text_color(t::text())
+                    .child("View only. NOCTURNE is not allowed to change anything on your server, so the actions below are off."),
+            )
+            .child(ui::action_button(
+                "adm-writes".into(),
+                "Open settings",
+                true,
+                false,
+                false,
+                false,
+                cx.listener(|_, _, _, cx| cx.emit(OpenSettings)),
+            ))
+    }
+}
+
 impl Render for Admin {
     fn render(&mut self, _w: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let m = self.model();
@@ -749,6 +785,7 @@ impl Render for Admin {
                 blurb,
                 meta,
             ))))
+            .children((!self.writes).then(|| self.view_only_banner(cx)))
             .child(body);
         let mut root = div()
             .size_full()

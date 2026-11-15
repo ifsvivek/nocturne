@@ -972,8 +972,8 @@ impl PlayerView {
     }
 
     pub fn toggle_favorite(&mut self) {
-        let Some(h) = self.ctx.hooks.clone() else {
-            return self.toast("Favourites need a signed-in account.");
+        let Some(h) = self.ctx.hooks.clone().filter(|h| h.can_write()) else {
+            return self.toast("Turn on server changes in Settings to use favourites.");
         };
         self.fav = !self.fav;
         h.set_favorite(&self.media.id, self.fav);

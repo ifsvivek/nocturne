@@ -10,9 +10,9 @@ use crate::imgcache::DiskCache;
 use crate::nav::{self, Dir};
 use crate::player_view::{PlayerCtx, PlayerEvent, PlayerView};
 use crate::search::Search;
-use crate::settings::{ROWS, Settings};
+use crate::settings::{self, ROWS, Settings};
 use crate::source::{Art, ConnectError, Kind, Media, Source, sniff};
-use crate::sync::{Reporter, SyncHooks, Tick, ticks};
+use crate::sync::{NEED_WRITES, Reporter, SyncHooks, Tick, ticks};
 use crate::ui::{self, Cell, Pic};
 use crate::video::PlayerHooks;
 use crate::{bridge, cache::Cache, theme as t};
@@ -231,6 +231,7 @@ pub struct Root {
     images: Cache<String, Img>,
     pub focus: FocusHandle,
     admin: Option<Entity<Admin>>,
+    _admin_sub: Option<Subscription>,
     admin_open: bool,
     /// The player page, while something plays.
     player: Option<Entity<PlayerView>>,
@@ -291,6 +292,7 @@ impl Root {
             images: Cache::new(600),
             focus: cx.focus_handle(),
             admin: None,
+            _admin_sub: None,
             admin_open: false,
             player: None,
             _player_sub: None,
@@ -305,7 +307,7 @@ impl Root {
             dev: false,
             accounts: None,
             session: None,
-            hooks: Arc::new(SyncHooks::new(None, true)),
+            hooks: Arc::new(SyncHooks::new(None, false, false)),
             reporter: Reporter::default(),
             settings: Settings::load(),
             settings_open: false,
@@ -418,7 +420,8 @@ impl Root {
                 t.phase = Phase::Ready;
                 t.push(View::Home, None, cx);
                 t.run(cx, admin::probe(t.cfg.clone()), |t, c, cx| {
-                    t.admin = c.map(|c| cx.new(|_| Admin::new(c)));
+                    t.admin = c.map(|c| t.make_admin(c, cx));
+                    t.apply_write_settings(cx);
                     for p in &mut t.stack {
                         p.admin = t.admin.is_some();
                     }
@@ -441,6 +444,7 @@ impl Root {
         };
         self.hooks = Arc::new(SyncHooks::new(
             UserClient::from_session(&url, &s).ok(),
+            self.settings.allow_server_writes,
             self.settings.sync_progress,
         ));
         self.source = Some(match self.disk.clone() {
@@ -456,7 +460,8 @@ impl Root {
             .is_admin
             .then(|| AdminClient::new(cfg).ok())
             .flatten()
-            .map(|c| cx.new(|_| Admin::new(c)));
+            .map(|c| self.make_admin(c, cx));
+        self.apply_write_settings(cx);
         self.session = Some((url, s));
         self.phase = Phase::Ready;
         self.push(View::Home, None, cx);
@@ -479,7 +484,7 @@ impl Root {
         self.settings_open = false;
         self.menu = false;
         self.session = None;
-        self.hooks = Arc::new(SyncHooks::new(None, true));
+        self.hooks = Arc::new(SyncHooks::new(None, false, false));
         self.phase = Phase::Account;
     }
 
@@ -521,6 +526,9 @@ impl Root {
                 self.settings_open = true;
                 self.settings_sel = 0;
             }
+            AcctAct::Password if !self.hooks.can_write() => {
+                self.toast(self.writes_off(), cx);
+            }
             AcctAct::Password => {
                 let client = self
                     .session
@@ -536,14 +544,36 @@ impl Root {
         cx.notify();
     }
 
+    /// Push the master and sync switches to the hooks and the admin section.
+    fn apply_write_settings(&mut self, cx: &mut Context<Self>) {
+        use std::sync::atomic::Ordering::Relaxed;
+        self.hooks
+            .master
+            .store(self.settings.allow_server_writes, Relaxed);
+        self.hooks.sync.store(self.settings.sync_progress, Relaxed);
+        let w = self.hooks.can_write();
+        if let Some(a) = self.admin.clone() {
+            a.update(cx, |a, cx| {
+                a.writes = w;
+                cx.notify();
+            });
+        }
+    }
+
+    /// An admin client for this login, view-only until the master switch says otherwise.
+    fn make_admin(&mut self, c: AdminClient, cx: &mut Context<Self>) -> Entity<Admin> {
+        let a = cx.new(|_| Admin::new(c));
+        self._admin_sub = Some(cx.subscribe(&a, |t, _, _: &admin::OpenSettings, cx| {
+            t.menu_act(AcctAct::Settings, cx);
+        }));
+        a
+    }
+
     /// Settings row `i` stepped; applies at once and is saved.
     fn cycle_setting(&mut self, i: usize, dir: i32, cx: &mut Context<Self>) {
         self.settings.cycle(i, dir);
         self.settings.save();
-        self.hooks.sync.store(
-            self.settings.sync_progress,
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        self.apply_write_settings(cx);
         let show = self.settings.home();
         for p in &mut self.stack {
             p.show = show;
@@ -614,14 +644,18 @@ impl Root {
         }
     }
 
+    /// Calm explanation for a refused write.
+    fn writes_off(&self) -> &'static str {
+        if self.dev {
+            "This connection is read-only."
+        } else {
+            "Server changes are off. Turn them on in Settings to do that."
+        }
+    }
+
     fn toggle_played(&mut self, m: &Media, cx: &mut Context<Self>) {
-        if !self.hooks.sync_on() {
-            let why = if self.hooks.can_write() {
-                "Watch sync is off. Turn it on in Settings."
-            } else {
-                "Sign in to keep watched state on the server."
-            };
-            return self.toast(why, cx);
+        if !self.hooks.can_write() {
+            return self.toast(self.writes_off(), cx);
         }
         let v = !m.played;
         self.patch(&m.id, |x| {
@@ -643,7 +677,7 @@ impl Root {
 
     fn toggle_fav(&mut self, m: &Media, cx: &mut Context<Self>) {
         if !self.hooks.can_write() {
-            return self.toast("Sign in to save favourites.", cx);
+            return self.toast(self.writes_off(), cx);
         }
         let v = !m.favorite;
         self.hooks.seed_favorite(&m.id, m.favorite);
@@ -767,6 +801,7 @@ impl Root {
 
     /// Heart and check chips on a poster: always shown when set, on hover otherwise.
     fn chips(&self, m: &Media, cx: &mut Context<Self>) -> Div {
+        let writes = self.hooks.can_write();
         let chip = |id: String, glyph: &'static str, on: bool, t_: Media, fav: bool| {
             div()
                 .id(ui::name(id))
@@ -791,6 +826,7 @@ impl Root {
                 .cursor_pointer()
                 .occlude()
                 .hover(|s| s.border_color(t::accent()))
+                .when(!writes, |d| d.opacity(0.4).tooltip(ui::tip(NEED_WRITES)))
                 .when(!on, |d| d.invisible().group_hover("card", |s| s.visible()))
                 .on_click(cx.listener(move |t, _, _, cx| {
                     if fav {
@@ -1626,6 +1662,7 @@ impl Root {
                     .child(div().truncate().child(ui::mono(server))),
             )
             .child(div().h(px(1.0)).bg(t::hairline()));
+        let writes = self.hooks.can_write();
         for (i, (label, act)) in self.menu_items().into_iter().enumerate() {
             let on = i == self.menu_sel;
             p = p.child(
@@ -1637,6 +1674,9 @@ impl Root {
                     .text_size(px(t::BODY))
                     .cursor_pointer()
                     .when(on, |d| d.bg(t::accent_tint()).text_color(t::accent_text()))
+                    .when(act == AcctAct::Password && !writes, |d| {
+                        d.opacity(0.4).tooltip(ui::tip(NEED_WRITES))
+                    })
                     .hover(|s| s.bg(t::glass()))
                     .on_click(cx.listener(move |t, _, _, cx| t.menu_act(act, cx)))
                     .child(label),
@@ -1664,6 +1704,29 @@ impl Root {
         let mut list = div().flex().flex_col();
         for (i, r) in self.settings.rows().into_iter().enumerate() {
             let on = i == self.settings_sel;
+            if let Some(h) = settings::head(i) {
+                list = list.child(
+                    div()
+                        .px(px(t::S6))
+                        .pt(px(t::S6))
+                        .pb(px(t::S3))
+                        .flex()
+                        .flex_col()
+                        .gap(px(t::S2))
+                        .border_b_1()
+                        .border_color(t::hairline())
+                        .child(ui::label(h))
+                        .when(i == 0, |d| {
+                            d.child(
+                                div()
+                                    .max_w(px(720.0))
+                                    .text_size(px(t::BODY))
+                                    .text_color(t::text_secondary())
+                                    .child(settings::WRITES_NOTE),
+                            )
+                        }),
+                );
+            }
             list = list.child(
                 div()
                     .id(("set-row", i))

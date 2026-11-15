@@ -4,6 +4,7 @@
 use super::ui_browse::{caption, scope_tag};
 use super::*;
 use crate::detail::{self, Full};
+use crate::sync::NEED_WRITES;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Sec {
@@ -629,15 +630,20 @@ impl Root {
         // Hero with the action buttons.
         let mut buttons = div().flex().flex_wrap().gap(px(t::S3));
         let af = focus_of(DRow::Actions);
+        let writes = self.hooks.can_write();
         for (i, a) in acts.into_iter().enumerate() {
             let (id, label, primary) = spec(a, &m);
-            buttons = buttons.child(ui::pill_button(
-                id,
-                label,
-                primary,
-                af == Some(i),
-                cx.listener(move |t, _, _, cx| t.do_act(a, cx)),
-            ));
+            let off = !writes && matches!(a, DAct::Watched | DAct::Fav);
+            buttons = buttons.child(
+                ui::pill_button(
+                    id,
+                    label,
+                    primary,
+                    af == Some(i),
+                    cx.listener(move |t, _, _, cx| t.do_act(a, cx)),
+                )
+                .when(off, |d| d.opacity(0.4).tooltip(ui::tip(NEED_WRITES))),
+            );
         }
         let eyebrow = if m.kind == Kind::Episode {
             format!(
@@ -1033,6 +1039,7 @@ impl Root {
         let h = (w * 9.0 / 16.0).round();
         let pic = self.pic(e, Art::Landscape, (w * 2.0) as u32, cx);
         let (play, info, seen, fav) = (e.clone(), e.clone(), e.clone(), e.clone());
+        let writes = self.hooks.can_write();
         let title = match e.number {
             Some(n) => format!("{n}. {}", e.title),
             None => e.title.clone(),
@@ -1206,6 +1213,7 @@ impl Root {
                             )
                             .child(
                                 icon(format!("cs-{}", e.id), "\u{2713}", e.played, "Watched")
+                                    .when(!writes, |d| d.opacity(0.4).tooltip(ui::tip(NEED_WRITES)))
                                     .on_click(cx.listener(move |t, _, _, cx| {
                                         t.toggle_played(&seen, cx);
                                         cx.notify();
@@ -1219,6 +1227,7 @@ impl Root {
                                     e.favorite,
                                     "Favourite",
                                 )
+                                .when(!writes, |d| d.opacity(0.4).tooltip(ui::tip(NEED_WRITES)))
                                 .on_click(cx.listener(
                                     move |t, _, _, cx| {
                                         t.toggle_fav(&fav, cx);

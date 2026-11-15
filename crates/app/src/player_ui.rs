@@ -98,7 +98,7 @@ impl PlayerView {
             ("Playback info", Key(video::Key::Stats)),
             ("Stop", Key(video::Key::Stop)),
         ];
-        if self.ctx.hooks.is_some() {
+        if self.ctx.hooks.as_ref().is_some_and(|h| h.can_write()) {
             v.insert(
                 4,
                 (
@@ -1062,7 +1062,7 @@ impl PlayerView {
                 d.child(ui::mono(format!("{}%", vol.round())))
             });
         let video = self.video;
-        let has_hooks = self.ctx.hooks.is_some();
+        let has_hooks = self.ctx.hooks.as_ref().is_some_and(|h| h.can_write());
         let fav = self.fav;
         let heart = ui::ctl_button(
             "np-fav",
@@ -1080,7 +1080,7 @@ impl PlayerView {
         )
         .when(!has_hooks, |d| {
             d.opacity(0.4)
-                .tooltip(|_, cx| cx.new(|_| Tip("Sign in to use favourites".into())).into())
+                .tooltip(|_, cx| cx.new(|_| Tip(crate::sync::NEED_WRITES.into())).into())
         });
         let mut menus = div().flex().items_center().gap(px(t::S2));
         if !mini {

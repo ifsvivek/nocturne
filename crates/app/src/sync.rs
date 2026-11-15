@@ -29,19 +29,33 @@ pub struct Revert {
     pub fav: Option<bool>,
 }
 
+/// Shown wherever a write control is disabled.
+pub const NEED_WRITES: &str = "Turn on server changes in Settings";
+
+/// The whole write policy in one place: (may write played/favourite/admin, may report progress).
+/// Writes need the master switch AND a real login (developer-token mode never writes); progress
+/// reporting additionally needs its own switch.
+pub fn write_policy(master: bool, sync: bool, dev: bool) -> (bool, bool) {
+    let w = master && !dev;
+    (w, w && sync)
+}
+
 pub struct SyncHooks {
     /// `None` in developer-token mode: the real server is read-only there, every write is refused.
     client: Option<UserClient>,
-    /// Settings: "sync watch progress and watched state".
+    /// Settings: "Allow NOCTURNE to change data on the server" (default off).
+    pub master: AtomicBool,
+    /// Settings: "sync watch progress"; only counts while `master` is on.
     pub sync: AtomicBool,
     favs: Arc<Mutex<HashMap<String, bool>>>,
     notes: Arc<Mutex<Vec<Revert>>>,
 }
 
 impl SyncHooks {
-    pub fn new(client: Option<UserClient>, sync: bool) -> Self {
+    pub fn new(client: Option<UserClient>, master: bool, sync: bool) -> Self {
         Self {
             client,
+            master: AtomicBool::new(master),
             sync: AtomicBool::new(sync),
             favs: Default::default(),
             notes: Default::default(),
@@ -49,11 +63,21 @@ impl SyncHooks {
     }
 
     pub fn can_write(&self) -> bool {
-        self.client.is_some()
+        write_policy(
+            self.master.load(Ordering::Relaxed),
+            self.sync.load(Ordering::Relaxed),
+            self.client.is_none(),
+        )
+        .0
     }
 
     pub fn sync_on(&self) -> bool {
-        self.can_write() && self.sync.load(Ordering::Relaxed)
+        write_policy(
+            self.master.load(Ordering::Relaxed),
+            self.sync.load(Ordering::Relaxed),
+            self.client.is_none(),
+        )
+        .1
     }
 
     /// The request to send, or `None` when syncing is off / there is no login.
@@ -92,7 +116,7 @@ impl SyncHooks {
     /// Optimistic played / unplayed. Failure queues a [`Revert`].
     pub fn set_played(&self, id: &str, played: bool) {
         let (notes, id) = (self.notes.clone(), id.to_string());
-        let Some(c) = self.client.clone() else {
+        let Some(c) = self.client.clone().filter(|_| self.can_write()) else {
             return self.notes.lock().unwrap().push(Revert {
                 id,
                 played: Some(!played),
@@ -154,7 +178,7 @@ impl PlayerHooks for SyncHooks {
         };
         match self.client.clone() {
             None => revert(),
-            Some(c) => {
+            Some(c) if self.can_write() => {
                 let id = item_id.to_string();
                 bridge::spawn(async move {
                     if c.set_favorite(&id, fav).await.is_err() {
@@ -162,7 +186,12 @@ impl PlayerHooks for SyncHooks {
                     }
                 });
             }
+            Some(_) => revert(),
         }
+    }
+
+    fn can_write(&self) -> bool {
+        SyncHooks::can_write(self)
     }
 
     fn is_favorite(&self, item_id: &str) -> bool {
@@ -263,27 +292,65 @@ mod tests {
     }
 
     #[test]
-    fn sync_gating() {
-        let h = SyncHooks::new(Some(client()), true);
+    fn write_policy_matrix() {
+        // (master, sync, dev) -> (can_write, can_report)
+        for master in [false, true] {
+            for sync in [false, true] {
+                for dev in [false, true] {
+                    let want = (master && !dev, master && !dev && sync);
+                    assert_eq!(
+                        write_policy(master, sync, dev),
+                        want,
+                        "{master} {sync} {dev}"
+                    );
+                }
+            }
+        }
+        // The default install (everything off) writes nothing.
+        assert_eq!(write_policy(false, false, false), (false, false));
+        // Sync alone is not enough, and dev mode refuses even with both on.
+        assert_eq!(write_policy(false, true, false), (false, false));
+        assert_eq!(write_policy(true, true, true), (false, false));
+    }
+
+    #[test]
+    fn hooks_follow_the_policy() {
+        let h = SyncHooks::new(Some(client()), true, true);
         let (_, k, r) = h.plan(Kind::Progress, "i", 50_000_000, true).unwrap();
         assert_eq!(
             (k, r.position_ticks, r.is_paused),
             (Kind::Progress, 50_000_000, true)
         );
         h.sync.store(false, Ordering::Relaxed);
+        assert!(h.plan(Kind::Start, "i", 0, false).is_none(), "sync off");
         assert!(
-            h.plan(Kind::Start, "i", 0, false).is_none(),
-            "sync off sends nothing"
+            h.can_write(),
+            "played/favourite only need the master switch"
         );
-        // No login (developer token): never writes, even with sync on.
-        let h = SyncHooks::new(None, true);
+        h.sync.store(true, Ordering::Relaxed);
+        h.master.store(false, Ordering::Relaxed);
+        assert!(h.plan(Kind::Start, "i", 0, false).is_none(), "master off");
+        assert!(!h.can_write() && !h.sync_on());
+        // Developer token (no login): never writes, even with both on.
+        let h = SyncHooks::new(None, true, true);
         assert!(h.plan(Kind::Stop, "i", 0, false).is_none());
-        assert!(!h.sync_on());
+        assert!(!h.sync_on() && !h.can_write());
+    }
+
+    #[test]
+    fn master_off_reverts_favourite_and_played() {
+        let h = SyncHooks::new(Some(client()), false, true);
+        h.seed_favorite("a", false);
+        h.set_favorite("a", true);
+        h.set_played("a", true);
+        assert!(!h.is_favorite("a"));
+        let n = h.drain();
+        assert_eq!((n[0].fav, n[1].played), (Some(false), Some(false)));
     }
 
     #[test]
     fn favorite_without_login_reverts_and_notifies() {
-        let h = SyncHooks::new(None, true);
+        let h = SyncHooks::new(None, true, true);
         h.seed_favorite("a", false);
         h.set_favorite("a", true);
         assert!(!h.is_favorite("a"), "rolled back");
@@ -300,7 +367,7 @@ mod tests {
 
     #[test]
     fn played_without_login_reverts() {
-        let h = SyncHooks::new(None, true);
+        let h = SyncHooks::new(None, true, true);
         h.set_played("a", true);
         assert_eq!(h.drain()[0].played, Some(false));
     }

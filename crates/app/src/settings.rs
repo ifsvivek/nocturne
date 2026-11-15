@@ -8,7 +8,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+/// 2: server writes became opt-in (`allow_server_writes`); the old sync default is reset.
 pub const VERSION: u32 = 2;
+
+fn zero() -> u32 {
+    0
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -42,8 +47,13 @@ impl Density {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    /// A file without a version predates versioning (0).
+    #[serde(default = "zero")]
     pub version: u32,
-    /// Report playback progress and watched state to the server.
+    /// Master switch: NOCTURNE may change data on the server (played, favourite, progress,
+    /// admin actions, password). Off by default; every write needs it.
+    pub allow_server_writes: bool,
+    /// Report playback progress to the server (only counts while `allow_server_writes` is on).
     pub sync_progress: bool,
     pub audio_lang: Option<String>,
     pub sub_lang: Option<String>,
@@ -71,7 +81,8 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             version: VERSION,
-            sync_progress: true,
+            allow_server_writes: false,
+            sync_progress: false,
             audio_lang: None,
             sub_lang: None,
             sub_mode: SubPref::Off,
@@ -138,7 +149,21 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `cycle()` index them).
-pub const ROWS: usize = 14;
+pub const ROWS: usize = 15;
+
+/// Section title shown above row `i`, if a section starts there.
+pub fn head(i: usize) -> Option<&'static str> {
+    match i {
+        0 => Some("Server changes"),
+        2 => Some("Playback"),
+        10 => Some("Home"),
+        13 => Some("Appearance and storage"),
+        _ => None,
+    }
+}
+
+/// Two plain sentences under the "Server changes" title.
+pub const WRITES_NOTE: &str = "When this is on, NOCTURNE can mark items watched, set favourites, report what you watch (if sync is on) and, for administrators, change server settings, always asking before anything destructive. When it is off, NOCTURNE only reads from your server and never changes anything on it.";
 
 const CACHE_MB: [u32; 5] = [128, 256, 512, 1024, 2048];
 const AHEAD_S: [u32; 6] = [60, 120, 180, 300, 600, 900];
@@ -156,8 +181,13 @@ impl Settings {
         let r = |label, hint, value| Row { label, hint, value };
         vec![
             r(
+                "Allow NOCTURNE to change data on the server",
+                "Off by default. Needed for watched, favourites, progress sync, admin changes and password change.",
+                onoff(self.allow_server_writes),
+            ),
+            r(
                 "Sync watch progress",
-                "Report what you watch and mark it watched on the server.",
+                "Report what you watch so Continue Watching follows you. Needs server changes on.",
                 onoff(self.sync_progress),
             ),
             r(
@@ -237,10 +267,11 @@ impl Settings {
     pub fn cycle(&mut self, i: usize, dir: i32) {
         let d = if dir < 0 { -1 } else { 1 };
         match i {
-            0 => self.sync_progress ^= true,
-            1 => self.audio_lang = next_lang(&self.audio_lang, d),
-            2 => self.sub_lang = next_lang(&self.sub_lang, d),
-            3 => {
+            0 => self.allow_server_writes ^= true,
+            1 => self.sync_progress ^= true,
+            2 => self.audio_lang = next_lang(&self.audio_lang, d),
+            3 => self.sub_lang = next_lang(&self.sub_lang, d),
+            4 => {
                 use SubPref::*;
                 self.sub_mode = match (self.sub_mode, d) {
                     (Off, 1) | (Always, -1) => ForeignOnly,
@@ -248,15 +279,15 @@ impl Settings {
                     _ => Off,
                 }
             }
-            4 => self.auto_skip_intro ^= true,
-            5 => self.autoplay_next ^= true,
-            6 => self.buffer_ahead_secs = step(&AHEAD_S, self.buffer_ahead_secs, 3, d),
-            7 => self.buffer_refill_secs = step(&REFILL_S, self.buffer_refill_secs, 2, d),
-            8 => self.buffer_max_mb = step(&BUF_MB, self.buffer_max_mb, 3, d),
-            9 => self.home_resume ^= true,
-            10 => self.home_next_up ^= true,
-            11 => self.home_latest ^= true,
-            12 => {
+            5 => self.auto_skip_intro ^= true,
+            6 => self.autoplay_next ^= true,
+            7 => self.buffer_ahead_secs = step(&AHEAD_S, self.buffer_ahead_secs, 3, d),
+            8 => self.buffer_refill_secs = step(&REFILL_S, self.buffer_refill_secs, 2, d),
+            9 => self.buffer_max_mb = step(&BUF_MB, self.buffer_max_mb, 3, d),
+            10 => self.home_resume ^= true,
+            11 => self.home_next_up ^= true,
+            12 => self.home_latest ^= true,
+            13 => {
                 use Density::*;
                 self.density = match (self.density, d) {
                     (Compact, 1) | (Spacious, -1) => Comfortable,
@@ -264,7 +295,7 @@ impl Settings {
                     _ => Compact,
                 }
             }
-            13 => self.image_cache_mb = step(&CACHE_MB, self.image_cache_mb, 2, d),
+            14 => self.image_cache_mb = step(&CACHE_MB, self.image_cache_mb, 2, d),
             _ => {}
         }
     }
@@ -316,8 +347,18 @@ impl Settings {
             .ok()
             .and_then(|t| toml::from_str(&t).ok())
             .unwrap_or_default();
-        s.version = VERSION;
+        s.migrate();
         s
+    }
+
+    /// Older files: version 1 shipped with sync on by default, which was never an informed choice
+    /// to write to the server, so it is reset; the master switch starts off.
+    fn migrate(&mut self) {
+        if self.version < 2 {
+            self.sync_progress = false;
+            self.allow_server_writes = false;
+        }
+        self.version = VERSION;
     }
 
     pub fn save(&self) {
@@ -347,9 +388,10 @@ mod tests {
     }
 
     #[test]
-    fn defaults_sync_on() {
+    fn defaults_write_nothing() {
         let s = Settings::default();
-        assert!(s.sync_progress && s.autoplay_next && !s.auto_skip_intro);
+        assert!(!s.allow_server_writes && !s.sync_progress);
+        assert!(s.autoplay_next && !s.auto_skip_intro);
         assert_eq!(s.rows().len(), ROWS);
     }
 
@@ -360,14 +402,18 @@ mod tests {
         let mut s = Settings::default();
         s.cycle(0, 1);
         s.cycle(1, 1);
-        s.cycle(3, 1);
-        s.cycle(12, -1);
-        s.cycle(6, 1);
+        s.cycle(2, 1);
+        s.cycle(4, 1);
+        s.cycle(13, -1);
+        s.cycle(7, 1);
         s.save_to(&p).unwrap();
         assert_eq!(Settings::load_from(&p), s);
         assert!(!p.with_extension("toml.tmp").exists());
         let text = std::fs::read_to_string(&p).unwrap();
-        assert!(text.contains("sync_progress = false") && text.contains("audio_lang = \"eng\""));
+        assert!(
+            text.contains("sync_progress = true") && text.contains("allow_server_writes = true")
+        );
+        assert!(text.contains("audio_lang = \"eng\""));
         assert!(
             !text.to_lowercase().contains("token") && !text.to_lowercase().contains("password")
         );
@@ -381,9 +427,9 @@ mod tests {
         assert_eq!(Settings::load_from(&p), Settings::default(), "missing");
         std::fs::create_dir_all(&d).unwrap();
         // Version 0 (pre-versioning) with one field and an unknown one: kept, rest defaulted, stamped.
-        std::fs::write(&p, "version = 0\nsync_progress = false\nfuture_thing = 1\n").unwrap();
+        std::fs::write(&p, "version = 0\nautoplay_next = false\nfuture_thing = 1\n").unwrap();
         let s = Settings::load_from(&p);
-        assert!(!s.sync_progress && s.autoplay_next && s.version == VERSION);
+        assert!(!s.autoplay_next && !s.sync_progress && s.version == VERSION);
         std::fs::write(&p, "this is {{ not toml").unwrap();
         assert_eq!(Settings::load_from(&p), Settings::default(), "corrupt");
         std::fs::remove_dir_all(d).unwrap();
@@ -397,12 +443,12 @@ mod tests {
             (b.high_secs, b.low_secs, b.max_bytes),
             (300.0, 120.0, 3 << 29)
         );
-        s.cycle(6, 1);
-        s.cycle(8, -1);
+        s.cycle(7, 1);
+        s.cycle(9, -1);
         let b = s.buffering();
         assert_eq!((b.high_secs, b.max_bytes), (600.0, 1024 << 20));
         s.buffer_ahead_secs = 77; // unknown value (hand-edited file) starts from the default slot
-        s.cycle(6, 1);
+        s.cycle(7, 1);
         assert_eq!(s.buffer_ahead_secs, 600);
     }
 
@@ -410,27 +456,27 @@ mod tests {
     fn cycling_wraps_both_ways() {
         let mut s = Settings::default();
         assert_eq!(s.audio_lang, None);
-        s.cycle(1, -1);
+        s.cycle(2, -1);
         assert_eq!(
             s.audio_lang.as_deref(),
             Some("hin"),
             "back from automatic wraps to the end"
         );
-        s.cycle(1, 1);
+        s.cycle(2, 1);
         assert_eq!(s.audio_lang, None);
         for _ in 0..3 {
-            s.cycle(3, 1);
+            s.cycle(4, 1);
         }
         assert_eq!(s.sub_mode, SubPref::Off);
-        s.cycle(12, 1);
+        s.cycle(13, 1);
         assert_eq!(s.density, Density::Spacious);
-        s.cycle(12, 1);
+        s.cycle(13, 1);
         assert_eq!(s.density, Density::Compact);
         s.cycle(99, 1); // out of range is a no-op
-        s.cycle(13, 1);
+        s.cycle(14, 1);
         assert_eq!(s.image_cache_mb, 1024);
-        s.cycle(13, -1);
-        s.cycle(13, -1);
+        s.cycle(14, -1);
+        s.cycle(14, -1);
         assert_eq!(s.image_cache_mb, 256);
     }
 
@@ -458,12 +504,45 @@ mod tests {
     #[test]
     fn prefs_follow_settings() {
         let mut s = Settings::default();
-        s.cycle(1, 1);
-        s.cycle(3, 1);
+        s.cycle(2, 1);
         s.cycle(4, 1);
+        s.cycle(5, 1);
         let p = s.prefs();
         assert_eq!(p.audio_lang.as_deref(), Some("eng"));
         assert_eq!(p.sub_mode, SubMode::ForeignOnly);
         assert!(p.auto_skip_intro && p.autoplay_next);
+    }
+
+    #[test]
+    fn migration_resets_the_old_sync_default() {
+        let d = dir("mig");
+        let p = d.join("settings.toml");
+        std::fs::create_dir_all(&d).unwrap();
+        // A version-1 file as the former default wrote it: sync on, nothing about the master switch.
+        std::fs::write(
+            &p,
+            "version = 1\nsync_progress = true\naudio_lang = \"jpn\"\n",
+        )
+        .unwrap();
+        let s = Settings::load_from(&p);
+        assert!(!s.sync_progress && !s.allow_server_writes, "reset");
+        assert_eq!(
+            s.audio_lang.as_deref(),
+            Some("jpn"),
+            "other choices survive"
+        );
+        assert_eq!(s.version, VERSION);
+        // A file with no version at all is older still.
+        std::fs::write(&p, "sync_progress = true\n").unwrap();
+        assert!(!Settings::load_from(&p).sync_progress);
+        // Current files keep what the user chose.
+        std::fs::write(
+            &p,
+            "version = 2\nallow_server_writes = true\nsync_progress = true\n",
+        )
+        .unwrap();
+        let s = Settings::load_from(&p);
+        assert!(s.allow_server_writes && s.sync_progress);
+        std::fs::remove_dir_all(d).unwrap();
     }
 }

@@ -18,8 +18,15 @@ use state::{Msg, POLL_SECS, Section, Shape, State};
 use std::future::Future;
 use std::time::Duration;
 
+/// Asks the app to open Settings (the view-only banner's link).
+pub struct OpenSettings;
+
+impl EventEmitter<OpenSettings> for Admin {}
+
 pub struct Admin {
     client: AdminClient,
+    /// Server changes are allowed (Settings master switch, real login). Off = view only.
+    pub writes: bool,
     st: State,
     dialog: Option<Dialog>,
     note: Option<String>,
@@ -45,6 +52,7 @@ impl Admin {
     pub fn new(client: AdminClient) -> Self {
         Self {
             client,
+            writes: false,
             st: State::new(),
             dialog: None,
             note: None,
@@ -221,8 +229,10 @@ impl Admin {
                 let t = c.log_tail(&name, 200).await.ok();
                 Msg::Log(name, t)
             });
-        } else {
+        } else if self.writes {
             self.dialog = Some(a.dialog());
+        } else {
+            self.toast(crate::sync::NEED_WRITES, cx);
         }
     }
 
@@ -241,6 +251,9 @@ impl Admin {
         let Some(d) = self.dialog.take().filter(Dialog::valid) else {
             return;
         };
+        if !self.writes {
+            return;
+        }
         let ok = Confirmed::i_have_asked_the_user();
         let (c, act, vals) = (self.client.clone(), d.act.clone(), d.values());
         let h = bridge::spawn(act::exec(c, act.clone(), vals, ok));
