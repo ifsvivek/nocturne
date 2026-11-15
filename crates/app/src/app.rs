@@ -5,14 +5,17 @@ use crate::playback::Now;
 use crate::source::fmt_clock;
 use crate::source::{Art, ConnectError, Kind, Media, Source, sniff};
 use crate::ui::{self, Cell, Pic};
+use crate::video::{self, AutoHide, Playback};
 use crate::{bridge, cache::Cache, theme as t};
 use gpui::prelude::*;
 use gpui::*;
-use nocturne_player::{Event, Options, Player};
+use nocturne_player::{EmbeddedPlayer, Event, Options, Player};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::cell::Cell as StdCell;
 use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Instant;
 
 /// Height of the docked now-playing bar.
 const BAR_H: f32 = 76.0;
@@ -166,7 +169,19 @@ pub struct Root {
     pub focus: FocusHandle,
     admin: Option<Entity<Admin>>,
     admin_open: bool,
-    player: Option<Player>,
+    playback: Option<Playback>,
+    /// Player page active (embedded video): the window is a hole for the video, controls overlay it.
+    video: bool,
+    /// Embedded player waiting for the next render (needs `&Window` for the raw handles): (url, header).
+    pending: Option<(String, String)>,
+    /// Backend decision, made at the first play. `false` = child-process mpv.
+    embed: Option<bool>,
+    vbounds: Option<Bounds<Pixels>>,
+    hide: AutoHide,
+    ctl_shown: bool,
+    volume: f64,
+    /// We entered fullscreen from the player page; leave it when playback ends.
+    fs_from_video: bool,
     now: Option<Now>,
     /// Bar kept alive briefly after stop so it can slide out.
     leaving: Option<Now>,
@@ -205,7 +220,15 @@ impl Root {
             focus: cx.focus_handle(),
             admin: None,
             admin_open: false,
-            player: None,
+            playback: None,
+            video: false,
+            pending: None,
+            embed: None,
+            vbounds: None,
+            hide: AutoHide::new(Instant::now()),
+            ctl_shown: true,
+            volume: 100.0,
+            fs_from_video: false,
             now: None,
             leaving: None,
             bar_gen: 0,
@@ -224,6 +247,27 @@ impl Root {
             note_gen: 0,
         };
         me.connect(cx);
+        // Teardown order: the video subsurface must go before the window, and not from inside the
+        // compositor's close event (joining the render thread there deadlocks). So while a video
+        // is up, veto the close, drop the video from a task, then remove the window ourselves.
+        let this = cx.weak_entity();
+        _w.on_window_should_close(cx, move |w, cx| {
+            let handle = Window::window_handle(w);
+            let this = this.clone();
+            if this
+                .read_with(cx, |t, _| t.playback.is_none())
+                .unwrap_or(true)
+            {
+                return true;
+            }
+            cx.spawn(async move |cx| {
+                this.update(cx, |t, _| t.playback = None).ok();
+                cx.update(|cx| cx.quit()).ok();
+                let _ = handle;
+            })
+            .detach();
+            false
+        });
         // Poll the player a few times a second; cheap when nothing is playing.
         cx.spawn(async move |this, cx| {
             loop {
@@ -497,24 +541,23 @@ impl Root {
         }
     }
 
-    /// Hands one playable item to mpv (own window for now). Nothing here is ever logged.
+    /// Hands one playable item to the player. Nothing here is ever logged.
     fn play_media(&mut self, m: Media, cx: &mut Context<Self>) {
         let Some(src) = self.source.clone() else {
             return;
         };
         let (url, header) = src.stream(&m.id);
-        if self.player.is_none() {
-            match Player::new(Options::default()) {
-                Ok(p) => self.player = Some(p),
-                Err(_) => return self.toast("The player couldn't start.", cx),
+        if let Some(p) = &self.playback {
+            if p.load(&url, Some(&header)).is_err() {
+                self.stop(cx);
+                return self.toast("This couldn't be played.", cx);
             }
-        }
-        if !self
-            .player
-            .as_ref()
-            .is_some_and(|p| p.load(&url, Some(&header)).is_ok())
-        {
-            self.stop(cx);
+        } else if self.embed_wanted() {
+            // Created on the next render, which has the window handles.
+            self.pending = Some((url, header));
+            self.video = true;
+            self.hide.poke(Instant::now());
+        } else if !self.start_external(&url, &header) {
             return self.toast("This couldn't be played.", cx);
         }
         let ep = m.clone();
@@ -537,8 +580,63 @@ impl Root {
         }
     }
 
+    fn embed_wanted(&mut self) -> bool {
+        *self.embed.get_or_insert_with(|| {
+            let env = std::env::var("NOCTURNE_VIDEO").ok();
+            let wl = std::env::var_os("WAYLAND_DISPLAY").is_some();
+            video::choose(env.as_deref(), wl) == video::Choice::Embedded
+        })
+    }
+
+    /// Child-process mpv in its own window. False (and everything reset) if it can't play.
+    fn start_external(&mut self, url: &str, header: &str) -> bool {
+        self.video = false;
+        let ok = Player::new(Options::default())
+            .ok()
+            .filter(|p| p.load(url, Some(header)).is_ok());
+        self.playback = ok.map(Playback::External);
+        self.playback.is_some()
+    }
+
+    /// Render-time: create the embedded player now that we have the window.
+    fn start_embedded(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let Some((url, header)) = self.pending.take() else {
+            return;
+        };
+        let handles = match (
+            HasDisplayHandle::display_handle(window).map(|h| h.as_raw()),
+            HasWindowHandle::window_handle(window).map(|h| h.as_raw()),
+        ) {
+            (Ok(RawDisplayHandle::Wayland(d)), Ok(RawWindowHandle::Wayland(s))) => {
+                Some((d.display.as_ptr(), s.surface.as_ptr()))
+            }
+            _ => None,
+        };
+        let p = handles
+            .and_then(|(d, s)| EmbeddedPlayer::new(d, s).ok())
+            .filter(|p| p.load(&url, Some(&header)).is_ok());
+        match p {
+            Some(p) => {
+                let _ = p.set_volume(self.volume);
+                self.vbounds = None; // push bounds to the new surface on the next paint
+                self.playback = Some(Playback::Embedded(Box::new(p)));
+            }
+            None => {
+                // Calm, counts only: no URLs, no ids.
+                eprintln!("video: embedded unavailable, using the external player");
+                self.embed = Some(false);
+                if !self.start_external(&url, &header) {
+                    self.stop(cx);
+                    self.toast("This couldn't be played.", cx);
+                }
+            }
+        }
+    }
+
     fn stop(&mut self, cx: &mut Context<Self>) {
-        self.player = None; // dropping closes mpv and its window
+        self.playback = None; // dropping closes mpv / the video surface
+        self.video = false;
+        self.pending = None;
         self.drag = None;
         self.hover_frac = None;
         let Some(n) = self.now.take() else { return };
@@ -577,7 +675,7 @@ impl Root {
                 let f = self.track_frac(x, self.vol_b.get());
                 self.drag = Some(Drag::Vol(f));
                 self.muted_from = None;
-                if let Some(p) = &self.player {
+                if let Some(p) = &self.playback {
                     let _ = p.set_volume(f as f64 * 100.0);
                 }
             }
@@ -589,7 +687,7 @@ impl Root {
     fn drag_end(&mut self, cx: &mut Context<Self>) {
         if let (Some(Drag::Seek(f)), Some(p), Some(d)) = (
             self.drag.take(),
-            &self.player,
+            &self.playback,
             self.now.as_ref().and_then(|n| n.times().1),
         ) {
             let _ = p.seek_to(f as f64 * d);
@@ -603,7 +701,7 @@ impl Root {
             .as_ref()
             .and_then(|n| n.state.as_ref())
             .map_or(100.0, |s| s.volume);
-        let Some(p) = &self.player else { return };
+        let Some(p) = &self.playback else { return };
         match self.muted_from.take() {
             Some(prev) => drop(p.set_volume(prev)),
             None if v > 0.0 => {
@@ -615,7 +713,12 @@ impl Root {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
-        let Some(pl) = &self.player else { return };
+        let shown = self.video_controls();
+        if self.video && shown != self.ctl_shown {
+            self.ctl_shown = shown;
+            cx.notify();
+        }
+        let Some(pl) = &self.playback else { return };
         let (mut failed, mut gone) = (false, false);
         if let Some(now) = &mut self.now {
             for ev in pl.events().try_iter() {
@@ -632,6 +735,7 @@ impl Root {
                 }
             }
             let st = pl.state();
+            self.volume = st.volume;
             failed |= now.stalled(st.idle);
             now.ended = st.eof;
             if now.state.as_ref() != Some(&st) {
@@ -652,13 +756,13 @@ impl Root {
     }
 
     fn toggle(&mut self) {
-        if let Some(p) = &self.player {
+        if let Some(p) = &self.playback {
             let _ = p.toggle();
         }
     }
 
     fn seek(&mut self, secs: f64) {
-        if let Some(p) = &self.player {
+        if let Some(p) = &self.playback {
             let _ = p.seek_by(secs);
         }
     }
@@ -716,8 +820,48 @@ impl Root {
 
     // ---- keyboard ----
 
-    fn on_key(&mut self, ev: &KeyDownEvent, cx: &mut Context<Self>) {
+    fn video_controls(&self) -> bool {
+        let hold = self.bar_hover || self.drag.is_some();
+        self.hide.visible(Instant::now(), hold)
+    }
+
+    fn toggle_fullscreen(&mut self, window: &mut Window) {
+        self.fs_from_video = !window.is_fullscreen();
+        window.toggle_fullscreen();
+    }
+
+    /// Player-page keys. True when consumed.
+    fn video_key(&mut self, k: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        use video::Key;
+        self.hide.poke(Instant::now());
+        let Some(key) = video::key(k) else {
+            return false;
+        };
+        match key {
+            Key::Toggle => self.toggle(),
+            Key::Seek(s) => self.seek(s),
+            Key::Volume(d) => {
+                self.muted_from = None;
+                if let Some(p) = &self.playback {
+                    let _ = p.set_volume(video::bump_volume(self.volume, d));
+                }
+            }
+            Key::Mute => self.mute(),
+            Key::Stop => self.stop(cx),
+            Key::Fullscreen => self.toggle_fullscreen(window),
+            Key::Back if window.is_fullscreen() => self.toggle_fullscreen(window),
+            Key::Back => self.stop(cx),
+            Key::Next => self.next_episode(cx),
+        }
+        cx.notify();
+        true
+    }
+
+    fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let key = ev.keystroke.key.as_str();
+        if self.video && self.video_key(key, window, cx) {
+            return;
+        }
         if let Phase::Error(e) = self.phase {
             if matches!(key, "enter" | "r") && e != ConnectError::NotConfigured {
                 self.connect(cx);
@@ -1033,6 +1177,110 @@ impl Root {
             .child(msg.to_string())
     }
 
+    /// Root element shared by every screen: focus, keys, pointer, font. No background.
+    fn shell(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        div()
+            .id("root")
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(|t, ev, w, cx| t.on_key(ev, w, cx)))
+            .on_mouse_move(cx.listener(|t, e: &MouseMoveEvent, _, cx| {
+                if t.video {
+                    t.hide.poke(Instant::now());
+                    if !t.ctl_shown {
+                        t.ctl_shown = true;
+                        cx.notify();
+                    }
+                }
+                t.drag_move(e.position.x, cx)
+            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|t, _, _, cx| {
+                    if t.drag.is_some() {
+                        t.drag_end(cx);
+                    }
+                }),
+            )
+            .size_full()
+            .relative()
+            .font_family(t::FONT)
+            .text_color(t::text())
+    }
+
+    /// Player page: video fills the window (transparent hole), controls overlay it and auto-hide.
+    fn player_page(&mut self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let shown = self.video_controls();
+        self.ctl_shown = shown;
+        let view = cx.entity();
+        let loaded = self.now.as_ref().is_some_and(|n| n.loaded);
+        let bar = shown.then(|| self.now_bar(cx)).flatten();
+        let mut page = self
+            .shell(cx)
+            // Black until the first frame is on its way, else the desktop shows through the hole.
+            .when(!loaded, |d| d.bg(rgb(0x000000)))
+            .when(!shown, |d| d.cursor(CursorStyle::None))
+            .child(
+                canvas(
+                    |b, _, _| b,
+                    move |b, _, window, cx| {
+                        let sf = window.scale_factor();
+                        view.update(cx, |t, cx| {
+                            if t.vbounds == Some(b) {
+                                return;
+                            }
+                            t.vbounds = Some(b);
+                            if let Some(Playback::Embedded(p)) = t.playback.as_mut() {
+                                let f = |v: Pixels| f32::from(v);
+                                p.set_bounds(
+                                    f(b.origin.x),
+                                    f(b.origin.y),
+                                    f(b.size.width),
+                                    f(b.size.height),
+                                    sf,
+                                );
+                                cx.notify(); // parent commit applies the new position
+                            }
+                        });
+                    },
+                )
+                .absolute()
+                .size_full(),
+            )
+            .child(div().id("video-hit").absolute().size_full().on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|t, e: &MouseDownEvent, w, cx| {
+                    // Each press toggles pause; the second press of a double-click undoes the
+                    // first and goes fullscreen.
+                    t.toggle();
+                    if e.click_count == 2 {
+                        t.toggle_fullscreen(w);
+                    }
+                    cx.notify();
+                }),
+            ));
+        if let Some(bar) = bar {
+            page = page.child(bar);
+        }
+        if let Some(n) = self.note {
+            page = page.child(
+                div()
+                    .absolute()
+                    .top(px(t::S6))
+                    .right(px(t::S6))
+                    .px(px(t::S4))
+                    .py(px(t::S3))
+                    .rounded(px(t::R_PANEL))
+                    .bg(t::raised())
+                    .border_1()
+                    .border_color(t::hairline_strong())
+                    .text_size(px(t::BODY))
+                    .text_color(t::text())
+                    .child(n),
+            );
+        }
+        page
+    }
+
     // ---- now playing ----
 
     fn now_bar(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -1224,7 +1472,8 @@ impl Root {
             .flex_col()
             .border_t_1()
             .border_color(t::hairline_strong())
-            .bg(rgba(0x07080cf5))
+            .occlude()
+            .bg(rgba(if self.video { 0x07080cc4 } else { 0x07080cf5 }))
             .shadow(vec![BoxShadow {
                 color: glow.into(),
                 offset: point(px(0.0), px(-10.0)),
@@ -2085,6 +2334,16 @@ fn p_loading(rows: &[(Media, Load<Vec<Media>>, ScrollHandle)]) -> bool {
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.win = window.viewport_size();
+        self.start_embedded(window, cx);
+        if !self.video && self.fs_from_video {
+            self.fs_from_video = false;
+            if window.is_fullscreen() {
+                window.toggle_fullscreen();
+            }
+        }
+        if self.video {
+            return self.player_page(cx).into_any_element();
+        }
         let body = match self.phase {
             Phase::Connecting => self.connecting(),
             Phase::Error(ConnectError::NotConfigured) => self.splash(
@@ -2135,25 +2394,8 @@ impl Render for Root {
                 .opacity(opacity)
                 .child(img(i).size_full().object_fit(ObjectFit::Cover))
         };
-        let mut root = div()
-            .id("root")
-            .track_focus(&self.focus)
-            .on_key_down(cx.listener(|t, ev, _, cx| t.on_key(ev, cx)))
-            .on_mouse_move(
-                cx.listener(|t, e: &MouseMoveEvent, _, cx| t.drag_move(e.position.x, cx)),
-            )
-            .on_mouse_up(
-                MouseButton::Left,
-                cx.listener(|t, _, _, cx| {
-                    if t.drag.is_some() {
-                        t.drag_end(cx);
-                    }
-                }),
-            )
-            .size_full()
-            .relative()
-            .font_family(t::FONT)
-            .text_color(t::text())
+        let mut root = self
+            .shell(cx)
             .bg(t::frame())
             .child(layer(self.glow.clone(), 1.0))
             .child(layer(self.dots.clone(), 0.09))
@@ -2189,6 +2431,6 @@ impl Render for Root {
                     .child(n),
             );
         }
-        root
+        root.into_any_element()
     }
 }

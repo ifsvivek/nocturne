@@ -8,6 +8,7 @@ mod playback;
 mod source;
 mod theme;
 mod ui;
+mod video;
 
 use gpui::*;
 
@@ -23,6 +24,9 @@ fn main() {
                     ..Default::default()
                 }),
                 app_id: Some("nocturne".into()),
+                // Transparent so the video subsurface below shows through; every normal screen paints
+                // an opaque background (Root), only the player page leaves a hole.
+                window_background: WindowBackgroundAppearance::Transparent,
                 window_min_size: Some(size(px(800.0), px(560.0))),
                 ..Default::default()
             };
