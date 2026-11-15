@@ -156,6 +156,21 @@ impl UserClient {
         }
     }
 
+    /// READ `GET /System/Info/Public` (no login needed): is this address a media server, and what is it called?
+    pub async fn public_info(&self) -> Result<PublicInfo> {
+        self.json(Method::GET, &["System", "Info", "Public"], &[], None)
+            .await
+    }
+
+    /// READ `GET /Users/Me`: cheap authenticated read that proves the stored token still works.
+    /// Returns `stored` refreshed with the current name and admin flag (401 means the token is dead).
+    pub async fn me(&self, mut stored: Session) -> Result<Session> {
+        let u: AuthUser = self.json(Method::GET, &["Users", "Me"], &[], None).await?;
+        stored.user_name = u.name;
+        stored.is_admin = u.policy.is_administrator;
+        Ok(stored)
+    }
+
     /// READ `GET /QuickConnect/Enabled`.
     pub async fn quick_connect_enabled(&self) -> Result<bool> {
         self.json(Method::GET, &["QuickConnect", "Enabled"], &[], None)

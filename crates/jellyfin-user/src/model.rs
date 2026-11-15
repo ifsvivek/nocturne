@@ -109,3 +109,12 @@ pub(crate) struct EntryPage {
 pub(crate) struct Created {
     pub id: String,
 }
+
+/// What `/System/Info/Public` tells an anonymous caller.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct PublicInfo {
+    pub server_name: String,
+    pub version: String,
+    pub id: String,
+}
