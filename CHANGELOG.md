@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Profile picker ("Who's watching?"): when the last used server has two or more remembered accounts and no default, the
+  app opens a full-screen picker of large round profile tiles (profile picture, or the initial, with the name below) and
+  an "Add profile" tile that opens the usual sign-in form. Pick with the mouse, Left / Right (Up / Down in wrapped rows)
+  and Enter; Esc does nothing. Choosing a profile signs in with its stored token, no password, and shows Home; if the
+  server rejects the token the sign-in form opens with the name already filled in. A "Use as default profile" box (Space
+  or click; off by default) makes the chosen profile open at launch without the picker. The account menu has
+  "Switch profile" (always opens the picker, never clears the default by itself), Settings has a "Default profile"
+  drop-down ("Ask every time" or a profile), and removing or signing out the default account clears it. One remembered
+  account behaves as before, and developer-token mode never shows the picker. Switching profile is a local sign-in with
+  an existing token: nothing is written to the server and the server-changes switch is not involved. `accounts.toml`
+  gains an optional `default = true` marker on one entry per server (no token; older files load unchanged).
+
 ### Changed
 - Settings: options with several choices (audio and subtitle language, subtitles, buffer ahead, refill below, max RAM
   buffer, grid density, image cache) are now drop-downs. Click the value (or press Enter / Space) to open a menu under it

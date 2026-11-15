@@ -113,6 +113,27 @@ moved reliably; the keyboard path was used). Note for testers: a first attempt r
 loaded the real `.env` developer token (GET reads only, nothing changed); it was stopped at once, and later runs used a
 directory without `.env`.
 
+## Profile picker (unreleased)
+
+Throwaway Jellyfin on port 8100 (alice with an uploaded picture, bob, carol, admin), isolated XDG dirs, a unique
+keyring service name, the debug binary started from a directory without a `.env` and with the developer variables unset.
+Each user was signed in once through the app's own forms so the tokens were remembered. Checked live: the picker opens at
+launch with the picture on alice and initials on bob and carol (pictures load without a token); Right / Left / Space /
+Enter and a mouse click choose a profile and open Home as that user; ticking "Use as default profile" and choosing wrote
+`default = true` for that account only and the next launch went straight to Home as that profile, also when another
+profile had been used last; "Switch profile" reopened the picker with the default highlighted and the box ticked, and
+choosing another profile without touching the box left the default alone; the Settings "Default profile" drop-down
+changed the default to another profile and back to "Ask every time" (marker removed); signing out of the default account
+removed the marker; revoking the app's tokens on the throwaway made the pick fall back to the sign-in form with the name
+filled in, the password field focused and "Your session ended" shown, Esc returned to the picker, and a password sign-in
+then worked; with one remembered account the launch showed the sign-in form, no picker. Unit-tested: the start-up
+decision (0, 1, N accounts, default set, unset, stale or doubled marker, other server's default, developer-token mode),
+selection (wrapping Left / Right, Up / Down in wrapped rows, Enter, Esc, ignored while signing in), the default box
+(set, keep, clear), the `default` marker in `accounts.toml` (one per server, cleared by forgetting, round trip, older
+files), the Settings row and the name prefill. Not verified: the wrapped layout in a narrow window (columns and
+navigation are unit-tested only), a failed server at launch with a default set (falls back to the picker, not run), and
+more than three profiles. All three tokens were revoked together because the app uses one device id for every account.
+
 ## Not verified / known gaps
 
 - Real server HDR; the photo viewer and music on real data (the real server has no photo or music library).
