@@ -14,10 +14,14 @@ rust-version.workspace = true
 
 [dependencies]
 base64 = "0.23"
+futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["time", "macros", "sync"] }
+# Framing only: the handshake is done by reqwest, so tungstenite's handshake feature stays off.
+tokio-tungstenite = { version = "0.30", default-features = false }
 
 [dev-dependencies]
 nocturne-jellyfin = { path = "../jellyfin" }

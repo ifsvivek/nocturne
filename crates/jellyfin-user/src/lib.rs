@@ -9,6 +9,7 @@ mod client;
 #[cfg(test)]
 mod mock;
 mod model;
+pub mod syncplay;
 
 pub use client::UserClient;
 pub use model::*;

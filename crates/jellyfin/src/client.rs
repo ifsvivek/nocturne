@@ -49,6 +49,8 @@ pub struct ItemsQuery {
     pub start_index: Option<u32>,
     pub limit: Option<u32>,
     pub recursive: bool,
+    /// Exactly these items (comma-joined `ids`), in whatever order the server returns them.
+    pub ids: Vec<String>,
 }
 
 impl ItemsQuery {
@@ -80,6 +82,9 @@ impl ItemsQuery {
         }
         if self.recursive {
             p.push(("recursive", "true".into()));
+        }
+        if !self.ids.is_empty() {
+            p.push(("ids", self.ids.join(",")));
         }
         p
     }
@@ -461,6 +466,12 @@ fn auth_header(device_id: &str, token: &str) -> String {
 
 /// Stable per-machine id: derived from /etc/machine-id (prefix only), else a fixed fallback.
 fn device_id() -> String {
+    if let Some(d) = std::env::var("NOCTURNE_DEVICE_ID")
+        .ok()
+        .filter(|d| !d.is_empty())
+    {
+        return d;
+    }
     let id = std::fs::read_to_string("/etc/machine-id").unwrap_or_default();
     let id: String = id.trim().chars().take(12).collect();
     format!("nocturne-{}", if id.is_empty() { "unknown" } else { &id })
@@ -642,6 +653,7 @@ mod tests {
             start_index: Some(20),
             limit: Some(10),
             recursive: true,
+            ids: vec!["a".into(), "b".into()],
         };
         let s: Vec<String> = q
             .pairs("u")
@@ -658,7 +670,8 @@ mod tests {
                 "sortOrder=Descending",
                 "startIndex=20",
                 "limit=10",
-                "recursive=true"
+                "recursive=true",
+                "ids=a,b"
             ]
         );
         assert_eq!(ItemsQuery::default().pairs("u").len(), 1);

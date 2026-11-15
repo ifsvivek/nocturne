@@ -8,9 +8,11 @@ use std::time::Duration;
 /// User-scope Jellyfin client. Anonymous (login, Quick Connect) or bound to a [`Session`].
 #[derive(Clone)]
 pub struct UserClient {
-    http: reqwest::Client,
-    base: Url,
+    pub(crate) http: reqwest::Client,
+    pub(crate) base: Url,
     user_id: String,
+    /// Full `Authorization` value (carries the token); only the WebSocket handshake reuses it.
+    pub(crate) auth: header::HeaderValue,
 }
 
 impl std::fmt::Debug for UserClient {
@@ -27,6 +29,14 @@ fn http_err(e: reqwest::Error) -> Error {
 }
 
 fn device_id() -> String {
+    // Two accounts of one machine that are signed in at once need different ids (the server keys
+    // sessions by app + device); also lets tests run two instances.
+    if let Some(d) = std::env::var("NOCTURNE_DEVICE_ID")
+        .ok()
+        .filter(|d| !d.is_empty())
+    {
+        return d;
+    }
     let id = std::fs::read_to_string("/etc/machine-id").unwrap_or_default();
     let id: String = id.trim().chars().take(12).collect();
     format!("nocturne-{}", if id.is_empty() { "unknown" } else { &id })
@@ -60,7 +70,7 @@ impl UserClient {
             .map_err(|_| Error::Config("token contains invalid header characters".into()))?;
         auth.set_sensitive(true);
         let mut headers = header::HeaderMap::new();
-        headers.insert(header::AUTHORIZATION, auth);
+        headers.insert(header::AUTHORIZATION, auth.clone());
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(20))
             .default_headers(headers)
@@ -70,10 +80,11 @@ impl UserClient {
             http,
             base,
             user_id,
+            auth,
         })
     }
 
-    async fn send(
+    pub(crate) async fn send(
         &self,
         method: Method,
         segs: &[&str],
@@ -104,7 +115,7 @@ impl UserClient {
         Ok(resp)
     }
 
-    async fn json<T: DeserializeOwned>(
+    pub(crate) async fn json<T: DeserializeOwned>(
         &self,
         m: Method,
         segs: &[&str],
@@ -118,7 +129,7 @@ impl UserClient {
             .map_err(http_err)
     }
 
-    async fn run(
+    pub(crate) async fn run(
         &self,
         m: Method,
         segs: &[&str],
