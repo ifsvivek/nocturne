@@ -184,14 +184,14 @@ open; dropped on stop/close BEFORE the window. `state()`/`events()` keep today's
 
 ## Commands to run
 ```
-cd /home/ifsvivek/Projects/NOCTURNE
+cd <repo-root>
 cargo build --release -p video-proto
 # test clips (not committed): 10 s test patterns
 mkdir -p /tmp/nocturne-vp && cd /tmp/nocturne-vp
 ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=30 -t 10 -c:v libx264 -pix_fmt yuv420p c1080_h264.mp4
 ffmpeg -f lavfi -i testsrc2=size=3840x2160:rate=30 -t 10 -c:v libx265 -preset ultrafast -pix_fmt yuv420p10le \
   -x265-params colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc c4k_hevc10.mp4
-cd /home/ifsvivek/Projects/NOCTURNE
+cd <repo-root>
 target/release/video-proto /tmp/nocturne-vp/c1080_h264.mp4                       # play, stats every second
 target/release/video-proto /tmp/nocturne-vp/c1080_h264.mp4 --cycles 20 --hold-ms 1200   # 20 start/stop cycles
 target/release/video-proto <clip> --cycles 20 --order window-first                # wrong teardown order
