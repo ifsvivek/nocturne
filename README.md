@@ -27,9 +27,12 @@ Copy `.env.example` to `.env` and fill it in. `.env` is git-ignored; never commi
 
 ```sh
 cargo build
+cargo run -p nocturne-app        # the desktop client (binary: nocturne); reads .env
 cargo test                       # offline tests
 cargo test -- --ignored          # live tests against your server (read-only GETs)
 ```
+
+`vendor/xattr` is a one-line patched copy of the `xattr` crate (a transitive dependency of GPUI that no longer builds against current `libc`); see the `[patch.crates-io]` note in `Cargo.toml`.
 
 Integration tests only issue read-only requests and never modify the server.
 

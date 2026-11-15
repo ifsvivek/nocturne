@@ -1,0 +1,550 @@
+//! Reusable components. Each returns a plain element; state stays in the caller.
+use crate::theme as t;
+use gpui::prelude::*;
+use gpui::*;
+use std::sync::Arc;
+use std::time::Duration;
+
+/// GPUI has no letter-spacing, so tracked caps are faked with hair spaces.
+pub fn tracked(s: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in s.to_uppercase().chars().enumerate() {
+        if c == ' ' {
+            out.push('\u{2003}'); // em space: visible word gap between tracked letters
+            continue;
+        }
+        if i > 0 && !out.ends_with('\u{2003}') {
+            out.push('\u{200A}');
+            out.push('\u{200A}');
+        }
+        out.push(c);
+    }
+    out
+}
+
+pub fn name(s: String) -> ElementId {
+    ElementId::Name(s.into())
+}
+
+/// Fade-in for things that appear: pages, hero text, loaded art. Restarts when `id` changes.
+pub fn fade_in<E: IntoElement + Styled + 'static>(
+    el: E,
+    id: String,
+    dur: Duration,
+) -> impl IntoElement {
+    el.with_animation(
+        name(id),
+        Animation::new(dur).with_easing(ease_out_quint()),
+        |e, v| e.opacity(v),
+    )
+}
+
+/// Tracked uppercase label (tagline, eyebrows).
+pub fn label(s: &str) -> Div {
+    div()
+        .text_size(px(t::CAPTION))
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(t::text_tertiary())
+        .child(tracked(s))
+}
+
+pub fn wordmark(size: f32) -> Div {
+    div()
+        .text_size(px(size))
+        .font_weight(FontWeight::BOLD)
+        .text_color(t::text())
+        .child(tracked("Nocturne"))
+}
+
+fn glow_shadow(a: f32) -> Vec<BoxShadow> {
+    let mut c: Hsla = t::glow().into();
+    c.a = a;
+    vec![BoxShadow {
+        color: c,
+        offset: point(px(0.0), px(0.0)),
+        blur_radius: px(24.0),
+        spread_radius: px(0.0),
+    }]
+}
+
+/// Tiny monospace annotation (the only text allowed below 12px).
+pub fn mono(s: impl Into<SharedString>) -> Div {
+    div()
+        .font_family(t::MONO)
+        .text_size(px(t::MICRO))
+        .text_color(t::text_tertiary())
+        .child(s.into())
+}
+
+/// Outlined status chip: 1px outline, faint tinted fill, mono label.
+pub fn chip(s: &str, accent: bool) -> Div {
+    div()
+        .px(px(t::S2))
+        .h(px(20.0))
+        .flex()
+        .items_center()
+        .rounded(px(R_CHIP))
+        .border_1()
+        .border_color(if accent {
+            t::accent()
+        } else {
+            t::hairline_strong()
+        })
+        .bg(if accent { t::accent_tint() } else { t::glass() })
+        .font_family(t::MONO)
+        .text_size(px(t::MICRO))
+        .text_color(if accent {
+            t::accent_text()
+        } else {
+            t::text_secondary()
+        })
+        .child(tracked(s))
+}
+const R_CHIP: f32 = 4.0;
+
+/// Full-width band: hairline divider below, content in a centered column between two rails.
+pub fn band(content: impl IntoElement) -> Div {
+    div()
+        .w_full()
+        .flex_none()
+        .border_b_1()
+        .border_color(t::hairline())
+        .flex()
+        .justify_center()
+        .child(
+            div()
+                .w_full()
+                .max_w(px(t::COL_W))
+                .border_l_1()
+                .border_r_1()
+                .border_color(t::hairline())
+                .child(content),
+        )
+}
+
+/// Section heading: bold title + muted paragraph on the left, mono annotation on the right.
+pub fn section(title: &str, text: &str, meta: String) -> Div {
+    div()
+        .px(px(t::PAGE_PAD))
+        .flex()
+        .items_end()
+        .justify_between()
+        .gap(px(t::S6))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(t::S2))
+                .child(
+                    div()
+                        .text_size(px(28.0))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(t::text())
+                        .child(title.to_string()),
+                )
+                .child(
+                    div()
+                        .max_w(px(520.0))
+                        .text_size(px(t::BODY))
+                        .line_height(px(t::BODY * 1.55))
+                        .text_color(t::text_secondary())
+                        .child(text.to_string()),
+                ),
+        )
+        .child(mono(meta))
+}
+
+/// Feature cell: mono caption row on top, optional image, then title, muted text, dim mono
+/// footer. Cells in a row share borders (right + bottom hairline).
+pub struct Feature<'a> {
+    pub key: &'a str,
+    pub top_l: String,
+    pub top_r: String,
+    pub pic: Option<Pic>,
+    pub title: String,
+    pub text: String,
+    pub foot: String,
+}
+
+pub fn feature_cell(f: Feature) -> Stateful<Div> {
+    div()
+        .id(name(format!("feat-{}", f.key)))
+        .flex_1()
+        .min_w_0()
+        .flex()
+        .flex_col()
+        .border_r_1()
+        .border_b_1()
+        .border_color(t::hairline())
+        .cursor_pointer()
+        .hover(|s| s.bg(t::glass()))
+        .child(
+            div()
+                .px(px(t::S4))
+                .h(px(36.0))
+                .flex()
+                .items_center()
+                .justify_between()
+                .border_b_1()
+                .border_color(t::hairline())
+                .child(mono(f.top_l))
+                .child(mono(f.top_r)),
+        )
+        .when_some(f.pic, |d, pic| {
+            d.child(
+                div()
+                    .p(px(t::S4))
+                    .child(tile(pic, &f.title, f.key).w_full().h(px(150.0))),
+            )
+        })
+        .child(
+            div()
+                .p(px(t::S4))
+                .flex()
+                .flex_col()
+                .gap(px(t::S2))
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(px(18.0))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(t::text())
+                        .child(f.title.clone()),
+                )
+                .child(
+                    div()
+                        .line_clamp(2)
+                        .text_size(px(t::BODY))
+                        .line_height(px(t::BODY * 1.55))
+                        .text_color(t::text_secondary())
+                        .child(f.text),
+                )
+                .child(mono(f.foot)),
+        )
+}
+
+/// Primary: solid blue, dark label. Secondary: hairline outline. `focused` = soft glow.
+pub fn pill_button(
+    id: &'static str,
+    text: &'static str,
+    primary: bool,
+    focused: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let mut d = div()
+        .id(id)
+        .h(px(44.0))
+        .px(px(t::S6))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(6.0))
+        .border_1()
+        .gap(px(t::S2))
+        .text_size(px(t::BODY))
+        .font_weight(FontWeight::SEMIBOLD)
+        .cursor_pointer()
+        .active(|s| s.opacity(0.85))
+        .on_click(on_click)
+        .when(primary, |d| {
+            d.child(
+                div()
+                    .font_family(t::MONO)
+                    .text_size(px(t::CAPTION))
+                    .child("\u{25B6}"),
+            )
+        })
+        .child(text);
+    d = if primary {
+        d.bg(if focused {
+            t::accent_hover()
+        } else {
+            t::accent()
+        })
+        .border_color(t::accent())
+        .text_color(t::on_accent())
+        .hover(|s| s.bg(t::accent_hover()))
+    } else {
+        d.bg(if focused { t::accent_tint() } else { rgba(0) })
+            .border_color(if focused {
+                t::accent()
+            } else {
+                t::hairline_strong()
+            })
+            .text_color(t::text())
+            .hover(|s| s.bg(t::glass()).border_color(t::text_tertiary()))
+    };
+    if focused {
+        d = d.shadow(glow_shadow(0.7));
+    }
+    d
+}
+
+/// Top-bar text link: active = white with a small blue dot, focused = blue text.
+pub fn nav_link(
+    id: String,
+    text: &str,
+    active: bool,
+    focused: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    div()
+        .id(name(id))
+        .h(px(t::HEADER_H))
+        .px(px(t::S3))
+        .relative()
+        .flex()
+        .items_center()
+        .text_size(px(t::BODY))
+        .font_weight(FontWeight::MEDIUM)
+        .cursor_pointer()
+        .text_color(if focused {
+            t::accent_text()
+        } else if active {
+            t::text()
+        } else {
+            t::text_secondary()
+        })
+        .hover(|s| s.text_color(t::text()))
+        .on_click(on_click)
+        .child(text.to_string())
+        .when(active || focused, |d| {
+            d.child(
+                div()
+                    .absolute()
+                    .bottom(px(10.0))
+                    .left_0()
+                    .w_full()
+                    .flex()
+                    .justify_center()
+                    .child(div().size(px(4.0)).rounded_full().bg(t::accent())),
+            )
+        })
+}
+
+/// What an image slot can show.
+pub enum Pic {
+    Ready(Arc<Image>),
+    Loading,
+    Missing,
+}
+
+fn initial(title: &str) -> String {
+    title
+        .chars()
+        .find(|c| c.is_alphanumeric())
+        .map(|c| c.to_uppercase().to_string())
+        .unwrap_or_default()
+}
+
+/// Image slot: a loaded image fades in, loading shows a faint breathing skeleton, a missing
+/// image shows a quiet gradient with the title's initial. Never a flat empty box.
+pub fn tile(pic: Pic, title: &str, key: &str) -> Div {
+    let base = div()
+        .overflow_hidden()
+        .rounded(px(t::R_XS))
+        .bg(linear_gradient(
+            160.0,
+            linear_color_stop(t::raised(), 0.0),
+            linear_color_stop(t::surface(), 1.0),
+        ));
+    match pic {
+        Pic::Ready(i) => base.child(fade_in(
+            div()
+                .size_full()
+                .child(img(i).size_full().object_fit(ObjectFit::Cover)),
+            format!("img-{key}"),
+            t::SLOW,
+        )),
+        Pic::Loading => base.child(
+            div().size_full().bg(rgb(0xffffff)).with_animation(
+                name(format!("shimmer-{key}")),
+                Animation::new(Duration::from_millis(1800))
+                    .repeat()
+                    .with_easing(ease_in_out),
+                |d, v| d.opacity(0.015 + 0.04 * (1.0 - (2.0 * v - 1.0).abs())),
+            ),
+        ),
+        Pic::Missing => base.child(
+            div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(px(48.0))
+                .font_weight(FontWeight::BOLD)
+                .text_color(rgba(0x8fb0ff38))
+                .child(initial(title)),
+        ),
+    }
+}
+
+/// Poster in a hairline cell: image on top, caption strip below (title, mono meta), index
+/// tag in the image corner. Cells share edges (right + bottom hairline; the container draws
+/// top/left). Focus = 1px blue outline + faint glow + brighter image, faded in over 140ms.
+pub struct Cell<'a> {
+    pub key: &'a str,
+    pub pic: Pic,
+    pub title: &'a str,
+    pub meta: String,
+    pub index: usize,
+    pub w: f32,
+    pub h: f32,
+    pub focused: bool,
+}
+
+pub fn poster_cell(c: Cell) -> Stateful<Div> {
+    let pad = t::S3;
+    let mut d =
+        div()
+            .id(name(format!("cell-{}", c.key)))
+            .relative()
+            .flex_none()
+            .w(px(c.w + 2.0 * pad))
+            .p(px(pad))
+            .border_r_1()
+            .border_b_1()
+            .border_color(t::hairline())
+            .cursor_pointer()
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .relative()
+                    .w(px(c.w))
+                    .h(px(c.h))
+                    .child(tile(c.pic, c.title, c.key).size_full())
+                    .when(!c.focused, |d| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .size_full()
+                                .rounded(px(t::R_XS))
+                                .bg(rgba(0x07080c40)),
+                        )
+                    })
+                    .child(div().absolute().top(px(t::S2)).left(px(t::S2)).child(
+                        mono(format!("0x{:02x}", c.index + 1)).text_color(rgba(0xffffffb0)),
+                    )),
+            )
+            .child(
+                div()
+                    .w(px(c.w))
+                    .pt(px(t::S3))
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.0))
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(px(t::BODY))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(if c.focused {
+                                t::text()
+                            } else {
+                                t::text_secondary()
+                            })
+                            .child(c.title.to_string()),
+                    )
+                    .child(div().h(px(16.0)).truncate().child(mono(c.meta))),
+            );
+    if c.focused {
+        d = d.child(fade_in(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .border_1()
+                .border_color(t::accent())
+                .bg(t::accent_tint())
+                .shadow(glow_shadow(0.5)),
+            format!("focus-{}", c.key),
+            t::HOVER,
+        ));
+    }
+    d
+}
+
+/// Faint dot grid, faded toward the edges. Rendered once; drawn very low alpha.
+pub fn dots() -> Arc<Image> {
+    const W: u32 = 1920;
+    const H: u32 = 1080;
+    const STEP: u32 = 24;
+    let mut buf = vec![0u8; (W * H * 4) as usize];
+    for y in (STEP / 2..H).step_by(STEP as usize) {
+        for x in (STEP / 2..W).step_by(STEP as usize) {
+            let nx = (x as f32 / W as f32 - 0.5) * 2.0;
+            let ny = (y as f32 / H as f32 - 0.35) * 2.0;
+            let fade = (1.0 - (nx * nx * 0.6 + ny * ny * 0.9).sqrt()).clamp(0.0, 1.0);
+            let a = (fade * 255.0) as u8;
+            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                let i = (((y + dy) * W + x + dx) * 4) as usize;
+                buf[i..i + 4].copy_from_slice(&[0xc8, 0xd4, 0xff, a]);
+            }
+        }
+    }
+    png(&buf, W, H)
+}
+
+/// Barely-there radial blue glow, rendered once (smooth, so a low resolution scales cleanly).
+pub fn glow() -> Arc<Image> {
+    const W: u32 = 512;
+    const H: u32 = 256;
+    let mut buf = Vec::with_capacity((W * H * 4) as usize);
+    for y in 0..H {
+        for x in 0..W {
+            let dx = (x as f32 / W as f32 - 0.78) * 1.6;
+            let dy = y as f32 / H as f32 - 0.0;
+            let r = (dx * dx + dy * dy).sqrt().min(1.0);
+            let fade_y = (1.0 - y as f32 / H as f32).powi(2);
+            let a = ((1.0 - r).powi(2) * 0.22 * fade_y * 255.0) as u8;
+            buf.extend_from_slice(&[0x3b, 0x6b, 0xff, a]);
+        }
+    }
+    png(&buf, W, H)
+}
+
+/// Procedural film grain: zero-mean black/white speckle, encoded once at startup.
+pub fn grain() -> Arc<Image> {
+    const N: u32 = 1024;
+    let mut s = 0x9E37_79B9_7F4A_7C15u64;
+    let mut buf = Vec::with_capacity((N * N * 4) as usize);
+    for _ in 0..N * N {
+        s ^= s << 13;
+        s ^= s >> 7;
+        s ^= s << 17;
+        let v = if s & 1 == 0 { 255 } else { 0 };
+        buf.extend_from_slice(&[v, v, v, ((s >> 8) & 0xff) as u8]);
+    }
+    png(&buf, N, N)
+}
+
+fn png(rgba: &[u8], w: u32, h: u32) -> Arc<Image> {
+    use image::ImageEncoder;
+    let mut out = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut out)
+        .write_image(rgba, w, h, image::ExtendedColorType::Rgba8)
+        .expect("png encode");
+    Arc::new(Image::from_bytes(ImageFormat::Png, out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::prelude::v1::test; // gpui::* also exports a `test` macro
+
+    #[test]
+    fn tracking_uppercases_and_spaces() {
+        assert_eq!(tracked("ab"), "A\u{200A}\u{200A}B");
+        assert_eq!(tracked("a b"), "A\u{2003}B");
+    }
+
+    #[test]
+    fn initial_skips_punctuation() {
+        assert_eq!(initial("  \"the end"), "T");
+        assert_eq!(initial("..."), "");
+    }
+}
