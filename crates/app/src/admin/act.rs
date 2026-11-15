@@ -655,7 +655,9 @@ impl Act {
             (UserFlag(..) | UserLibrary(..) | UserLimit(..) | UserRating(..) | UserTags(..), _) => {
                 "Access updated."
             }
-            (RenameLibrary(_), _) => "Library renamed.",
+            (RenameLibrary(_), _) => {
+                "Library renamed. The old name can show until the next library scan."
+            }
             (AddLibrary, _) => "Library added. Scanning has started.",
             (RemoveLibrary(_), _) => "Library removed.",
             (AddLibPath(..) | RemoveLibPath(..), _) => "Folders updated.",

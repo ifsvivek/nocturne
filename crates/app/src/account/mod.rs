@@ -28,6 +28,11 @@ pub enum DlgKind {
     Password,
     /// Approve another device's Quick Connect code with this account.
     Authorize,
+    /// Upload a profile image from a file on this computer.
+    ProfileImage,
+    RemoveImage,
+    /// Display language (a code the server offers, such as `de`).
+    Language,
 }
 
 struct PwDialog {
@@ -43,6 +48,38 @@ pub struct Accounts {
     servers: Servers,
     qc_secret: Option<String>,
     dialog: Option<PwDialog>,
+}
+
+/// Why a profile change did not go through (calm one-liners for the dialog).
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum ProfileFail {
+    File,
+    Image,
+    Language,
+    Server,
+}
+
+impl ProfileFail {
+    fn text(self) -> &'static str {
+        match self {
+            ProfileFail::File => "That file couldn't be read. Check the path.",
+            ProfileFail::Image => "That isn't a PNG, JPEG, WebP or GIF image of at most 10 MB.",
+            ProfileFail::Language => "The server doesn't offer that language code.",
+            ProfileFail::Server => "Couldn't save that. Check the server and try again.",
+        }
+    }
+}
+
+/// The file's bytes, if it looks like an acceptable image (checked again before upload).
+fn read_image(path: &str) -> Result<Vec<u8>, ProfileFail> {
+    let p = std::path::Path::new(path);
+    let len = std::fs::metadata(p).map_err(|_| ProfileFail::File)?.len();
+    if len > nocturne_jellyfin_user::MAX_IMAGE_BYTES as u64 {
+        return Err(ProfileFail::Image);
+    }
+    let bytes = std::fs::read(p).map_err(|_| ProfileFail::File)?;
+    nocturne_jellyfin_user::image_mime(&bytes).map_err(|_| ProfileFail::Image)?;
+    Ok(bytes)
 }
 
 fn classify(e: &Error) -> ConnectFail {
@@ -83,6 +120,12 @@ async fn probe(url: String) -> Result<(Probe, Option<Session>), ConnectFail> {
             match me.me(s).await {
                 Ok(s) => {
                     p.restored = true;
+                    // Also list it as a remembered account (older installs only had the active one).
+                    let (u, s2) = (url.clone(), s.clone());
+                    let _ = tokio::task::spawn_blocking(move || {
+                        nocturne_session::remember_login(&u, &s2)
+                    })
+                    .await;
                     return Ok((p, Some(s)));
                 }
                 Err(Error::Status { status: 401, .. }) => {
@@ -102,7 +145,7 @@ async fn probe(url: String) -> Result<(Probe, Option<Session>), ConnectFail> {
 async fn persist(url: &str, s: &Session) -> bool {
     let (url, s) = (url.to_string(), s.clone());
     matches!(
-        tokio::task::spawn_blocking(move || nocturne_session::save(&url, &s)).await,
+        tokio::task::spawn_blocking(move || nocturne_session::remember_login(&url, &s)).await,
         Ok(Ok(()))
     )
 }
@@ -321,10 +364,16 @@ impl Accounts {
 
     /// The server rejected the stored login mid-session: forget it, show the login form with a
     /// calm note.
-    pub fn session_expired(&mut self, cx: &mut Context<Self>) {
+    pub fn session_expired(&mut self, user_id: Option<String>, cx: &mut Context<Self>) {
         let url = self.st.url.clone();
         bridge::spawn(async move {
-            let _ = tokio::task::spawn_blocking(move || nocturne_session::delete(&url)).await;
+            let _ = tokio::task::spawn_blocking(move || {
+                let _ = nocturne_session::delete(&url);
+                if let Some(id) = user_id {
+                    nocturne_session::forget_account(&url, &id);
+                }
+            })
+            .await;
         });
         self.qc_secret = None;
         self.dialog = None;
@@ -334,18 +383,134 @@ impl Accounts {
     }
 
     /// Log out on the server, delete the keyring entry, show the login form.
-    pub fn sign_out(&mut self, client: Option<UserClient>, cx: &mut Context<Self>) {
+    pub fn sign_out(
+        &mut self,
+        client: Option<UserClient>,
+        user_id: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
         let url = self.st.url.clone();
         bridge::spawn(async move {
             if let Some(c) = client {
                 let _ = c.logout().await;
             }
-            let _ = tokio::task::spawn_blocking(move || nocturne_session::delete(&url)).await;
+            let _ = tokio::task::spawn_blocking(move || {
+                let _ = nocturne_session::delete(&url);
+                if let Some(id) = user_id {
+                    nocturne_session::forget_account(&url, &id);
+                }
+            })
+            .await;
         });
         self.qc_secret = None;
         self.dialog = None;
         self.st.signed_out();
         cx.notify();
+    }
+
+    /// "Add another account": show the login form of the same server. Nothing is signed out or
+    /// forgotten; the current account stays remembered and can be switched back to.
+    pub fn add_account(&mut self, cx: &mut Context<Self>) {
+        self.qc_secret = None;
+        self.dialog = None;
+        self.st.signed_out();
+        cx.notify();
+    }
+
+    // ---- own profile ----
+
+    fn open_dialog(
+        &mut self,
+        kind: DlgKind,
+        client: UserClient,
+        form: Form,
+        cx: &mut Context<Self>,
+    ) {
+        self.dialog = Some(PwDialog {
+            kind,
+            client,
+            form,
+            busy: false,
+            msg: None,
+        });
+        cx.notify();
+    }
+
+    /// "Profile image": the path of an image file on this computer.
+    pub fn open_profile_image(&mut self, client: UserClient, cx: &mut Context<Self>) {
+        let f = Fld {
+            label: "Path of the image file (PNG, JPEG, WebP or GIF, up to 10 MB)",
+            ..Default::default()
+        };
+        self.open_dialog(DlgKind::ProfileImage, client, Form::new(vec![f], 2), cx);
+    }
+
+    pub fn open_remove_image(&mut self, client: UserClient, cx: &mut Context<Self>) {
+        self.open_dialog(DlgKind::RemoveImage, client, Form::new(vec![], 2), cx);
+    }
+
+    /// "Display language": `current` is what the server has for this user now.
+    pub fn open_language(&mut self, client: UserClient, current: &str, cx: &mut Context<Self>) {
+        let f = Fld {
+            label: "Language code, such as en-US or de (empty = default)",
+            value: current.to_string(),
+            ..Default::default()
+        };
+        self.open_dialog(DlgKind::Language, client, Form::new(vec![f], 2), cx);
+    }
+
+    fn profile_confirm(&mut self, cx: &mut Context<Self>) {
+        let Some(d) = self.dialog.as_mut().filter(|d| !d.busy) else {
+            return;
+        };
+        let value = d.form.value(0).to_string();
+        let kind = d.kind;
+        if kind == DlgKind::ProfileImage && value.is_empty() {
+            d.msg = Some("Type the path of an image file.");
+            return;
+        }
+        d.busy = true;
+        d.msg = None;
+        let c = d.client.clone();
+        bridge::run(
+            cx,
+            async move {
+                match kind {
+                    DlgKind::ProfileImage => {
+                        let bytes = tokio::task::spawn_blocking(move || read_image(&value))
+                            .await
+                            .map_err(|_| ProfileFail::File)??;
+                        c.set_own_image(&bytes)
+                            .await
+                            .map_err(|_| ProfileFail::Server)
+                    }
+                    DlgKind::RemoveImage => c
+                        .remove_own_image(UserConfirmed::i_have_asked_the_user())
+                        .await
+                        .map_err(|_| ProfileFail::Server),
+                    _ => c.set_display_language(&value).await.map_err(|e| match e {
+                        Error::Config(_) => ProfileFail::Language,
+                        _ => ProfileFail::Server,
+                    }),
+                }
+            },
+            move |a, r, cx| match r {
+                Ok(()) => {
+                    a.dialog = None;
+                    cx.emit(Event::Notice(match kind {
+                        DlgKind::Language => "Display language saved.",
+                        DlgKind::RemoveImage => "Profile image removed.",
+                        _ => "Profile image updated.",
+                    }));
+                }
+                Err(e) => {
+                    if let Some(d) = a.dialog.as_mut() {
+                        d.busy = false;
+                        d.msg = Some(e.text());
+                    }
+                }
+            },
+        );
     }
 
     // ---- change password ----
@@ -428,12 +593,12 @@ impl Accounts {
 
     /// Enter on "Change password": the only place the confirmation token is minted.
     fn pw_confirm(&mut self, cx: &mut Context<Self>) {
-        if self
-            .dialog
-            .as_ref()
-            .is_some_and(|d| d.kind == DlgKind::Authorize)
-        {
-            return self.authorize_confirm(cx);
+        match self.dialog.as_ref().map(|d| d.kind) {
+            Some(DlgKind::Authorize) => return self.authorize_confirm(cx),
+            Some(DlgKind::ProfileImage | DlgKind::RemoveImage | DlgKind::Language) => {
+                return self.profile_confirm(cx);
+            }
+            _ => {}
         }
         let Some(d) = self.dialog.as_mut().filter(|d| !d.busy) else {
             return;
@@ -572,7 +737,21 @@ impl Accounts {
 
 #[cfg(test)]
 mod tests {
-    use super::{ConnectFail, Error, Poll, classify, poll_of};
+    use super::{ConnectFail, Error, Poll, ProfileFail, classify, poll_of, read_image};
+
+    #[test]
+    fn profile_images_are_checked_before_upload() {
+        let dir = std::env::temp_dir().join(format!("nocturne-img-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("a.png");
+        std::fs::write(&png, [0x89, b'P', b'N', b'G', 0, 1]).unwrap();
+        let txt = dir.join("a.txt");
+        std::fs::write(&txt, "hello").unwrap();
+        assert!(read_image(png.to_str().unwrap()).is_ok());
+        assert_eq!(read_image(txt.to_str().unwrap()), Err(ProfileFail::Image));
+        assert_eq!(read_image("/nonexistent/x.png"), Err(ProfileFail::File));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn error_classes() {

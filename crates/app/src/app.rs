@@ -260,6 +260,7 @@ pub struct Root {
     settings_sel: usize,
     menu: bool,
     menu_sel: usize,
+    other_accounts: Vec<nocturne_session::Account>,
     /// Pages left by Back, restored by Forward (cleared by any new navigation).
     fwd: Vec<Page>,
     blurs: Cache<String, Arc<Image>>,
@@ -288,6 +289,13 @@ struct Offline {
     probing: bool,
 }
 
+/// Why switching to a remembered account failed.
+enum SwitchFail {
+    /// No token, or the server no longer accepts it: sign in again.
+    Gone,
+    Offline,
+}
+
 /// Account menu entries.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AcctAct {
@@ -297,6 +305,12 @@ enum AcctAct {
     Devices,
     Switch,
     SignOut,
+    /// Switch to remembered account `i` (index into `Root::other_accounts`).
+    SwitchTo(usize),
+    AddAccount,
+    ProfileImage,
+    RemoveImage,
+    Language,
 }
 
 /// Image cell chrome: padding both sides + caption block, used for row heights.
@@ -339,6 +353,7 @@ impl Root {
             settings_sel: 0,
             menu: false,
             menu_sel: 0,
+            other_accounts: vec![],
             fwd: vec![],
             blurs: Cache::new(400),
             search: None,
@@ -531,9 +546,10 @@ impl Root {
             .session
             .as_ref()
             .and_then(|(u, s)| UserClient::from_session(u, s).ok());
+        let uid = self.session.as_ref().map(|(_, s)| s.user_id.clone());
         self.leave_session(cx);
         if let Some(a) = self.accounts.clone() {
-            a.update(cx, |a, cx| a.sign_out(client, cx));
+            a.update(cx, |a, cx| a.sign_out(client, uid, cx));
         }
     }
 
@@ -544,18 +560,96 @@ impl Root {
         }
     }
 
-    fn menu_items(&self) -> Vec<(&'static str, AcctAct)> {
-        let mut v = vec![("Settings", AcctAct::Settings)];
+    fn menu_items(&self) -> Vec<(String, AcctAct)> {
+        let mut v = vec![("Settings".to_string(), AcctAct::Settings)];
         if !self.dev {
-            v.extend([
-                ("Change password", AcctAct::Password),
-                ("Authorize a device", AcctAct::Authorize),
-                ("Your devices", AcctAct::Devices),
-                ("Switch server", AcctAct::Switch),
-                ("Sign out or switch user", AcctAct::SignOut),
-            ]);
+            let mut add = |l: &str, a| v.push((l.to_string(), a));
+            add("Change password", AcctAct::Password);
+            add("Profile image", AcctAct::ProfileImage);
+            add("Remove profile image", AcctAct::RemoveImage);
+            add("Display language", AcctAct::Language);
+            add("Authorize a device", AcctAct::Authorize);
+            add("Your devices", AcctAct::Devices);
+            for (i, a) in self.other_accounts.iter().enumerate() {
+                v.push((format!("Switch to {}", a.user_name), AcctAct::SwitchTo(i)));
+            }
+            v.push(("Add another account".to_string(), AcctAct::AddAccount));
+            v.push(("Switch server".to_string(), AcctAct::Switch));
+            v.push(("Sign out".to_string(), AcctAct::SignOut));
         }
         v
+    }
+
+    /// Remembered accounts of this server other than the one in use (names only; a tiny file).
+    fn refresh_accounts(&mut self) {
+        self.other_accounts = match &self.session {
+            Some((url, s)) => nocturne_session::Accounts::load()
+                .unwrap_or_default()
+                .for_server(url)
+                .into_iter()
+                .filter(|a| a.user_id != s.user_id)
+                .cloned()
+                .collect(),
+            None => vec![],
+        };
+    }
+
+    /// Switch to a remembered account: its token comes from the keyring and is checked with one
+    /// read; no password is asked. A dead token removes that account and says so.
+    fn switch_to(&mut self, i: usize, cx: &mut Context<Self>) {
+        let Some(acct) = self.other_accounts.get(i).cloned() else {
+            return;
+        };
+        self.toast("Switching account.", cx);
+        let a2 = acct.clone();
+        self.run(
+            cx,
+            async move {
+                let (url, id) = (a2.server.clone(), a2.user_id.clone());
+                let stored =
+                    tokio::task::spawn_blocking(move || nocturne_session::load_account(&url, &id))
+                        .await;
+                let Ok(Ok(Some(s))) = stored else {
+                    return Err(SwitchFail::Gone);
+                };
+                let c = UserClient::from_session(&a2.server, &s).map_err(|_| SwitchFail::Gone)?;
+                match c.me(s).await {
+                    Ok(s) => Ok(s),
+                    Err(nocturne_jellyfin_user::Error::Status { status: 401, .. }) => {
+                        Err(SwitchFail::Gone)
+                    }
+                    Err(_) => Err(SwitchFail::Offline),
+                }
+            },
+            move |t, r, cx| match r {
+                Ok(s) => {
+                    t.leave_session(cx);
+                    let (u, s2) = (acct.server.clone(), s.clone());
+                    // Make it the active login (keyring) so a relaunch restores this account.
+                    bridge::spawn(async move {
+                        let _ = tokio::task::spawn_blocking(move || {
+                            nocturne_session::remember_login(&u, &s2)
+                        })
+                        .await;
+                    });
+                    t.activate(acct.server.clone(), s, cx);
+                }
+                Err(SwitchFail::Gone) => {
+                    let (u, id) = (acct.server.clone(), acct.user_id.clone());
+                    bridge::spawn(async move {
+                        let _ = tokio::task::spawn_blocking(move || {
+                            nocturne_session::forget_account(&u, &id)
+                        })
+                        .await;
+                    });
+                    t.toast(
+                        "That account's sign-in has expired. Add it again with Add another account.",
+                        cx,
+                    );
+                }
+                Err(SwitchFail::Offline) => t.toast("Couldn't reach the server. Try again.", cx),
+            },
+        );
     }
 
     /// Shortcut help sits above everything: drop open menus first.
@@ -574,8 +668,52 @@ impl Root {
                 self.settings_sel = 0;
             }
             AcctAct::Devices => self.open_devices(cx),
-            AcctAct::Authorize | AcctAct::Password if !self.hooks.can_write() => {
+            AcctAct::Authorize
+            | AcctAct::Password
+            | AcctAct::ProfileImage
+            | AcctAct::RemoveImage
+            | AcctAct::Language
+                if !self.hooks.can_write() =>
+            {
                 self.toast(self.writes_off(), cx);
+            }
+            AcctAct::ProfileImage | AcctAct::RemoveImage | AcctAct::Language => {
+                let client = self
+                    .session
+                    .as_ref()
+                    .and_then(|(u, s)| UserClient::from_session(u, s).ok());
+                if let (Some(c), Some(a)) = (client, self.accounts.clone()) {
+                    if act == AcctAct::Language {
+                        // Show what is set now, then let the user change it.
+                        let cc = c.clone();
+                        self.run(
+                            cx,
+                            async move { cc.display_language().await.ok().flatten() },
+                            move |t, cur, cx| {
+                                if let Some(a) = t.accounts.clone() {
+                                    a.update(cx, |a, cx| {
+                                        a.open_language(c, &cur.unwrap_or_default(), cx)
+                                    });
+                                }
+                            },
+                        );
+                    } else {
+                        a.update(cx, |a, cx| {
+                            if act == AcctAct::ProfileImage {
+                                a.open_profile_image(c, cx)
+                            } else {
+                                a.open_remove_image(c, cx)
+                            }
+                        });
+                    }
+                }
+            }
+            AcctAct::SwitchTo(i) => self.switch_to(i, cx),
+            AcctAct::AddAccount => {
+                self.leave_session(cx);
+                if let Some(a) = self.accounts.clone() {
+                    a.update(cx, |a, cx| a.add_account(cx));
+                }
             }
             AcctAct::Password | AcctAct::Authorize => {
                 let client = self
@@ -869,9 +1007,10 @@ impl Root {
             self.phase = Phase::Error(ConnectError::Rejected);
             return cx.notify();
         }
+        let uid = self.session.as_ref().map(|(_, s)| s.user_id.clone());
         self.leave_session(cx);
         if let Some(a) = self.accounts.clone() {
-            a.update(cx, |a, cx| a.session_expired(cx));
+            a.update(cx, |a, cx| a.session_expired(uid, cx));
         }
         cx.notify();
     }
@@ -1391,6 +1530,7 @@ impl Root {
         if key == "a" && matches!(self.phase, Phase::Ready) && !self.admin_open {
             self.menu = true;
             self.menu_sel = 0;
+            self.refresh_accounts();
             cx.notify();
             return;
         }
@@ -1854,6 +1994,7 @@ impl Root {
             .on_click(cx.listener(|t, _, _, cx| {
                 t.menu = !t.menu;
                 t.menu_sel = 0;
+                t.refresh_accounts();
                 cx.notify();
             }))
             .child(ui::initial(name))
@@ -1912,7 +2053,14 @@ impl Root {
                     .cursor_pointer()
                     .when(on, |d| d.bg(t::accent_tint()).text_color(t::accent_text()))
                     .when(
-                        matches!(act, AcctAct::Password | AcctAct::Authorize) && !writes,
+                        matches!(
+                            act,
+                            AcctAct::Password
+                                | AcctAct::Authorize
+                                | AcctAct::ProfileImage
+                                | AcctAct::RemoveImage
+                                | AcctAct::Language
+                        ) && !writes,
                         |d| d.opacity(0.4).tooltip(ui::tip(NEED_WRITES)),
                     )
                     .hover(|s| s.bg(t::glass()))

@@ -380,6 +380,21 @@ impl Accounts {
                 "On the other device choose Quick Connect, then type the code it shows. It signs in as you.",
                 "Authorize",
             ),
+            DlgKind::ProfileImage => (
+                "Profile image",
+                "Uploads a picture from this computer as your profile image on the server.",
+                "Upload",
+            ),
+            DlgKind::RemoveImage => (
+                "Remove profile image",
+                "Your profile image is deleted from the server.",
+                "Remove image",
+            ),
+            DlgKind::Language => (
+                "Display language",
+                "The language the server keeps for your account. Other Jellyfin apps you use read it too.",
+                "Save",
+            ),
         };
         let mut p =
             panel()
