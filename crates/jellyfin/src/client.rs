@@ -72,10 +72,10 @@ impl ItemsQuery {
     }
 }
 
-/// Read-only Jellyfin client. **Intentionally GET-only**: the only request primitives are the
-/// private `get`/`get_bytes`; no write verb is reachable from this type (enforced by
-/// `tests/readonly.rs`). The server holds personal media. Adding a write call requires an
-/// explicit decision recorded in `STATUS.md`.
+/// Read-only Jellyfin client. **Strictly GET-only**: every request goes through GET (the private `get` and
+/// `image_bytes`); no write verb is reachable from this type (enforced by
+/// `tests/readonly.rs`). Write/admin calls belong in the future `crates/jellyfin-admin`
+/// crate (explicit UI confirmation, throwaway-server tests only), never here.
 #[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,

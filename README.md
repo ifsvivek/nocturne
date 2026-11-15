@@ -34,7 +34,7 @@ cargo test -- --ignored          # live tests against your server (read-only GET
 
 `vendor/xattr` is a one-line patched copy of the `xattr` crate (a transitive dependency of GPUI that no longer builds against current `libc`); see the `[patch.crates-io]` note in `Cargo.toml`.
 
-**Read-only boundary.** `crates/jellyfin` is intentionally GET-only (no POST/PUT/DELETE/PATCH): the server holds your personal media and NOCTURNE must not be able to change it. `crates/jellyfin/tests/readonly.rs` enforces this; adding a write call needs an explicit decision recorded in `STATUS.md` first. Integration tests only issue read-only requests.
+**Read-only boundary.** `crates/jellyfin` is strictly GET-only (no POST/PUT/DELETE/PATCH): the server holds your personal media and the browsing/playback layer must not be able to change it. `crates/jellyfin/tests/readonly.rs` enforces this. Write/admin calls (users, libraries, tasks, sessions, settings) will live in a separate crate, `crates/jellyfin-admin` (to be created later); every write action will require explicit UI confirmation and will only be tested against a throwaway Jellyfin instance, never your real server. Integration tests here only issue read-only requests.
 
 ## Roadmap
 

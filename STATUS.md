@@ -13,6 +13,8 @@ Orchestrator's running log. Update at every task boundary.
 - [x] Task 1: workspace + read-only `nocturne-jellyfin` client (reviewed, tests green, pushed)
 
 ## Next
+- [ ] Task 5: Admin dashboard, READ side: new nav section; server info, activity log, live sessions, devices, scheduled tasks, library status, users list, plugins, logs. Reads go through `nocturne-jellyfin` (or a read module in the admin crate).
+- [ ] Task 6: Admin WRITE side in new crate `crates/jellyfin-admin` (library scan, run/stop tasks, user create/edit/disable, session actions, selected settings, restart). Every write behind a confirmation dialog. Tested ONLY against a throwaway Jellyfin instance (`jellyfin --datadir/--configdir` under /tmp, port 8097), never the user's real server.
 - [ ] Task 2: libmpv playback crate (`libmpv2` 7.x) — headless smoke test, then app-controlled playback
 - [ ] Task 3: GPUI app shell (`gpui` 0.2.x from crates.io) + design system (indigo/navy, grain, see README tagline)
 - [ ] Task 4: library grid, detail view, player UI with motion
@@ -37,6 +39,8 @@ Orchestrator's running log. Update at every task boundary.
 - Before every push: inspect staged changes AND the resulting diff for credentials, tokens, server addresses, personal filenames, artwork, identifying data. Counts-only logs.
 - Read-only boundary must be documented in the Jellyfin service layer (crate docs + guard test message) so write calls aren't added by accident. (To do in next task.)
 - Scope: reliable polished core first. Tracked follow-ups: subtitles, audio-track selection, watched-state sync (needs write calls; separate explicit decision), hardware-accelerated embedded video.
+
+- Admin (user, 2026-11-15): wants a full admin dashboard, reads AND writes with confirmations. `nocturne-jellyfin` stays strictly read-only; writes live only in `crates/jellyfin-admin`. Real-server writes are not tested; use a throwaway instance.
 
 ## Rules
 - Jellyfin: GET only; tests print counts/booleans, never titles/paths/ids/tokens.

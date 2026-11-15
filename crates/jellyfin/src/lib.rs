@@ -1,10 +1,13 @@
 //! Read-only Jellyfin client.
 //!
-//! **This layer is intentionally read-only.** It issues GET requests only: no POST, PUT,
-//! DELETE or PATCH, ever. The server holds the user's personal media and this client must not
-//! be able to change it (no watched-state writes, no deletes, no metadata edits).
-//! `tests/readonly.rs` fails the build if a write verb appears in `src/`.
-//! Adding any write call requires an explicit decision recorded in `STATUS.md` first.
+//! **This crate is strictly read-only.** It issues GET requests only: no POST, PUT, DELETE or
+//! PATCH. The server holds the user's personal media, so the browsing/playback layer must not
+//! be able to change it. `tests/readonly.rs` fails the build if a write verb appears in `src/`.
+//!
+//! Write/admin calls (users, libraries, tasks, sessions, settings) will live in a separate,
+//! clearly named crate, `crates/jellyfin-admin` (to be created later), so this crate can never
+//! grow writes by accident. Every write action there requires an explicit UI confirmation and
+//! is tested only against a throwaway Jellyfin instance, never the user's real server.
 
 mod client;
 mod config;

@@ -12,9 +12,11 @@ fn no_write_verbs_in_src() {
         for b in banned.iter().chain([&method, &request]) {
             assert!(
                 !src.contains(b.as_str()),
-                "{} contains `{b}`: nocturne-jellyfin is intentionally READ-ONLY (GET only) because \
-                 it fronts the user's personal media. Do not add write calls here. If one is truly \
-                 needed, first record an explicit decision in STATUS.md, then change this guard.",
+                "{} contains `{b}`: nocturne-jellyfin is strictly READ-ONLY (GET only) because it \
+                 fronts the user's personal media. Do not add write calls here. Write/admin \
+                 calls go in the separate crate `crates/jellyfin-admin` (to be created): every \
+                 write needs explicit UI confirmation and is tested only against a throwaway \
+                 Jellyfin instance, never the user's real server.",
                 path.display()
             );
         }
