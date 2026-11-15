@@ -1,9 +1,9 @@
 <script>
   import { VERSION } from "#lib/site.js";
-  const missing = ["Live TV, SyncPlay, DLNA and casting", "Gapless music playback", "Playable books and audiobooks", "Some admin editing"];
+  const missing = ["Live TV, DLNA and casting", "SyncPlay (watch together), planned next", "Gapless music playback", "Playable books and audiobooks", "Admin: HTTPS and proxy editing, access schedules"];
   const rough = [
-    "Photo viewer and book pages are plain detail pages. Music and other media types have less depth than movies and shows.",
-    "Multi-season real libraries, HDR and the photo viewer have not been seen on real-server data yet.",
+    "Book pages are plain detail pages. Music and other media types have less depth than movies and shows.",
+    "The photo viewer and music have only been tried on a generated demo library, and HDR is untested.",
     "GPUI is pre-1.0 and the video embedding depends on its internals, so it is version-pinned.",
   ];
 </script>
