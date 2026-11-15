@@ -142,12 +142,15 @@ pub fn remember_login(server_url: &str, session: &Session) -> Result<()> {
     a.save()
 }
 
-/// One remembered account: names only, never a token.
+/// One remembered account: names only, never a token. `image_tag` is the server's public cache
+/// tag of the profile picture (not a secret), so the account switcher can show it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Account {
     pub server: String,
     pub user_id: String,
     pub user_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_tag: Option<String>,
 }
 
 /// Remembered accounts across servers (`$XDG_CONFIG_HOME/nocturne/accounts.toml`).
@@ -202,7 +205,24 @@ impl Accounts {
                 server,
                 user_id: session.user_id.clone(),
                 user_name: session.user_name.clone(),
+                image_tag: None,
             }),
+        }
+    }
+
+    /// Record the profile picture tag of a remembered account; true when something changed.
+    pub fn set_image_tag(&mut self, server_url: &str, user_id: &str, tag: Option<String>) -> bool {
+        let server = key(server_url);
+        match self
+            .accounts
+            .iter_mut()
+            .find(|a| a.server == server && a.user_id == user_id)
+        {
+            Some(a) if a.image_tag != tag => {
+                a.image_tag = tag;
+                true
+            }
+            _ => false,
         }
     }
 
@@ -219,6 +239,14 @@ impl Accounts {
             .iter()
             .filter(|a| a.server == server)
             .collect()
+    }
+}
+
+/// Store the picture tag of a remembered account (no-op when unchanged or not remembered).
+pub fn remember_image_tag(server_url: &str, user_id: &str, tag: Option<String>) {
+    let mut a = Accounts::load().unwrap_or_default();
+    if a.set_image_tag(server_url, user_id, tag) {
+        let _ = a.save();
     }
 }
 
@@ -324,6 +352,34 @@ mod tests {
             user_name: "alice".into(),
             is_admin: false,
         }
+    }
+
+    #[test]
+    fn image_tag_is_stored_per_account_and_only_saved_when_changed() {
+        let mut a = Accounts::default();
+        a.remember("http://h:8096/", &session());
+        assert!(
+            !a.set_image_tag("http://other", "u", Some("t".into())),
+            "unknown server"
+        );
+        assert!(a.set_image_tag("http://h:8096", "u", Some("t".into())));
+        assert!(
+            !a.set_image_tag("http://h:8096", "u", Some("t".into())),
+            "unchanged"
+        );
+        assert_eq!(a.accounts[0].image_tag.as_deref(), Some("t"));
+        a.remember("http://h:8096", &session()); // re-login keeps the tag
+        assert_eq!(a.accounts[0].image_tag.as_deref(), Some("t"));
+        let text = toml::to_string_pretty(&a).unwrap();
+        assert_eq!(toml::from_str::<Accounts>(&text).unwrap(), a);
+        assert!(a.set_image_tag("http://h:8096", "u", None));
+        assert!(!toml::to_string_pretty(&a).unwrap().contains("image_tag"));
+        // Files written before this field existed still load.
+        let old = "[[accounts]]\nserver = \"h\"\nuser_id = \"u\"\nuser_name = \"n\"\n";
+        assert_eq!(
+            toml::from_str::<Accounts>(old).unwrap().accounts[0].image_tag,
+            None
+        );
     }
 
     #[test]

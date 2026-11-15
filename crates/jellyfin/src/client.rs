@@ -263,6 +263,13 @@ impl Client {
         self.fetch(url).await
     }
 
+    /// Authenticated GET of a user's profile picture (see [`Client::user_image_url`]).
+    pub async fn user_image_bytes(&self, user_id: &str, size: u32, tag: &str) -> Result<Vec<u8>> {
+        let url = Url::parse(&self.user_image_url(user_id, size, tag))
+            .map_err(|_| Error::Config("image url".into()))?;
+        self.fetch(url).await
+    }
+
     /// Authenticated binary GET of a URL built by this client.
     pub(crate) async fn fetch(&self, url: Url) -> Result<Vec<u8>> {
         let path = url.path().to_string();
@@ -357,6 +364,18 @@ impl Client {
             p.push(("tag", t.to_string()));
         }
         self.url(&["Items", id, "Images", kind.as_str()], &p).into()
+    }
+
+    /// `/Users/{id}/Images/Primary` (profile picture) cropped to a `size` square, with the user's
+    /// `PrimaryImageTag` as cache buster. The URL carries no credentials.
+    pub fn user_image_url(&self, user_id: &str, size: u32, tag: &str) -> String {
+        let p = [
+            ("fillWidth", size.to_string()),
+            ("fillHeight", size.to_string()),
+            ("tag", tag.to_string()),
+        ];
+        self.url(&["Users", user_id, "Images", "Primary"], &p)
+            .into()
     }
 
     /// Direct-play URL (`/Videos/{id}/stream?static=true`) with NO credentials.
@@ -504,6 +523,14 @@ mod tests {
         assert_eq!(
             c.image_url("abc", ImageType::Logo, None, None),
             "http://jf.test:8096/Items/abc/Images/Logo"
+        );
+    }
+
+    #[test]
+    fn user_image_urls() {
+        assert_eq!(
+            client().user_image_url("u1", 96, "t9"),
+            "http://jf.test:8096/Users/u1/Images/Primary?fillWidth=96&fillHeight=96&tag=t9"
         );
     }
 
