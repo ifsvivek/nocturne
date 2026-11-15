@@ -5,7 +5,7 @@ Maintainer working notes for the public tree. User-facing status is in
 
 ## Release state
 
-Version 0.1.0 is prepared but not yet published (no tag, no GitHub Release). Release gate:
+Version 0.1.1 is published (tag v0.1.1 and a GitHub Release with the tarball, checksum and PKGBUILD). Release gate:
 `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo deny`, secret scan of the tree and history).
 
 Before tagging:

@@ -4,7 +4,7 @@ Everything NOCTURNE does not do yet, in the order it is likely to be built, plus
 What already works is in [FEATURES.md](FEATURES.md); verification status is in [QA_REPORT.md](QA_REPORT.md).
 No dates are promised. Priorities can change with user feedback and with what upstream Jellyfin changes.
 
-## 0.1.0 (this release)
+## 0.1.x (current release)
 
 Shipped: browsing, search, details, in-window GPU playback with a full player, accounts (password, Quick Connect,
 switching), playlists and a music queue, an admin dashboard inside the same app, settings, packaging for Arch Linux.
@@ -18,7 +18,7 @@ Still being verified on a real server (built and tested on a throwaway server, n
 
 ## Next: SyncPlay ("watch together")
 
-First feature after 0.1.0.
+First feature after 0.1.x.
 - Create, list, join and leave SyncPlay groups on the same server
 - Synchronised play, pause, seek and stop across members (Jellyfin `/SyncPlay` endpoints plus the server WebSocket)
 - Clock-offset estimate against the server and drift correction in the player

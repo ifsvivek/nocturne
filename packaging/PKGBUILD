@@ -1,6 +1,6 @@
 # Maintainer: ifsvivek
 pkgname=nocturne
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc='Native Jellyfin desktop client (GPUI + libmpv), Wayland first'
 arch=(x86_64)

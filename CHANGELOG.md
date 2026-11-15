@@ -3,6 +3,13 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-11-15
+
+### Fixed
+- `install.sh` now writes the absolute binary path into the desktop entry, refreshes the desktop and icon caches, and
+  says what to do when the app does not appear in the launcher. In 0.1.0 some launchers did not list NOCTURNE after
+  a tarball install.
+
 ## [0.1.0] - 2026-11-15
 
 First release. Linux only.
@@ -31,4 +38,5 @@ First release. Linux only.
 ### Known limitations
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 
+[0.1.1]: https://github.com/ifsvivek/nocturne/releases/tag/v0.1.1
 [0.1.0]: https://github.com/ifsvivek/nocturne/releases/tag/v0.1.0

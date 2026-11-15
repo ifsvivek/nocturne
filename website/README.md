@@ -11,7 +11,7 @@ Static site for `nocturne.ifsvivek.in`: SvelteKit (Svelte 5, `adapter-static`, e
 
 ## RELEASED flag
 
-`site.config.json`: `{ "RELEASED": true, "VERSION": "0.1.0" }`, read at build time. `false` still shows all product content and screenshots, but with "Coming soon", no download buttons, no install commands and no link to or mention of the GitHub repo or releases. `true` adds Download, the repo link, version, install commands (Arch, tarball, source) and links to the docs in the repo. `NOCTURNE_RELEASED=true|false` overrides it for one build. Keep it `false` in the committed file until the first release.
+`site.config.json`: `{ "RELEASED": true, "VERSION": "0.1.1" }`, read at build time. `false` still shows all product content and screenshots, but with "Coming soon", no download buttons, no install commands and no link to or mention of the GitHub repo or releases. `true` adds Download, the repo link, version, install commands (Arch, tarball, source) and links to the docs in the repo. `NOCTURNE_RELEASED=true|false` overrides it for one build. Keep it `false` in the committed file until the first release.
 
 ## Screenshots and images
 

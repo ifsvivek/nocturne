@@ -9,7 +9,7 @@ playing video in the app window through libmpv. Wayland first.
 
 [Website](https://nocturne.ifsvivek.in) · [Download](https://github.com/ifsvivek/nocturne/releases/latest) · [Features](docs/FEATURES.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
 
-Status: version 0.1.0, the first release. Linux only. See [docs/ROADMAP.md](docs/ROADMAP.md) for what is missing.
+Status: version 0.1.1, the first release. Linux only. See [docs/ROADMAP.md](docs/ROADMAP.md) for what is missing.
 
 ## Screenshots
 
@@ -53,8 +53,8 @@ Linux only; see [docs/PACKAGING.md](docs/PACKAGING.md) for the full dependency l
 **Release tarball** (from the [latest release](https://github.com/ifsvivek/nocturne/releases/latest)):
 
 ```sh
-sha256sum -c nocturne-0.1.0-x86_64-linux.tar.gz.sha256
-tar xf nocturne-0.1.0-x86_64-linux.tar.gz && cd nocturne-0.1.0-x86_64-linux
+sha256sum -c nocturne-0.1.1-x86_64-linux.tar.gz.sha256
+tar xf nocturne-0.1.1-x86_64-linux.tar.gz && cd nocturne-0.1.1-x86_64-linux
 sudo ./install.sh              # PREFIX=/usr/local by default; `sudo ./install.sh uninstall` removes it
 ```
 
