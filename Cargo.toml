@@ -5,9 +5,13 @@ members = ["crates/*"]
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
+description = "A native, cinematic Jellyfin desktop client for Linux, built with GPUI and libmpv"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/ifsvivek/nocturne"
-homepage = "https://github.com/ifsvivek/nocturne"
+homepage = "https://nocturne.ifsvivek.in"
+readme = "README.md"
+keywords = ["jellyfin", "media-player", "gpui", "mpv", "linux"]
+categories = ["multimedia::video", "gui"]
 authors = ["ifsvivek"]
 # MSRV is the highest declared by a dependency (uuid 1.89); only tested with the current stable toolchain.
 rust-version = "1.89"

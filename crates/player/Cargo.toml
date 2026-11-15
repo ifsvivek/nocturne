@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 authors.workspace = true
 
 # Embedding glue is coupled to gpui 0.2.2 internals (shared wl_display); keep these pinned and re-test on bumps.
