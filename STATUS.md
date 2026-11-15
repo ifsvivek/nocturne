@@ -3,11 +3,12 @@
 Orchestrator's running log. Update at every task boundary.
 
 ## Now
-- Task 3 (agent B): `crates/app` GPUI shell, design system, library/detail screens, gpui component lib evaluation — running (parallel, disjoint files)
+- Task 4 (agent C): Jellyfin reads (resume/genres/backdrop tags/image bytes) + read-only boundary docs, then player integration + now-playing controls — about to delegate
 - After both: review, integrate Play -> player, then polish. Full autonomy granted by user; no need to ask between tasks. Target: usable app within 1 week.
 
 ## Done
 - [x] Repo: private GitHub repo, README, .gitignore, .env.example
+- [x] Task 3: `crates/app` GPUI shell, theme (hairline/mono/blue), home hero, library grid, detail, bridge (tokio runtime). No component lib used: gpui-kit/gpui-component need `gpui-pre`, incompatible with gpui 0.2.2. Reviewed: audit clean, 14 tests, visually matches reference. vendor/xattr committed.
 - [x] Task 2: `crates/player` (libmpv2, own-window playback, state+event API, headless tests, live test OK) + Jellyfin base_url validation (reviewed)
 - [x] Task 1: workspace + read-only `nocturne-jellyfin` client (reviewed, tests green, pushed)
 
