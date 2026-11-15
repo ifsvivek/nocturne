@@ -7,7 +7,9 @@
 A native, cinematic desktop client for Jellyfin on Linux. Written in Rust with [GPUI](https://www.gpui.rs/),
 playing video in the app window through libmpv. Wayland first.
 
-Status: version 0.1.0, early. Linux only. See [docs/ROADMAP.md](docs/ROADMAP.md) for what is missing.
+[Website](https://nocturne.ifsvivek.in) · [Download](https://github.com/ifsvivek/nocturne/releases/latest) · [Features](docs/FEATURES.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
+
+Status: version 0.1.0, the first release. Linux only. See [docs/ROADMAP.md](docs/ROADMAP.md) for what is missing.
 
 ## Screenshots
 
@@ -19,6 +21,7 @@ Captured against a generated demo library, not personal media.
 | ![Movie detail](docs/screenshots/detail.webp) | ![Series](docs/screenshots/series.webp)   |
 | ![Search](docs/screenshots/search.webp)       | ![Player](docs/screenshots/player.webp)   |
 | ![Settings](docs/screenshots/settings.webp)   | ![Admin](docs/screenshots/admin.webp)     |
+| ![Season episodes](docs/screenshots/series-episodes.webp) | ![Admin users](docs/screenshots/admin-users.webp) |
 
 ## What it does
 
@@ -31,12 +34,15 @@ The full checklist is [docs/FEATURES.md](docs/FEATURES.md); verification notes a
 - **Playback**: in-window GPU video via libmpv with hardware decoding, chapters and trickplay on the seek bar,
   audio and subtitle menus with delays and styling, speed and picture controls, skip intro and credits,
   next-episode autoplay, queue, quality selector with transcode fallback, mini player, MPRIS and idle inhibit.
-- **Accounts**: username and password or Quick Connect; the token lives in your system keyring.
-- **Admin** (administrator accounts): dashboard, users, libraries, scheduled tasks, devices, activity, logs, API keys
-  and several server settings, each change behind a confirmation dialog.
+- **Accounts**: username and password or Quick Connect (and authorizing other devices); switch between remembered accounts without
+  a password; the token lives in your system keyring.
+- **Playlists and music**: create, edit, reorder and delete your playlists; a music queue with play next, shuffle and repeat.
+- **Admin** (administrator accounts): dashboard, users (access and limits), libraries, providers, scheduled tasks and triggers,
+  devices, activity, logs, API keys, branding, networking, transcoding, trickplay, backups and plugins, each change behind a
+  confirmation dialog.
 
-Not implemented: Live TV, SyncPlay, DLNA, casting, gapless music, playable books and audiobooks, and some admin
-editing. Windows and macOS are not supported.
+Not implemented: Live TV, DLNA, casting, gapless music, playable books and audiobooks, and a few admin settings (HTTPS and
+proxy editing, access schedules). SyncPlay (watch together) is planned next. Windows and macOS are not supported.
 
 ## Install
 
@@ -44,17 +50,18 @@ NOCTURNE needs mpv's library (`libmpv`), a Vulkan driver (GPUI renders with Vulk
 Secret Service provider (gnome-keyring, KWallet or KeePassXC) to remember your login. Packages are tested on Arch
 Linux only; see [docs/PACKAGING.md](docs/PACKAGING.md) for the full dependency list.
 
-**Release tarball** (from the GitHub Releases page, once published):
+**Release tarball** (from the [latest release](https://github.com/ifsvivek/nocturne/releases/latest)):
 
 ```sh
+sha256sum -c nocturne-0.1.0-x86_64-linux.tar.gz.sha256
 tar xf nocturne-0.1.0-x86_64-linux.tar.gz && cd nocturne-0.1.0-x86_64-linux
 sudo ./install.sh              # PREFIX=/usr/local by default; `sudo ./install.sh uninstall` removes it
 ```
 
-**Arch Linux** (builds from the source archive of the release tag):
+**Arch Linux** (builds from the source archive of the release tag; the `PKGBUILD` is attached to the release and lives in `packaging/`):
 
 ```sh
-cd packaging && makepkg -si
+git clone https://github.com/ifsvivek/nocturne && cd nocturne/packaging && makepkg -si
 ```
 
 **From source**:
