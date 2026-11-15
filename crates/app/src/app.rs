@@ -1552,7 +1552,12 @@ impl Root {
         if self.menu {
             return self.menu_key(key, cx);
         }
-        if key == "a" && matches!(self.phase, Phase::Ready) && !self.admin_open {
+        if opens_account_menu(
+            key,
+            matches!(self.phase, Phase::Ready),
+            self.admin_open,
+            self.search.is_some(),
+        ) {
             self.menu = true;
             self.menu_sel = 0;
             self.refresh_accounts();
@@ -2905,5 +2910,23 @@ impl Render for Root {
             );
         }
         root.into_any_element()
+    }
+}
+/// The `a` shortcut opens the account menu, but never while a text field has the keys (search, Admin dialogs).
+fn opens_account_menu(key: &str, ready: bool, admin_open: bool, search_open: bool) -> bool {
+    key == "a" && ready && !admin_open && !search_open
+}
+
+#[cfg(test)]
+mod tests {
+    use super::opens_account_menu;
+
+    #[test]
+    fn typing_a_in_search_does_not_open_the_account_menu() {
+        assert!(opens_account_menu("a", true, false, false));
+        assert!(!opens_account_menu("a", true, false, true));
+        assert!(!opens_account_menu("a", true, true, false));
+        assert!(!opens_account_menu("a", false, false, false));
+        assert!(!opens_account_menu("b", true, false, false));
     }
 }
