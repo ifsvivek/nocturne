@@ -28,20 +28,17 @@ Update this file at every task boundary. Scope risks are listed at the bottom.
 
 ## Playback (P0/P1)
 - [x] Direct play via mpv (child process), now-playing bar, seek, volume
-- [ ] Embedded video in the app window (feasibility prototype, see STATUS.md decision)
+- [ ] **PRIORITY (user): in-window GPU video** (mpv video inside the NOCTURNE window with overlay controls, GPU-accelerated, crash-safe). Prototype first, then integrate
 - [ ] Playback progress reporting (start/progress/stop), resume position (user writes)
 - [ ] Mark played at end, next-episode autoplay with countdown, skip intro/credits (media segments)
 - [ ] Audio track and subtitle track selection, external/embedded/text and image subs, subtitle size/position/delay, audio delay
 - [ ] Quality/transcoding selection (bitrate cap, HLS fallback when direct play fails), play method info overlay
 - [ ] Chapters and thumbnails on the seek bar (trickplay)
 - [ ] Playlists/queue, shuffle, repeat, play all
-- [ ] Music player: queue, now playing, album art, gapless
+- [ ] Music player: queue, now playing, album art (gapless dropped)
 - [ ] Fullscreen, picture-in-picture-ish mini player, keyboard map, MPRIS (media keys, desktop integration)
-- [ ] Cast/remote control: be controllable as a Jellyfin client from other apps (session remote control) (P2)
-- [ ] SyncPlay (P3)
 
-## Live TV and DVR (P2)
-- [ ] Channel guide, now/next, channel playback, recordings list, timers/series timers (only if a tuner exists)
+## Dropped by user (2026-11-15): Live TV/DVR, SyncPlay, DLNA setup, being a cast target, gapless music. Do not build.
 
 ## User settings (P1)
 - [ ] Display: language, theme/accent options, home layout, subtitle appearance
@@ -58,7 +55,6 @@ Update this file at every task boundary. Scope risks are listed at the bottom.
 - [ ] Metadata/NFO, subtitles, display settings, branding (login message, CSS read-only/edit)
 - [ ] Devices, Activity (filters, paging), Alerts, Logs (all files, download), Scheduled task triggers (add/edit/delete)
 - [ ] Plugins: installed, catalog, install/uninstall/enable/disable, repositories
-- [ ] DLNA, Live TV tuner/guide provider setup (P3)
 - [ ] API keys, backup/restore (Jellyfin backup API if present), restart/shutdown, server update info
 
 ## Platform and quality (P1)
@@ -74,5 +70,5 @@ Update this file at every task boundary. Scope risks are listed at the bottom.
 - Watch-state sync to the real server is a visible setting ("Sync watch progress and watched state") and defaults ON, because a Jellyfin client that doesn't sync is not feature-complete. It can be switched off.
 
 ## Scope risks (be honest)
-- Live TV, SyncPlay, DLNA setup, being a cast target, music gapless, and in-window GPU video are the hard/uncertain ones; they are P2/P3 and may not land in the first week.
+- In-window GPU video is the hard/uncertain one and is the user's top technical priority: prototype now, in parallel with UI work.
 - Everything else is implementable with the Jellyfin REST API; the main cost is UI volume, so shared components (list, filter bar, settings form, dialog, tabs) come first.
