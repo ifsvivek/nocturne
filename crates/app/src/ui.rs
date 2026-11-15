@@ -357,6 +357,30 @@ pub fn initial(title: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Round profile picture of `size` px: the picture when there is one, otherwise (loading, failed,
+/// none set) the name's initial. Callers add their own id, border colour and click handling.
+pub fn avatar(size: f32, name: &str, pic: Option<Arc<Image>>) -> Div {
+    let d = div()
+        .size(px(size))
+        .flex_none()
+        .overflow_hidden()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        .bg(t::raised());
+    match pic {
+        // The picture rounds its own corners: a parent's overflow clip is a plain rectangle.
+        Some(i) => d.child(
+            img(i)
+                .size_full()
+                .rounded_full()
+                .object_fit(ObjectFit::Cover),
+        ),
+        None => d.child(initial(name)),
+    }
+}
+
 /// Image slot: a loaded image fades in, loading shows a faint breathing skeleton, a missing
 /// image shows a quiet gradient with the title's initial. Never a flat empty box.
 pub fn tile(pic: Pic, title: &str, key: &str) -> Div {

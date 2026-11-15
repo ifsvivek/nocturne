@@ -330,21 +330,19 @@ impl Admin {
                 cx.notify();
             }));
         if it.avatar {
+            let pic = it
+                .pic
+                .as_ref()
+                .and_then(|k| self.pics.get(k))
+                .cloned()
+                .flatten();
             r = r.child(
-                div()
-                    .size(px(32.0))
-                    .flex_none()
-                    .rounded_full()
+                ui::avatar(32.0, &it.title, pic)
                     .border_1()
                     .border_color(t::hairline_strong())
-                    .bg(t::raised())
-                    .flex()
-                    .items_center()
-                    .justify_center()
                     .text_size(px(t::CAPTION + 1.0))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(t::text_secondary())
-                    .child(ui::initial(&it.title)),
+                    .text_color(t::text_secondary()),
             );
         }
         r = r.child(
@@ -733,6 +731,7 @@ impl Admin {
 impl Render for Admin {
     fn render(&mut self, _w: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let m = self.model();
+        self.load_pics(&m, cx);
         self.st.clamp(m.items.len());
         let section = self.st.section;
         let meta = match section {

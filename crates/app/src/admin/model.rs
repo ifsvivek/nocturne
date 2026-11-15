@@ -38,6 +38,8 @@ pub struct Item {
     pub sub: String,
     pub chips: Vec<(String, bool)>,
     pub avatar: bool,
+    /// (user id, `PrimaryImageTag`) of a profile picture to show in the avatar.
+    pub pic: Option<(String, String)>,
     pub progress: Option<f32>,
     pub detail: Vec<(&'static str, String)>,
     /// Mono text block in the detail panel (log tail).
@@ -351,6 +353,7 @@ fn users(d: &Data) -> Model {
                 .map(|c| (c.1.to_string(), c.2))
                 .collect(),
             avatar: true,
+            pic: u.primary_image_tag.clone().map(|tag| (u.id.clone(), tag)),
             detail: vec![
                 ("ID", short(&u.id)),
                 (

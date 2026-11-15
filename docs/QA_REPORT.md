@@ -96,6 +96,23 @@ Sort / Filter menus, player menus and admin dialogs were checked for click-to-cy
 else changed. Left alone on purpose: player repeat, A-B loop and speed controls (cycling is the expected behaviour
 there) and the library `V` view shortcut.
 
+## Profile picture in the header avatar (unreleased)
+
+Throwaway Jellyfin on port 8099 (users alice, bob, admin), isolated XDG dirs and keyring name, a private copy of the
+debug binary started from a directory without a `.env`, synthetic PNGs made with ffmpeg. Checked live: alice with an
+uploaded picture showed it, clipped to a circle, in the header after a restart; the account menu header showed it at
+40 px with the server address kept under the name; a picture replaced on the server (new tag) was shown after a restart;
+setting one from the app (Profile image dialog) and removing one (Remove profile image) changed the header avatar at
+once, with the initial back after removal and `accounts.toml` following the tag; adding bob and switching back and
+forth updated the avatar without a restart; the "Switch to bob" row showed bob's picture and "Switch to alice" the
+initial while alice had none; the Admin Users list showed both pictures and the initial for the admin with none.
+Unit-tested: the disk cache key (server, user, tag, size), the avatar fallback (no tag, loading, failed, old tag, ready),
+the image URL, and the `image_tag` field in `accounts.toml` (round trip, old files, only saved when it changes). Not
+verified: a failing image download (initial fallback is unit-tested only) and mouse clicks (the pointer could not be
+moved reliably; the keyboard path was used). Note for testers: a first attempt ran from the repository directory and
+loaded the real `.env` developer token (GET reads only, nothing changed); it was stopped at once, and later runs used a
+directory without `.env`.
+
 ## Not verified / known gaps
 
 - Real server HDR; the photo viewer and music on real data (the real server has no photo or music library).

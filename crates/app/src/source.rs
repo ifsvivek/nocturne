@@ -534,6 +534,32 @@ impl Source {
         Err(Failed)
     }
 
+    /// A user's profile picture (GET only), disk cached under server + user + tag + size so a
+    /// changed picture (new tag) is fetched again. A 4xx means the picture is gone.
+    pub async fn user_image(&self, uid: &str, tag: &str, size: u32) -> Result<Vec<u8>, Failed> {
+        let key = user_image_key(&self.scope, uid, tag, size);
+        if let Some(b) = self.disk.as_ref().and_then(|d| d.get(&key)) {
+            return Ok(b);
+        }
+        let _permit = self.gate.acquire().await.map_err(|_| Failed)?;
+        for attempt in 1..=3u32 {
+            match self.client.user_image_bytes(uid, size, tag).await {
+                Ok(b) => {
+                    if let Some(d) = &self.disk {
+                        d.put(&key, &b);
+                    }
+                    return Ok(b);
+                }
+                Err(jf::Error::Status {
+                    status: 400..=499, ..
+                }) => return Err(Failed),
+                Err(_) if attempt < 3 => tokio::time::sleep(backoff(attempt)).await,
+                Err(_) => {}
+            }
+        }
+        Err(Failed)
+    }
+
     // ---- browse ----
 
     /// One page of a filtered/sorted query plus the server's total.
@@ -725,6 +751,11 @@ pub fn image_key(m: &Media, art: Art, width: u32, extra: u32) -> String {
     )
 }
 
+/// Disk-cache key of a profile picture (the tag changes whenever the picture does).
+pub fn user_image_key(scope: &str, uid: &str, tag: &str, size: u32) -> String {
+    format!("{scope}|user|{uid}|{tag}|{size}")
+}
+
 /// Server views that the nav already offers as Collections and Playlists.
 fn is_global_view(collection_type: Option<&str>, name: &str) -> bool {
     matches!(collection_type, Some("boxsets" | "playlists"))
@@ -733,6 +764,21 @@ fn is_global_view(collection_type: Option<&str>, name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn user_image_key_follows_server_user_tag_and_size() {
+        use super::user_image_key as k;
+        let a = k("http://s", "u1", "t1", 96);
+        assert_eq!(a, k("http://s", "u1", "t1", 96));
+        for other in [
+            k("http://s2", "u1", "t1", 96),
+            k("http://s", "u2", "t1", 96),
+            k("http://s", "u1", "t2", 96),
+            k("http://s", "u1", "t1", 128),
+        ] {
+            assert_ne!(a, other);
+        }
+    }
+
     #[test]
     fn image_key_changes_when_the_server_supplies_tags() {
         use super::*;

@@ -52,6 +52,23 @@ enum Img {
     Failed(std::time::Instant),
 }
 
+/// Profile pictures are fetched once at this size (square) for every avatar.
+const AVATAR_PX: u32 = 96;
+
+/// Slot key of a profile picture in the in-memory image cache.
+fn user_pic_key(uid: &str, tag: &str) -> String {
+    crate::source::user_image_key("", uid, tag, AVATAR_PX)
+}
+
+/// Ready picture for this user and tag. No tag (none set), still loading, failed, or only an
+/// older tag cached: None, and the avatar shows the initial.
+fn ready_pic(images: &Cache<String, Img>, uid: &str, tag: Option<&str>) -> Option<Arc<Image>> {
+    match images.get(&user_pic_key(uid, tag?)) {
+        Some(Img::Ready(i)) => Some(i.clone()),
+        _ => None,
+    }
+}
+
 const RETRY_FAILED: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[derive(PartialEq, Clone, Copy)]
@@ -270,6 +287,8 @@ pub struct Root {
     menu_sel: usize,
     audio_queue: ui_playlists::AudioQueue,
     other_accounts: Vec<nocturne_session::Account>,
+    /// `PrimaryImageTag` of the signed-in user (None: no profile picture, or not known yet).
+    my_tag: Option<String>,
     /// Pages left by Back, restored by Forward (cleared by any new navigation).
     fwd: Vec<Page>,
     blurs: Cache<String, Arc<Image>>,
@@ -357,6 +376,7 @@ impl Root {
             dev: false,
             accounts: None,
             session: None,
+            my_tag: None,
             hooks: Arc::new(SyncHooks::new(None, false, false)),
             reporter: Reporter::default(),
             settings: Settings::load(),
@@ -400,7 +420,10 @@ impl Root {
                     t.activate(url.clone(), session.clone(), cx)
                 }
                 account::Event::Notice(n) => t.toast(n, cx),
-                account::Event::Reload => t.retry_page(cx),
+                account::Event::Reload => {
+                    t.refresh_profile(cx);
+                    t.retry_page(cx)
+                }
                 account::Event::Deleted => {
                     t.back();
                     t.retry_page(cx);
@@ -534,6 +557,8 @@ impl Root {
             .map(|c| self.make_admin(c, cx));
         self.apply_write_settings(cx);
         self.session = Some((url, s));
+        self.my_tag = None;
+        self.refresh_profile(cx);
         self.phase = Phase::Ready;
         self.push(View::Home, None, cx);
         if self
@@ -543,6 +568,66 @@ impl Root {
         {
             self.toast(account::KEYRING_NOTE, cx);
         }
+    }
+
+    /// Read the own profile picture tag (`GET /Users/Me`), then the picture itself. Runs on sign-in,
+    /// account switch and after the profile image is set or removed, so the avatar never goes stale.
+    fn refresh_profile(&mut self, cx: &mut Context<Self>) {
+        let Some((url, s)) = self.session.as_ref() else {
+            return;
+        };
+        let (Ok(c), uid) = (UserClient::from_session(url, s), s.user_id.clone()) else {
+            return;
+        };
+        self.run(
+            cx,
+            async move { c.profile().await.ok() },
+            move |t, p, cx| {
+                // Switched away meanwhile, or the server did not answer: keep what is shown.
+                let same = t.session.as_ref().is_some_and(|(_, s)| s.user_id == uid);
+                if let (true, Some(p)) = (same, p) {
+                    t.my_tag = p.primary_image_tag;
+                    if let Some((url, _)) = &t.session {
+                        nocturne_session::remember_image_tag(url, &uid, t.my_tag.clone());
+                    }
+                    t.load_user_pic(&uid, t.my_tag.clone(), cx);
+                }
+            },
+        );
+    }
+
+    /// Start fetching a user's profile picture (once per tag; a failure is retried later).
+    fn load_user_pic(&mut self, uid: &str, tag: Option<String>, cx: &mut Context<Self>) {
+        let (Some(tag), Some(src)) = (tag, self.source.clone()) else {
+            return;
+        };
+        let key = user_pic_key(uid, &tag);
+        match self.images.get(&key) {
+            Some(Img::Ready(_) | Img::Loading) => return,
+            Some(Img::Failed(at)) if at.elapsed() < RETRY_FAILED => return,
+            _ => {}
+        }
+        self.images.insert(key.clone(), Img::Loading);
+        let uid = uid.to_string();
+        self.run(
+            cx,
+            async move { src.user_image(&uid, &tag, AVATAR_PX).await },
+            move |t, r, _| {
+                let state = match r
+                    .ok()
+                    .and_then(|b| sniff(&b).map(|f| Image::from_bytes(f, b)))
+                {
+                    Some(i) => Img::Ready(Arc::new(i)),
+                    None => Img::Failed(Instant::now()),
+                };
+                t.images.insert(key, state);
+            },
+        );
+    }
+
+    /// The loaded profile picture, if any; otherwise the caller shows the initial.
+    fn user_pic(&self, uid: &str, tag: Option<&str>) -> Option<Arc<Image>> {
+        ready_pic(&self.images, uid, tag)
     }
 
     /// Back to the account screens: stop playback, drop everything tied to the login.
@@ -555,6 +640,7 @@ impl Root {
         self.settings_open = false;
         self.menu = false;
         self.session = None;
+        self.my_tag = None;
         self.more = None;
         self.info_open = false;
         self.photo = None;
@@ -607,7 +693,7 @@ impl Root {
     }
 
     /// Remembered accounts of this server other than the one in use (names only; a tiny file).
-    fn refresh_accounts(&mut self) {
+    fn refresh_accounts(&mut self, cx: &mut Context<Self>) {
         self.other_accounts = match &self.session {
             Some((url, s)) => nocturne_session::Accounts::load()
                 .unwrap_or_default()
@@ -618,6 +704,15 @@ impl Root {
                 .collect(),
             None => vec![],
         };
+        // Their pictures come from the tags remembered with each account.
+        for (uid, tag) in self
+            .other_accounts
+            .iter()
+            .map(|a| (a.user_id.clone(), a.image_tag.clone()))
+            .collect::<Vec<_>>()
+        {
+            self.load_user_pic(&uid, tag, cx);
+        }
     }
 
     /// Switch to a remembered account: its token comes from the keyring and is checked with one
@@ -783,7 +878,8 @@ impl Root {
 
     /// An admin client for this login, view-only until the master switch says otherwise.
     fn make_admin(&mut self, c: AdminClient, cx: &mut Context<Self>) -> Entity<Admin> {
-        let a = cx.new(|_| Admin::new(c));
+        let src = self.source.clone();
+        let a = cx.new(|_| Admin::new(c).with_pics(src));
         self._admin_sub = Some(cx.subscribe(&a, |t, _, _: &admin::OpenSettings, cx| {
             t.menu_act(AcctAct::Settings, cx);
         }));
@@ -1611,7 +1707,7 @@ impl Root {
         ) {
             self.menu = true;
             self.menu_sel = 0;
-            self.refresh_accounts();
+            self.refresh_accounts(cx);
             cx.notify();
             return;
         }
@@ -2004,11 +2100,6 @@ impl Root {
             .left_0()
             .w_full()
             .h(px(28.0))
-            .size(px(32.0))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_full()
             .px(px(t::PAGE_PAD))
             .flex()
             .items_center()
@@ -2058,7 +2149,8 @@ impl Root {
             .session
             .as_ref()
             .map_or("dev", |(_, s)| s.user_name.as_str());
-        div()
+        let pic = self.my_pic();
+        ui::avatar(32.0, name, pic)
             .id("avatar")
             .border_1()
             .border_color(if self.menu {
@@ -2075,10 +2167,14 @@ impl Root {
             .on_click(cx.listener(|t, _, _, cx| {
                 t.menu = !t.menu;
                 t.menu_sel = 0;
-                t.refresh_accounts();
+                t.refresh_accounts(cx);
                 cx.notify();
             }))
-            .child(ui::initial(name))
+    }
+
+    fn my_pic(&self) -> Option<Arc<Image>> {
+        let uid = &self.session.as_ref()?.1.user_id;
+        self.user_pic(uid, self.my_tag.as_deref())
     }
 
     /// Dropdown under the avatar: who and where, then the account actions.
@@ -2109,24 +2205,54 @@ impl Root {
                     .px(px(t::S3))
                     .py(px(t::S2))
                     .flex()
-                    .flex_col()
-                    .gap(px(2.0))
+                    .items_center()
+                    .gap(px(t::S3))
+                    .child(
+                        ui::avatar(40.0, &name, self.my_pic())
+                            .border_1()
+                            .border_color(t::hairline_strong())
+                            .text_size(px(t::BODY))
+                            .font_family(t::MONO)
+                            .text_color(t::accent_text()),
+                    )
                     .child(
                         div()
-                            .truncate()
-                            .text_size(px(t::BODY))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(name),
-                    )
-                    .child(div().truncate().child(ui::mono(server))),
+                            .min_w_0()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.0))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_size(px(t::BODY))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(name),
+                            )
+                            .child(div().truncate().child(ui::mono(server))),
+                    ),
             )
             .child(div().h(px(1.0)).bg(t::hairline()));
         let writes = self.hooks.can_write();
         for (i, (label, act)) in self.menu_items().into_iter().enumerate() {
             let on = i == self.menu_sel;
+            let face = match act {
+                AcctAct::SwitchTo(n) => self.other_accounts.get(n).map(|a| {
+                    let pic = self.user_pic(&a.user_id, a.image_tag.as_deref());
+                    ui::avatar(22.0, &a.user_name, pic)
+                        .border_1()
+                        .border_color(t::hairline_strong())
+                        .text_size(px(t::CAPTION))
+                        .text_color(t::text_secondary())
+                }),
+                _ => None,
+            };
             p = p.child(
                 div()
                     .id(("acct-item", i))
+                    .flex()
+                    .items_center()
+                    .gap(px(t::S2))
                     .px(px(t::S3))
                     .py(px(t::S2))
                     .rounded(px(6.0))
@@ -2146,6 +2272,7 @@ impl Root {
                     )
                     .hover(|s| s.bg(t::glass()))
                     .on_click(cx.listener(move |t, _, _, cx| t.menu_act(act, cx)))
+                    .children(face)
                     .child(label),
             );
         }
@@ -3047,7 +3174,8 @@ fn opens_account_menu(key: &str, ready: bool, admin_open: bool, search_open: boo
 
 #[cfg(test)]
 mod tests {
-    use super::opens_account_menu;
+    use super::*;
+    use core::prelude::v1::test; // gpui::* also exports a `test` macro
 
     #[test]
     fn typing_a_in_search_does_not_open_the_account_menu() {
@@ -3056,5 +3184,25 @@ mod tests {
         assert!(!opens_account_menu("a", true, true, false));
         assert!(!opens_account_menu("a", false, false, false));
         assert!(!opens_account_menu("b", true, false, false));
+    }
+
+    #[test]
+    fn avatar_shows_the_picture_only_for_a_ready_current_tag() {
+        let mut c: Cache<String, Img> = Cache::new(8);
+        assert!(ready_pic(&c, "u", None).is_none(), "no tag: initial");
+        assert!(ready_pic(&c, "u", Some("t1")).is_none(), "not fetched yet");
+        c.insert(user_pic_key("u", "t1"), Img::Loading);
+        assert!(ready_pic(&c, "u", Some("t1")).is_none(), "loading: initial");
+        c.insert(user_pic_key("u", "t1"), Img::Failed(Instant::now()));
+        assert!(ready_pic(&c, "u", Some("t1")).is_none(), "failed: initial");
+        let png = crate::ui::png(&[0, 0, 0, 255], 1, 1);
+        c.insert(user_pic_key("u", "t1"), Img::Ready(png));
+        assert!(ready_pic(&c, "u", Some("t1")).is_some());
+        assert!(
+            ready_pic(&c, "u", Some("t2")).is_none(),
+            "changed tag: old picture not reused"
+        );
+        assert!(ready_pic(&c, "u", None).is_none(), "removed: initial");
+        assert!(ready_pic(&c, "other", Some("t1")).is_none());
     }
 }

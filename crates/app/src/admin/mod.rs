@@ -10,12 +10,15 @@ mod view;
 
 use crate::bridge;
 use crate::nav::Dir;
+use crate::source::Source;
 use act::Act;
 use confirm::{Dialog, Out};
 use gpui::*;
 use nocturne_jellyfin_admin::{AdminClient, Config, Confirmed};
 use state::{Msg, POLL_SECS, Section, Shape, State};
+use std::collections::HashMap;
 use std::future::Future;
+use std::sync::Arc;
 use std::time::Duration;
 
 pub(crate) use fmt::when;
@@ -35,6 +38,10 @@ pub struct Admin {
     note_gen: u64,
     list_scroll: ScrollHandle,
     log_scroll: ScrollHandle,
+    /// Reads profile pictures (GET only); without it avatars show initials.
+    pics_src: Option<Source>,
+    /// Profile pictures by (user id, tag); `None` = requested, not (or never) loaded.
+    pics: HashMap<(String, String), Option<Arc<Image>>>,
 }
 
 /// `Some(client)` only when the configured token has admin rights (see `state::admin_visible`).
@@ -61,6 +68,43 @@ impl Admin {
             note_gen: 0,
             list_scroll: ScrollHandle::new(),
             log_scroll: ScrollHandle::new(),
+            pics_src: None,
+            pics: HashMap::new(),
+        }
+    }
+
+    pub fn with_pics(mut self, src: Option<Source>) -> Self {
+        self.pics_src = src;
+        self
+    }
+
+    /// Start loading the profile pictures of the listed users (once per user and tag).
+    fn load_pics(&mut self, m: &model::Model, cx: &mut Context<Self>) {
+        let Some(src) = self.pics_src.clone() else {
+            return;
+        };
+        for key in m.items.iter().filter_map(|i| i.pic.clone()) {
+            if self.pics.contains_key(&key) {
+                continue;
+            }
+            self.pics.insert(key.clone(), None);
+            let (src, k) = (src.clone(), key.clone());
+            let h = bridge::spawn(async move { src.user_image(&k.0, &k.1, 96).await.ok() });
+            cx.spawn(async move |this, cx| {
+                let img = h
+                    .await
+                    .ok()
+                    .flatten()
+                    .and_then(|b| crate::source::sniff(&b).map(|f| Image::from_bytes(f, b)));
+                if let Some(i) = img {
+                    this.update(cx, |a, cx| {
+                        a.pics.insert(key, Some(Arc::new(i)));
+                        cx.notify();
+                    })
+                    .ok();
+                }
+            })
+            .detach();
         }
     }
 

@@ -14,6 +14,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
   shown as it is.
 
 ### Fixed
+- The round avatar button in the header showed only the letter initial even when the account had a profile image. It now
+  shows the picture (clipped to a circle), also larger in the account menu next to the name, on the "Switch to ..." rows
+  and in the Admin Users list. The initial stays while the picture loads, if it fails, and when none is set. The picture
+  is read with GET `/Users/{id}/Images/Primary`, cached on disk by server, user and image tag, and follows a change at
+  once: setting or removing it from the app, or switching account, needs no restart. `accounts.toml` now also keeps the
+  server's public image tag per account (no token, no image data).
 - Settings: the page could not be scrolled, so the settings below the fold were out of reach. It now scrolls with the
   wheel, trackpad, PgUp / PgDn, Home / End and the arrow keys, which keep the selected row in view.
 

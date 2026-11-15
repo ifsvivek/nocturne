@@ -11,7 +11,7 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] Session-ended handling (401 returns to sign-in), offline banner with retry
 - [~] Developer API-key mode via environment variables (read-only; all writes refused)
 - [x] Authorize another device with Quick Connect; Your devices (read only list of this account's sessions)
-- [x] Switch between remembered accounts of a server without a password (tokens in the keyring, `accounts.toml` holds names only); add another account; own profile image set / remove; display language (the `language` entry other Jellyfin apps share). Sign out forgets the account
+- [x] Switch between remembered accounts of a server without a password (tokens in the keyring, `accounts.toml` holds names and the public profile-image tag, never a token); the profile picture shows in the header avatar, the account menu, the switcher and the Admin Users list; add another account; own profile image set / remove; display language (the `language` entry other Jellyfin apps share). Sign out forgets the account
 
 ## Browsing
 - [x] Home: hero, Continue Watching, Next Up, latest per library
