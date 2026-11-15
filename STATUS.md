@@ -3,12 +3,12 @@
 Orchestrator's running log. Update at every task boundary.
 
 ## Now
-- Task 2 (agent A): `crates/player` (libmpv2) + Jellyfin base-URL fix — running
 - Task 3 (agent B): `crates/app` GPUI shell, design system, library/detail screens, gpui component lib evaluation — running (parallel, disjoint files)
 - After both: review, integrate Play -> player, then polish. Full autonomy granted by user; no need to ask between tasks. Target: usable app within 1 week.
 
 ## Done
 - [x] Repo: private GitHub repo, README, .gitignore, .env.example
+- [x] Task 2: `crates/player` (libmpv2, own-window playback, state+event API, headless tests, live test OK) + Jellyfin base_url validation (reviewed)
 - [x] Task 1: workspace + read-only `nocturne-jellyfin` client (reviewed, tests green, pushed)
 
 ## Next
@@ -24,7 +24,9 @@ Orchestrator's running log. Update at every task boundary.
 - Auth header for mpv passed via `http-header-fields`, not `api_key` in URLs.
 
 ## Follow-ups
-- `Client::url` panics on invalid base URL; validate in `Client::new`.
+- Windowed (non-headless) mpv with gpu-next not yet exercised; verify during integration.
+- `Client::auth_header()` is the value only; callers prefix `Authorization: ` for `Player::load`.
+- Cargo.lock to be committed after Task 3 lands.
 - `first_user_id()` needs a user picker if several users exist.
 
 ## Rules
