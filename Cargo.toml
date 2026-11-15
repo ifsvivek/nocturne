@@ -13,7 +13,7 @@ readme = "README.md"
 keywords = ["jellyfin", "media-player", "gpui", "mpv", "linux"]
 categories = ["multimedia::video", "gui"]
 authors = ["ifsvivek"]
-# MSRV is the highest declared by a dependency (uuid 1.89); only tested with the current stable toolchain.
+# MSRV is the highest declared by a dependency (uuid 1.89). `cargo check --workspace --locked` passes on 1.89.0; clippy and tests run on current stable only.
 rust-version = "1.89"
 
 # gpui -> zed-async-tar -> xattr 0.2.3 no longer builds with current libc (ENOATTR removed).

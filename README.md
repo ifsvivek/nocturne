@@ -69,6 +69,34 @@ cargo build --release --locked      # needs stable Rust 1.89+ and `pkg-config --
 
 A clean release build takes several minutes (fat LTO).
 
+## Supported environments
+
+| Area | Status |
+|---|---|
+| OS and architecture | Linux, x86_64. Windows and macOS are not supported. |
+| Packages | Tested on Arch Linux only (see [docs/PACKAGING.md](docs/PACKAGING.md)). Other distributions should build from source but are unverified. |
+| Wayland | In-window video (libmpv in a subsurface). Developed and tested here, on NVIDIA proprietary drivers; AMD and Intel GPUs are untested. |
+| X11 | The interface works; video plays in an external mpv window that closes with the app. Tested through Xwayland. |
+| Server | Jellyfin 12.4 (a real server and a throwaway one). Other versions are untested; other media servers are not supported. |
+| Needed at run time | libmpv, a Vulkan driver, EGL, a Secret Service provider to remember logins |
+
+## Troubleshooting
+
+- **The window opens but no video appears, or the app fails to start.** GPUI renders with Vulkan: check that a Vulkan
+  driver is installed (`vulkaninfo --summary`). Run `nocturne` from a terminal to see its messages.
+- **Video opens in a separate mpv window.** That is the fallback when in-window video is unavailable (X11, or
+  `NOCTURNE_VIDEO=external`, or a failure to set up the Wayland surface; the terminal says
+  `video: embedded unavailable`). To force a different mpv video output set `NOCTURNE_VO`.
+- **"libmpv.so.2: cannot open shared object file" at start.** Install your distribution's libmpv package (`mpv` on Arch).
+- **"No system keyring found".** No Secret Service provider is running, so you will sign in again next time. Start gnome-keyring, KWallet or KeePassXC with
+  the Secret Service integration enabled; NOCTURNE never writes tokens to a file.
+- **"Your session ended".** The server revoked the login (for example the device was removed in the dashboard);
+  sign in again.
+- **Progress, watched or favourite changes do nothing.** They are off by default: enable
+  **Settings > Allow NOCTURNE to change data on the server** ([docs/WRITES.md](docs/WRITES.md)).
+- **Reporting a bug.** Use the issue template and remove access tokens, server addresses and usernames from any
+  logs before posting.
+
 ## Usage notes
 
 - **X11.** In-window video needs Wayland. On other sessions NOCTURNE plays in an external mpv window, which closes
