@@ -1,14 +1,19 @@
-//! `VideoSurface`: libmpv (OpenGL render API, EGL) drawing into a `wl_subsurface` placed BELOW a
+//! `EmbeddedPlayer`: libmpv (OpenGL render API, EGL) drawing into a `wl_subsurface` placed BELOW a
 //! GPUI window's `wl_surface`. GPUI stays a normal transparent window and draws controls on top.
+//! Same method names / `State` / `Event` as the child-process [`crate::Player`].
 //!
 //! Threading: the main (GPUI) thread owns the Wayland proxies and calls `set_bounds`; one render
-//! thread owns the EGL context + mpv render context. Teardown order (see `Drop`) is load-bearing.
+//! thread owns the EGL context + mpv render context; one event thread feeds `State`/`Event`.
+//! Teardown order (see `Drop`) is load-bearing; see docs/video-embedding.md.
 
-use libmpv2::Mpv;
+use crate::{Error, Event, Result, State, e};
+use libmpv2::events::{Event as MpvEvent, PropertyData};
 use libmpv2::render::{OpenGLInitParams, RenderParam, RenderParamApiType, mpv_render_update};
+use libmpv2::{Format, Mpv};
 use std::ffi::{CString, c_char, c_int, c_void};
 use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::*};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -20,7 +25,9 @@ use wayland_client::protocol::{
 };
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, delegate_noop};
 use wayland_egl::WlEglSurface;
-use wayland_protocols::wp::viewporter::client::{wp_viewport::WpViewport, wp_viewporter::WpViewporter};
+use wayland_protocols::wp::viewporter::client::{
+    wp_viewport::WpViewport, wp_viewporter::WpViewporter,
+};
 
 // ---- minimal EGL (links libEGL via glvnd; avoids a binding crate) ----
 type Ptr = *mut c_void;
@@ -29,7 +36,13 @@ unsafe extern "C" {
     fn eglGetPlatformDisplay(platform: u32, native: Ptr, attrs: *const isize) -> Ptr;
     fn eglInitialize(d: Ptr, maj: *mut c_int, min: *mut c_int) -> u32;
     fn eglBindAPI(api: u32) -> u32;
-    fn eglChooseConfig(d: Ptr, attrs: *const c_int, out: *mut Ptr, n: c_int, num: *mut c_int) -> u32;
+    fn eglChooseConfig(
+        d: Ptr,
+        attrs: *const c_int,
+        out: *mut Ptr,
+        n: c_int,
+        num: *mut c_int,
+    ) -> u32;
     fn eglCreateContext(d: Ptr, cfg: Ptr, share: Ptr, attrs: *const c_int) -> Ptr;
     fn eglCreatePlatformWindowSurface(d: Ptr, cfg: Ptr, win: Ptr, attrs: *const isize) -> Ptr;
     fn eglMakeCurrent(d: Ptr, draw: Ptr, read: Ptr, ctx: Ptr) -> u32;
@@ -39,12 +52,19 @@ unsafe extern "C" {
     fn eglDestroyContext(d: Ptr, c: Ptr) -> u32;
     fn eglGetProcAddress(name: *const c_char) -> Ptr;
     fn eglGetError() -> c_int;
-    fn eglQueryString(d: Ptr, name: c_int) -> *const c_char;
 }
 
 struct St;
 impl Dispatch<WlRegistry, GlobalListContents> for St {
-    fn event(_: &mut Self, _: &WlRegistry, _: <WlRegistry as Proxy>::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &WlRegistry,
+        _: <WlRegistry as Proxy>::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 delegate_noop!(St: ignore WlCompositor);
 delegate_noop!(St: ignore WlSubcompositor);
@@ -60,7 +80,6 @@ struct Shared {
     cv: Condvar,
     w: AtomicI32, // physical pixels
     h: AtomicI32,
-    frames: std::sync::atomic::AtomicU64,
 }
 impl Shared {
     fn poke(&self) {
@@ -72,11 +91,40 @@ impl Shared {
 struct SendBox<T>(T);
 unsafe impl<T> Send for SendBox<T> {}
 
-pub struct VideoSurface {
+/// Video rect in the parent window: logical position/size for the subsurface + viewport, and the
+/// physical pixel size of the EGL buffer. Pure, so it is unit-tested.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Geometry {
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
+    pub pw: i32,
+    pub ph: i32,
+}
+
+pub fn geometry(x: f32, y: f32, w: f32, h: f32, scale: f32) -> Geometry {
+    let (lw, lh) = (w.round().max(1.0) as i32, h.round().max(1.0) as i32);
+    // Physical size derives from the rounded logical size so the viewport never stretches by a fraction.
+    let phys = |l: i32| (l as f32 * scale).round().max(1.0) as i32;
+    Geometry {
+        x: x.round() as i32,
+        y: y.round() as i32,
+        w: lw,
+        h: lh,
+        pw: phys(lw),
+        ph: phys(lh),
+    }
+}
+
+pub struct EmbeddedPlayer {
     // Drop order is explicit in `Drop`; field order only matters for the leftovers.
     mpv: Arc<Mpv>,
     shared: Arc<Shared>,
     thread: Option<JoinHandle<()>>,
+    events_thread: Option<JoinHandle<()>>,
+    state: Arc<Mutex<State>>,
+    rx: Receiver<Event>,
     conn: Connection,
     queue: EventQueue<St>,
     surface: WlSurface,
@@ -84,7 +132,6 @@ pub struct VideoSurface {
     viewport: WpViewport,
     compositor: WlCompositor,
     qh: QueueHandle<St>,
-    pub gl_renderer: String,
 }
 
 fn gpa(_: &(), name: &str) -> *mut c_void {
@@ -92,37 +139,39 @@ fn gpa(_: &(), name: &str) -> *mut c_void {
     unsafe { eglGetProcAddress(c.as_ptr()) }
 }
 
-impl VideoSurface {
+impl EmbeddedPlayer {
     /// `display`/`parent`: raw `wl_display*` / `wl_surface*` from GPUI's `HasDisplayHandle` /
-    /// `HasWindowHandle`. Must be called on the GPUI main thread. `hwdec` e.g. "auto-safe".
-    pub fn new(display: *mut c_void, parent: *mut c_void, hwdec: &str) -> Result<Self, String> {
+    /// `HasWindowHandle`. Must be called on the GPUI main thread. Errors mean "embedding is not
+    /// available here" (no viewporter/subcompositor, EGL failure, ...) and callers fall back to
+    /// [`crate::Player`].
+    pub fn new(display: *mut c_void, parent: *mut c_void) -> Result<Self> {
         unsafe {
             // Wrap GPUI's connection (foreign display: we never own/close it) with our own queue.
             let backend = Backend::from_foreign_display(display as *mut _);
             let conn = Connection::from_backend(backend);
-            let (globals, queue) = registry_queue_init::<St>(&conn).map_err(|e| e.to_string())?;
+            let (globals, queue) = registry_queue_init::<St>(&conn).map_err(e)?;
             let qh = queue.handle();
-            let compositor: WlCompositor = globals.bind(&qh, 1..=6, ()).map_err(|e| e.to_string())?;
-            let subcomp: WlSubcompositor = globals.bind(&qh, 1..=1, ()).map_err(|e| e.to_string())?;
-            let viewporter: WpViewporter = globals.bind(&qh, 1..=1, ()).map_err(|e| e.to_string())?;
+            let compositor: WlCompositor = globals.bind(&qh, 1..=6, ()).map_err(e)?;
+            let subcomp: WlSubcompositor = globals.bind(&qh, 1..=1, ()).map_err(e)?;
+            let viewporter: WpViewporter = globals.bind(&qh, 1..=1, ()).map_err(e)?;
 
-            let pid = ObjectId::from_ptr(WlSurface::interface(), parent as *mut _).map_err(|e| e.to_string())?;
-            let parent_surface = WlSurface::from_id(&conn, pid).map_err(|e| e.to_string())?;
+            let pid = ObjectId::from_ptr(WlSurface::interface(), parent as *mut _).map_err(e)?;
+            let parent_surface = WlSurface::from_id(&conn, pid).map_err(e)?;
 
             let surface = compositor.create_surface(&qh, ());
             let sub = subcomp.get_subsurface(&surface, &parent_surface, &qh, ());
             sub.place_below(&parent_surface);
             sub.set_desync(); // video updates must not wait for GPUI commits
-            // Clicks fall through to GPUI: empty input region; opaque video region.
+            // Clicks fall through to GPUI: empty input region.
             let empty = compositor.create_region(&qh, ());
             surface.set_input_region(Some(&empty));
             empty.destroy();
             let viewport = viewporter.get_viewport(&surface, &qh, ());
             surface.commit();
-            conn.flush().map_err(|e| e.to_string())?;
+            conn.flush().map_err(e)?;
 
             let (w0, h0) = (640, 360);
-            let egl_win = WlEglSurface::new(surface.id(), w0, h0).map_err(|e| e.to_string())?;
+            let egl_win = WlEglSurface::new(surface.id(), w0, h0).map_err(e)?;
 
             let shared = Arc::new(Shared {
                 stop: AtomicBool::new(false),
@@ -130,30 +179,39 @@ impl VideoSurface {
                 cv: Condvar::new(),
                 w: AtomicI32::new(w0),
                 h: AtomicI32::new(h0),
-                frames: Default::default(),
             });
 
+            // RULE: in-process mpv may ONLY use the OpenGL render API (`vo=libmpv`). Never
+            // `gpu`/`gpu-next` (Vulkan context) and never `hwdec=vulkan` here: a second VkInstance
+            // next to GPUI's Vulkan renderer SIGSEGVs on NVIDIA at stop/quit. See docs/video-embedding.md.
             let mpv = Mpv::with_initializer(|i| {
                 i.set_option("vo", "libmpv")?;
-                i.set_option("hwdec", hwdec)?;
-                i.set_option("ao", "null")?;
+                i.set_option("hwdec", "auto-safe")?;
                 i.set_option("keep-open", "yes")?;
-                i.set_option("loop-file", "inf")?;
                 i.set_option("background", "color")?; // opaque black bars (default would be alpha 0)
                 i.set_option("background-color", "#FF000000")?;
                 i.set_option("terminal", "no")?;
-                if let Ok(f) = std::env::var("VP_MPV_LOG") {
-                    i.set_option("log-file", f.as_str())?;
-                    i.set_option("msg-level", "all=v")?;
-                }
                 i.set_option("input-default-bindings", "no")?;
                 i.set_option("osc", "no")?;
                 Ok(())
             })
-            .map_err(|e| format!("mpv init: {e:?}"))?;
+            .map_err(|er| Error::Mpv(format!("init: {er:?}")))?;
             let mpv = Arc::new(mpv);
+            for (i, (n, f)) in [
+                ("pause", Format::Flag),
+                ("time-pos", Format::Double),
+                ("duration", Format::Double),
+                ("volume", Format::Double),
+                ("eof-reached", Format::Flag),
+                ("idle-active", Format::Flag),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                mpv.observe_property(n, f, i as u64 + 1).map_err(e)?;
+            }
 
-            let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
+            let (tx, rx) = channel::<std::result::Result<(), String>>();
             let (mpv2, sh2) = (mpv.clone(), shared.clone());
             let payload = SendBox((display, egl_win));
             let thread = std::thread::Builder::new()
@@ -163,26 +221,54 @@ impl VideoSurface {
                     let SendBox((display, egl_win)) = payload;
                     render_thread(display, egl_win, mpv2, sh2, tx)
                 })
-                .map_err(|e| e.to_string())?;
-            let gl_renderer = rx.recv().map_err(|e| e.to_string())??;
-            Ok(Self { mpv, shared, thread: Some(thread), conn, queue, surface, sub, viewport, compositor, qh, gl_renderer })
+                .map_err(e)?;
+            // Ready only once the render context exists: `loadfile` before that is fatal for vo=libmpv.
+            if let Err(m) = rx.recv().map_err(e)? {
+                let _ = thread.join();
+                return Err(Error::Mpv(m));
+            }
+
+            let state = Arc::new(Mutex::new(State::default()));
+            let (etx, erx) = channel();
+            let (mpv3, st3, sh3) = (mpv.clone(), state.clone(), shared.clone());
+            let events_thread = std::thread::Builder::new()
+                .name("video-events".into())
+                .spawn(move || event_loop(mpv3, st3, etx, sh3))
+                .map_err(e)?;
+            Ok(Self {
+                mpv,
+                shared,
+                thread: Some(thread),
+                events_thread: Some(events_thread),
+                state,
+                rx: erx,
+                conn,
+                queue,
+                surface,
+                sub,
+                viewport,
+                compositor,
+                qh,
+            })
         }
     }
 
     /// Logical position/size inside the parent window (GPUI Pixels as f32) plus scale factor.
     /// Position applies at the parent's next commit, so ask GPUI for a redraw after calling.
     pub fn set_bounds(&mut self, x: f32, y: f32, w: f32, h: f32, scale: f32) {
-        let (lw, lh) = (w.round().max(1.0) as i32, h.round().max(1.0) as i32);
-        self.sub.set_position(x.round() as i32, y.round() as i32);
-        self.viewport.set_destination(lw, lh);
+        let g = geometry(x, y, w, h, scale);
+        self.sub.set_position(g.x, g.y);
+        self.viewport.set_destination(g.w, g.h);
         // The whole video surface is opaque: lets the compositor skip blending/blur behind it.
         let region = self.compositor.create_region(&self.qh, ());
-        region.add(0, 0, lw, lh);
+        region.add(0, 0, g.w, g.h);
         self.surface.set_opaque_region(Some(&region));
         region.destroy();
-        let (pw, ph) = ((w * scale).round().max(1.0) as i32, (h * scale).round().max(1.0) as i32);
-        let (ow, oh) = (self.shared.w.swap(pw, SeqCst), self.shared.h.swap(ph, SeqCst));
-        if (ow, oh) != (pw, ph) {
+        let (ow, oh) = (
+            self.shared.w.swap(g.pw, SeqCst),
+            self.shared.h.swap(g.ph, SeqCst),
+        );
+        if (ow, oh) != (g.pw, g.ph) {
             self.shared.poke();
         }
         let _ = self.conn.flush();
@@ -190,23 +276,80 @@ impl VideoSurface {
         let _ = self.queue.dispatch_pending(&mut st); // drain our (ignored) events
     }
 
-    pub fn mpv(&self) -> &Mpv {
-        &self.mpv
+    /// Non-blocking event source: `try_recv` / `try_iter`.
+    pub fn events(&self) -> &Receiver<Event> {
+        &self.rx
     }
-    pub fn frames_rendered(&self) -> u64 {
-        self.shared.frames.load(Relaxed)
+
+    /// Same contract as [`crate::Player::load`]: `headers` is a full header line, set through the
+    /// `http-header-fields` list (`change-list` appends verbatim, no splitting on ',').
+    pub fn load(&self, url: &str, headers: Option<&str>) -> Result<()> {
+        let c = |n: &str, a: &[&str]| self.mpv.command(n, a).map_err(e);
+        c("change-list", &["http-header-fields", "clr", ""])?;
+        if let Some(h) = headers {
+            c("change-list", &["http-header-fields", "append", h])?;
+        }
+        c("loadfile", &[url, "replace"])
     }
-    pub fn load(&self, path: &str) {
-        let _ = self.mpv.command("loadfile", &[path]);
+
+    pub fn play(&self) -> Result<()> {
+        self.set_paused(false)
+    }
+
+    pub fn pause(&self) -> Result<()> {
+        self.set_paused(true)
+    }
+
+    pub fn toggle(&self) -> Result<()> {
+        self.set_paused(!self.state().paused)
+    }
+
+    pub fn seek_to(&self, secs: f64) -> Result<()> {
+        self.mpv
+            .command("seek", &[&secs.to_string(), "absolute"])
+            .map_err(e)
+    }
+
+    pub fn seek_by(&self, secs: f64) -> Result<()> {
+        self.mpv
+            .command("seek", &[&secs.to_string(), "relative"])
+            .map_err(e)
+    }
+
+    /// 0..=130 (mpv's range); values outside are clamped.
+    pub fn set_volume(&self, vol: f64) -> Result<()> {
+        self.mpv
+            .set_property("volume", vol.clamp(0.0, 130.0))
+            .map_err(e)
+    }
+
+    pub fn stop(&self) -> Result<()> {
+        self.mpv.command("stop", &[]).map_err(e)
+    }
+
+    /// Cheap, non-blocking: a snapshot maintained by the event thread.
+    pub fn state(&self) -> State {
+        crate::lock(&self.state).clone()
+    }
+
+    fn set_paused(&self, p: bool) -> Result<()> {
+        self.mpv.set_property("pause", p).map_err(e)
     }
 }
 
-impl Drop for VideoSurface {
+impl Drop for EmbeddedPlayer {
     fn drop(&mut self) {
-        // 1. stop the render thread; it frees the mpv render ctx, EGL surface/ctx, wl_egl_window
+        // 1. stop the render + event threads; the render thread frees the mpv render ctx, EGL
+        //    surface/ctx and wl_egl_window (GL context still current while mpv frees its objects).
+        // `stop` first: frees the decoder/hwdec while the GL context and window are still alive. Without
+        // it, freeing the render context hangs intermittently when the compositor is closing the window.
+        let _ = self.mpv.command("stop", &[]);
         self.shared.stop.store(true, SeqCst);
         self.shared.poke();
-        if let Some(t) = self.thread.take() {
+        for t in [self.thread.take(), self.events_thread.take()]
+            .into_iter()
+            .flatten()
+        {
             let _ = t.join();
         }
         // 2. only now may the Wayland objects go (viewport, subsurface, surface), parent untouched
@@ -218,12 +361,70 @@ impl Drop for VideoSurface {
     }
 }
 
+/// Mirrors `Player`'s IPC reader: property changes -> `State`, edges -> `Event`.
+fn event_loop(mpv: Arc<Mpv>, state: Arc<Mutex<State>>, tx: Sender<Event>, sh: Arc<Shared>) {
+    while !sh.stop.load(SeqCst) {
+        let out = match mpv.wait_event(0.05) {
+            None => continue,
+            Some(Err(er)) => Some(Event::Failed(er.to_string())),
+            Some(Ok(MpvEvent::FileLoaded)) => Some(Event::Loaded),
+            Some(Ok(MpvEvent::Shutdown)) => break,
+            Some(Ok(MpvEvent::PropertyChange { name, change, .. })) => {
+                let mut s = crate::lock(&state);
+                let flag = |d: &PropertyData, def| match d {
+                    PropertyData::Flag(b) => *b,
+                    _ => def,
+                };
+                let num = |d: &PropertyData| match d {
+                    PropertyData::Double(v) => Some(*v),
+                    _ => None,
+                };
+                match name {
+                    "pause" => {
+                        let p = flag(&change, false);
+                        (std::mem::replace(&mut s.paused, p) != p).then_some(Event::Paused(p))
+                    }
+                    "eof-reached" => {
+                        let b = flag(&change, false);
+                        let rose = b && !s.eof;
+                        s.eof = b;
+                        rose.then_some(Event::Eof)
+                    }
+                    "idle-active" => {
+                        s.idle = flag(&change, true);
+                        None
+                    }
+                    "time-pos" => {
+                        s.position = num(&change);
+                        None
+                    }
+                    "duration" => {
+                        s.duration = num(&change);
+                        None
+                    }
+                    "volume" => {
+                        s.volume = num(&change).unwrap_or(100.0);
+                        None
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        if out.is_some_and(|ev| tx.send(ev).is_err()) {
+            return;
+        }
+    }
+    crate::lock(&state).idle = true;
+    let _ = tx.send(Event::Closed);
+}
+
 fn render_thread(
     display: *mut c_void,
     egl_win: WlEglSurface,
     mpv: Arc<Mpv>,
     sh: Arc<Shared>,
-    ready: std::sync::mpsc::Sender<Result<String, String>>,
+    ready: Sender<std::result::Result<(), String>>,
 ) {
     unsafe {
         let dpy = eglGetPlatformDisplay(0x31D8, display, null());
@@ -232,7 +433,9 @@ fn render_thread(
             return drop(ready.send(Err(format!("eglInitialize failed 0x{:x}", eglGetError()))));
         }
         eglBindAPI(0x30A2); // OPENGL_API
-        let cfg_attr = [0x3033, 4, 0x3040, 8, 0x3024, 8, 0x3023, 8, 0x3022, 8, 0x3038];
+        let cfg_attr = [
+            0x3033, 4, 0x3040, 8, 0x3024, 8, 0x3023, 8, 0x3022, 8, 0x3038,
+        ];
         let (mut cfg, mut n) = (null_mut(), 0);
         if eglChooseConfig(dpy, cfg_attr.as_ptr(), &mut cfg, 1, &mut n) == 0 || n == 0 {
             return drop(ready.send(Err("no EGL config".into())));
@@ -244,26 +447,28 @@ fn render_thread(
             return drop(ready.send(Err(format!("EGL ctx/surface failed 0x{:x}", eglGetError()))));
         }
         eglSwapInterval(dpy, 0);
-        let vendor = std::ffi::CStr::from_ptr(eglQueryString(dpy, 0x3053)).to_string_lossy().into_owned();
-        let glstr: unsafe extern "C" fn(u32) -> *const c_char = std::mem::transmute(eglGetProcAddress(c"glGetString".as_ptr()));
-        let renderer = std::ffi::CStr::from_ptr(glstr(0x1F01)).to_string_lossy().into_owned();
         {
             let rc = mpv.create_render_context(vec![
-                    RenderParam::ApiType(RenderParamApiType::OpenGl),
-                    RenderParam::InitParams(OpenGLInitParams { get_proc_address: gpa, ctx: () }),
-                    RenderParam::WaylandDisplay(display as *const c_void),
-                    RenderParam::AdvancedControl(true),
-                ]);
+                RenderParam::ApiType(RenderParamApiType::OpenGl),
+                RenderParam::InitParams(OpenGLInitParams {
+                    get_proc_address: gpa,
+                    ctx: (),
+                }),
+                RenderParam::WaylandDisplay(display as *const c_void),
+                RenderParam::AdvancedControl(true),
+            ]);
             let mut rc = match rc {
                 Ok(rc) => rc,
                 Err(e) => return drop(ready.send(Err(format!("mpv render ctx: {e:?}")))),
             };
             // Ready only now: `loadfile` before a render context exists is fatal for vo=libmpv.
-            let _ = ready.send(Ok(format!("{renderer} (EGL {ma}.{mi} {vendor})")));
+            let _ = ready.send(Ok(()));
             let sh2 = sh.clone();
             rc.set_update_callback(move || sh2.poke());
-            let clear_color: unsafe extern "C" fn(f32, f32, f32, f32) = std::mem::transmute(eglGetProcAddress(c"glClearColor".as_ptr()));
-            let clear: unsafe extern "C" fn(u32) = std::mem::transmute(eglGetProcAddress(c"glClear".as_ptr()));
+            let clear_color: unsafe extern "C" fn(f32, f32, f32, f32) =
+                std::mem::transmute(eglGetProcAddress(c"glClearColor".as_ptr()));
+            let clear: unsafe extern "C" fn(u32) =
+                std::mem::transmute(eglGetProcAddress(c"glClear".as_ptr()));
             let (mut cw, mut ch) = (0, 0);
             while !sh.stop.load(SeqCst) {
                 {
@@ -283,13 +488,12 @@ fn render_thread(
                     egl_win.resize(w, h, 0, 0);
                     (cw, ch) = (w, h);
                 }
-                if flags & mpv_render_update::Frame as u32 != 0 || resized {
+                if flags & mpv_render_update::Frame != 0 || resized {
                     clear_color(0.0, 0.0, 0.0, 1.0); // alpha 1: the video surface must be opaque
                     clear(0x4000);
                     let _ = rc.render::<()>(0, w, h, true);
                     eglSwapBuffers(dpy, surf);
                     rc.report_swap();
-                    sh.frames.fetch_add(1, Relaxed);
                 }
             }
             // `rc` dropped here with the GL context still current (mpv frees GL objects).
@@ -299,5 +503,32 @@ fn render_thread(
         drop(egl_win); // wl_egl_window after its EGLSurface
         eglDestroyContext(dpy, ctx);
         // eglTerminate deliberately NOT called: shared process-wide display, see docs.
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn geometry_rounds_and_scales() {
+        let g = geometry(0.4, 10.6, 800.0, 450.0, 1.0);
+        assert_eq!(
+            g,
+            Geometry {
+                x: 0,
+                y: 11,
+                w: 800,
+                h: 450,
+                pw: 800,
+                ph: 450
+            }
+        );
+        let g = geometry(0.0, 0.0, 801.5, 450.4, 1.25);
+        assert_eq!((g.w, g.h, g.pw, g.ph), (802, 450, 1003, 563));
+        let g = geometry(0.0, 0.0, 960.0, 540.0, 2.0);
+        assert_eq!((g.pw, g.ph), (1920, 1080));
+        let g = geometry(0.0, 0.0, 0.0, -3.0, 1.0);
+        assert_eq!((g.w, g.h, g.pw, g.ph), (1, 1, 1, 1), "never zero-sized");
     }
 }

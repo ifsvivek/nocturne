@@ -1,8 +1,16 @@
-//! mpv playback control. mpv runs as a CHILD PROCESS (own window, own GPU context) driven over its
-//! JSON IPC on a private unix socket, so a driver crash or hang in mpv can never take the app
-//! down. No GPUI or Jellyfin dependencies.
+//! mpv playback control, two backends with the same API (`new/load/play/pause/toggle/stop/seek_to/
+//! seek_by/set_volume/state/events`):
+//! - [`EmbeddedPlayer`]: in-process libmpv (OpenGL render API) in a Wayland subsurface inside the app
+//!   window. Preferred.
+//! - [`Player`]: mpv as a CHILD PROCESS (own window, own GPU context) driven over its JSON IPC on a
+//!   private unix socket, so a driver crash or hang in mpv can never take the app down. Fallback.
+//!
+//! No GPUI or Jellyfin dependencies.
 //!
 //! Env override: `NOCTURNE_VO` picks the windowed video output (default `gpu-next`).
+
+mod embedded;
+pub use embedded::{EmbeddedPlayer, Geometry, geometry};
 
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -24,7 +32,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-fn e(err: impl std::fmt::Display) -> Error {
+pub(crate) fn e(err: impl std::fmt::Display) -> Error {
     Error::Mpv(err.to_string())
 }
 
@@ -297,7 +305,7 @@ impl Drop for Player {
     }
 }
 
-fn lock(s: &Mutex<State>) -> MutexGuard<'_, State> {
+pub(crate) fn lock(s: &Mutex<State>) -> MutexGuard<'_, State> {
     s.lock().unwrap_or_else(|p| p.into_inner())
 }
 

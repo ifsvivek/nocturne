@@ -9,10 +9,11 @@ name = "nocturne"
 path = "src/main.rs"
 
 [dependencies]
-gpui = "0.2.2"
+gpui = "=0.2.2"
 nocturne-jellyfin = { path = "../jellyfin" }
 nocturne-jellyfin-admin = { path = "../jellyfin-admin" }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync"] }
 nocturne-player = { path = "../player" }
 # Procedural film-grain texture only.
 image = { version = "0.25.1", default-features = false, features = ["png"] }
+raw-window-handle = "0.6"
