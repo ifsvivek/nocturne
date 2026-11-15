@@ -12,8 +12,8 @@ work, each with its existing confirmation dialog where one exists. Developer API
 | Mark watched / unwatched (card chip, detail button, `w`) | yes | |
 | Favourite (card chip, detail button, player heart, `f`) | yes | |
 | Change own password | yes | the current password |
-| Admin: scan library, run/stop tasks, users, sessions, server settings, restart, API keys | yes | an administrator account and a confirmation dialog per action |
-| Admin: dashboards, activity, devices, logs, libraries, plugins | no (view only) | an administrator account |
+| Admin: scan library, run/stop tasks, users, sessions, server settings, transcoding settings, restart, API keys | yes | an administrator account and a confirmation dialog per action |
+| Admin: dashboards, activity, devices, logs, libraries (with display/NFO/trickplay flags), plugins, backups list, transcoding view | no (view only) | an administrator account |
 
 With the switch off, the controls above stay visible but dimmed with the tooltip "Turn on server
 changes in Settings", the keyboard shortcuts show a short notice, and the Admin section is view

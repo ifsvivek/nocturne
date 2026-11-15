@@ -22,10 +22,32 @@ mod ui;
 mod video;
 
 use gpui::*;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Set by SIGTERM/SIGINT; `Root::tick` turns it into a normal quit (settings are saved on change).
+pub static TERM: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn on_term(_: libc::c_int) {
+    TERM.store(true, Ordering::Relaxed);
+}
+
+/// The now-playing poster the player wrote for desktop widgets.
+pub fn remove_art_file() {
+    if let Some(d) = std::env::var_os("XDG_RUNTIME_DIR") {
+        let _ = std::fs::remove_file(
+            std::path::Path::new(&d).join(format!("nocturne-art-{}.img", std::process::id())),
+        );
+    }
+}
 
 fn main() {
     // Config (and .env) is read once, before any other thread exists.
     let cfg = nocturne_jellyfin::Config::load().ok();
+    // SAFETY: the handler only stores to an atomic.
+    unsafe {
+        libc::signal(libc::SIGTERM, on_term as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGINT, on_term as *const () as libc::sighandler_t);
+    }
     Application::new()
         .with_assets(assets::Assets)
         .run(move |cx: &mut App| {
@@ -53,6 +75,7 @@ fn main() {
                 view
             })
             .expect("open window");
+            cx.on_app_quit(|_| async { remove_art_file() }).detach();
             cx.on_window_closed(|cx| {
                 if cx.windows().is_empty() {
                     cx.quit();

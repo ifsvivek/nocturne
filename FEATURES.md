@@ -18,7 +18,7 @@ Update this file at every task boundary. Scope risks are listed at the bottom.
 - [x] Library views: virtualised paged grid, tabs, sort, filters (no HDR: server has no filter), A-Z, poster/thumb/list, per-library prefs (UI not yet live-verified)
 - [~] Collections, Playlists, Favourites pages; Genres, Studios, Years, Tags, Recent, Random tabs (Next Up/Latest on Home)
 - [ ] Movies, Shows, Seasons, Episodes, Music (artists/albums/tracks), Music videos, Home videos, Photos, Books, Audiobooks (type coverage)
-- [~] Item detail: overview, cast, similar, extras, media info, ratings, chapters, prev/next episode, series/season episode card grid (gaps: More menu, Next Up row on series, photo viewer, books)
+- [~] Item detail: overview, cast, similar, extras, media info, ratings, chapters, prev/next episode, series/season episode card grid (More menu, Next Up row, Season cards (shown when a show has 2+ seasons), basic Photo viewer, Book page with a not-playable note: see docs/QA_REPORT.md)
 - [x] Person page (filmography rows)
 - [x] Search (Ctrl+K or /, debounced, grouped, recent)
 - [ ] Favorites, watched/unwatched toggles (needs user-state writes, see below)
@@ -48,7 +48,7 @@ Update this file at every task boundary. Scope risks are listed at the bottom.
 
 ## Admin dashboard (P1, in progress)
 - [x] Admin shell + sidebar; Dashboard, Users (create/disable/admin/password/delete), Libraries list/scan, Scheduled Tasks start/stop, Devices, Activity, API Keys, Logs, Plugins (read), General/Metadata/Resume/Streaming (editable), Branding/Networking (read-only)
-- [ ] Admin gaps: Libraries Display/NFO, Transcoding, Trickplay, Backups, editable Branding/Networking, task triggers, plugin install/enable, library add/remove/edit
+- [~] Admin gaps: done = library display/NFO/trickplay flags (read), Transcoding (view + edit 3 fields), Backups list (read). Still open: editable Branding/Networking, task triggers, plugin install/enable, library add/remove/edit, Trickplay edit
 - [ ] Users: policy details (library access, parental rating, features, remote access, bitrate limits, sync play, live TV), profile image, password policy
 - [ ] Libraries: add/remove library, paths, type, metadata providers, image fetchers, real-time monitor, schedule, chapter images, trickplay settings, NFO, subtitles downloaders, languages
 - [ ] Playback settings: transcoding (hardware acceleration, ffmpeg path, thread count, tone mapping, throttling), resume, streaming bitrate, trickplay

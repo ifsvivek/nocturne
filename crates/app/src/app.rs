@@ -782,6 +782,9 @@ impl Root {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
+        if crate::TERM.load(std::sync::atomic::Ordering::Relaxed) {
+            return cx.quit();
+        }
         self.drain_reverts(cx);
         self.sync_tick(cx);
         self.watch_connection(cx);
