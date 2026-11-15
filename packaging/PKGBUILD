@@ -18,7 +18,7 @@ makedepends=(cargo pkgconf)
 # libmpv2-sys uses pregenerated bindings (no clang/bindgen); it only needs libmpv to link, shipped by `mpv`.
 makedepends+=(mpv)
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('22251499bf68f970e195e7eb8cb86e71877d05607c72562664183d53a56e33d4')
+sha256sums=('3c01fbc914dfddcdcde5fff8e3b6a5614a69aaa3e53835aa559d5b8f844ebb33')
 
 prepare() {
   cd "$pkgname-$pkgver"
