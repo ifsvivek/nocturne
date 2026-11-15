@@ -1,4 +1,5 @@
-use crate::{Config, Error, Item, Items, PublicInfo, Result, User};
+use crate::play::RawSegments;
+use crate::{Config, Error, Item, Items, PlayItem, PublicInfo, Result, Segment, Transcode, User};
 use reqwest::{Url, header};
 use serde::de::DeserializeOwned;
 use std::time::Duration;
@@ -228,7 +229,83 @@ impl Client {
         Ok(resp.bytes().await.map_err(http_err)?.to_vec())
     }
 
+    /// `GET /Items/{id}`: media sources/streams and trickplay info (player reads).
+    pub async fn play_item(&self, user_id: &str, id: &str) -> Result<PlayItem> {
+        self.get(&["Items", id], &[("userId", user_id.to_string())])
+            .await
+    }
+
+    /// `GET /MediaSegments/{id}` (intro/outro ranges). Servers without the API yield no segments.
+    pub async fn media_segments(&self, id: &str) -> Vec<Segment> {
+        self.get::<RawSegments>(&["MediaSegments", id], &[])
+            .await
+            .map(RawSegments::into_segments)
+            .unwrap_or_default()
+    }
+
+    /// One trickplay tile sheet (JPEG) for `width`, sheet number `index`.
+    pub async fn trickplay_tile(
+        &self,
+        id: &str,
+        width: u32,
+        index: u32,
+        source_id: &str,
+    ) -> Result<Vec<u8>> {
+        let url = self.trickplay_url(id, width, index, source_id);
+        let path = Url::parse(&url)
+            .map(|u| u.path().to_string())
+            .unwrap_or_default();
+        let resp = self.http.get(url).send().await.map_err(http_err)?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(Error::Status {
+                status: status.as_u16(),
+                path,
+            });
+        }
+        Ok(resp.bytes().await.map_err(http_err)?.to_vec())
+    }
+
     // ---- URL builders (pure, no network) ----
+
+    /// `/Videos/{id}/Trickplay/{width}/{index}.jpg`; no credentials in the URL.
+    pub fn trickplay_url(&self, id: &str, width: u32, index: u32, source_id: &str) -> String {
+        self.url(
+            &[
+                "Videos",
+                id,
+                "Trickplay",
+                &width.to_string(),
+                &format!("{index}.jpg"),
+            ],
+            &[("mediaSourceId", source_id.to_string())],
+        )
+        .into()
+    }
+
+    /// HLS transcode URL (`/Videos/{id}/master.m3u8`); auth goes in a header, never the URL.
+    pub fn transcode_url(&self, id: &str, t: &Transcode) -> String {
+        let mut p = t.pairs();
+        p.push(("DeviceId", self.device_id.clone()));
+        self.url(&["Videos", id, "master.m3u8"], &p).into()
+    }
+
+    /// Stream URL of one subtitle track as SRT (for external loading into mpv); no credentials.
+    pub fn subtitle_url(&self, id: &str, source_id: &str, index: i64) -> String {
+        self.url(
+            &[
+                "Videos",
+                id,
+                source_id,
+                "Subtitles",
+                &index.to_string(),
+                "0",
+                "Stream.srt",
+            ],
+            &[],
+        )
+        .into()
+    }
 
     /// `/Items/{id}/Images/{type}` with optional width cap and cache-busting tag.
     /// The URL carries no credentials.
@@ -371,6 +448,59 @@ mod tests {
         assert_eq!(plain, "http://jf.test:8096/Videos/abc/stream?static=true");
         assert!(!plain.contains("tok123"));
         assert!(c.stream_url_with_key("abc").ends_with("&api_key=tok123"));
+    }
+
+    #[test]
+    fn transcode_and_trickplay_urls_carry_no_token() {
+        let c = client();
+        let t = Transcode {
+            source_id: "s1".into(),
+            video_bitrate: Some(4_000_000),
+            max_height: Some(720),
+            max_audio_channels: Some(2),
+            play_session: "ps".into(),
+            ..Default::default()
+        };
+        let u = c.transcode_url("abc", &t);
+        assert!(u.starts_with("http://jf.test:8096/Videos/abc/master.m3u8?MediaSourceId=s1&"));
+        assert!(u.contains("VideoBitrate=4000000") && u.contains("MaxHeight=720"));
+        assert!(!u.contains("tok123") && !u.contains("api_key"));
+        assert!(!u.contains("AllowVideoStreamCopy"));
+        let t2 = Transcode { allow_copy: true, ..t };
+        assert!(c.transcode_url("abc", &t2).contains("AllowVideoStreamCopy=true"));
+        assert_eq!(
+            c.trickplay_url("abc", 320, 2, "s1"),
+            "http://jf.test:8096/Videos/abc/Trickplay/320/2.jpg?mediaSourceId=s1"
+        );
+        assert_eq!(
+            c.subtitle_url("abc", "s1", 3),
+            "http://jf.test:8096/Videos/abc/s1/Subtitles/3/0/Stream.srt"
+        );
+    }
+
+    #[test]
+    fn play_item_and_segments_parse() {
+        let j = r#"{"MediaSources":[{"Id":"s1","Container":"mkv","Bitrate":8000000,"MediaStreams":[
+            {"Index":0,"Type":"Video","Height":1080},
+            {"Index":1,"Type":"Audio","Language":"jpn","Channels":6,"IsDefault":true},
+            {"Index":2,"Type":"Subtitle","Language":"eng","IsExternal":true,"IsTextSubtitleStream":true}]}],
+            "Trickplay":{"s1":{"320":{"Width":320,"Height":180,"TileWidth":10,"TileHeight":10,"ThumbnailCount":90,"Interval":10000},
+            "640":{"Width":640,"Height":360,"TileWidth":5,"TileHeight":5,"ThumbnailCount":90,"Interval":10000}}}}"#;
+        let p: PlayItem = serde_json::from_str(j).unwrap();
+        assert_eq!(p.media_sources[0].media_streams.len(), 3);
+        assert!(p.media_sources[0].media_streams[2].is_external);
+        assert_eq!(p.trickplay_for(400).unwrap().1.width, 320);
+        assert_eq!(p.trickplay_for(1000).unwrap().1.width, 640);
+        assert_eq!(p.trickplay_for(100).unwrap().1.width, 320, "narrowest when all too wide");
+        assert!(PlayItem::default().trickplay_for(400).is_none());
+        let s: RawSegments = serde_json::from_str(
+            r#"{"Items":[{"Type":"Intro","StartTicks":10,"EndTicks":50},{"Type":"Outro","StartTicks":5,"EndTicks":5},{"Type":"Weird","StartTicks":1,"EndTicks":2}]}"#,
+        )
+        .unwrap();
+        let v = s.into_segments();
+        assert_eq!(v.len(), 2, "empty segment dropped");
+        assert_eq!(v[0].kind, crate::SegmentKind::Intro);
+        assert_eq!(v[1].kind, crate::SegmentKind::Unknown);
     }
 
     #[test]
