@@ -12,7 +12,8 @@ UI with [GPUI](https://github.com/zed-industries/zed), playback with libmpv. Lin
 - Rust (stable, 2024 edition)
 - libmpv dev files (`pkg-config --modversion mpv`)
 - A Jellyfin server (developed against 12.x)
-- Vulkan-capable GPU
+- Vulkan-capable GPU (UI); OpenGL/EGL (in-window video)
+- Wayland for in-window video; other sessions fall back to an external mpv window (`NOCTURNE_VIDEO=external` forces it)
 
 ## Configuration
 
@@ -45,6 +46,25 @@ scripts/test-jellyfin.sh stop     # or `reset` to delete everything
 `vendor/xattr` is a one-line patched copy of the `xattr` crate (a transitive dependency of GPUI that no longer builds against current `libc`); see the `[patch.crates-io]` note in `Cargo.toml`.
 
 **Read-only boundary.** `crates/jellyfin` is strictly GET-only (no POST/PUT/DELETE/PATCH): the server holds your personal media and the browsing/playback layer must not be able to change it. `crates/jellyfin/tests/readonly.rs` enforces this. Write/admin calls (users, libraries, tasks, sessions, settings) live in the separate crate `crates/jellyfin-admin`; every write action will require explicit UI confirmation and will only be tested against a throwaway Jellyfin instance, never your real server. Integration tests here only issue read-only requests.
+
+## Wayland compositor notes
+
+Video plays in a subsurface of the app window, so the compositor applies its window opacity to it. If your compositor
+dims or fades non-fullscreen windows (Hyprland `active_opacity`/`inactive_opacity` below 1), video looks washed out until
+you exempt the app, class (app id) `nocturne`. Hyprland 0.57 (Lua config):
+
+```lua
+hl.window_rule({ name = "nocturne-opaque", match = { class = "^nocturne$" }, opaque = true })
+```
+
+Hyprland hyprlang config (`hyprland.conf`):
+
+```ini
+windowrule = opaque on, match:class ^(nocturne)$
+```
+
+(Older hyprlang syntax: `windowrulev2 = opaque, class:^(nocturne)$`.) Fullscreen is never affected. Other compositors
+need the equivalent "opaque / no opacity" rule for app id `nocturne`.
 
 ## Roadmap
 

@@ -1,6 +1,6 @@
 # In-window GPU video for NOCTURNE: feasibility report
 
-Prototype: `crates/video-proto` (about 650 lines, `publish = false`, not wired into the app).
+Prototype (historical): `crates/video-proto`, removed once integrated; its code lives on as `crates/player/src/embedded.rs` (see "Integrated" below).
 Environment: Arch/CachyOS, Hyprland 0.57.1 (Wayland), NVIDIA RTX 3060 Laptop (driver 615.78.08) + AMD iGPU,
 180 Hz monitor, scale 1.0, mpv/libmpv 0.41 (client API 2.5), GPUI 0.2.2, `libmpv2` 7.0.1, Rust 1.99.
 
@@ -32,7 +32,7 @@ bigger build and is not needed because A is stable.
 
 ## How A works (what was built)
 
-`VideoSurface::new(display, parent_surface, hwdec)` in `crates/video-proto/src/video.rs`:
+`VideoSurface::new(display, parent_surface, hwdec)` (prototype; now `EmbeddedPlayer::new(display, parent)` in `crates/player/src/embedded.rs`):
 
 1. Raw handles: `gpui::Window` implements `HasWindowHandle`/`HasDisplayHandle`
    (`WaylandWindowHandle.surface` = GPUI's `wl_surface*`, `WaylandDisplayHandle.display` = its `wl_display*`).
@@ -153,26 +153,41 @@ Do not use `hwdec=vulkan` in-process either (it needs a Vulkan device).
 - C3: XWayland `--wid`: needs the whole GPUI app on its X11 backend, which gives scaling blur and no transparent overlay (an X child window cannot be
   alpha-composited under GPUI controls). Last resort only; rejected.
 
-## Integration estimate and API sketch
-Code: move `video.rs` into `crates/player` behind a `Player::embed(...)` constructor (about 300 lines, unchanged), plus
-about 80 lines in `crates/app` (a `VideoSurfaceView` canvas element, bounds plumbing, transparent root while a video is shown,
-overlay bar already GPUI). Replace the child-process IPC with libmpv property observation. Roughly 600-900 lines changed including tests.
-`crates/player` regains the `libmpv2` dependency.
+## Integrated
 
-```rust
-// crates/player
-pub struct VideoSurface { /* subsurface + render thread + Arc<Mpv> */ }
-impl VideoSurface {
-    /// GPUI main thread only. Handles from gpui::Window's HasWindowHandle/HasDisplayHandle.
-    pub fn new(display: *mut c_void, parent: *mut c_void, opts: Options) -> Result<(Self, Receiver<Event>)>;
-    pub fn set_bounds(&mut self, x: f32, y: f32, w: f32, h: f32, scale: f32); // from canvas prepaint
-    pub fn load(&self, url: &str, headers: Option<&str>) -> Result<()>;      // same as Player::load
-    pub fn play/pause/toggle/seek_to/seek_by/set_volume/stop(&self) -> Result<()>;
-    pub fn state(&self) -> State;       // same State/Event types as Player (property observers instead of IPC)
-}                                       // Drop = ordered teardown above
-```
-App side: `VideoSurface` created lazily from the first canvas paint of the player view (needs `&mut Window`), kept in the view while a video is
-open; dropped on stop/close BEFORE the window. `state()`/`events()` keep today's polling, so the now-playing bar needs no change.
+`crates/video-proto` is gone. What shipped:
+
+- `nocturne_player::EmbeddedPlayer` (`crates/player/src/embedded.rs`): `new(wl_display*, wl_surface*)`,
+  `load(url, headers)`, `play/pause/toggle/stop/seek_to/seek_by/set_volume`, `state()`, `events()` (same `State`/`Event`
+  types as the child-process `Player`), plus `set_bounds(x, y, w, h, scale)` for the video rect. State comes from mpv
+  property observers on an event thread. The auth header goes through `change-list http-header-fields append`
+  (never URL or argv). The creation site carries the rule "OpenGL render API only, never gpu/gpu-next Vulkan in-process".
+- `Playback` (`crates/app/src/video.rs`): a two-variant enum (`Embedded`, `External(Player)`) with the shared method
+  names. The backend is chosen at the first play: `NOCTURNE_VIDEO=external|embedded` overrides, otherwise embed when
+  `WAYLAND_DISPLAY` is set. If creating the embedded player fails (no wayland handles, no viewporter/subcompositor,
+  EGL/mpv init), one calm line (no URLs) is logged and the app uses the child-process `Player` for the rest of the session.
+- Window: `WindowBackgroundAppearance::Transparent`, `app_id = nocturne`. Every normal screen paints the opaque root
+  background; the player page paints nothing except a `canvas()` whose bounds are pushed to `set_bounds` each frame
+  (black behind it until the file is loaded). The now-playing bar overlays the video (translucent, `occlude()` so clicks on
+  it do not toggle pause) and auto-hides after 3 s without mouse movement or keys (cursor hides with it).
+- Keys on the player page: Space pause, Left/Right seek 10 s, Up/Down volume, `m` mute, `s` stop, `f` fullscreen,
+  `n` next episode, Esc leaves fullscreen first and then closes playback. A click on the video toggles pause,
+  a double-click also toggles fullscreen.
+- Pins: `gpui = "=0.2.2"`, `libmpv2 = "=7.0.1"`, `wayland-backend/-client/-egl/-protocols` exact.
+
+Verified live on a throwaway Jellyfin (Hyprland 0.57.1, NVIDIA, scale 1.0): playback inside the window, keyboard and mouse
+controls, scrub seek, fullscreen in/out (keys and double-click), resize while playing, 2x 20 start/stop cycles through
+the app, clean exit while playing (10/10), forced external fallback (`NOCTURNE_VIDEO=external`).
+
+Teardown findings from integration (beyond the order above):
+- Closing the window while playing must not drop the player inside the compositor's close event, and freeing the mpv render
+  context without stopping playback first hung intermittently while Hyprland was closing the window (render thread stuck
+  in `mpv_render_context_free`; reproducible about 3 of 4 runs, 0 of 18 after the fix). The fix: `stop` the mpv core before
+  stopping the render thread, and on close veto the compositor event, drop the player from a task, then `cx.quit()`.
+- A second `gpui` update from inside the close callback deadlocks; do the teardown from a spawned task.
+
+Known gaps: the first frames can show black before the first video frame; subsurface resize is not atomic with GPUI's
+repaint (see Resize); AMD/Intel-only and fractional-scale machines are untested; X11 sessions use the external player.
 
 ## Risks
 - Raw-pointer coupling to gpui 0.2.2 internals (`wl_surface`/`wl_display` handles, shared connection). Pin the version; re-test on every gpui bump.
@@ -182,20 +197,8 @@ open; dropped on stop/close BEFORE the window. `state()`/`events()` keep today's
 - No Vulkan in-process (hard rule above). `hwdec=auto-safe` may still pick vaapi/drmprime on other GPUs, which is OK on GL.
 - mpv option `background`/`background-color` semantics changed in 0.40+; keep the explicit clear.
 
-## Commands to run
-```
-cd <repo-root>
-cargo build --release -p video-proto
-# test clips (not committed): 10 s test patterns
-mkdir -p /tmp/nocturne-vp && cd /tmp/nocturne-vp
-ffmpeg -f lavfi -i testsrc2=size=1920x1080:rate=30 -t 10 -c:v libx264 -pix_fmt yuv420p c1080_h264.mp4
-ffmpeg -f lavfi -i testsrc2=size=3840x2160:rate=30 -t 10 -c:v libx265 -preset ultrafast -pix_fmt yuv420p10le \
-  -x265-params colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc c4k_hevc10.mp4
-cd <repo-root>
-target/release/video-proto /tmp/nocturne-vp/c1080_h264.mp4                       # play, stats every second
-target/release/video-proto /tmp/nocturne-vp/c1080_h264.mp4 --cycles 20 --hold-ms 1200   # 20 start/stop cycles
-target/release/video-proto <clip> --cycles 20 --order window-first                # wrong teardown order
-target/release/video-proto <clip> --mode own --gpu-api vulkan --cycles 5          # reproduces the SIGSEGV (139)
-target/release/video-proto <clip> --mode own --gpu-api opengl --cycles 20         # stable comparison
-# options: --hwdec auto-safe|nvdec|vaapi|no   --quit-after S   env: VP_MPV_LOG=/tmp/mpv.log  VP_NOVIDEO=1
-```
+## Commands to run (historical)
+The prototype binary and its `--cycles`/`--mode own` repro switches were removed with `crates/video-proto`. The Vulkan-in-process
+SIGSEGV can still be reproduced with a standalone libmpv program using `vo=gpu-next gpu-context=waylandvk` next to any GPUI window.
+Live app verification: `scripts/test-jellyfin.sh start`, launch the app with `NOCTURNE_JF_URL`/`NOCTURNE_JF_TOKEN` taken from the
+throwaway `test.env`, press Enter on the Home hero.
