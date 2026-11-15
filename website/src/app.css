@@ -28,7 +28,7 @@
 }
 
 @layer base {
-  html { color-scheme: dark; scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  html { overflow-x: clip; color-scheme: dark; scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
   body { @apply bg-black font-sans text-base leading-relaxed text-ink antialiased overflow-x-clip; }
   a { @apply text-accent-ink underline underline-offset-4 decoration-1 transition-colors duration-150 hover:text-white; }
   :focus-visible { @apply outline-2 outline-offset-4 outline-accent; }
@@ -91,7 +91,7 @@ body::after {
   @apply rounded-sm bg-black/85 px-2.5 py-1 text-[0.66rem] font-medium uppercase tracking-[0.18em] text-ink-2 ring-1 ring-white/15 ring-inset;
 }
 .tag-accent { @apply text-accent-ink ring-accent/40; }
-@media (max-width: 639px) { .tag { @apply px-2 text-[0.56rem]; } }
+@media (max-width: 639px) { .tag { @apply px-1.5 text-[0.5rem] tracking-[0.08em]; margin-left: 8px; } }
 
 /* Read-only: a focus ring on the real OFF switch (96.1% / 58.6% of the capture). */
 .reticle, .callout { position: absolute; z-index: 2; pointer-events: none; top: 58.6%; }

@@ -24,8 +24,8 @@
       </ol>
     </div>
     <!-- The window taking itself apart: flat (what you see), then tilted and split into its three real layers. -->
-    <figure class="explode reveal m-0 grid aspect-[1/0.82] place-items-center">
-      <div class="explode-stack relative aspect-[24/13] w-[66%] -translate-x-[8%] max-sm:w-[60%] max-sm:-translate-x-[14%]">
+    <figure class="explode reveal m-0 grid aspect-[1/0.82] max-sm:aspect-square place-items-center overflow-clip">
+      <div class="explode-stack relative aspect-[24/13] w-[66%] -translate-x-[8%] max-sm:w-[42%] max-sm:-translate-x-[36%]">
         <div class="layer-1 absolute inset-0">
           <img class="size-full rounded-sm object-cover shadow-[0_60px_80px_-30px_rgb(0_0_0/0.9)] ring-1 ring-white/10" src={video.src} srcset={video.srcset} sizes="(min-width: 1024px) 480px, 60vw" alt={video.alt} width={video.width} height={video.height} loading="lazy" decoding="async">
           <span class="tag">Video &middot; libmpv</span>
