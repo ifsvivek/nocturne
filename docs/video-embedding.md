@@ -1,8 +1,8 @@
 # In-window GPU video for NOCTURNE: feasibility report
 
 Prototype (historical): `crates/video-proto`, removed once integrated; its code lives on as `crates/player/src/embedded.rs` (see "Integrated" below).
-Test environment (a single hybrid-graphics machine; other hardware is untested): Arch Linux, Hyprland 0.57.1 (Wayland),
-NVIDIA discrete GPU (proprietary driver 615.78.08) plus AMD iGPU, high-refresh monitor at scale 1.0, mpv/libmpv 0.41
+Test environment (a single hybrid-graphics machine; other hardware is untested): Arch Linux, a Wayland compositor,
+NVIDIA discrete GPU (proprietary driver) plus AMD iGPU, high-refresh monitor at scale 1.0, mpv/libmpv 0.41
 (client API 2.5), GPUI 0.2.2, `libmpv2` 7.0.1.
 
 ## Recommendation: GO (with caveats)
@@ -23,8 +23,8 @@ Caveats (details below):
 2. Wayland only. GPUI's X11 backend would need a separate implementation, which is not worth it.
 3. HDR is tone-mapped to SDR (no wp_color_management in GPUI), so no HDR passthrough. 4K HDR plays correctly as SDR.
 4. The compositor applies its own window opacity to the whole surface tree (see "Compositing"). On
-   compositors configured with window opacity below 1 (for example Hyprland) this needs one `opaque` rule for the app
-   class (`nocturne`), the same as mpv/vlc.
+   compositors configured with window opacity below 1 this needs an opaque rule for the app id (`nocturne`), the same
+   as for mpv/vlc.
 5. Subsurface resize and the parent GPUI redraw are not atomic: the video can be a frame ahead of the controls.
 6. No fractional-scale test was possible (the test machine ran at scale 1.0).
 
@@ -81,12 +81,12 @@ Gotchas found:
   The text, rounded button and 63% black control bar all render properly.
 - Transparent hole = simply not painting a background where the video is.
 - Clicks over the video go to GPUI (empty input region), so GPUI hover/click handlers for controls work on top.
-- A compositor configured like Hyprland with `active_opacity 0.92`, `inactive_opacity 0.85` and `fullscreen_opacity 1.0`
-  applies that to every window unless the class is carved out (`opaque = true`, as is usual for mpv/vlc). This applies to the WHOLE surface tree, so
+- A compositor configured with window opacity below 1 for active and inactive windows applies it to every window unless
+  the app id is exempted (as is usual for mpv/vlc). This applies to the WHOLE surface tree, so
   the video (and letterbox bars) look washed out/see-through windowed and are exact in fullscreen. NOCTURNE needs
-  the same carve-out (app_id `nocturne`). Not a code issue, but must be documented for users with such configs.
+  the same exemption (app_id `nocturne`). Not a code issue.
 - Observed once, also WITHOUT any video (`VP_NOVIDEO=1`): right after the compositor enlarges the window, GPUI's own
-  frame lags for a moment (bottom strip not yet painted). This is GPUI/Hyprland, not the subsurface.
+  frame lags for a moment (bottom strip not yet painted). This is GPUI or the compositor, not the subsurface.
 
 ## Resize / move / fullscreen
 - Bounds come from GPUI layout every frame (canvas prepaint), so any layout (e.g. video in a card, PiP, side panel)
@@ -177,13 +177,13 @@ Do not use `hwdec=vulkan` in-process either (it needs a Vulkan device).
   a double-click also toggles fullscreen.
 - Pins: `gpui = "=0.2.2"`, `libmpv2 = "=7.0.1"`, `wayland-backend/-client/-egl/-protocols` exact.
 
-Verified live on a throwaway Jellyfin (Hyprland 0.57.1, NVIDIA, scale 1.0): playback inside the window, keyboard and mouse
+Verified live on a throwaway Jellyfin (Wayland, NVIDIA, scale 1.0): playback inside the window, keyboard and mouse
 controls, scrub seek, fullscreen in/out (keys and double-click), resize while playing, 2x 20 start/stop cycles through
 the app, clean exit while playing (10/10), forced external fallback (`NOCTURNE_VIDEO=external`).
 
 Teardown findings from integration (beyond the order above):
 - Closing the window while playing must not drop the player inside the compositor's close event, and freeing the mpv render
-  context without stopping playback first hung intermittently while Hyprland was closing the window (render thread stuck
+  context without stopping playback first hung intermittently while the compositor was closing the window (render thread stuck
   in `mpv_render_context_free`; reproducible about 3 of 4 runs, 0 of 18 after the fix). The fix: `stop` the mpv core before
   stopping the render thread, and on close veto the compositor event, drop the player from a task, then `cx.quit()`.
 - A second `gpui` update from inside the close callback deadlocks; do the teardown from a spawned task.
@@ -215,7 +215,7 @@ right-click menu, favourite heart, MPRIS (play/pause/stop/next/previous/seek, me
 `$XDG_RUNTIME_DIR`), idle inhibit via `org.freedesktop.ScreenSaver` while playing.
 
 Limits: the mini player resizes the window to 640x360 (the app's minimum size may clamp it) and cannot stay on top
-(no GPUI/Wayland API; use a compositor rule, e.g. Hyprland `pin` + `float` for class `nocturne`). The external mpv
+(no GPUI/Wayland API; a compositor window rule for app id `nocturne` can pin it). The external mpv
 backend shows the same controls on a black page, but video is in mpv's own window. Media segments need a server-side
 provider (core Jellyfin has none); without one the skip chip never appears.
 

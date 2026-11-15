@@ -1,6 +1,6 @@
 # Packaging
 
-Everything here was tested on Arch Linux, x86_64, Hyprland (Wayland) with Xwayland, mpv 0.41.0, Rust 1.99.
+Everything here was tested on Arch Linux, x86_64, Wayland with Xwayland, mpv 0.41.0, Rust 1.99.
 Other distributions and architectures are UNVERIFIED.
 
 ## Install paths
@@ -51,6 +51,14 @@ AppImage: not provided. libmpv's closure is about 205 shared libraries (about 24
 codecs, the GPU stack (libEGL/libvulkan and driver ICDs) must come from the host and cannot be bundled, and a
 binary built on a rolling glibc would not be self-contained on older systems. Use the tarball or the distribution
 package, which take libmpv from the system.
+
+## Vendored xattr
+
+`vendor/xattr` is the crates.io `xattr` 0.2.3 with one line changed (`ENOATTR` is defined as `ENODATA`).
+GPUI pulls it in through `zed-async-tar`, which requires the 0.2 series, and 0.2.3 is the last 0.2 release. It
+uses `libc::ENOATTR`, which current `libc` (0.2.190 and later) no longer exports for Linux, so the unpatched crate does
+not compile (checked in a clean copy without the `[patch.crates-io]` entry: `error[E0425]: cannot find value ENOATTR`).
+Remove the patch and the directory once GPUI or `zed-async-tar` moves to a fixed `xattr`.
 
 ## Checks
 

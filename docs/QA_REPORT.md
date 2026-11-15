@@ -1,6 +1,6 @@
 # QA report
 
-Scope: Wayland (Hyprland) and X11 (Xwayland) on Linux, release build. Read-only checks ran against a
+Scope: Wayland and X11 (Xwayland) on Linux, release build. Read-only checks ran against a
 a real Jellyfin server in API-key developer mode (a GET-only recording proxy counted requests: 0 non-GET
 requests over the whole run, including one in-window playback). Everything with accounts or writes ran
 only against the throwaway server from `scripts/test-jellyfin.sh`. No personal media details are
