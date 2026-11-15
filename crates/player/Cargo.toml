@@ -1,0 +1,13 @@
+[package]
+name = "nocturne-player"
+description = "libmpv playback control for NOCTURNE (mpv owns its window)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+libmpv2 = "7.0.1"
+thiserror = "2.0.21"
+
+[dev-dependencies]
+nocturne-jellyfin = { path = "../jellyfin" }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros"] }
