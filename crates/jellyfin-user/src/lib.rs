@@ -6,6 +6,8 @@
 //! server from `scripts/test-jellyfin.sh` (tests use `nocturne_jellyfin_admin::guard::TestServerGuard`).
 
 mod client;
+#[cfg(test)]
+mod mock;
 mod model;
 
 pub use client::UserClient;

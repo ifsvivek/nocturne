@@ -194,3 +194,56 @@ mod tests {
         assert!(v.len() == 1 && v[0].current && v[0].client == "NOCTURNE");
     }
 }
+
+/// One display language the server offers (`GET /Localization/Options`), such as
+/// `{"Name": "English (United States)", "Value": "en-US"}`.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct LanguageOption {
+    pub name: String,
+    pub value: String,
+}
+
+/// The few own-profile fields the app shows (`GET /Users/Me`).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct Profile {
+    pub name: String,
+    pub primary_image_tag: Option<String>,
+}
+
+/// Largest profile image accepted (the server stores it as is).
+pub const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+
+/// MIME type of a PNG, JPEG, WebP or GIF by its first bytes; anything else is refused before it
+/// is sent.
+pub fn image_mime(bytes: &[u8]) -> crate::Result<&'static str> {
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return Err(crate::Error::Config(
+            "the image is larger than 10 MB".into(),
+        ));
+    }
+    match bytes {
+        [0x89, b'P', b'N', b'G', ..] => Ok("image/png"),
+        [0xFF, 0xD8, 0xFF, ..] => Ok("image/jpeg"),
+        [
+            b'R',
+            b'I',
+            b'F',
+            b'F',
+            _,
+            _,
+            _,
+            _,
+            b'W',
+            b'E',
+            b'B',
+            b'P',
+            ..,
+        ] => Ok("image/webp"),
+        [b'G', b'I', b'F', b'8', ..] => Ok("image/gif"),
+        _ => Err(crate::Error::Config(
+            "that file is not a PNG, JPEG, WebP or GIF image".into(),
+        )),
+    }
+}

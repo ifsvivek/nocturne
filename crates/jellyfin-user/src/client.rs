@@ -128,6 +128,31 @@ impl UserClient {
         self.send(m, segs, pairs, b).await.map(drop)
     }
 
+    /// Send `body` as is with the given content type (image uploads).
+    async fn send_raw(&self, segs: &[&str], content_type: &str, body: String) -> Result<()> {
+        let mut url = self.base.clone();
+        url.path_segments_mut()
+            .expect("http url has a base")
+            .pop_if_empty()
+            .extend(segs);
+        let path = url.path().to_string();
+        let resp = self
+            .http
+            .post(url)
+            .header(header::CONTENT_TYPE, content_type)
+            .body(body)
+            .send()
+            .await
+            .map_err(http_err)?;
+        match resp.status() {
+            s if s.is_success() => Ok(()),
+            s => Err(Error::Status {
+                status: s.as_u16(),
+                path,
+            }),
+        }
+    }
+
     fn uid(&self) -> (&'static str, String) {
         ("userId", self.user_id.clone())
     }
@@ -358,6 +383,101 @@ impl UserClient {
 
     // ---- OWN ACCOUNT ----
 
+    /// READ `GET /Users/Me`: name and whether a profile image is set.
+    pub async fn profile(&self) -> Result<Profile> {
+        self.json(Method::GET, &["Users", "Me"], &[], None).await
+    }
+
+    /// WRITE `POST /Users/{id}/Images/Primary`: set the own profile image from PNG, JPEG, WebP
+    /// or GIF bytes (checked first). Jellyfin wants the body base64 encoded, not raw.
+    pub async fn set_own_image(&self, bytes: &[u8]) -> Result<()> {
+        use base64::Engine;
+        let mime = image_mime(bytes)?;
+        let body = base64::engine::general_purpose::STANDARD.encode(bytes);
+        self.send_raw(&["Users", &self.user_id, "Images", "Primary"], mime, body)
+            .await
+    }
+
+    /// WRITE `DELETE /Users/{id}/Images/Primary`: remove the own profile image.
+    pub async fn remove_own_image(&self, _confirmed: UserConfirmed) -> Result<()> {
+        self.run(
+            Method::DELETE,
+            &["Users", &self.user_id, "Images", "Primary"],
+            &[],
+            None,
+        )
+        .await
+    }
+
+    /// READ `GET /Localization/Options`: the display languages the server offers.
+    pub async fn language_options(&self) -> Result<Vec<LanguageOption>> {
+        self.json(Method::GET, &["Localization", "Options"], &[], None)
+            .await
+    }
+
+    fn prefs_query(&self) -> [(&'static str, String); 2] {
+        [self.uid(), ("client", "emby".into())]
+    }
+
+    /// READ `GET /DisplayPreferences/usersettings`: the display language the user chose (the
+    /// `language` entry other Jellyfin clients share), if any.
+    pub async fn display_language(&self) -> Result<Option<String>> {
+        let v: Value = self
+            .json(
+                Method::GET,
+                &["DisplayPreferences", "usersettings"],
+                &self.prefs_query(),
+                None,
+            )
+            .await?;
+        Ok(v["CustomPrefs"]["language"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(str::to_string))
+    }
+
+    /// WRITE `POST /DisplayPreferences/usersettings`: read-modify-write of the `language` entry
+    /// only; `code` must be one the server offers (empty clears it). Every other display
+    /// preference is sent back unchanged.
+    pub async fn set_display_language(&self, code: &str) -> Result<()> {
+        if !code.is_empty()
+            && !self
+                .language_options()
+                .await?
+                .iter()
+                .any(|o| o.value == code)
+        {
+            return Err(Error::Config(
+                "the server does not offer that language".into(),
+            ));
+        }
+        let mut v: Value = self
+            .json(
+                Method::GET,
+                &["DisplayPreferences", "usersettings"],
+                &self.prefs_query(),
+                None,
+            )
+            .await?;
+        if !v["CustomPrefs"].is_object() {
+            v["CustomPrefs"] = json!({});
+        }
+        if code.is_empty() {
+            v["CustomPrefs"]
+                .as_object_mut()
+                .map(|m| m.remove("language"));
+        } else {
+            v["CustomPrefs"]["language"] = json!(code);
+        }
+        self.run(
+            Method::POST,
+            &["DisplayPreferences", "usersettings"],
+            &self.prefs_query(),
+            Some(v),
+        )
+        .await
+    }
+
     /// WRITE `POST /Users/Password?userId=`: change the logged-in user's own password.
     pub async fn change_own_password(
         &self,
@@ -442,6 +562,57 @@ mod tests {
             (p.items[0].entry_id.as_str(), p.items[0].item_id.as_str()),
             ("e", "i")
         );
+    }
+
+    #[tokio::test]
+    async fn own_image_and_language_writes() {
+        use crate::mock::serve;
+        let prefs = r#"{"Id":"x","SortBy":"SortName","CustomPrefs":{"skipForwardLength":"30000"}}"#;
+        let opts = r#"[{"Name":"English","Value":"en-US"},{"Name":"Deutsch","Value":"de"}]"#;
+        let (c, log) = serve(vec![
+            ("GET", "/DisplayPreferences/usersettings", 200, prefs.into()),
+            (
+                "POST",
+                "/DisplayPreferences/usersettings",
+                204,
+                String::new(),
+            ),
+            ("GET", "/Localization/Options", 200, opts.into()),
+            ("POST", "/Users/me/Images/Primary", 204, String::new()),
+            ("DELETE", "/Users/me/Images/Primary", 204, String::new()),
+        ])
+        .await;
+        assert!(c.set_own_image(b"plain text").await.is_err());
+        assert!(c.set_display_language("xx").await.is_err());
+        assert!(
+            log.lock().unwrap().iter().all(|r| r.0 == "GET"),
+            "refused edits wrote nothing"
+        );
+        c.set_own_image(&[0x89, b'P', b'N', b'G', 1, 2, 3])
+            .await
+            .unwrap();
+        c.remove_own_image(UserConfirmed::i_have_asked_the_user())
+            .await
+            .unwrap();
+        c.set_display_language("de").await.unwrap();
+        let l = log.lock().unwrap().clone();
+        let img = l
+            .iter()
+            .find(|r| r.0 == "POST" && r.1.ends_with("Primary"))
+            .unwrap();
+        assert_eq!(img.2, "iVBORwECAw==", "base64 body");
+        let pref = l
+            .iter()
+            .rfind(|r| r.0 == "POST" && r.1.starts_with("/DisplayPreferences"))
+            .unwrap();
+        assert!(pref.1.contains("userId=me") && pref.1.contains("client=emby"));
+        let b: Value = serde_json::from_str(&pref.2).unwrap();
+        assert_eq!(b["CustomPrefs"]["language"], "de");
+        assert_eq!(
+            b["CustomPrefs"]["skipForwardLength"], "30000",
+            "other prefs kept"
+        );
+        assert_eq!(b["SortBy"], "SortName");
     }
 
     #[test]

@@ -100,6 +100,136 @@ pub fn delete(server_url: &str) -> Result<()> {
     Keyring(service()).delete(key(server_url))
 }
 
+fn account_key(server_url: &str, user_id: &str) -> String {
+    format!("{}|{user_id}", key(server_url))
+}
+
+/// Remember a login for switching: its token goes into the keyring under the server and user, so
+/// several accounts per server can be kept side by side. The matching `accounts.toml` entry
+/// ([`Accounts`]) holds names only.
+pub fn save_account(server_url: &str, session: &Session) -> Result<()> {
+    save_account_in(&Keyring(service()), server_url, session)
+}
+
+fn save_account_in(s: &dyn Store, server_url: &str, session: &Session) -> Result<()> {
+    let json = serde_json::to_string(session).expect("session serializes");
+    s.set(&account_key(server_url, &session.user_id), &json)
+}
+
+/// The remembered login of `user_id` on `server_url`, if any.
+pub fn load_account(server_url: &str, user_id: &str) -> Result<Option<Session>> {
+    load_account_from(&Keyring(service()), server_url, user_id)
+}
+
+fn load_account_from(s: &dyn Store, server_url: &str, user_id: &str) -> Result<Option<Session>> {
+    s.get(&account_key(server_url, user_id))?
+        .map(|j| serde_json::from_str(&j).map_err(|e| Error::Corrupt(e.to_string())))
+        .transpose()
+}
+
+/// Forget the remembered login of `user_id` on `server_url` (no error if there is none).
+pub fn delete_account(server_url: &str, user_id: &str) -> Result<()> {
+    Keyring(service()).delete(&account_key(server_url, user_id))
+}
+
+/// Make `session` the active login for `server_url` AND a remembered account (keyring writes),
+/// and list it in `accounts.toml`. Called after every sign-in, restore and switch.
+pub fn remember_login(server_url: &str, session: &Session) -> Result<()> {
+    save(server_url, session)?;
+    save_account(server_url, session)?;
+    let mut a = Accounts::load().unwrap_or_default();
+    a.remember(server_url, session);
+    a.save()
+}
+
+/// One remembered account: names only, never a token.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Account {
+    pub server: String,
+    pub user_id: String,
+    pub user_name: String,
+}
+
+/// Remembered accounts across servers (`$XDG_CONFIG_HOME/nocturne/accounts.toml`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Accounts {
+    pub accounts: Vec<Account>,
+}
+
+impl Accounts {
+    pub fn default_path() -> Result<PathBuf> {
+        Ok(Servers::default_path()?.with_file_name("accounts.toml"))
+    }
+
+    pub fn load() -> Result<Self> {
+        Self::load_from(&Self::default_path()?)
+    }
+
+    pub fn save(&self) -> Result<()> {
+        self.save_to(&Self::default_path()?)
+    }
+
+    /// Missing file means an empty list.
+    pub fn load_from(path: &Path) -> Result<Self> {
+        match std::fs::read_to_string(path) {
+            Ok(t) => toml::from_str(&t).map_err(|e| Error::File(e.to_string())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(e) => Err(Error::File(e.to_string())),
+        }
+    }
+
+    /// Atomic: write a sibling temp file, then rename over the target.
+    pub fn save_to(&self, path: &Path) -> Result<()> {
+        let io = |e: std::io::Error| Error::File(e.to_string());
+        std::fs::create_dir_all(path.parent().expect("path has a parent")).map_err(io)?;
+        let tmp = path.with_extension("toml.tmp");
+        let text = toml::to_string_pretty(self).map_err(|e| Error::File(e.to_string()))?;
+        std::fs::write(&tmp, text).map_err(io)?;
+        std::fs::rename(&tmp, path).map_err(io)
+    }
+
+    /// Add or update the account of `session` on `server_url`.
+    pub fn remember(&mut self, server_url: &str, session: &Session) {
+        let server = key(server_url).to_string();
+        match self
+            .accounts
+            .iter_mut()
+            .find(|a| a.server == server && a.user_id == session.user_id)
+        {
+            Some(a) => a.user_name = session.user_name.clone(),
+            None => self.accounts.push(Account {
+                server,
+                user_id: session.user_id.clone(),
+                user_name: session.user_name.clone(),
+            }),
+        }
+    }
+
+    pub fn forget(&mut self, server_url: &str, user_id: &str) {
+        let server = key(server_url);
+        self.accounts
+            .retain(|a| !(a.server == server && a.user_id == user_id));
+    }
+
+    /// Accounts of one server, in the order they were first remembered.
+    pub fn for_server(&self, server_url: &str) -> Vec<&Account> {
+        let server = key(server_url);
+        self.accounts
+            .iter()
+            .filter(|a| a.server == server)
+            .collect()
+    }
+}
+
+/// Forget one account completely: its keyring token and its `accounts.toml` entry.
+pub fn forget_account(server_url: &str, user_id: &str) {
+    let _ = delete_account(server_url, user_id);
+    let mut a = Accounts::load().unwrap_or_default();
+    a.forget(server_url, user_id);
+    let _ = a.save();
+}
+
 /// Known server URLs and the last used one. URLs only, never tokens.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -239,6 +369,58 @@ mod tests {
         let mut back = back;
         back.forget("http://a:1");
         assert_eq!(back.last_used.as_deref(), Some("http://b:2"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn several_accounts_per_server_keep_their_own_tokens() {
+        let m = Mem::default();
+        let mut bob = session();
+        bob.user_id = "u2".into();
+        bob.user_name = "bob".into();
+        bob.access_token = "tok2".into();
+        save_account_in(&m, "http://a:1/", &session()).unwrap();
+        save_account_in(&m, "http://a:1", &bob).unwrap();
+        let tok = |id| {
+            load_account_from(&m, "http://a:1", id)
+                .unwrap()
+                .map(|s| s.access_token)
+        };
+        assert_eq!(
+            (tok("u"), tok("u2")),
+            (Some("tok".into()), Some("tok2".into()))
+        );
+        assert_eq!(tok("nobody"), None);
+        assert!(load_account_from(&m, "http://b:1", "u").unwrap().is_none());
+    }
+
+    #[test]
+    fn accounts_file_lists_names_only_and_forgets() {
+        let dir = std::env::temp_dir().join(format!("nocturne-accts-{}", std::process::id()));
+        let path = dir.join("nocturne").join("accounts.toml");
+        assert_eq!(Accounts::load_from(&path).unwrap(), Accounts::default());
+        let mut bob = session();
+        bob.user_id = "u2".into();
+        bob.user_name = "bob".into();
+        let mut a = Accounts::default();
+        a.remember("http://a:1/", &session());
+        a.remember("http://a:1", &bob);
+        a.remember("http://a:1", &session()); // again: no duplicate
+        a.remember("http://b:1", &session());
+        a.save_to(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("tok"), "no token on disk");
+        let mut back = Accounts::load_from(&path).unwrap();
+        assert_eq!(back, a);
+        let names: Vec<_> = back
+            .for_server("http://a:1/")
+            .iter()
+            .map(|x| x.user_name.as_str())
+            .collect();
+        assert_eq!(names, ["alice", "bob"]);
+        back.forget("http://a:1", "u");
+        assert_eq!(back.for_server("http://a:1").len(), 1);
+        assert_eq!(back.for_server("http://b:1").len(), 1);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
