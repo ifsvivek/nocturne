@@ -6,11 +6,9 @@ Honest list of what is missing in 0.1.0 and what is intentionally out of scope. 
 ## Known gaps
 
 **Admin**
-- Editable Branding and Networking (view only today)
-- Scheduled task triggers (add, edit, delete)
-- Plugin install, enable, disable and repositories
-- Library add, remove and edit (paths, type, metadata providers, image fetchers, schedule)
-- Trickplay settings editing
+- Plugin repositories (add, remove, enable)
+- Library rename, metadata providers, image fetchers and refresh schedule (a library's type cannot be changed)
+- Networking: base URL, HTTPS and certificates, proxies and IP filters stay view only on purpose
 - User policy details: library access, parental rating, feature and bitrate limits, profile image
 
 **Media types and playback**
@@ -22,7 +20,7 @@ Honest list of what is missing in 0.1.0 and what is intentionally out of scope. 
 **Accounts and settings**
 - User picker / profile switching, display language, own profile image
 - Theme and accent choice, subtitle appearance presets
-- Quick Connect authorisation of other devices, list of own sessions
+- Ending other sessions of your own account (the server only allows it for administrators)
 
 **Platform**
 - Packages are tested on Arch Linux only; other distributions, Flatpak and AppImage are unverified or not provided
@@ -31,7 +29,8 @@ Honest list of what is missing in 0.1.0 and what is intentionally out of scope. 
 
 **Verification still open**
 - Several newer player features on a real server (resume prompt, A-B loop, audio device list, external subtitles,
-  subtitle presets), multi-season shows, 401 mid-session and the offline banner against a real server
+  subtitle presets), multi-season shows and the photo viewer on a real library (both checked on generated
+  throwaway data), 401 mid-session and the offline banner against a real server
 - Cache size cap on a very large library; multi-day soak
 
 ## Dropped (will not be built)

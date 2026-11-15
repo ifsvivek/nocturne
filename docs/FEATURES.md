@@ -10,7 +10,8 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] Server address entry with validation, remembered servers, forget server
 - [x] Session-ended handling (401 returns to sign-in), offline banner with retry
 - [~] Developer API-key mode via environment variables (read-only; all writes refused)
-- [ ] User picker / profile switching, profile image, display language
+- [x] Authorize another device with Quick Connect; Your devices (read only list of this account's sessions)
+- [ ] User picker / profile switching, profile image, display language (Sign out is the way to switch user)
 
 ## Browsing
 - [x] Home: hero, Continue Watching, Next Up, latest per library
@@ -45,13 +46,16 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 ## Admin (administrator accounts only)
 - [x] Dashboard, activity, devices, sessions, logs, plugins (view), backups (list)
 - [x] Users: create, disable, delete, admin flag, password reset
-- [x] Libraries: list, scan, display / NFO / trickplay flags (view)
-- [x] Scheduled tasks: run and stop
+- [x] Libraries: list, scan; add, remove, add / remove folders; toggle real-time monitor, trickplay and chapter images, NFO saving, embedded titles, internet providers; automatic refresh interval
+- [x] Scheduled tasks: run, stop; triggers (daily, weekly, interval, on startup): add, edit, delete
+- [x] Trickplay settings: interval, widths, tile size, quality, threads, scan behaviour, priority, hardware flags
+- [x] Branding: login message, custom CSS, splash screen
+- [x] Networking (safe subset): ports, bind addresses, LAN networks, remote access, UPnP, discovery, IPv4 / IPv6; typed confirmation and a lock-out warning on every change; base URL, HTTPS and certificates, proxies and IP filters stay view only
+- [x] Plugins: enable, disable, uninstall (installed from outside), install from the catalog; takes effect after a restart (bundled plugins cannot be changed)
 - [x] General, Metadata, Resume, Streaming settings (editable); Transcoding (view, three editable fields)
 - [x] API keys: create and delete; server restart
 - [x] Every write behind a confirmation dialog; view only while server changes are off
-- [~] Branding and Networking: view only
-- [ ] Task triggers, plugin install / enable, library add / remove / edit, Trickplay edit
+- [ ] Plugin repositories; library rename, metadata providers, image fetchers and refresh schedule; a library's type cannot be changed
 - [ ] User policy details (library access, parental rating, bitrate limits)
 
 ## Not planned
@@ -61,4 +65,5 @@ Live TV / DVR, SyncPlay, DLNA, acting as a cast target, gapless music playback, 
 - [x] Full-window responsive layout, keyboard-first navigation, loading / empty / error states
 - [x] Settings in TOML under `$XDG_CONFIG_HOME/nocturne/`, no secrets on disk
 - [x] Tarball and Arch PKGBUILD packaging, desktop entry, icon, AppStream metadata
-- [~] Accessibility: keyboard navigation yes; screen-reader labels are limited by GPUI
+- [x] Keyboard shortcut reference: `?` on any browsing screen (the player has its own `?` with playback keys)
+- [~] Accessibility: keyboard navigation and visible focus on controls yes; screen-reader labels are limited by GPUI

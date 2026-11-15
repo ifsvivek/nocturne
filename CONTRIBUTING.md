@@ -28,7 +28,7 @@ scan). At minimum `cargo fmt --all` and `cargo clippy --workspace --all-targets 
 
 ## Throwaway Jellyfin for live tests
 
-`scripts/test-jellyfin.sh {start|stop|reset|status}` runs the installed `jellyfin` on `127.0.0.1:8097` with all state
+`scripts/test-jellyfin.sh {start|stop|reset|status}` runs the installed `jellyfin` on `127.0.0.1:8097` (set `NOCTURNE_JF_TEST_PORT` and `NOCTURNE_JF_TEST_DIR` to run a second instance; the live tests read the same variable) with all state
 under `/tmp/nocturne-jf-test`, loopback only, discovery off. It creates an admin with a random password, an API key,
 users `alice` and `bob`, and a library of generated ffmpeg clips. URL and token go to
 `/tmp/nocturne-jf-test/test.env` (mode 600). Needs `jellyfin`, `ffmpeg`, `curl` and `jq`.

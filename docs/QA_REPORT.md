@@ -16,7 +16,7 @@ Legend: Y = yes, n/a = not applicable, - = not done, partial = see notes.
 | Collections, Playlists, Favourites pages | Y | - | Y | Y (empty states) | Empty state said "loading" forever; now "Nothing here yet" |
 | Search (Ctrl+K and /) | Y | Y | Y | Y | |
 | Movie page | Y | Y | Y | Y | Hero was clipped at 1280x800; min height raised |
-| Series page (logo hero, season tabs, episode card grid, cast, Next Up, More) | Y | partial | Y | Y | Season cards row shows only for shows with 2+ seasons; multi-season case not seen on real data |
+| Series page (logo hero, season tabs, episode card grid, cast, Next Up, More) | Y | partial | Y | Y | Two-season generated show on the throwaway: season tabs with counts, episode card grid, episode page with media info, Next Up starts playback and autoplays the next episode. Not seen on real multi-season data |
 | Episode page, Person page | Y | partial | Y | Y | |
 | Breadcrumbs, back/forward, Esc/Backspace | Y | Y | Y | Y | Header made more opaque so scrolled content no longer shows through |
 | In-window playback: controls, audio/subtitle menus, speed, chapters, seek, fullscreen, trickplay hover, quality menu, stats overlay, clean stop | Y | Y (logic) | Y | Y (one playback) | Real-server playback made only GET requests. Stats overlay opened; the buffered value was not recorded numerically |
@@ -30,7 +30,9 @@ Legend: Y = yes, n/a = not applicable, - = not done, partial = see notes.
 | Admin writes via confirmation dialog | Y | Y | Y | n/a | Create/disable/delete user, refresh library, run task, create/delete API key, set config and transcoding field: all verified on the throwaway. Session message not exercised (no client advertised remote control) |
 | Admin Esc | Y | Y | Y | n/a | One Esc leaves Admin; Backspace steps to the sidebar |
 | Admin: Transcoding (view, edit 3 fields), Backups (list), library display/NFO/trickplay flags (read) | Y | - | Y | n/a | Backups endpoint exists on this server version (empty list) |
-| Photo viewer | Y | Y (actions) | Y | - | Full window, prev/next, zoom, Esc. Photo folders open as grids |
+| Admin: Branding, Networking, task triggers, Trickplay, library add / remove / folders / options, plugin install / disable / enable / uninstall | Y | Y (mock server, validators, dialogs) | Y | n/a | Crate calls all ran against a throwaway Jellyfin 12.4. In the app: a login message save, a LAN network change (typed NETWORK), a daily trigger add and delete, and a library add and remove (media folder left in place) were done through the dialogs. Plugin install / disable / uninstall ran through the crate only; the catalog and the install dialog were seen in the app. Bundled plugins reject disable (server error), so the app offers those actions only for removable plugins |
+| Account: Authorize a device, Your devices, `?` shortcut overlay | Y | Y | Y | n/a | Authorize approved a real Quick Connect code from the UI. The server lists only sessions it has seen since it started, so this device is always shown first |
+| Photo viewer | Y | Y (actions) | Y | - | Full window, prev/next, zoom, Esc. Photo folders open as grids. Re-checked on generated throwaway photos: opens at 1/4, Right goes to 2/4, `+` zooms |
 | Book / audiobook pages | Y | Y | Y | - | "Not playable in NOCTURNE yet", no Play button |
 | HDR filter | n/a | n/a | n/a | n/a | Server exposes no HDR filter |
 | Image / disk cache | Y | Y (LRU eviction) | Y | Y | Warm relaunch: 0 image requests. After the browse soak the cache held about 20 MB; the size cap was not reached, eviction is covered by the unit test only |
@@ -61,5 +63,7 @@ Legend: Y = yes, n/a = not applicable, - = not done, partial = see notes.
 - Cache size cap reached on a real library; multi-day soak.
 - Session message action (no remote-controllable client available).
 - `crates/jellyfin-user` live test `playback_reporting_sets_resume_then_played` assumes the first movie is a 2 s clip; it fails once `scripts/gen-player-clips.sh` has added a longer movie. Not a product defect.
-- Admin still lacks: editable Branding/Networking, task triggers, plugin install, library add/remove, Trickplay edit.
+- Admin still lacks: plugin repositories, library rename and provider options, user policy details.
+- Plugin install, disable and uninstall were not driven through the app UI (crate live test, dialog unit tests, and the rendered catalog only).
+- Jellyfin lets any plugin endpoint "uninstall" a bundled plugin without error in one case we hit and refuses to disable it in another; NOCTURNE only offers these actions for removable plugins.
 - Stale `nocturne-mpv-*` directories from earlier crashed runs may exist in `$XDG_RUNTIME_DIR`; the player only removes its own.

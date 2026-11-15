@@ -5,6 +5,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Admin: editable Branding (login message, custom CSS, splash screen), Networking (ports, bind addresses, LAN
+  networks, remote access, UPnP, discovery, IPv4/IPv6; each change needs the typed word NETWORK and warns that
+  wrong values can lock you out), scheduled-task triggers (add, edit, delete), a Trickplay settings page, library
+  add / remove / folders / common options, and plugin enable, disable, uninstall and install from the catalog.
+- Account menu: Authorize a device (approve another device's Quick Connect code), Your devices (read only list
+  of this account's sessions), and a global `?` keyboard shortcut reference.
+- Dialog inputs are validated per field (time of day, ports, networks, paths) and marked when invalid.
+- `scripts/test-jellyfin.sh` and the test guard accept `NOCTURNE_JF_TEST_PORT` to run a second throwaway server.
+
+### Fixed
+- Typing `/` or `?` inside an admin dialog opened search or help instead of entering the character.
+
 ## [0.1.0]
 
 First release (not yet published). Linux only.
