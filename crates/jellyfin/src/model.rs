@@ -33,6 +33,7 @@ pub struct Item {
 pub struct UserData {
     pub playback_position_ticks: u64,
     pub played: bool,
+    pub is_favorite: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
