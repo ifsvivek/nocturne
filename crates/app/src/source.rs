@@ -34,6 +34,14 @@ pub struct Media {
     pub number: Option<u32>,
     pub season_number: Option<u32>,
     pub poster_tag: Option<String>,
+    pub backdrop_tag: Option<String>,
+    pub genres: Vec<String>,
+    pub series_id: Option<String>,
+    pub series_name: Option<String>,
+    /// Saved playback position and total length in seconds (read only).
+    pub resume_s: Option<f64>,
+    pub duration_s: Option<f64>,
+    pub played: bool,
 }
 
 impl Media {
@@ -62,7 +70,24 @@ impl Media {
             number: i.index_number,
             season_number: i.parent_index_number,
             poster_tag: i.image_tags.get("Primary").cloned(),
+            backdrop_tag: i.backdrop_image_tags.first().cloned(),
+            genres: i.genres.clone(),
+            series_id: i.series_id.clone(),
+            series_name: i.series_name.clone(),
+            resume_s: i
+                .user_data
+                .as_ref()
+                .map(|u| u.playback_position_ticks as f64 / TICKS_PER_S)
+                .filter(|s| *s > 0.0),
+            duration_s: i.run_time_ticks.map(|t| t as f64 / TICKS_PER_S),
+            played: i.user_data.as_ref().is_some_and(|u| u.played),
         }
+    }
+
+    /// Fraction watched (0..1) for a partly watched item.
+    pub fn progress(&self) -> Option<f32> {
+        let (r, d) = (self.resume_s?, self.duration_s?);
+        (!self.played && d > 0.0).then(|| (r / d).clamp(0.0, 1.0) as f32)
     }
 
     pub fn is_series(&self) -> bool {
@@ -101,6 +126,30 @@ impl Media {
             _ => String::new(),
         }
     }
+}
+
+/// 1 tick = 100 ns.
+const TICKS_PER_S: f64 = 10_000_000.0;
+
+/// "1:05:09" / "5:09" clock for the now-playing bar.
+pub fn fmt_clock(secs: f64) -> String {
+    let s = secs.max(0.0) as u64;
+    if s >= 3600 {
+        format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
+    } else {
+        format!("{}:{:02}", s / 60, s % 60)
+    }
+}
+
+/// What "play this series" means: first unplayed episode, else the first one.
+pub fn pick_episode(eps: &[Media]) -> Option<&Media> {
+    eps.iter().find(|e| !e.played).or(eps.first())
+}
+
+/// The episode after `id` in `eps`, if any.
+pub fn episode_after<'a>(eps: &'a [Media], id: &str) -> Option<&'a Media> {
+    let i = eps.iter().position(|e| e.id == id)?;
+    eps.get(i + 1)
 }
 
 pub fn fmt_runtime(min: u32) -> String {
@@ -189,7 +238,6 @@ pub fn sniff(b: &[u8]) -> Option<gpui::ImageFormat> {
 pub struct Source {
     client: Arc<jf::Client>,
     user: Arc<str>,
-    http: reqwest::Client,
     gate: Arc<Semaphore>,
 }
 
@@ -202,10 +250,6 @@ impl Source {
         Ok(Self {
             client: Arc::new(client),
             user: user.into(),
-            http: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(20))
-                .build()
-                .map_err(|_| ConnectError::Unreachable)?,
             gate: Arc::new(Semaphore::new(6)),
         })
     }
@@ -252,20 +296,40 @@ impl Source {
         let _permit = self.gate.acquire().await.map_err(|_| Failed)?;
         let (ty, tag) = match art {
             Art::Poster => (jf::ImageType::Primary, m.poster_tag.as_deref()),
-            Art::Backdrop => (jf::ImageType::Backdrop, None),
+            Art::Backdrop => (jf::ImageType::Backdrop, m.backdrop_tag.as_deref()),
         };
-        let url = self.client.image_url(&m.id, ty, Some(width), tag);
-        let resp = self
-            .http
-            .get(url)
-            .header("Authorization", self.client.auth_header())
-            .send()
+        self.client
+            .image_bytes(&m.id, ty, Some(width), tag)
             .await
-            .map_err(|_| Failed)?;
-        if !resp.status().is_success() {
-            return Err(Failed);
-        }
-        resp.bytes().await.map(|b| b.to_vec()).map_err(|_| Failed)
+            .map_err(|_| Failed)
+    }
+
+    /// Items with a saved position, most recently watched first.
+    pub async fn resume(&self) -> Result<Vec<Media>, Failed> {
+        Self::media(self.client.resume(&self.user, 12).await)
+    }
+
+    async fn all_episodes(&self, series: &str) -> Result<Vec<Media>, Failed> {
+        Self::media(self.client.episodes(&self.user, series, None).await)
+    }
+
+    /// The episode "Play" should start for a series.
+    pub async fn series_target(&self, series: &str) -> Result<Media, Failed> {
+        let eps = self.all_episodes(series).await?;
+        pick_episode(&eps).cloned().ok_or(Failed)
+    }
+
+    pub async fn next_episode(&self, ep: &Media) -> Option<Media> {
+        let eps = self.all_episodes(ep.series_id.as_deref()?).await.ok()?;
+        episode_after(&eps, &ep.id).cloned()
+    }
+
+    /// Stream URL (no credentials) and the `Authorization: ...` header line for the player.
+    pub fn stream(&self, id: &str) -> (String, String) {
+        (
+            self.client.stream_url(id),
+            format!("Authorization: {}", self.client.auth_header()),
+        )
     }
 }
 
@@ -310,6 +374,39 @@ mod tests {
         let m = Media::from_item(&i);
         assert_eq!(m.meta_line(), "2001 · 2h 03m");
         assert_eq!(m.kind_label(), "movie");
+    }
+
+    #[test]
+    fn progress_and_clock() {
+        let mut i = item("Episode");
+        i.run_time_ticks = Some(100 * 10_000_000);
+        i.user_data = Some(jf::UserData {
+            playback_position_ticks: 25 * 10_000_000,
+            played: false,
+        });
+        let m = Media::from_item(&i);
+        assert_eq!(m.progress(), Some(0.25));
+        assert_eq!(Media::from_item(&item("Movie")).progress(), None);
+        assert_eq!(fmt_clock(3909.7), "1:05:09");
+        assert_eq!(fmt_clock(309.0), "5:09");
+        assert_eq!(fmt_clock(-1.0), "0:00");
+    }
+
+    #[test]
+    fn episode_picking() {
+        let ep = |id: &str, played| Media {
+            id: id.into(),
+            played,
+            ..Media::from_item(&item("Episode"))
+        };
+        let eps = [ep("a", true), ep("b", false), ep("c", false)];
+        assert_eq!(pick_episode(&eps).unwrap().id, "b");
+        let seen = [ep("a", true), ep("b", true)];
+        assert_eq!(pick_episode(&seen).unwrap().id, "a");
+        assert!(pick_episode(&[]).is_none());
+        assert_eq!(episode_after(&eps, "a").unwrap().id, "b");
+        assert!(episode_after(&eps, "c").is_none());
+        assert!(episode_after(&eps, "zz").is_none());
     }
 
     #[test]

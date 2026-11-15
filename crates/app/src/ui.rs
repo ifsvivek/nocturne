@@ -164,6 +164,7 @@ pub struct Feature<'a> {
     pub title: String,
     pub text: String,
     pub foot: String,
+    pub focused: bool,
 }
 
 pub fn feature_cell(f: Feature) -> Stateful<Div> {
@@ -178,6 +179,11 @@ pub fn feature_cell(f: Feature) -> Stateful<Div> {
         .border_color(t::hairline())
         .cursor_pointer()
         .hover(|s| s.bg(t::glass()))
+        .when(f.focused, |d| {
+            d.bg(t::accent_tint())
+                .border_color(t::accent())
+                .shadow(glow_shadow(0.5))
+        })
         .child(
             div()
                 .px(px(t::S4))
@@ -188,14 +194,14 @@ pub fn feature_cell(f: Feature) -> Stateful<Div> {
                 .border_b_1()
                 .border_color(t::hairline())
                 .child(mono(f.top_l))
-                .child(mono(f.top_r)),
+                .child(mono(f.top_r.clone())),
         )
         .when_some(f.pic, |d, pic| {
-            d.child(
-                div()
-                    .p(px(t::S4))
-                    .child(tile(pic, &f.title, f.key).w_full().h(px(150.0))),
-            )
+            let art = match pic {
+                Pic::Missing => placeholder(&f.title, &f.top_r),
+                pic => tile(pic, &f.title, f.key),
+            };
+            d.child(div().p(px(t::S4)).child(art.w_full().h(px(150.0))))
         })
         .child(
             div()
@@ -379,6 +385,82 @@ pub fn tile(pic: Pic, title: &str, key: &str) -> Div {
     }
 }
 
+/// Art slot for something with no image: quiet blue-navy gradient, big initial, mono caption.
+pub fn placeholder(title: &str, caption: &str) -> Div {
+    div()
+        .relative()
+        .overflow_hidden()
+        .rounded(px(t::R_XS))
+        .bg(linear_gradient(
+            135.0,
+            linear_color_stop(rgb(0x18284d), 0.0),
+            linear_color_stop(t::surface(), 1.0),
+        ))
+        .child(
+            div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(px(64.0))
+                .font_weight(FontWeight::BOLD)
+                .text_color(rgba(0x9cc0ff40))
+                .child(initial(title)),
+        )
+        .child(
+            div()
+                .absolute()
+                .left(px(t::S3))
+                .bottom(px(t::S2))
+                .child(mono(caption.to_string())),
+        )
+}
+
+/// Thin progress line: faint track, blue fill. `frac` is 0..1.
+pub fn progress_bar(frac: f32, h: f32) -> Div {
+    div().w_full().h(px(h)).bg(rgba(0xffffff1f)).child(
+        div()
+            .h_full()
+            .w(relative(frac.clamp(0.0, 1.0)))
+            .bg(t::accent()),
+    )
+}
+
+/// Compact transport button for the now-playing bar.
+pub fn ctl_button(
+    id: &'static str,
+    text: &'static str,
+    primary: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let d = div()
+        .id(id)
+        .h(px(32.0))
+        .min_w(px(40.0))
+        .px(px(t::S3))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(6.0))
+        .border_1()
+        .font_family(t::MONO)
+        .text_size(px(t::CAPTION))
+        .cursor_pointer()
+        .active(|s| s.opacity(0.85))
+        .on_click(on_click)
+        .child(text);
+    if primary {
+        d.bg(t::accent())
+            .border_color(t::accent())
+            .text_color(t::on_accent())
+            .hover(|s| s.bg(t::accent_hover()))
+    } else {
+        d.border_color(t::hairline_strong())
+            .text_color(t::text())
+            .hover(|s| s.bg(t::glass()))
+    }
+}
+
 /// Poster in a hairline cell: image on top, caption strip below (title, mono meta), index
 /// tag in the image corner. Cells share edges (right + bottom hairline; the container draws
 /// top/left). Focus = 1px blue outline + faint glow + brighter image, faded in over 140ms.
@@ -391,6 +473,8 @@ pub struct Cell<'a> {
     pub w: f32,
     pub h: f32,
     pub focused: bool,
+    /// Watched fraction; draws a thin blue line along the bottom of the image.
+    pub progress: Option<f32>,
 }
 
 pub fn poster_cell(c: Cell) -> Stateful<Div> {
@@ -425,9 +509,21 @@ pub fn poster_cell(c: Cell) -> Stateful<Div> {
                                 .bg(rgba(0x07080c40)),
                         )
                     })
-                    .child(div().absolute().top(px(t::S2)).left(px(t::S2)).child(
-                        mono(format!("0x{:02x}", c.index + 1)).text_color(rgba(0xffffffb0)),
-                    )),
+                    .child(
+                        div().absolute().top(px(t::S2)).left(px(t::S2)).child(
+                            mono(format!("0x{:02x}", c.index + 1)).text_color(rgba(0xffffffb0)),
+                        ),
+                    )
+                    .when_some(c.progress, |d, p| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .bottom_0()
+                                .left_0()
+                                .w_full()
+                                .child(progress_bar(p, 3.0)),
+                        )
+                    }),
             )
             .child(
                 div()

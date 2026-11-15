@@ -1,19 +1,18 @@
 //! Root view: connection state, navigation stack, keyboard, and the screens.
 use crate::nav::{self, Dir};
+use crate::playback::Now;
+use crate::source::fmt_clock;
 use crate::source::{Art, ConnectError, Kind, Media, Source, sniff};
 use crate::ui::{self, Cell, Pic};
 use crate::{bridge, cache::Cache, theme as t};
 use gpui::prelude::*;
 use gpui::*;
+use nocturne_player::{Event, Options, Player};
 use std::future::Future;
-use std::sync::{Arc, mpsc::Sender};
+use std::sync::Arc;
 
-/// Handed to the player (later task). Carries only what playback needs.
-#[derive(Clone, Debug)]
-#[allow(dead_code)] // read by the player in a later task
-pub struct PlayRequest {
-    pub item_id: String,
-}
+/// Height of the docked now-playing bar.
+const BAR_H: f32 = 66.0;
 
 #[derive(Clone)]
 enum Load<T> {
@@ -50,6 +49,16 @@ struct HomeRow {
     scroll: ScrollHandle,
 }
 
+/// Home rows, top to bottom. `Page::row` indexes `Page::layout()`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HRow {
+    Nav,
+    Hero,
+    Resume,
+    Libs,
+    Latest(usize),
+}
+
 struct Page {
     pid: u64,
     view: View,
@@ -57,7 +66,9 @@ struct Page {
     // Home: libraries + a "latest" row per library. row: -1 nav, 0 hero, 1.. rows.
     libs: Load<Vec<Media>>,
     rows: Vec<HomeRow>,
-    row: isize,
+    resume: Load<Vec<Media>>,
+    resume_scroll: ScrollHandle,
+    row: usize,
     col: usize,
     // Grid.
     items: Load<Vec<Media>>,
@@ -73,18 +84,53 @@ struct Page {
 }
 
 impl Page {
+    fn layout(&self) -> Vec<HRow> {
+        let mut v = vec![HRow::Nav, HRow::Hero];
+        if !self.resume.items().is_empty() {
+            v.push(HRow::Resume);
+        }
+        if !self.libs.items().is_empty() {
+            v.push(HRow::Libs);
+        }
+        v.extend((0..self.rows.len()).map(HRow::Latest));
+        v
+    }
+
+    fn row_items(&self, k: HRow) -> &[Media] {
+        match k {
+            HRow::Nav | HRow::Libs => self.libs.items(),
+            HRow::Hero => &[],
+            HRow::Resume => self.resume.items(),
+            HRow::Latest(i) => self.rows.get(i).map_or(&[], |r| r.items.items()),
+        }
+    }
+
+    fn row_len(&self, k: HRow) -> usize {
+        if k == HRow::Hero {
+            2
+        } else {
+            self.row_items(k).len()
+        }
+    }
+
     /// Item shown in the hero: the focused poster, else the newest of the first row.
     fn hero_item(&self) -> Option<Media> {
-        let focused = (self.row >= 1)
-            .then(|| self.rows.get(self.row as usize - 1))
-            .flatten()
-            .and_then(|r| r.items.items().get(self.col).cloned());
+        let k = self.layout().get(self.row).copied()?;
+        let focused = matches!(k, HRow::Resume | HRow::Latest(_))
+            .then(|| self.row_items(k).get(self.col).cloned())
+            .flatten();
         focused.or_else(|| {
             self.rows
                 .iter()
                 .find_map(|r| r.items.items().first().cloned())
         })
     }
+}
+
+enum Act {
+    PlayHero,
+    Play(Media),
+    Open(Media),
 }
 
 enum Phase {
@@ -101,7 +147,8 @@ pub struct Root {
     next_pid: u64,
     images: Cache<String, Img>,
     pub focus: FocusHandle,
-    play_tx: Sender<PlayRequest>,
+    player: Option<Player>,
+    now: Option<Now>,
     grain: Arc<Image>,
     dots: Arc<Image>,
     glow: Arc<Image>,
@@ -117,7 +164,6 @@ const CELL_EXTRA: f32 = 2.0 * t::S3 + t::S3 + 20.0 + 2.0 + 16.0 + 1.0;
 impl Root {
     pub fn new(
         cfg: Option<nocturne_jellyfin::Config>,
-        play_tx: Sender<PlayRequest>,
         _w: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -129,7 +175,8 @@ impl Root {
             next_pid: 0,
             images: Cache::new(600),
             focus: cx.focus_handle(),
-            play_tx,
+            player: None,
+            now: None,
             grain: ui::grain(),
             dots: ui::dots(),
             glow: ui::glow(),
@@ -139,6 +186,18 @@ impl Root {
             note_gen: 0,
         };
         me.connect(cx);
+        // Poll the player a few times a second; cheap when nothing is playing.
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(200))
+                    .await;
+                if this.update(cx, |t, cx| t.tick(cx)).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         me
     }
 
@@ -191,7 +250,9 @@ impl Root {
             media: media.clone(),
             libs: Load::Loading,
             rows: vec![],
-            row: 0,
+            resume: Load::Loading,
+            resume_scroll: ScrollHandle::new(),
+            row: 1,
             col: 0,
             items: Load::Loading,
             sel: 0,
@@ -206,6 +267,12 @@ impl Root {
         match (view, media) {
             (View::Home, _) => {
                 let s2 = src.clone();
+                let s4 = src.clone();
+                self.run(cx, async move { s4.resume().await }, move |t, r, _| {
+                    if let Some(p) = t.page_mut(pid) {
+                        p.resume = r.map_or(Load::Failed, Load::Ready);
+                    }
+                });
                 self.run(cx, async move { src.libraries().await }, move |t, r, cx| {
                     let Ok(libs) = r else {
                         if let Some(p) = t.page_mut(pid) {
@@ -289,6 +356,12 @@ impl Root {
             async move { src.episodes(&series, &season_id).await },
             move |t, r, _| {
                 if let Some(p) = t.page_mut(pid) {
+                    // Start the selection on the first unwatched episode.
+                    p.ep_sel = r
+                        .as_ref()
+                        .ok()
+                        .and_then(|v| v.iter().position(|e| !e.played))
+                        .unwrap_or(0);
                     p.episodes = r.map_or(Load::Failed, Load::Ready);
                 }
             },
@@ -314,9 +387,8 @@ impl Root {
         }
     }
 
-    fn play(&mut self, item_id: String, cx: &mut Context<Self>) {
-        let _ = self.play_tx.send(PlayRequest { item_id });
-        self.note = Some("Play request sent");
+    fn toast(&mut self, msg: &'static str, cx: &mut Context<Self>) {
+        self.note = Some(msg);
         self.note_gen += 1;
         let g = self.note_gen;
         cx.spawn(async move |this, cx| {
@@ -334,12 +406,130 @@ impl Root {
         .detach();
     }
 
-    /// Play for the focused thing. A series has no single stream: it opens its detail page.
+    /// Play for a focused thing. A series plays its first unwatched (else first) episode.
     fn play_item(&mut self, m: Media, cx: &mut Context<Self>) {
-        if m.is_series() {
-            self.open(m, cx);
+        match m.kind {
+            Kind::Library | Kind::Season => {}
+            Kind::Series => {
+                let Some(src) = self.source.clone() else {
+                    return;
+                };
+                self.run(
+                    cx,
+                    async move { src.series_target(&m.id).await },
+                    |t, r, cx| match r {
+                        Ok(e) => t.play_media(e, cx),
+                        Err(_) => t.toast("Nothing to play here yet.", cx),
+                    },
+                );
+            }
+            _ => self.play_media(m, cx),
+        }
+    }
+
+    /// Hands one playable item to mpv (own window for now). Nothing here is ever logged.
+    fn play_media(&mut self, m: Media, cx: &mut Context<Self>) {
+        let Some(src) = self.source.clone() else {
+            return;
+        };
+        let (url, header) = src.stream(&m.id);
+        if self.player.is_none() {
+            match Player::new(Options::default()) {
+                Ok(p) => self.player = Some(p),
+                Err(_) => return self.toast("The player couldn't start.", cx),
+            }
+        }
+        if !self
+            .player
+            .as_ref()
+            .is_some_and(|p| p.load(&url, Some(&header)).is_ok())
+        {
+            self.stop();
+            return self.toast("This couldn't be played.", cx);
+        }
+        let ep = m.clone();
+        self.now = Some(Now::new(m));
+        if ep.kind == Kind::Episode {
+            self.run(
+                cx,
+                async move { (ep.id.clone(), src.next_episode(&ep).await) },
+                |t, (id, next), _| {
+                    if let Some(n) = t.now.as_mut().filter(|n| n.media.id == id) {
+                        n.next = next;
+                    }
+                },
+            );
+        }
+    }
+
+    fn stop(&mut self) {
+        self.now = None;
+        self.player = None; // dropping closes mpv and its window
+    }
+
+    fn tick(&mut self, cx: &mut Context<Self>) {
+        let Some(pl) = &self.player else { return };
+        let (mut failed, mut gone) = (false, false);
+        if let Some(now) = &mut self.now {
+            for ev in pl.events().try_iter() {
+                match ev {
+                    Event::Loaded => {
+                        now.loaded = true;
+                        if let Some(r) = now.resume_at.take() {
+                            let _ = pl.seek_to(r);
+                        }
+                    }
+                    Event::Failed(_) => failed = true,
+                    Event::Closed => gone = true,
+                    _ => {}
+                }
+            }
+            let st = pl.state();
+            failed |= now.stalled(st.idle);
+            now.ended = st.eof;
+            if now.state.as_ref() != Some(&st) {
+                now.state = Some(st);
+                cx.notify();
+            }
         } else {
-            self.play(m.id, cx);
+            gone = true;
+        }
+        if failed {
+            self.stop();
+            self.toast("This couldn't be played.", cx);
+            cx.notify();
+        } else if gone {
+            self.stop();
+            cx.notify();
+        }
+    }
+
+    fn toggle(&mut self) {
+        if let Some(p) = &self.player {
+            let _ = p.toggle();
+        }
+    }
+
+    fn seek(&mut self, secs: f64) {
+        if let Some(p) = &self.player {
+            let _ = p.seek_by(secs);
+        }
+    }
+
+    fn volume(&mut self, delta: f64) {
+        let v = self
+            .now
+            .as_ref()
+            .and_then(|n| n.state.as_ref())
+            .map_or(100.0, |s| s.volume);
+        if let Some(p) = &self.player {
+            let _ = p.set_volume(v + delta);
+        }
+    }
+
+    fn next_episode(&mut self, cx: &mut Context<Self>) {
+        if let Some(n) = self.now.as_ref().and_then(|n| n.next.clone()) {
+            self.play_media(n, cx);
         }
     }
 
@@ -347,16 +537,12 @@ impl Root {
         let Some(p) = self.stack.last() else { return };
         let m = if p.view == View::Home {
             p.hero_item()
+        } else if p.media.as_ref().is_some_and(|m| m.is_series()) {
+            p.episodes.items().get(p.ep_sel).cloned()
         } else {
             p.media.clone()
         };
-        let Some(m) = m else { return };
-        if p.view == View::Detail && m.is_series() {
-            if let Some(e) = p.episodes.items().get(p.ep_sel) {
-                let id = e.id.clone();
-                self.play(id, cx);
-            }
-        } else {
+        if let Some(m) = m {
             self.play_item(m, cx);
         }
     }
@@ -407,6 +593,25 @@ impl Root {
             cx.notify();
             return;
         }
+        if self.now.is_some() {
+            let spatial = self
+                .stack
+                .last()
+                .is_some_and(|p| matches!(p.view, View::Home | View::Grid));
+            match key {
+                "space" => self.toggle(),
+                "s" => self.stop(),
+                "n" => self.next_episode(cx),
+                // Left/Right navigate grids; elsewhere they seek.
+                "left" if !spatial => self.seek(-10.0),
+                "right" if !spatial => self.seek(30.0),
+                _ => {}
+            }
+            if matches!(key, "space" | "s" | "n") || (!spatial && matches!(key, "left" | "right")) {
+                cx.notify();
+                return;
+            }
+        }
         let dir = match key {
             "up" => Some(Dir::Up),
             "down" => Some(Dir::Down),
@@ -421,54 +626,52 @@ impl Root {
         };
         match p.view {
             View::Home => {
+                let lay = p.layout();
+                let kind = lay.get(p.row).copied().unwrap_or(HRow::Hero);
+                let mut act = None;
                 if let Some(d) = dir {
-                    let nrows = p.rows.len() as isize;
-                    match d {
-                        Dir::Up => p.row = (p.row - 1).max(-1),
-                        Dir::Down => p.row = (p.row + 1).min(nrows),
-                        Dir::Left | Dir::Right => {
-                            let n = match p.row {
-                                -1 => p.libs.items().len(),
-                                0 => 2,
-                                r => p.rows[r as usize - 1].items.items().len(),
-                            };
-                            p.col = nav::step(p.col, n.max(1), n, d);
-                        }
-                    }
-                    // Keep the column valid for the row we landed on.
-                    let n = match p.row {
-                        -1 => p.libs.items().len(),
-                        0 => 2,
-                        r => p.rows[r as usize - 1].items.items().len(),
+                    let n = p.row_len(kind);
+                    // Library cells sit in a 3-wide grid; every other row is one line.
+                    let cols = if kind == HRow::Libs { 3 } else { n.max(1) };
+                    let c = nav::step(p.col, cols, n, d);
+                    let moved = match d {
+                        Dir::Left | Dir::Right => true,
+                        Dir::Up | Dir::Down => kind == HRow::Libs && c != p.col,
                     };
-                    p.col = p.col.min(n.saturating_sub(1));
-                    // children: hero(0), libraries(1), latest rows(2..)
-                    p.page_scroll
-                        .scroll_to_item(if p.row <= 0 { 0 } else { p.row as usize + 1 });
-                    if p.row >= 1 {
-                        p.rows[p.row as usize - 1].scroll.scroll_to_item(p.col);
+                    if moved {
+                        p.col = c;
+                    } else {
+                        p.row = match d {
+                            Dir::Up => p.row.saturating_sub(1),
+                            _ => (p.row + 1).min(lay.len() - 1),
+                        };
+                    }
+                    let kind = lay[p.row];
+                    p.col = p.col.min(p.row_len(kind).saturating_sub(1));
+                    // page children: hero(0), then the rows after Nav/Hero in order
+                    p.page_scroll.scroll_to_item(p.row.saturating_sub(1));
+                    match kind {
+                        HRow::Resume => p.resume_scroll.scroll_to_item(p.col),
+                        HRow::Latest(i) => p.rows[i].scroll.scroll_to_item(p.col),
+                        _ => {}
                     }
                 } else if enter {
-                    match p.row {
-                        -1 => {
-                            if let Some(l) = p.libs.items().get(p.col).cloned() {
-                                self.open_library(l, cx);
-                            }
+                    act = match kind {
+                        HRow::Hero if p.col == 0 => Some(Act::PlayHero),
+                        HRow::Hero => p.hero_item().map(Act::Open),
+                        HRow::Nav | HRow::Libs => {
+                            p.row_items(kind).get(p.col).cloned().map(Act::Open)
                         }
-                        0 if p.col == 0 => self.play_current(cx),
-                        0 => {
-                            if let Some(m) = p.hero_item() {
-                                self.open(m, cx);
-                            }
-                        }
-                        r => {
-                            if let Some(m) =
-                                p.rows[r as usize - 1].items.items().get(p.col).cloned()
-                            {
-                                self.open(m, cx);
-                            }
-                        }
-                    }
+                        HRow::Resume => p.row_items(kind).get(p.col).cloned().map(Act::Play),
+                        HRow::Latest(_) => p.row_items(kind).get(p.col).cloned().map(Act::Open),
+                    };
+                }
+                match act {
+                    Some(Act::PlayHero) => self.play_current(cx),
+                    Some(Act::Play(m)) => self.play_item(m, cx),
+                    Some(Act::Open(m)) if m.kind == Kind::Library => self.open_library(m, cx),
+                    Some(Act::Open(m)) => self.open(m, cx),
+                    None => {}
                 }
             }
             View::Grid => {
@@ -508,7 +711,7 @@ impl Root {
         cx.notify();
     }
 
-    fn hover_home(&mut self, row: isize, col: usize, cx: &mut Context<Self>) {
+    fn hover_home(&mut self, row: usize, col: usize, cx: &mut Context<Self>) {
         if let Some(p) = self.stack.last_mut()
             && p.view == View::Home
             && (p.row, p.col) != (row, col)
@@ -533,7 +736,7 @@ impl Root {
                 let focus = self
                     .stack
                     .last()
-                    .filter(|p| p.view == View::Home && p.row == -1)
+                    .filter(|p| p.view == View::Home && p.row == 0)
                     .map(|p| p.col);
                 (
                     libs,
@@ -548,7 +751,7 @@ impl Root {
         let focus_col = self
             .stack
             .last()
-            .filter(|p| p.view == View::Home && p.row == -1)
+            .filter(|p| p.view == View::Home && p.row == 0)
             .map(|p| p.col);
         let mut nav = div().flex().items_center().gap(px(t::S1));
         nav = nav.child(ui::nav_link(
@@ -670,6 +873,158 @@ impl Root {
             .child(msg.to_string())
     }
 
+    // ---- now playing ----
+
+    fn now_bar(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let n = self.now.as_ref()?;
+        let (pos, dur) = n.times();
+        let st = n.state.as_ref();
+        let paused = st.is_some_and(|s| s.paused);
+        let vol = st.map_or(100.0, |s| s.volume);
+        let status = if !n.loaded {
+            "loading".to_string()
+        } else if n.ended {
+            "finished".to_string()
+        } else {
+            [
+                n.media.series_name.clone().unwrap_or_default(),
+                n.media.episode_label(),
+            ]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" · ")
+        };
+        let clock = format!(
+            "{} / {}",
+            fmt_clock(pos),
+            dur.map_or("--:--".into(), fmt_clock)
+        );
+        let mut ctl = div()
+            .flex()
+            .items_center()
+            .gap(px(t::S2))
+            .child(ui::ctl_button(
+                "np-back",
+                "-10",
+                false,
+                cx.listener(|t, _, _, cx| {
+                    t.seek(-10.0);
+                    cx.notify();
+                }),
+            ))
+            .child(ui::ctl_button(
+                "np-pause",
+                if paused { "Play" } else { "Pause" },
+                true,
+                cx.listener(|t, _, _, cx| {
+                    t.toggle();
+                    cx.notify();
+                }),
+            ))
+            .child(ui::ctl_button(
+                "np-fwd",
+                "+30",
+                false,
+                cx.listener(|t, _, _, cx| {
+                    t.seek(30.0);
+                    cx.notify();
+                }),
+            ));
+        if n.ended && n.next.is_some() {
+            ctl = ctl.child(ui::ctl_button(
+                "np-next",
+                "Next episode",
+                true,
+                cx.listener(|t, _, _, cx| {
+                    t.next_episode(cx);
+                    cx.notify();
+                }),
+            ));
+        }
+        let volume = div()
+            .flex()
+            .items_center()
+            .gap(px(t::S2))
+            .child(ui::ctl_button(
+                "np-vol-",
+                "-",
+                false,
+                cx.listener(|t, _, _, cx| {
+                    t.volume(-10.0);
+                    cx.notify();
+                }),
+            ))
+            .child(
+                div()
+                    .w(px(44.0))
+                    .flex()
+                    .justify_center()
+                    .child(ui::mono(format!("vol {}", vol.round() as i32))),
+            )
+            .child(ui::ctl_button(
+                "np-vol+",
+                "+",
+                false,
+                cx.listener(|t, _, _, cx| {
+                    t.volume(10.0);
+                    cx.notify();
+                }),
+            ));
+        Some(
+            div()
+                .absolute()
+                .bottom_0()
+                .left_0()
+                .w_full()
+                .h(px(BAR_H))
+                .flex()
+                .flex_col()
+                .border_t_1()
+                .border_color(t::hairline_strong())
+                .bg(rgba(0x07080cf2))
+                .child(ui::progress_bar(n.frac(), 2.0))
+                .child(
+                    div()
+                        .flex_1()
+                        .px(px(t::PAGE_PAD))
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap(px(t::S6))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .flex_col()
+                                .gap(px(2.0))
+                                .child(
+                                    div()
+                                        .truncate()
+                                        .text_size(px(t::BODY))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(t::text())
+                                        .child(n.media.title.clone()),
+                                )
+                                .child(ui::mono(status)),
+                        )
+                        .child(ui::mono(clock))
+                        .child(ctl)
+                        .child(volume)
+                        .child(ui::ctl_button(
+                            "np-stop",
+                            "Stop",
+                            false,
+                            cx.listener(|t, _, _, cx| {
+                                t.stop();
+                                cx.notify();
+                            }),
+                        )),
+                ),
+        )
+    }
+
     // ---- hero (shared by Home and Detail) ----
 
     fn colw(&self) -> f32 {
@@ -714,6 +1069,9 @@ impl Root {
         }
         if let Some(r) = m.runtime_min {
             chips = chips.child(ui::chip(&crate::source::fmt_runtime(r), false));
+        }
+        for g in m.genres.iter().take(3) {
+            chips = chips.child(ui::chip(g, false));
         }
         let sub = m.overview.clone().unwrap_or_else(|| m.meta_line());
         let text = div()
@@ -794,6 +1152,100 @@ impl Root {
 
     // ---- Home ----
 
+    /// One poster strip. `row` is its layout row (for hover focus); `play` resumes on click.
+    #[allow(clippy::too_many_arguments)]
+    fn strip(
+        &mut self,
+        key: &str,
+        items: &Load<Vec<Media>>,
+        handle: &ScrollHandle,
+        row: usize,
+        focus: Option<usize>,
+        play: bool,
+        (cw, ch): (f32, f32),
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let list = items.items().to_vec();
+        let mut strip = div()
+            .id(ui::name(format!("strip-{key}")))
+            .flex()
+            .overflow_x_scroll()
+            .track_scroll(handle);
+        if list.is_empty() {
+            let loading = matches!(items, Load::Loading);
+            for i in 0..8 {
+                strip = strip.child(ui::poster_cell(Cell {
+                    key: &format!("sk-{key}-{i}"),
+                    pic: if loading { Pic::Loading } else { Pic::Missing },
+                    title: "",
+                    meta: String::new(),
+                    index: i,
+                    w: cw,
+                    h: ch,
+                    focused: false,
+                    progress: None,
+                }));
+            }
+        }
+        for (ci, m) in list.iter().enumerate() {
+            let pic = self.pic(m, Art::Poster, (cw * 2.0) as u32, cx);
+            let target = m.clone();
+            strip = strip.child(
+                ui::poster_cell(Cell {
+                    key: &format!("{key}-{}", m.id),
+                    pic,
+                    title: &m.title,
+                    meta: [m.kind_label(), m.meta_line()]
+                        .into_iter()
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · "),
+                    index: ci,
+                    w: cw,
+                    h: ch,
+                    focused: focus == Some(ci),
+                    progress: m.progress(),
+                })
+                .on_hover(cx.listener(move |t, hov: &bool, _, cx| {
+                    if *hov {
+                        t.hover_home(row, ci, cx);
+                    }
+                }))
+                .on_click(cx.listener(move |t, _, _, cx| {
+                    if play {
+                        t.play_item(target.clone(), cx);
+                    } else {
+                        t.open(target.clone(), cx);
+                    }
+                    cx.notify();
+                })),
+            );
+        }
+        strip
+    }
+
+    fn strip_band(title: &str, text: &str, meta: String, strip: Stateful<Div>) -> Div {
+        ui::band(
+            div()
+                .pt(px(t::S8 * 1.5))
+                .pb(px(t::S8 * 1.5))
+                .flex()
+                .flex_col()
+                .gap(px(t::S6))
+                .child(ui::section(title, text, meta))
+                .child(
+                    div()
+                        .mx(px(t::PAGE_PAD))
+                        .border_t_1()
+                        .border_l_1()
+                        .border_color(t::hairline())
+                        .rounded(px(t::R_PANEL))
+                        .overflow_hidden()
+                        .child(strip),
+                ),
+        )
+    }
+
     fn home(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let Some(p) = self.stack.last() else {
             return div().into_any_element();
@@ -805,7 +1257,11 @@ impl Root {
             .into_any_element();
         }
         let (row, col, scroll) = (p.row, p.col, p.page_scroll.clone());
+        let lay = p.layout();
+        let focus_of = |k: HRow| (lay.get(row) == Some(&k)).then_some(col);
+        let row_of = |k: HRow| lay.iter().position(|x| *x == k).unwrap_or(0);
         let hero = p.hero_item();
+        let resume = (p.resume.clone(), p.resume_scroll.clone());
         let rows: Vec<(Media, Load<Vec<Media>>, ScrollHandle)> = p
             .rows
             .iter()
@@ -814,12 +1270,13 @@ impl Root {
         let cw = ((self.colw() - 2.0 * t::PAGE_PAD) / 7.0)
             .clamp(140.0, 210.0)
             .floor();
-        let ch = (cw * 1.5).round();
+        let size = (cw, (cw * 1.5).round());
 
         let hero_el = match hero {
             Some(m) => {
                 let eyebrow = format!("0x00 · {}", m.kind_label());
                 let (m1, m2) = (m.clone(), m.clone());
+                let hero_focus = focus_of(HRow::Hero);
                 let buttons = div()
                     .flex()
                     .gap(px(t::S3))
@@ -827,7 +1284,7 @@ impl Root {
                         "hero-play",
                         "Play",
                         true,
-                        row == 0 && col == 0,
+                        hero_focus == Some(0),
                         cx.listener(move |t, _, _, cx| {
                             t.play_item(m1.clone(), cx);
                             cx.notify();
@@ -837,7 +1294,7 @@ impl Root {
                         "hero-more",
                         "More info",
                         false,
-                        row == 0 && col == 1,
+                        hero_focus == Some(1),
                         cx.listener(move |t, _, _, cx| {
                             t.open(m2.clone(), cx);
                             cx.notify();
@@ -864,7 +1321,28 @@ impl Root {
             .flex_col()
             .child(ui::band(hero_el));
 
-        // Library cells (3-up, shared borders). Mouse-driven; the top bar covers the keyboard.
+        if !resume.0.items().is_empty() {
+            let n = resume.0.items().len();
+            let s = self.strip(
+                "resume",
+                &resume.0,
+                &resume.1,
+                row_of(HRow::Resume),
+                focus_of(HRow::Resume),
+                true,
+                size,
+                cx,
+            );
+            page = page.child(Self::strip_band(
+                "Continue watching",
+                "Pick up where you left off.",
+                format!("{n} in progress"),
+                s,
+            ));
+        }
+
+        // Library cells (3-up, shared borders), keyboard-reachable.
+        let libs_focus = focus_of(HRow::Libs);
         let lib_cells: Vec<Stateful<Div>> = {
             let libs: Vec<(Media, usize)> = rows
                 .iter()
@@ -887,6 +1365,7 @@ impl Root {
                         } else {
                             String::new()
                         },
+                        focused: libs_focus == Some(i),
                     })
                     .on_click(cx.listener(move |t, _, _, cx| {
                         t.open_library(target.clone(), cx);
@@ -948,83 +1427,25 @@ impl Root {
         }
 
         for (ri, (lib, items, handle)) in rows.into_iter().enumerate() {
-            let list = items.items().to_vec();
             let meta = match &items {
-                Load::Ready(_) => format!("{} · {} titles", lib.kind_label(), list.len()),
+                Load::Ready(v) => format!("{} · {} titles", lib.kind_label(), v.len()),
                 _ => lib.kind_label(),
             };
-            let mut strip = div()
-                .id(ui::name(format!("strip-{ri}")))
-                .flex()
-                .overflow_x_scroll()
-                .track_scroll(&handle);
-            if list.is_empty() {
-                let loading = matches!(items, Load::Loading);
-                for i in 0..8 {
-                    strip = strip.child(ui::poster_cell(Cell {
-                        key: &format!("sk-{ri}-{i}"),
-                        pic: if loading { Pic::Loading } else { Pic::Missing },
-                        title: "",
-                        meta: String::new(),
-                        index: i,
-                        w: cw,
-                        h: ch,
-                        focused: false,
-                    }));
-                }
-            }
-            for (ci, m) in list.iter().enumerate() {
-                let pic = self.pic(m, Art::Poster, (cw * 2.0) as u32, cx);
-                let target = m.clone();
-                let focused = row == ri as isize + 1 && col == ci;
-                strip = strip.child(
-                    ui::poster_cell(Cell {
-                        key: &format!("{ri}-{}", m.id),
-                        pic,
-                        title: &m.title,
-                        meta: [m.kind_label(), m.meta_line()]
-                            .into_iter()
-                            .filter(|s| !s.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(" · "),
-                        index: ci,
-                        w: cw,
-                        h: ch,
-                        focused,
-                    })
-                    .on_hover(cx.listener(move |t, hov: &bool, _, cx| {
-                        if *hov {
-                            t.hover_home(ri as isize + 1, ci, cx);
-                        }
-                    }))
-                    .on_click(cx.listener(move |t, _, _, cx| {
-                        t.open(target.clone(), cx);
-                        cx.notify();
-                    })),
-                );
-            }
-            page = page.child(ui::band(
-                div()
-                    .pt(px(t::S8 * 1.5))
-                    .pb(px(t::S8 * 1.5))
-                    .flex()
-                    .flex_col()
-                    .gap(px(t::S6))
-                    .child(ui::section(
-                        &format!("Latest in {}", lib.title),
-                        "Recently added, newest first.",
-                        meta,
-                    ))
-                    .child(
-                        div()
-                            .mx(px(t::PAGE_PAD))
-                            .border_t_1()
-                            .border_l_1()
-                            .border_color(t::hairline())
-                            .rounded(px(t::R_PANEL))
-                            .overflow_hidden()
-                            .child(strip),
-                    ),
+            let s = self.strip(
+                &ri.to_string(),
+                &items,
+                &handle,
+                row_of(HRow::Latest(ri)),
+                focus_of(HRow::Latest(ri)),
+                false,
+                size,
+                cx,
+            );
+            page = page.child(Self::strip_band(
+                &format!("Latest in {}", lib.title),
+                "Recently added, newest first.",
+                meta,
+                s,
             ));
         }
         page.child(div().h(px(t::S8 * 2.0)).flex_none())
@@ -1070,6 +1491,7 @@ impl Root {
                         w,
                         h,
                         focused: false,
+                        progress: None,
                     })
                 }))
                 .into_any_element(),
@@ -1159,6 +1581,7 @@ impl Root {
                     w,
                     h,
                     focused: idx == sel,
+                    progress: m.progress(),
                 })
                 .on_hover(cx.listener(move |t, hov: &bool, _, cx| {
                     if *hov
@@ -1252,6 +1675,7 @@ impl Root {
                     title: v,
                     text: txt,
                     foot: m.kind_label(),
+                    focused: false,
                 }));
             }
             for _ in 0..missing {
@@ -1360,7 +1784,11 @@ impl Root {
                                     .cursor_pointer()
                                     .hover(|s| s.bg(t::glass()))
                                     .on_click(cx.listener(move |t, _, _, cx| {
-                                        t.play(id.clone(), cx);
+                                        if let Some(e) = t.page_mut(pid).and_then(|p| {
+                                            p.episodes.items().iter().find(|e| e.id == id).cloned()
+                                        }) {
+                                            t.play_item(e, cx);
+                                        }
                                         cx.notify();
                                     }))
                                     .child(
@@ -1480,16 +1908,24 @@ impl Render for Root {
             .bg(t::frame())
             .child(layer(self.glow.clone(), 1.0))
             .child(layer(self.dots.clone(), 0.09))
-            .child(div().size_full().child(body));
+            .child(
+                div()
+                    .size_full()
+                    .when(self.now.is_some(), |d| d.pb(px(BAR_H)))
+                    .child(body),
+            );
         if matches!(self.phase, Phase::Ready) {
             root = root.child(self.header(cx));
         }
         root = root.child(layer(self.grain.clone(), 0.02));
+        if let Some(bar) = self.now_bar(cx) {
+            root = root.child(bar);
+        }
         if let Some(n) = self.note {
             root = root.child(
                 div()
                     .absolute()
-                    .bottom(px(t::S6))
+                    .bottom(px(t::S6 + if self.now.is_some() { BAR_H } else { 0.0 }))
                     .right(px(t::S6))
                     .px(px(t::S4))
                     .py(px(t::S3))

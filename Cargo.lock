@@ -3418,7 +3418,7 @@ dependencies = [
  "gpui",
  "image",
  "nocturne-jellyfin",
- "reqwest",
+ "nocturne-player",
  "tokio",
 ]
 
