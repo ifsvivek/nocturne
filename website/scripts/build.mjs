@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { brotliCompressSync, constants, gzipSync } from "node:zlib";
+import { brotliCompressSync, gzipSync } from "node:zlib";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TYPES = {
@@ -45,6 +45,7 @@ const baseCsp = (styleSrc) =>
 export function pack({ siteDir = join(ROOT, "build"), outDir = join(ROOT, "dist") } = {}) {
   const cfg = JSON.parse(readFileSync(join(ROOT, "site.config.json"), "utf8"));
   const table = {};
+  const sizes = {}; // informational only: Cloudflare compresses at the edge, the worker never does
 
   for (const file of walk(siteDir)) {
     const rel = "/" + relative(siteDir, file).split("\\").join("/");
@@ -75,25 +76,14 @@ export function pack({ siteDir = join(ROOT, "build"), outDir = join(ROOT, "dist"
     }
 
     const cache = rel.startsWith("/_app/immutable/") ? IMMUTABLE : ext === ".html" || ext === ".txt" || ext === ".xml" ? SHORT : MEDIUM;
-    const compressible = /^(text|application\/xml|image\/svg)/.test(type);
-    const variants = [{ enc: "", data: buf }];
-    if (compressible && buf.length > 256) {
-      const br = brotliCompressSync(buf, { params: { [constants.BROTLI_PARAM_QUALITY]: 11, [constants.BROTLI_PARAM_SIZE_HINT]: buf.length } });
-      const gz = gzipSync(buf, { level: 9 });
-      if (br.length < buf.length) variants.push({ enc: "br", data: br });
-      if (gz.length < buf.length) variants.push({ enc: "gzip", data: gz });
-    }
+    const text = /^(text|application\/xml|image\/svg)/.test(type);
     table[path] = {
       type, cache, csp, status, hidden,
-      vary: variants.length > 1,
-      variants: variants.map((v) => ({
-        enc: v.enc,
-        etag: `"${hash(buf)}${v.enc ? "-" + v.enc : ""}"`,
-        len: v.data.length,
-        text: !v.enc && compressible,
-        body: !v.enc && compressible ? v.data.toString("utf8") : v.data.toString("base64"),
-      })),
+      etag: `"${hash(buf)}"`,
+      text,
+      body: text ? buf.toString("utf8") : buf.toString("base64"),
     };
+    sizes[path] = { raw: buf.length, gzip: gzipSync(buf, { level: 9 }).length, br: brotliCompressSync(buf).length };
   }
   if (!table["/"] || !table["/404"] || !table["/privacy"]) throw new Error("missing page in build output");
   if (table["/favicon-48.png"]) table["/favicon.ico"] = { ...table["/favicon-48.png"] };
@@ -113,53 +103,34 @@ const SECURITY = ${JSON.stringify(security)};
 const REDIRECTS = { "/index.html": "/", "/privacy/": "/privacy", "/privacy.html": "/privacy" };
 
 const bin = new Map();
-function payload(v) {
-  if (v.text) return v.body;
-  let b = bin.get(v);
+function payload(a) {
+  if (a.text) return a.body;
+  let b = bin.get(a);
   if (!b) {
-    const s = atob(v.body);
+    const s = atob(a.body);
     b = new Uint8Array(s.length);
     for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
-    bin.set(v, b);
+    bin.set(a, b);
   }
   return b;
 }
 
-function pick(a, header) {
-  if (a.variants.length > 1) {
-    const accepted = new Set(header.split(",").map((t) => t.trim().split(";")[0].toLowerCase()));
-    for (const enc of ["br", "gzip"]) {
-      const v = a.variants.find((x) => x.enc === enc);
-      if (v && accepted.has(enc)) return v;
-    }
-  }
-  return a.variants[0];
-}
-
-function headers(a, v, extra) {
+// Always the plain body, never Content-Encoding: Cloudflare compresses text at the edge.
+function respond(a, request, status, extra = {}) {
   const h = new Headers({
     "Content-Type": a.type,
     "Cache-Control": a.cache,
-    ETag: v.etag,
+    ETag: a.etag,
     "Content-Security-Policy": a.csp,
     ...SECURITY,
     ...extra,
   });
-  if (a.vary) h.set("Vary", "Accept-Encoding");
-  if (v.enc) h.set("Content-Encoding", v.enc);
-  return h;
-}
-
-function respond(a, request, status, extra = {}) {
-  const v = pick(a, request.headers.get("Accept-Encoding") || "");
-  const h = headers(a, v, extra);
   const inm = request.headers.get("If-None-Match");
-  if (status === 200 && inm && inm.split(",").some((t) => t.trim().replace(/^W\\//, "") === v.etag)) {
+  if (status === 200 && inm && inm.split(",").some((t) => t.trim().replace(/^W\\//, "") === a.etag)) {
     h.delete("Content-Type");
     return new Response(null, { status: 304, headers: h });
   }
-  h.set("Content-Length", String(v.len));
-  return new Response(request.method === "HEAD" ? null : payload(v), { status, headers: h });
+  return new Response(request.method === "HEAD" ? null : payload(a), { status, headers: h });
 }
 
 export default {
@@ -186,7 +157,7 @@ export default {
     join(outDir, "metadata.json"),
     JSON.stringify({ name: "nocturne-website", main_module: "worker.js", compatibility_date: "2025-01-01", compatibility_flags: [], released: cfg.RELEASED === true }, null, 2) + "\n",
   );
-  return { worker, bytes: Buffer.byteLength(worker), table, outDir };
+  return { worker, bytes: Buffer.byteLength(worker), table, sizes, outDir };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

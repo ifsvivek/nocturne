@@ -7,7 +7,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { before, describe, test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { pack } from "../scripts/build.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -32,9 +31,8 @@ function build(released) {
 const load = async (b) => (await import(pathToFileURL(join(b.outDir, "worker.js")).href + "?" + Math.random())).default;
 const get = (w, path, init = {}) => w.fetch(new Request("https://nocturne.ifsvivek.in" + path, init));
 const text = async (res) => {
-  const buf = Buffer.from(await res.arrayBuffer());
-  const enc = res.headers.get("content-encoding");
-  return (enc === "br" ? brotliDecompressSync(buf) : enc === "gzip" ? gunzipSync(buf) : buf).toString("utf8");
+  assert.equal(res.headers.get("content-encoding"), null, "worker must never set Content-Encoding");
+  return Buffer.from(await res.arrayBuffer()).toString("utf8");
 };
 const hosts = (s) => [...s.matchAll(/https?:\/\/([^\s"'<>)\\/]+)/g)].map((m) => m[1]);
 
@@ -80,28 +78,29 @@ describe("worker responses", () => {
       assert.equal(r.status, 301);
       assert.equal(r.headers.get("location"), to);
     }
-    const g = await get(wOff, "/", { headers: { "accept-encoding": "br" } });
-    const h = await get(wOff, "/", { method: "HEAD", headers: { "accept-encoding": "br" } });
+    const h = await get(wOff, "/", { method: "HEAD" });
     assert.equal(h.status, 200);
     assert.equal((await h.arrayBuffer()).byteLength, 0);
-    assert.equal(h.headers.get("content-length"), String((await g.arrayBuffer()).byteLength));
+    assert.equal(h.headers.get("etag"), (await get(wOff, "/")).headers.get("etag"));
     assert.equal((await get(wOff, "/nope", { method: "HEAD" })).status, 404);
   });
-  test("compression variants, Vary, ETag/304, cache headers", async () => {
-    const id = await text(await get(wOff, "/"));
-    for (const enc of ["br", "gzip"]) {
-      const r = await get(wOff, "/", { headers: { "accept-encoding": `deflate, ${enc};q=1.0` } });
-      assert.equal(r.headers.get("content-encoding"), enc);
-      assert.equal(r.headers.get("vary"), "Accept-Encoding");
-      assert.equal(await text(r), id);
+  test("always plain bodies whatever Accept-Encoding says; ETag/304; cache headers", async () => {
+    const base = await get(wOff, "/");
+    const id = await text(base);
+    assert.ok(id.startsWith("<!doctype html>"));
+    for (const ae of ["identity", "gzip", "br", "gzip, deflate, br", "br;q=1.0, gzip;q=0.8"]) {
+      const r = await get(wOff, "/", { headers: { "accept-encoding": ae } });
+      assert.equal(await text(r), id, ae);
+      assert.equal(r.headers.get("etag"), base.headers.get("etag"));
+      assert.equal(r.headers.get("vary"), null);
     }
-    const plain = await get(wOff, "/");
-    assert.equal(plain.headers.get("content-encoding"), null);
-    assert.match(plain.headers.get("cache-control"), /max-age=300, must-revalidate/);
-    const again = await get(wOff, "/", { headers: { "if-none-match": plain.headers.get("etag") } });
-    assert.equal(again.status, 304);
-    const logo = await get(wOff, "/og.png");
-    assert.equal(logo.headers.get("vary"), null);
+    assert.match(base.headers.get("etag"), /^"[0-9a-f]{12}"$/);
+    assert.match(base.headers.get("cache-control"), /max-age=300, must-revalidate/);
+    assert.equal((await get(wOff, "/", { headers: { "if-none-match": base.headers.get("etag") } })).status, 304);
+    // binaries are real bytes: PNG signature, exact length
+    const png = Buffer.from(await (await get(wOff, "/og.png", { headers: { "accept-encoding": "br" } })).arrayBuffer());
+    assert.equal(png.subarray(1, 4).toString(), "PNG");
+    assert.equal(png.length, readFileSync(join(off.site, "og.png")).length);
   });
   test("security headers and a CSP that matches the inline style", async () => {
     const r = await get(wOff, "/");
@@ -189,10 +188,8 @@ describe("hygiene", () => {
   });
   test("size budget", async () => {
     assert.ok(off.bytes < 2.5 * 1024 * 1024, `worker ${off.bytes}`);
-    const gz = (await get(wOff, "/", { headers: { "accept-encoding": "gzip" } })).headers.get("content-length");
-    assert.ok(Number(gz) <= 25 * 1024, `home gzip ${gz}`);
-    const og = (await get(wOff, "/og.png")).headers.get("content-length");
-    assert.ok(Number(og) <= 100 * 1024, `og ${og}`);
+    assert.ok(off.sizes["/"].gzip <= 25 * 1024, `home gzip ${off.sizes["/"].gzip}`);
+    assert.ok(off.sizes["/og.png"].raw <= 100 * 1024);
   });
   test("metadata.json", () => {
     const m = JSON.parse(readFileSync(join(off.outDir, "metadata.json"), "utf8"));

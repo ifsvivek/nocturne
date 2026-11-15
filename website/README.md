@@ -8,7 +8,7 @@ Static site for `nocturne.ifsvivek.in`: SvelteKit (Svelte 5) prerendered with `a
 - `src/lib/components/` Svelte sections (Hero, BrandVisual, HowItWorks, Features, Safety, Screens, Install, Limitations, Header, Footer, StatusChip, Seo).
 - `src/app.css` Tailwind v4 `@theme` tokens mirroring `crates/app/src/theme.rs`.
 - `static/` favicon (from `packaging/`), `og.png` (rendered from `brand/og.svg`), `robots.txt`, `sitemap.xml`.
-- `scripts/build.mjs` embeds the `vite build` output into `dist/worker.js` (+ `dist/metadata.json`): brotli/gzip variants chosen by `Accept-Encoding`, ETags, 304, HEAD, 404, `/index.html` -> `/` redirect, security headers, and a per-page CSP whose `style-src` is the sha256 of the inlined stylesheet (no `unsafe-inline`, no script source).
+- `scripts/build.mjs` embeds the `vite build` output into `dist/worker.js` (+ `dist/metadata.json`): plain (identity) bodies only, never `Content-Encoding` (Cloudflare compresses text at the edge), strong content-hash ETags, 304, HEAD, 404, `/index.html` -> `/` redirect, security headers, and a per-page CSP whose `style-src` is the sha256 of the inlined stylesheet (no `unsafe-inline`, no script source).
 - `test/site.test.mjs` builds both release variants and tests the worker in-process.
 
 ## RELEASED flag
@@ -43,7 +43,7 @@ Local Lighthouse 13 run against the built worker served on 127.0.0.1 (headless C
 
 | Profile | Performance | Accessibility | Best Practices | SEO | LCP | CLS | TBT |
 |---|---|---|---|---|---|---|---|
-| Mobile (emulated) | 100 | 100 | 100 | 100 | 0.6 s | 0 | 0 ms |
-| Desktop | 100 | 100 | 100 | 100 | 0.2 s | 0 | 0 ms |
+| Mobile (emulated) | 100 | 100 | 100 | 100 | 1.0 s | 0 | 0 ms |
+| Desktop | 100 | 100 | 100 | 100 | 0.3 s | 0 | 0 ms |
 
-Home page transfer: 11.3 kB brotli (13.3 kB gzip) of HTML with the CSS inlined, 0 kB JavaScript, plus a 0.3 kB SVG logo; `og.png` is 49 kB and only fetched by link previews. `dist/worker.js` is about 291 kB.
+Locally the worker serves the plain body, so the home page transfers 54.7 kB of HTML (CSS inlined) plus a 0.3 kB SVG logo, 0 kB JavaScript; the mobile run above is therefore slower than production. With edge compression that is roughly 13.3 kB gzip or 11.3 kB brotli (measured with node:zlib at build time, never served). `og.png` is 49 kB and only fetched by link previews. `dist/worker.js` is about 216 kB.
