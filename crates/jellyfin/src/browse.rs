@@ -15,6 +15,8 @@ pub struct ItemExtra {
     pub end_date: Option<String>,
     pub date_created: Option<String>,
     pub child_count: Option<u32>,
+    /// Whether this user may delete the item (for playlists: owns it).
+    pub can_delete: Option<bool>,
     pub recursive_item_count: Option<u32>,
     pub taglines: Vec<String>,
     pub album: Option<String>,
@@ -145,7 +147,7 @@ pub struct BrowseQuery {
 }
 
 /// Extra fields a list page needs beyond the server defaults.
-const LIST_FIELDS: &str = "DateCreated,ChildCount,Genres,PrimaryImageAspectRatio";
+const LIST_FIELDS: &str = "DateCreated,ChildCount,Genres,PrimaryImageAspectRatio,CanDelete";
 
 impl BrowseQuery {
     pub fn pairs(&self, user_id: &str) -> Vec<(&'static str, String)> {

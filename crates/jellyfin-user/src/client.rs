@@ -375,6 +375,20 @@ impl UserClient {
         Ok(page.items)
     }
 
+    /// WRITE `POST /Playlists/{id}`: rename one of the user's own playlists.
+    pub async fn rename_playlist(&self, playlist: &str, name: &str) -> Result<()> {
+        if name.trim().is_empty() || name.len() > 200 {
+            return Err(Error::Config("a playlist needs a name".into()));
+        }
+        self.run(
+            Method::POST,
+            &["Playlists", playlist],
+            &[],
+            Some(json!({"Name": name.trim()})),
+        )
+        .await
+    }
+
     /// WRITE `DELETE /Items/{id}`: delete one of the user's own playlists.
     pub async fn delete_playlist(&self, playlist: &str) -> Result<()> {
         self.run(Method::DELETE, &["Items", playlist], &[], None)
@@ -613,6 +627,47 @@ mod tests {
             "other prefs kept"
         );
         assert_eq!(b["SortBy"], "SortName");
+    }
+
+    #[tokio::test]
+    async fn playlist_writes_send_what_the_server_expects() {
+        use crate::mock::serve;
+        let (c, log) = serve(vec![
+            ("POST", "/Playlists", 200, r#"{"Id":"p1"}"#.into()),
+            ("POST", "/Playlists/p1", 204, String::new()),
+            ("POST", "/Playlists/p1/Items", 204, String::new()),
+            ("DELETE", "/Playlists/p1/Items", 204, String::new()),
+            ("POST", "/Playlists/p1/Items/e2/Move/0", 204, String::new()),
+            ("DELETE", "/Items/p1", 204, String::new()),
+        ])
+        .await;
+        assert_eq!(c.create_playlist("Mix", &["a", "b"]).await.unwrap(), "p1");
+        assert!(c.rename_playlist("p1", "  ").await.is_err());
+        c.rename_playlist("p1", " Road trip ").await.unwrap();
+        c.add_to_playlist("p1", &["c"]).await.unwrap();
+        c.remove_from_playlist("p1", &["e1", "e3"]).await.unwrap();
+        c.move_playlist_item("p1", "e2", 0).await.unwrap();
+        c.delete_playlist("p1").await.unwrap();
+        let l = log.lock().unwrap().clone();
+        let req: Vec<_> = l.iter().map(|r| format!("{} {}", r.0, r.1)).collect();
+        assert_eq!(
+            req,
+            [
+                "POST /Playlists",
+                "POST /Playlists/p1",
+                "POST /Playlists/p1/Items?ids=c&userId=me",
+                "DELETE /Playlists/p1/Items?entryIds=e1%2Ce3",
+                "POST /Playlists/p1/Items/e2/Move/0",
+                "DELETE /Items/p1"
+            ]
+        );
+        let b: Value = serde_json::from_str(&l[0].2).unwrap();
+        assert_eq!(
+            (b["Name"].as_str(), b["Ids"].as_array().map(Vec::len)),
+            (Some("Mix"), Some(2))
+        );
+        let b: Value = serde_json::from_str(&l[1].2).unwrap();
+        assert_eq!(b["Name"], "Road trip");
     }
 
     #[test]
