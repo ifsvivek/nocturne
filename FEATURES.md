@@ -15,16 +15,15 @@ Update this file at every task boundary. Scope risks are listed at the bottom.
 ## Browsing (P0)
 - [x] Home: hero, Continue Watching, libraries, latest per library
 - [~] Home: Next Up, My Media, Favorites row, configurable home sections
-- [~] Library views: grid, adaptive columns (full width)
-- [ ] Sort (name, date added, premiere, rating, runtime, random), filters (played, unplayed, favorite, genre, year, rating, resolution, HDR, subtitles, trailers), A-Z jump, view type (poster/thumb/list)
-- [ ] Collections, Playlists, Genres, Studios, People, Years, Tags browse
+- [x] Library views: virtualised paged grid, tabs, sort, filters (no HDR: server has no filter), A-Z, poster/thumb/list, per-library prefs (UI not yet live-verified)
+- [~] Collections, Playlists, Favourites pages; Genres, Studios, Years, Tags, Recent, Random tabs (Next Up/Latest on Home)
 - [ ] Movies, Shows, Seasons, Episodes, Music (artists/albums/tracks), Music videos, Home videos, Photos, Books, Audiobooks (type coverage)
-- [ ] Item detail: overview, cast and crew, similar, extras/trailers, media info (streams), external ratings, chapters, next/previous episode
-- [ ] Person page (filmography)
-- [ ] Search (global, as-you-type, grouped by type), recently searched
+- [~] Item detail: overview, cast, similar, extras, media info, ratings, chapters, prev/next episode, series/season episode card grid (gaps: More menu, Next Up row on series, photo viewer, books)
+- [x] Person page (filmography rows)
+- [x] Search (Ctrl+K or /, debounced, grouped, recent)
 - [ ] Favorites, watched/unwatched toggles (needs user-state writes, see below)
 - [ ] Collections/playlist create, add, remove, reorder (user writes)
-- [ ] Remote images: posters, backdrops, logos, thumbs everywhere, blurhash placeholders
+- [x] Remote images with blurhash placeholders, logos, disk LRU cache with retry
 
 ## Playback (P0/P1)
 - [ ] **Feature-rich video player (user, 2026-11-15; not barebone)**: audio/subtitle menus with styling and delays, speed, chapters on scrub bar, trickplay hover thumbnails, skip intro/credits (media segments), next-episode autoplay, aspect/zoom/picture controls, quality/transcode selector with direct-play fallback, stats overlay, shortcut help, OSD, resume prompt, context menu, screenshot, queue panel, MPRIS and idle inhibit
