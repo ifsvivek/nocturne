@@ -16,11 +16,29 @@ function webpSize(b) {
   if (t === "VP8L") { const v = b.readUInt32LE(21); return { width: (v & 0x3fff) + 1, height: ((v >> 14) & 0x3fff) + 1 }; }
   return { width: b.readUInt16LE(26) & 0x3fff, height: b.readUInt16LE(28) & 0x3fff };
 }
-const shots = import.meta.glob("/src/lib/screens/*.webp", { eager: true, query: "?url", import: "default" });
-export const SCREENS = Object.entries(shots)
-  .sort(([a], [b]) => a.localeCompare(b))
-  .map(([path, src]) => {
-    const { width, height } = webpSize(readFileSync(process.cwd() + path));
-    const name = path.split("/").pop().replace(/\.webp$/, "").replace(/^\d+[-_]?/, "").replace(/[-_]+/g, " ").trim();
-    return { src, width, height, alt: `Screenshot: ${name}` };
-  });
+const shots = import.meta.glob("/src/lib/screens/**/*.webp", { eager: true, query: "?url", import: "default" });
+// key ("home", "playback", ...) -> every width variant, smallest first. Originals are NN-name.webp, resized copies NN-name-W.webp.
+const bySize = {};
+for (const [path, url] of Object.entries(shots)) {
+  const { width, height } = webpSize(readFileSync(process.cwd() + path));
+  let key = path.split("/").pop().replace(/\.webp$/, "").replace(/^\d+-/, "");
+  if (path.includes("/sized/")) key = key.replace(/-\d+$/, "");
+  (bySize[key] ??= []).push({ url, width, height });
+}
+const ALT = {
+  home: "NOCTURNE home screen: a hero banner and a Continue watching row",
+  library: "A movie library grid with sort, filters and an A-Z rail",
+  "movie-detail": "A movie detail page with cast, chapters and media info",
+  "series-episodes": "A series page with season tabs and an episode card grid",
+  search: "Global search results",
+  playback: "In-window playback with the player controls drawn over the video",
+  settings: "Settings, including the switch that allows changes to the server",
+  "admin-dashboard": "The administrator dashboard inside the same app",
+};
+// Image props for one screenshot: src (largest), srcset, intrinsic size and alt, so layout never shifts.
+export function shot(key) {
+  const v = (bySize[key] ?? []).sort((a, b) => a.width - b.width);
+  if (!v.length) throw new Error(`missing screenshot: ${key}`);
+  const big = v[v.length - 1];
+  return { src: big.url, srcset: v.map((x) => `${x.url} ${x.width}w`).join(", "), width: big.width, height: big.height, alt: ALT[key] ?? key };
+}

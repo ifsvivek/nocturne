@@ -18,14 +18,13 @@
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "JetBrains Mono", "JetBrainsMono Nerd Font", "SFMono-Regular", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @layer base {
   html { color-scheme: dark; scroll-behavior: smooth; scroll-padding-top: 72px; -webkit-text-size-adjust: 100%; }
   body {
     @apply bg-frame font-sans text-base leading-relaxed text-ink antialiased overflow-x-hidden;
-    background-image: radial-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px);
-    background-size: 28px 28px;
   }
   a { @apply text-accent-ink underline underline-offset-4 decoration-1 transition-colors duration-[140ms] hover:text-white; }
   :focus-visible { @apply outline-2 outline-offset-2 outline-accent rounded; }
@@ -56,16 +55,50 @@
   .panel p { @apply m-0; }
 }
 
-/* Scroll reveal with no JavaScript: scroll-driven animation where supported, visible everywhere else. */
-@keyframes reveal { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .reveal { animation: reveal linear both; animation-timeline: view(); animation-range: entry 4% entry 38%; }
+@layer components {
+  /* Double bezel: a hairline tray around the screenshot, concentric radii, indigo-tinted depth. */
+  .frame { @apply relative m-0 rounded-[1.25rem] border border-white/10 bg-white/[0.035] p-1.5 shadow-[0_40px_90px_-45px_rgb(75_85_224/0.55)] transition duration-500 ease-glide; }
+  .frame img { @apply block h-auto w-full rounded-[0.85rem] bg-surface shadow-[inset_0_1px_0_rgb(255_255_255/0.08)]; }
+  .frame-hover:hover { @apply -translate-y-1 border-white/20 shadow-[0_50px_100px_-40px_rgb(76_141_255/0.5)]; }
+  .h2 { @apply m-0 text-balance text-[clamp(1.75rem,3.4vw,2.75rem)] font-medium leading-[1.08] tracking-tight; }
+  .h3 { @apply m-0 text-balance text-[clamp(1.25rem,2vw,1.6rem)] font-medium leading-tight tracking-tight; }
+  .lede { @apply m-0 max-w-[62ch] text-pretty text-[1.02rem] text-ink-2; }
+  .link-arrow { @apply inline-flex items-center gap-2 text-sm font-medium text-accent-ink no-underline; }
+  .link-arrow::after { content: "\2192"; @apply transition-transform duration-300 ease-glide; }
+  .link-arrow:hover::after { @apply translate-x-1; }
+  details.faq { @apply border-b border-line; }
+  details.faq summary { @apply flex min-h-14 cursor-pointer list-none items-center justify-between gap-6 py-4 text-[1.04rem] font-medium text-ink transition-colors duration-200 hover:text-white; }
+  details.faq summary::-webkit-details-marker { display: none; }
+  details.faq summary::after { content: "+"; @apply font-mono text-xl font-normal text-accent-ink transition-transform duration-300 ease-glide; }
+  details.faq[open] summary::after { @apply rotate-45; }
+  details.faq > div { @apply max-w-[68ch] pb-6 text-ink-2; }
+  details.faq > div p { @apply m-0; }
+}
+
+/* Film grain: one fixed, pointer-less layer. Static, so it costs nothing while scrolling. */
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 60; pointer-events: none; opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
+@keyframes drift { from { transform: translate3d(-3%, 0, 0) scale(1); } to { transform: translate3d(3%, 4%, 0) scale(1.08); } }
+@keyframes parallax { to { transform: translateY(-70px); } }
+@keyframes reveal { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+
+/* Motion: load-in cascade on the hero, slow gradient drift, scroll-driven reveal and parallax.
+   Everything is CSS; unsupported browsers just show the content. */
+@media (prefers-reduced-motion: no-preference) {
+  .rise { animation: rise 1s var(--ease-glide) both; }
+  .d1 { animation-delay: 80ms; } .d2 { animation-delay: 200ms; } .d3 { animation-delay: 320ms; } .d4 { animation-delay: 460ms; }
+  .drift { animation: drift 28s ease-in-out infinite alternate; }
+  @supports (animation-timeline: view()) {
+    .reveal { animation: reveal linear both; animation-timeline: view(); animation-range: entry 4% entry 40%; }
+    .par { animation: parallax linear both; animation-timeline: scroll(root); animation-range: 0 800px; }
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: 0.01ms !important; animation: none !important; }
-  .btn:hover { transform: none; }
 }

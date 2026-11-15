@@ -26,12 +26,14 @@
             <li><a class="text-ink-2 no-underline hover:text-white" href={RELEASES} rel="noopener">Download</a></li>
           {/if}
           <li><a class="text-ink-2 no-underline hover:text-white" href="/privacy">Privacy</a></li>
+          {#if RELEASED}<li><a class="text-ink-2 no-underline hover:text-white" href="{REPO}/tree/main/docs" rel="noopener">Documentation</a></li>{/if}
+          <li><a class="text-ink-2 no-underline hover:text-white" href="/#faq">FAQ</a></li>
           <li><a class="text-ink-2 no-underline hover:text-white" href="/#limits">Limitations</a></li>
         </ul>
       </div>
     </div>
     <div class="mt-10 grid max-w-[80ch] gap-1.5 border-t border-line pt-6 text-sm text-ink-2">
-      <p class="m-0">NOCTURNE is an independent project, not affiliated with or endorsed by Jellyfin. Other names belong to their owners.</p>
+      <p class="m-0">NOCTURNE is an independent project, not affiliated with or endorsed by Jellyfin. Other names belong to their owners. Screenshots show a generated demo library.</p>
       <p class="m-0">NOCTURNE is free software, licensed under the GNU General Public License, version 3 or (at your option) any later version (GPL-3.0-or-later). It comes with no warranty.</p>
       <p class="m-0">Copyright (C) 2026 ifsvivek</p>
     </div>
