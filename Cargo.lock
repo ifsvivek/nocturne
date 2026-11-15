@@ -3040,6 +3040,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
+name = "libmpv2"
+version = "7.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5e0af058d13863e58383df4a2b4f5242815afada24506cba24ea049683b9c80"
+dependencies = [
+ "libmpv2-sys",
+]
+
+[[package]]
+name = "libmpv2-sys"
+version = "4.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edb32cabe7176b7d270b0dca6ff418b75187ae8d3854423e3d06fbff376841e4"
+
+[[package]]
 name = "libredox"
 version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3403,6 +3418,7 @@ dependencies = [
  "gpui",
  "image",
  "nocturne-jellyfin",
+ "nocturne-jellyfin-admin",
  "nocturne-player",
  "tokio",
 ]
@@ -6146,6 +6162,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
+name = "video-proto"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "libmpv2",
+ "raw-window-handle",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-egl",
+ "wayland-protocols 0.32.13",
+]
+
+[[package]]
 name = "vswhom"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6308,6 +6337,16 @@ dependencies = [
  "rustix 1.1.6",
  "wayland-client",
  "xcursor",
+]
+
+[[package]]
+name = "wayland-egl"
+version = "0.32.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b97bdb7c49e5bd9b7562f38ff84f0dad47079fdc9e926f691a787f6dbc05451"
+dependencies = [
+ "wayland-backend",
+ "wayland-sys",
 ]
 
 [[package]]
