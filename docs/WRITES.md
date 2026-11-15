@@ -3,7 +3,7 @@
 By default NOCTURNE only reads. One setting, **Settings > Allow NOCTURNE to change data on the
 server** (`allow_server_writes`, default off), gates every change. Turn it on and the features below
 work, each with its existing confirmation dialog where one exists. Developer API-key mode
-(`NOCTURNE_JF_TOKEN`) refuses all writes whatever the setting says.
+(`NOCTURNE_JF_TOKEN`) refuses all writes whatever the setting says (it also cannot take part in a group).
 
 | Feature | Needs server changes on | Also needs |
 |---|---|---|
@@ -15,6 +15,7 @@ work, each with its existing confirmation dialog where one exists. Developer API
 | Own profile image (set, remove), display language | yes | a confirmation dialog |
 | Playlists you own: create, add items, remove, reorder, rename, delete | yes | a confirmation dialog; delete needs the typed name |
 | Authorize another device with a Quick Connect code | yes | the code shown on that device |
+| Watch together (SyncPlay): create a group, join one, start something for the group, play / pause / seek / skip, Ready and Buffering reports, latency Ping | yes | an explicit click or key (create, join); the rest only happens while in a group. Leaving is always allowed. Details in [syncplay.md](syncplay.md) |
 | Admin: scan library, run/stop tasks, users, sessions, server settings, transcoding settings, restart, API keys | yes | an administrator account and a confirmation dialog per action |
 | Admin: branding, task triggers, trickplay settings, libraries (add, remove, folders, options), plugins (enable, disable, uninstall, install) | yes | an administrator account and a confirmation dialog per action |
 | Admin: plugin repositories (add, enable, disable, remove), library rename, metadata / image fetcher order and enabling, local readers, per-user access and limits, user profile image (upload, remove) | yes | an administrator account and a confirmation dialog per action |

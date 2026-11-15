@@ -241,7 +241,7 @@ impl PlayerView {
                 self.osd(format!("Volume {}%", v.round()));
             }
             Key::Mute => self.mute(),
-            Key::Stop => self.close(false, cx),
+            Key::Stop => self.stop(cx),
             Key::Fullscreen => self.toggle_fullscreen(window),
             Key::Back if self.help || self.stats => (self.help, self.stats) = (false, false),
             Key::Back if self.next_since.is_some() && !self.next_dismissed => {
@@ -696,7 +696,8 @@ impl PlayerView {
                 ("Shift+M", "Mini player"),
                 ("Right-click", "Context menu"),
                 ("Ctrl+S", "Screenshot"),
-                ("s", "Stop"),
+                ("s", "Stop (everyone, in a group)"),
+                ("g", "Watch together: join, leave, who is watching"),
                 ("?", "This help"),
             ];
             v.push(

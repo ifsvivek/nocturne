@@ -171,6 +171,37 @@ image found no address, port, path, token or name other than the three demo prof
 throwaway server's random server id and the Users page a shortened user id (both meaningless). Not captured: any admin
 Libraries page (it lists paths).
 
+## Watch together (SyncPlay), Jellyfin 12.4.0 throwaway on port 8103
+
+**Verified live** with two real app processes (users alice and bob, isolated XDG directories, unique keyring service and
+`NOCTURNE_DEVICE_ID`, started without a `.env`, headless Hyprland outputs), a generated 5 minute 640x360 24 fps clip with a
+burned-in timecode:
+- alice creates a group, bob sees it listed and joins (the header pill shows the group and "2 watching"); alice starts the
+  clip, both start together. Bob (the non-initiator) also started correctly when the group was created by alice.
+- Pause by alice, seek +10 s while paused, unpause by alice; then pause, seek -10 s, unpause by bob: the other player followed
+  every time. Both external mpv players were queried over their IPC sockets at the same instant: the position difference was
+  0.0 ms in every sample after each transition and in 20 consecutive steady-state samples (positions are frame quantised, one
+  frame at 24 fps is 41.7 ms; the largest single difference seen was one frame, 41.7 ms, right after a catch-up).
+- Late join: bob left the group (local control returned: pausing bob did not pause alice), then rejoined 15 s later and caught
+  up to the group's position within about 3 s, ending at a 0 to 41.7 ms difference.
+- The stop key stops both players. Closing the video keeps the member in the group; "Play what the group is on" rejoins.
+- Mixed backends: alice on the external mpv, bob on the embedded libmpv player. By timecode screenshots against alice's IPC
+  position the difference was at most about 85 ms (one to two frames, and this includes the screenshot latency).
+- Server stopped for 12 s while both were in the group: the pill read "reconnecting", then after the restart (groups do not
+  survive it) the group state was dropped and local control returned.
+- Clock estimate over loopback: offset about 1.4 ms, ping 2 ms. Integer ping accepted by the server.
+- Server wait behaviour (ignored live test): with one member never sending Ready the group was held with `Pause` at 0 s and
+  started with `Unpause` at 30.9 s.
+- Drift correction never had to act in these runs (the players stayed within one frame), so SpeedToSync and SkipToSync were
+  **not** exercised live.
+
+**Unit tested only**: message decoding (real-shaped samples), clock estimator, command scheduling, duplicate handling, stale
+queue rejection, late-join start position, drift thresholds and the correction timeline, Ready reports, stall detection, the
+access gate (policy, switch, developer mode), item ordering, reconnect backoff, the WebSocket client against an in-process
+server (decode, keep-alive answer, reconnect), REST bodies against a mock, the Home nav-highlight fix. Not verified: more than
+two members, transcoded members, a user whose policy is `JoinGroups` or `None` against the real server, `LibraryAccessDenied`,
+and the screen on a real library.
+
 ## Not verified / known gaps
 
 - Real server HDR; the photo viewer and music on real data (the real server has no photo or music library).

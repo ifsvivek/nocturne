@@ -3,6 +3,21 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Watch together (SyncPlay): press `g` or use the account menu to list, create, join and leave groups on your server. In a
+  group, choosing something to play starts it for everyone, and play, pause, seek, stop and next-item stay in step across
+  members' players (clock sync against the server, command scheduling, small drift corrected by nudging mpv's speed and large
+  drift by seeking, and the Ready / Buffering handshake so the group waits for the slowest member). A pill in the header and
+  on the player shows the group and has Leave. Works with the embedded and the external mpv player. It needs server changes
+  switched on (leaving never does) and a user whose policy allows SyncPlay. `NOCTURNE_DEVICE_ID` overrides the device id
+  the server keys sessions by.
+
+### Fixed
+- Clicking Home with the mouse could leave the header highlighting a library (for example Movies) instead of Home, because
+  the Home page kept the keyboard focus on a header entry.
+
 ## [0.2.0] - 2026-11-15
 
 ### Added

@@ -14,6 +14,10 @@ pub(super) const SHORTCUTS: [(&str, &[(&str, &str)]); 7] = [
             ("Alt + Left / Right", "Back / forward"),
             ("Ctrl + K or /", "Search"),
             ("a", "Account menu"),
+            (
+                "g",
+                "Watch together: create, join or leave a SyncPlay group",
+            ),
             ("?", "This help"),
         ],
     ),
@@ -101,7 +105,7 @@ impl Root {
             )
     }
 
-    fn overlay_backdrop(
+    pub(super) fn overlay_backdrop(
         &self,
         id: &'static str,
         panel: Stateful<Div>,

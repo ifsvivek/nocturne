@@ -4,6 +4,7 @@ mod ui_detail;
 mod ui_help;
 mod ui_playlists;
 mod ui_search;
+mod ui_syncplay;
 
 use crate::account::picker::{self, DefaultChange, Picker, Start};
 use crate::account::{self, Accounts};
@@ -29,6 +30,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use ui_browse::{Browse, GLOBALS, Global};
 use ui_detail::DRow;
+use ui_syncplay::Sp;
 
 #[derive(Clone)]
 enum Load<T> {
@@ -277,7 +279,7 @@ pub struct Root {
     glow: Arc<Image>,
     cols: usize,
     win: Size<Pixels>,
-    note: Option<&'static str>,
+    note: Option<SharedString>,
     note_gen: u64,
     /// Developer-token mode (`NOCTURNE_JF_TOKEN`): no login, read-only.
     dev: bool,
@@ -322,6 +324,8 @@ pub struct Root {
     help_open: bool,
     /// This account's own sessions overlay (account menu).
     devices: Option<Load<Vec<nocturne_jellyfin_user::OwnSession>>>,
+    /// Watch together (SyncPlay).
+    sp: Sp,
 }
 
 /// Reconnect state while the server is unreachable.
@@ -346,6 +350,7 @@ enum AcctAct {
     Password,
     Authorize,
     Devices,
+    Together,
     Switch,
     SignOut,
     /// Switch to remembered account `i` (index into `Root::other_accounts`).
@@ -389,6 +394,7 @@ impl Root {
             cols: 4,
             win: size(px(1280.0), px(800.0)),
             note: None,
+            sp: Sp::new(),
             note_gen: 0,
             dev: false,
             accounts: None,
@@ -450,7 +456,7 @@ impl Root {
                 account::Event::SignedIn { url, session } => {
                     t.activate(url.clone(), session.clone(), cx)
                 }
-                account::Event::Notice(n) => t.toast(n, cx),
+                account::Event::Notice(n) => t.toast(*n, cx),
                 account::Event::Reload => {
                     t.refresh_profile(cx);
                     t.retry_page(cx)
@@ -485,7 +491,7 @@ impl Root {
             let idle = this
                 .read_with(cx, |t, _| {
                     t.settings.save();
-                    t.player.is_none()
+                    t.player.is_none() && !t.sp.engine.in_group()
                 })
                 .unwrap_or(true);
             if idle {
@@ -494,6 +500,7 @@ impl Root {
             cx.spawn(async move |cx| {
                 this.update(cx, |t, cx| {
                     t.report_stop();
+                    t.sp_shutdown(cx);
                     if let Some(p) = t.player.take() {
                         p.update(cx, |p, _| p.shutdown());
                     }
@@ -675,6 +682,7 @@ impl Root {
 
     /// Back to the account screens: stop playback, drop everything tied to the login.
     fn leave_session(&mut self, cx: &mut Context<Self>) {
+        self.sp_shutdown(cx);
         self.close_player(cx);
         self.source = None;
         self.stack.clear();
@@ -719,6 +727,7 @@ impl Root {
             add("Remove profile image", AcctAct::RemoveImage);
             add("Display language", AcctAct::Language);
             add("Authorize a device", AcctAct::Authorize);
+            add("Watch together", AcctAct::Together);
             add("Your devices", AcctAct::Devices);
             if !self.audio_queue.items.is_empty() {
                 let n = self.audio_queue.items.len();
@@ -964,6 +973,7 @@ impl Root {
                 self.dd = None;
             }
             AcctAct::Devices => self.open_devices(cx),
+            AcctAct::Together => self.sp_open_screen(cx),
             AcctAct::Authorize
             | AcctAct::Password
             | AcctAct::ProfileImage
@@ -1049,6 +1059,7 @@ impl Root {
                 cx.notify();
             });
         }
+        self.sp_writes_changed(cx);
     }
 
     /// An admin client for this login, view-only until the master switch says otherwise.
@@ -1724,8 +1735,8 @@ impl Root {
         nav::forward(&mut self.stack, &mut self.fwd);
     }
 
-    fn toast(&mut self, msg: &'static str, cx: &mut Context<Self>) {
-        self.note = Some(msg);
+    fn toast(&mut self, msg: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.note = Some(msg.into());
         self.note_gen += 1;
         let g = self.note_gen;
         cx.spawn(async move |this, cx| {
@@ -1746,16 +1757,11 @@ impl Root {
     /// Hands one playable item to the player page, with the items queued behind it (Play all /
     /// Shuffle; empty = the player finds the next episode itself). Nothing here is ever logged.
     fn play_media(&mut self, m: Media, rest: Vec<Media>, cx: &mut Context<Self>) {
-        let Some(src) = self.source.clone() else {
+        if self.sp.engine.in_group() {
+            return self.sp_play(m, rest, cx);
+        }
+        let Some(ctx) = self.player_ctx() else {
             return;
-        };
-        let (client, user) = src.client();
-        let ctx = PlayerCtx {
-            client,
-            user,
-            hooks: Some(self.hooks.clone() as Arc<dyn PlayerHooks>),
-            prefs: self.settings.prefs(),
-            buffering: self.settings.buffering(),
         };
         self.hooks.seed_favorite(&m.id, m.favorite);
         self.report_stop();
@@ -1766,6 +1772,22 @@ impl Root {
             }
             v
         });
+        self.attach_player(view, cx);
+    }
+
+    fn player_ctx(&self) -> Option<PlayerCtx> {
+        let (client, user) = self.source.as_ref()?.client();
+        Some(PlayerCtx {
+            client,
+            user,
+            hooks: Some(self.hooks.clone() as Arc<dyn PlayerHooks>),
+            prefs: self.settings.prefs(),
+            buffering: self.settings.buffering(),
+        })
+    }
+
+    /// Makes `view` the player page and reacts when it ends.
+    fn attach_player(&mut self, view: Entity<PlayerView>, cx: &mut Context<Self>) {
         self._player_sub = Some(cx.subscribe(&view, |t, _, ev: &PlayerEvent, cx| {
             let PlayerEvent::Closed { failed, leave_fs } = ev;
             t.report_stop();
@@ -1780,6 +1802,7 @@ impl Root {
             if *failed {
                 t.toast("This couldn't be played.", cx);
             }
+            t.sp_player_closed(cx);
             cx.notify();
         }));
         self.player = Some(view);
@@ -1880,7 +1903,15 @@ impl Root {
 
     fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let key = ev.keystroke.key.as_str();
+        if self.sp.open {
+            return self.sp_key(ev, cx);
+        }
         if let Some(p) = self.player.clone() {
+            let m = &ev.keystroke.modifiers;
+            if key == "g" && !m.control && !m.alt && !m.shift && !self.dev {
+                self.sp_open_screen(cx);
+                return cx.notify();
+            }
             p.update(cx, |p, cx| p.on_key(ev, window, cx));
             return;
         }
@@ -1893,6 +1924,9 @@ impl Root {
             a.update(cx, |a, cx| a.on_key(ev, cx));
             cx.notify();
             return;
+        }
+        if self.sp.open {
+            return self.sp_key(ev, cx);
         }
         if self.help_open || self.devices.is_some() {
             if matches!(key, "escape" | "backspace")
@@ -1949,6 +1983,11 @@ impl Root {
             if ev.keystroke.key_char.as_deref() == Some("?") {
                 self.close_admin_menus();
                 self.help_open = true;
+                return cx.notify();
+            }
+            if key == "g" && !m.control && !m.alt && !m.shift && !self.dev {
+                self.close_admin_menus();
+                self.sp_open_screen(cx);
                 return cx.notify();
             }
             if (m.control && key == "k") || (key == "/" && !m.control && !m.alt && !m.shift) {
@@ -2232,6 +2271,7 @@ impl Root {
                     .flex()
                     .items_center()
                     .gap(px(t::S4))
+                    .children(self.sp_pill(cx))
                     .child(
                         div()
                             .id("search-btn")
@@ -3281,7 +3321,19 @@ impl Render for Root {
         }
         if let Some(p) = &self.player {
             let mut page = self.shell(cx).bg(rgba(0x00000000)).child(p.clone());
-            if let Some(n) = self.note {
+            if let Some(pill) = self.sp_pill(cx) {
+                page = page.child(
+                    div()
+                        .absolute()
+                        .top(px(t::S4))
+                        .left_0()
+                        .w_full()
+                        .flex()
+                        .justify_center()
+                        .child(pill),
+                );
+            }
+            if let Some(n) = self.note.clone() {
                 page = page.child(
                     div()
                         .absolute()
@@ -3296,6 +3348,9 @@ impl Render for Root {
                         .text_size(px(t::BODY))
                         .child(n),
                 );
+            }
+            if let Some(o) = self.sp_overlay(cx) {
+                page = page.child(o);
             }
             return page.into_any_element();
         }
@@ -3402,10 +3457,13 @@ impl Render for Root {
         if let Some(o) = self.devices_overlay(cx) {
             root = root.child(o);
         }
+        if let Some(o) = self.sp_overlay(cx) {
+            root = root.child(o);
+        }
         if let Some(a) = self.accounts.clone().filter(|a| a.read(cx).dialog_open()) {
             root = root.child(a);
         }
-        if let Some(n) = self.note {
+        if let Some(n) = self.note.clone() {
             root = root.child(
                 div()
                     .absolute()

@@ -16,14 +16,12 @@ Still being verified on a real server (built and tested on a throwaway server, n
 - A 401 in the middle of a session and the offline banner
 - The image cache size cap on a very large library, and a multi-day soak
 
-## Next: SyncPlay ("watch together")
+## Done: SyncPlay ("watch together")
 
-First feature after 0.2.x.
-- Create, list, join and leave SyncPlay groups on the same server
-- Synchronised play, pause, seek and stop across members (Jellyfin `/SyncPlay` endpoints plus the server WebSocket)
-- Clock-offset estimate against the server and drift correction in the player
-- A "Watch together" screen
-- Needs server changes switched on, like every feature that changes server state (see [WRITES.md](WRITES.md))
+Shipped after 0.2.x (see [syncplay.md](syncplay.md)): list, create, join and leave groups, synchronised play, pause, seek,
+stop and next, clock sync, drift correction and the Ready / Buffering handshake, for the embedded and external players.
+Still to do: show what a group is playing (the API does not say), group repeat and shuffle modes, queue editing from the
+group, resume positions, and testing with more than two members and with transcoded members.
 
 ## Then: research-driven improvements
 

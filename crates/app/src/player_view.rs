@@ -5,6 +5,7 @@ use crate::bridge;
 use crate::player_logic::{self as pl, Method, Quality, Seg, TrackChoice};
 use crate::player_mpris::{Cmd, Mpris, Snap};
 use crate::source::{Kind, Media, sniff};
+use crate::syncplay::GroupReq;
 use crate::video::{
     self, Aspect, AutoHide, MenuAct, Playback, PlayerHooks, PlayerPrefs, Pop, Repeat, Settings,
 };
@@ -128,10 +129,30 @@ pub struct PlayerView {
     pub mpris: Option<Mpris>,
     pub art_url: String,
     pub closed: bool,
+    /// In a SyncPlay group: transport controls become requests to the group (`outbox`) and the
+    /// group's commands are applied through the `group_*` methods.
+    pub group: bool,
+    /// Requests for the group, drained by the owner.
+    pub outbox: Vec<GroupReq>,
+    /// Report Ready once the item is loaded and settled near this position (seconds).
+    pub ready_due: Option<f64>,
+    /// End of item already announced to the group (one `NextItem` per item).
+    pub eof_sent: bool,
+    /// Drift against the group in ms (positive: behind), for the stats overlay.
+    pub group_diff: Option<f64>,
 }
 
 impl PlayerView {
     pub fn new(ctx: PlayerCtx, media: Media, cx: &mut Context<Self>) -> Self {
+        Self::build(ctx, media, None, cx)
+    }
+
+    /// A player that follows a SyncPlay group: starts paused at `start` seconds.
+    pub fn new_group(ctx: PlayerCtx, media: Media, start: f64, cx: &mut Context<Self>) -> Self {
+        Self::build(ctx, media, Some(start), cx)
+    }
+
+    fn build(ctx: PlayerCtx, media: Media, group: Option<f64>, cx: &mut Context<Self>) -> Self {
         let env = std::env::var("NOCTURNE_VIDEO").ok();
         let wl = std::env::var_os("WAYLAND_DISPLAY").is_some();
         let embed = video::choose(env.as_deref(), wl) == video::Choice::Embedded;
@@ -173,7 +194,7 @@ impl PlayerView {
             loaded: false,
             ended: false,
             started: now,
-            seek_on_load: None,
+            seek_on_load: group,
             first_load: true,
             play_item: None,
             segs: vec![],
@@ -198,6 +219,11 @@ impl PlayerView {
             mpris: Some(Mpris::start()),
             art_url: String::new(),
             closed: false,
+            group: group.is_some(),
+            outbox: vec![],
+            ready_due: None,
+            eof_sent: false,
+            group_diff: None,
         };
         me.begin(media, cx);
         // Poll the player a few times a second.
@@ -295,7 +321,12 @@ impl PlayerView {
             self.set.method = Method::Transcode.label();
         }
         self.hide.poke(Instant::now());
+        self.eof_sent = false;
+        self.ready_due = None;
         let (url, header) = (self.url(), self.header());
+        if self.group {
+            self.setp("pause", "yes"); // held until the group says go
+        }
         if let Some(p) = &self.playback {
             if p.load(&url, Some(&header)).is_err() {
                 return self.fail(cx);
@@ -396,6 +427,9 @@ impl PlayerView {
         .ok()
         .filter(|p| p.load(url, Some(header)).is_ok());
         self.playback = ok.map(Playback::External);
+        if self.group {
+            self.setp("pause", "yes");
+        }
         self.playback.is_some()
     }
 
@@ -419,6 +453,9 @@ impl PlayerView {
         match p {
             Some(p) => {
                 let _ = p.set_volume(self.volume);
+                if self.group {
+                    let _ = p.command(&["set", "pause", "yes"]);
+                }
                 self.vbounds = None; // push bounds to the new surface on the next paint
                 self.playback = Some(Playback::Embedded(Box::new(p)));
             }
@@ -641,12 +678,18 @@ impl PlayerView {
     // ---- settings ----
 
     pub fn set_speed(&mut self, sp: f64) {
+        if self.group {
+            return self.osd("Speed follows the group");
+        }
         self.setp("speed", &sp.to_string());
         self.set.speed = sp;
         self.osd(format!("Speed {}", video::fmt_speed(sp)));
     }
 
     pub fn set_repeat(&mut self, r: Repeat) {
+        if self.group {
+            return self.osd("Not available in a group");
+        }
         self.setp("loop-file", if r == Repeat::One { "inf" } else { "no" });
         self.set.repeat = r;
         self.osd(r.label());
@@ -820,6 +863,7 @@ impl PlayerView {
                 }
                 back(self, Pop::Devices);
             }
+            MenuAct::AbLoop if self.group => self.osd("Not available in a group"),
             MenuAct::AbLoop => {
                 if let Some(p) = &self.playback {
                     let _ = p.command(&["ab-loop"]);
@@ -908,21 +952,112 @@ impl PlayerView {
     // ---- actions ----
 
     pub fn toggle(&mut self) {
+        if self.group {
+            let r = if self.paused() {
+                GroupReq::Unpause
+            } else {
+                GroupReq::Pause
+            };
+            return self.outbox.push(r);
+        }
         if let Some(p) = &self.playback {
             let _ = p.toggle();
         }
     }
 
     pub fn seek(&mut self, secs: f64) {
+        if self.group {
+            return self.seek_to((self.pos() + secs).max(0.0));
+        }
         if let Some(p) = &self.playback {
             let _ = p.seek_by(secs);
         }
     }
 
     pub fn seek_to(&mut self, secs: f64) {
+        if self.group {
+            let to = self.dur().map_or(secs, |d| secs.min(d)).max(0.0);
+            return self.outbox.push(GroupReq::Seek(to));
+        }
         if let Some(p) = &self.playback {
             let _ = p.seek_to(secs);
         }
+    }
+
+    /// The Stop key: ends playback for the whole group, or just closes when alone.
+    pub fn stop(&mut self, cx: &mut Context<Self>) {
+        if self.group {
+            self.outbox.push(GroupReq::Stop);
+        } else {
+            self.close(false, cx);
+        }
+    }
+
+    // ---- SyncPlay: what the group tells this player (never routed back to the group) ----
+
+    pub fn group_snap(&self) -> Option<(f64, bool)> {
+        let st = self.state.as_ref().filter(|_| self.loaded)?;
+        Some((st.position?, !st.paused))
+    }
+
+    pub fn group_pause(&mut self, at: f64) {
+        self.setp("pause", "yes");
+        self.group_seek(at);
+    }
+
+    pub fn group_unpause(&mut self) {
+        self.setp("pause", "no");
+    }
+
+    pub fn group_seek(&mut self, to: f64) {
+        // Never past the end: a position beyond the runtime makes the server schedule nonsense.
+        let to = self.dur().map_or(to, |d| to.min(d)).max(0.0);
+        if let Some(p) = &self.playback {
+            let _ = p.seek_to(to);
+        }
+    }
+
+    /// Playback speed nudge for drift correction (1.0 = normal); not the user's speed setting.
+    pub fn group_speed(&mut self, f: f64) {
+        self.setp("speed", &format!("{f:.3}"));
+    }
+
+    /// (mpv is seeking, mpv is waiting for cache data).
+    pub fn group_flags(&self) -> (bool, bool) {
+        let on = |n: &str| {
+            self.playback
+                .as_ref()
+                .and_then(|p| p.prop(n))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        };
+        (on("seeking"), on("paused-for-cache"))
+    }
+
+    /// Replaces the queue with the group's and loads `idx` at `start` seconds, paused.
+    pub fn group_load(
+        &mut self,
+        queue: Vec<Media>,
+        idx: usize,
+        start: f64,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(m) = queue.get(idx).cloned() else {
+            return;
+        };
+        self.queue = queue;
+        self.qi = idx;
+        self.group = true;
+        self.seek_on_load = Some(start);
+        self.queue_open = false;
+        self.begin(m, cx);
+        cx.notify();
+    }
+
+    /// Same queue, new order or additions (the playing item stays where it is).
+    pub fn group_queue(&mut self, queue: Vec<Media>, idx: usize) {
+        self.queue = queue;
+        self.qi = idx;
     }
 
     pub fn skip(&mut self, s: Seg) {
@@ -954,6 +1089,10 @@ impl PlayerView {
     }
 
     pub fn jump(&mut self, i: usize, cx: &mut Context<Self>) {
+        if self.group {
+            self.outbox.push(GroupReq::SetIndex(i));
+            return;
+        }
         let Some(m) = self.queue.get(i).cloned() else {
             return;
         };
@@ -967,6 +1106,9 @@ impl PlayerView {
 
     /// Move entry `i` one place up or down; the selection follows it.
     pub fn queue_shift(&mut self, i: usize, up: bool) {
+        if self.group {
+            return self.osd("The group's queue is shared");
+        }
         if let Some(j) = pl::queue_move(&mut self.queue, &mut self.qi, i, up) {
             self.queue_sel = j;
         } else {
@@ -976,6 +1118,9 @@ impl PlayerView {
 
     /// Take entry `i` out of the queue (not the one playing).
     pub fn queue_drop(&mut self, i: usize) {
+        if self.group {
+            return self.osd("The group's queue is shared");
+        }
         if pl::queue_remove(&mut self.queue, &mut self.qi, i) {
             self.queue_sel = self.queue_sel.min(self.queue.len().saturating_sub(1));
             self.osd("Removed from the queue");
@@ -985,6 +1130,9 @@ impl PlayerView {
     }
 
     pub fn toggle_shuffle(&mut self) {
+        if self.group {
+            return self.osd("The group's queue is shared");
+        }
         if self.shuffle {
             let (q, at) = pl::unshuffle(
                 &self.queue,
@@ -1034,6 +1182,17 @@ impl PlayerView {
     }
 
     pub fn step(&mut self, dir: i8, cx: &mut Context<Self>) {
+        if self.group {
+            let r = match (dir > 0, self.prev_index()) {
+                (true, _) => Some(GroupReq::Next),
+                (false, Some(_)) => Some(GroupReq::Prev),
+                (false, None) => None,
+            };
+            return match r {
+                Some(r) => self.outbox.push(r),
+                None => self.seek_to(0.0),
+            };
+        }
         let t = if dir > 0 {
             self.next_index()
         } else {
@@ -1211,7 +1370,16 @@ impl PlayerView {
         self.apply_tracks();
         self.name_and_ext_subs(cx);
         self.apply_sub_pos();
-        if let Some(t) = self.seek_on_load.take() {
+        if self.group {
+            let t = self.seek_on_load.take().unwrap_or(0.0);
+            if t > 0.5
+                && let Some(p) = &self.playback
+            {
+                let _ = p.seek_to(t);
+            }
+            self.setp("pause", "yes");
+            self.ready_due = Some(t);
+        } else if let Some(t) = self.seek_on_load.take() {
             if t > 1.0
                 && let Some(p) = &self.playback
             {
@@ -1247,6 +1415,7 @@ impl PlayerView {
             .iter()
             .position(|s| pl::auto_skips(s) && pos >= s.start - 0.5 && pos < s.end - 1.0);
         if self.ctx.prefs.auto_skip_intro
+            && !self.group
             && let Some(i) = auto
             && !self.skipped.contains(&i)
         {
@@ -1275,6 +1444,14 @@ impl PlayerView {
                 .next_since
                 .is_some_and(|s| pl::countdown_left(s.elapsed().as_secs_f64()).is_none());
         let at_end = self.ended && self.set.repeat != Repeat::One;
+        if self.group {
+            // Everyone reaches the end; NextItem names the item, so the group advances once.
+            if (countdown_done || at_end) && !self.eof_sent && self.next_index().is_some() {
+                self.eof_sent = true;
+                self.outbox.push(GroupReq::Next);
+            }
+            return;
+        }
         if countdown_done || at_end {
             let wrap = self.set.repeat == Repeat::All;
             let go =
@@ -1298,6 +1475,9 @@ impl PlayerView {
         }
         if self.stats && self.playback.is_some() {
             self.stats_rows = self.stats_snapshot();
+            if let Some(d) = self.group_diff {
+                self.stats_rows.push(("Group drift", format!("{d:+.0} ms")));
+            }
             cx.notify();
         }
     }
@@ -1401,7 +1581,7 @@ impl PlayerView {
                 Cmd::PlayPause => self.toggle(),
                 Cmd::Play if self.paused() => self.toggle(),
                 Cmd::Pause if !self.paused() => self.toggle(),
-                Cmd::Stop => return self.close(false, cx),
+                Cmd::Stop => return self.stop(cx),
                 Cmd::Next => self.step(1, cx),
                 Cmd::Prev => self.step(-1, cx),
                 Cmd::SeekBy(s) => self.seek(s),

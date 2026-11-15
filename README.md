@@ -39,6 +39,7 @@ The full checklist is [docs/FEATURES.md](docs/FEATURES.md); verification notes a
 - **Accounts**: username and password or Quick Connect (and authorizing other devices); switch between remembered accounts without
   a password, with a "Who's watching?" profile picker at launch (and an optional default profile); the token lives in your
   system keyring.
+- **Watch together**: SyncPlay groups on your server; play, pause, seek and skip stay in step for everyone (press `g`).
 - **Playlists and music**: create, edit, reorder and delete your playlists; a music queue with play next, shuffle and repeat.
 - **Admin** (administrator accounts): dashboard, users (access and limits), libraries, providers, scheduled tasks and triggers,
   devices, activity, logs, API keys, branding, networking, transcoding, trickplay, backups and plugins, each change behind a

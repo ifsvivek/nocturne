@@ -18,6 +18,7 @@ mod search;
 mod settings;
 mod source;
 mod sync;
+mod syncplay;
 mod theme;
 mod ui;
 mod video;

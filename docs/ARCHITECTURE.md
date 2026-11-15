@@ -5,7 +5,7 @@ NOCTURNE is a Cargo workspace of six crates. The app is the only binary (`noctur
 | Crate | Role | Writes to server? |
 |---|---|---|
 | `crates/jellyfin` | Async read-only Jellyfin client: libraries, items, images, stream URLs. GET only, enforced by `tests/readonly.rs` | never |
-| `crates/jellyfin-user` | User-scope calls: login, Quick Connect, logout, playback reporting, played / favourite, own password, own profile image, display language, own playlists | yes, user scope |
+| `crates/jellyfin-user` | User-scope calls: login, Quick Connect, logout, playback reporting, played / favourite, own password, own profile image, display language, own playlists, SyncPlay (REST, WebSocket, clock sync, state machine) | yes, user scope |
 | `crates/jellyfin-admin` | Admin reads and writes. Destructive calls need a `Confirmed` token; live tests guarded by `TestServerGuard` | yes, admin |
 | `crates/session` | Tokens in the system keyring (Secret Service): the active login per server and one per remembered account; server URLs in `servers.toml`, account names in `accounts.toml`; atomic writes | n/a |
 | `crates/player` | mpv playback: `EmbeddedPlayer` (libmpv in a Wayland subsurface) and `Player` (mpv child process over JSON IPC) | n/a |
@@ -44,6 +44,17 @@ Both backends share one API. Buffering watermarks are described in [buffering.md
 The player UI (`player_view.rs`, `player_ui.rs`, `player_logic.rs`) sits in the app; `player_mpris.rs` exposes media
 keys over D-Bus (zbus). Playback reporting is driven from `Root::tick`, not from the player, so one code path
 handles all progress, played and stopped reports.
+
+## Watch together (SyncPlay)
+
+`jellyfin-user/src/syncplay/` holds everything that is not UI: `model.rs` (typed messages and their decoding),
+`time.rs` (clock offset, lowest-delay sample), `engine.rs` (a pure state machine that takes `now` and returns what to do:
+schedule a command, load a queue, report Ready, correct drift), `rest.rs` (calls; writes take `UserConfirmed`) and `ws.rs`
+(reqwest does the HTTP upgrade, tungstenite only frames; reconnect with backoff). The app side is `app/ui_syncplay.rs`
+(the `Sp` state on `Root`, a 50 ms poll loop on the UI thread that drains the socket channel, the screen and the pill) and
+`syncplay.rs` (pure rules: what the screen may offer, ordering the group's items, stall detection). While in a group the
+player's transport methods push `GroupReq` into an outbox instead of acting; `Root` sends them to the group and applies the
+group's commands through the `group_*` methods, which never route back. See [syncplay.md](syncplay.md).
 
 ## Write gating
 
