@@ -16,3 +16,6 @@ secrets/
 /openlogi.org_*.png
 
 /dist
+
+# local-only research notes (not published)
+/docs/research/
