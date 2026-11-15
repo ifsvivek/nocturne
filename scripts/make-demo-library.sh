@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds a fully synthetic DEMO library on a THROWAWAY Jellyfin (loopback :8097, everything under /tmp)
+# Builds a fully synthetic DEMO library on a THROWAWAY Jellyfin (loopback :8097 or $NOCTURNE_JF_TEST_PORT, everything under /tmp)
 # for README/website screenshots. No real titles, people or artwork: see scripts/demo_assets.py.
 # Usage: scripts/make-demo-library.sh {build|stop|clean}
 #   build  start the throwaway server, generate media, add libraries, scan, create user `demo`,
@@ -15,7 +15,7 @@ case "$DEMO" in *..*) echo "refusing: '..' in demo dir" >&2; exit 1;; esac
 export NOCTURNE_JF_TEST_DIR="$DEMO/jf"
 JF="$NOCTURNE_JF_TEST_DIR"
 LIB="$DEMO/lib"
-URL="http://127.0.0.1:8097"
+URL="http://127.0.0.1:${NOCTURNE_JF_TEST_PORT:-8097}"
 cmd="${1:-build}"
 
 case "$cmd" in

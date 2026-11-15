@@ -149,6 +149,28 @@ the new tokens (their colours come from the same tokens and the audited list, bu
 windows than 1280x720, and the drop-down at 1900x1180. Some overlay scrims and hover tints in the player still use raw
 rgba values outside `theme.rs` (decorative, not text).
 
+## Public screenshots (unreleased)
+
+All images in `docs/screenshots/` (and the copies in `website/src/lib/screens/`) were re-captured from the release build
+(`cargo build --release --locked`) at 3840x2160: a dedicated headless Hyprland output at that size with scale 2 (a 1920x1080
+logical window rendered at 2x, so text and edges are native, not upscaled), the app window set to compositor fullscreen
+(no title bar, panels or other windows; checked with `hyprctl clients`), window class `nocturne`, grabbed with `grim -o`.
+The only library was the synthetic demo one from `scripts/make-demo-library.sh` on a throwaway Jellyfin (own port and
+directories under `/tmp`, run with `NOCTURNE_JF_TEST_PORT`, `NOCTURNE_JF_TEST_DIR`, `NOCTURNE_DEMO_DIR` set explicitly),
+with three generated profiles (Mara, an administrator with Continue Watching, Next Up, favourites and a collection; Theo;
+Juno) that have synthetic profile pictures. The app ran with isolated XDG directories, a unique keyring service name, from a
+directory without a `.env` and with the developer variables unset, so no real server was contacted. "Allow NOCTURNE to
+change data on the server" was on (sync of watch progress off) so menus and the admin pages are not dimmed. The throwaway
+server's published address was set to `https://media.example.com`. Two details that the server or app cannot hide were
+masked in the pixels afterwards: the address line in the account menu (it shows the address the app connected to) and the
+WebSocket port on the Dashboard; both were replaced with the placeholder text in the same font. The Hollow Meridian demo clip
+was re-encoded at 2560x1440 (the generated clips are 1280x720) so the player frame is not upscaled soft. Files are lossy WebP
+at quality 97 with sharp YUV (PSNR about 48 dB against the lossless capture on UI screens, 44 dB on the grainy video frame),
+no downscale, metadata stripped (only the image chunk remains); lossless was several times larger. Checked: OCR of every
+image found no address, port, path, token or name other than the three demo profiles; the Dashboard still shows the
+throwaway server's random server id and the Users page a shortened user id (both meaningless). Not captured: any admin
+Libraries page (it lists paths).
+
 ## Not verified / known gaps
 
 - Real server HDR; the photo viewer and music on real data (the real server has no photo or music library).

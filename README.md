@@ -13,15 +13,17 @@ Status: version 0.1.1, the first release. Linux only. See [docs/ROADMAP.md](docs
 
 ## Screenshots
 
-Captured against a generated demo library, not personal media.
+Captured full-screen at 3840x2160 against a generated demo library, not personal media.
 
-|                                               |                                           |
-| --------------------------------------------- | ----------------------------------------- |
-| ![Home](docs/screenshots/home.webp)           | ![Library](docs/screenshots/library.webp) |
-| ![Movie detail](docs/screenshots/detail.webp) | ![Series](docs/screenshots/series.webp)   |
-| ![Search](docs/screenshots/search.webp)       | ![Player](docs/screenshots/player.webp)   |
-| ![Settings](docs/screenshots/settings.webp)   | ![Admin](docs/screenshots/admin.webp)     |
-| ![Season episodes](docs/screenshots/series-episodes.webp) | ![Admin users](docs/screenshots/admin-users.webp) |
+|                                                           |                                                               |
+| --------------------------------------------------------- | ------------------------------------------------------------- |
+| ![Who's watching](docs/screenshots/picker.webp)           | ![Home](docs/screenshots/home.webp)                           |
+| ![Library](docs/screenshots/library.webp)                 | ![Movie detail](docs/screenshots/detail.webp)                 |
+| ![Series](docs/screenshots/series.webp)                   | ![Season episodes](docs/screenshots/series-episodes.webp)     |
+| ![Search](docs/screenshots/search.webp)                   | ![Player](docs/screenshots/player.webp)                       |
+| ![Settings](docs/screenshots/settings.webp)               | ![Settings drop-down](docs/screenshots/settings-dropdown.webp) |
+| ![Account menu](docs/screenshots/account-menu.webp)       | ![Admin dashboard](docs/screenshots/admin.webp)               |
+| ![Admin users](docs/screenshots/admin-users.webp)         | ![Admin scheduled tasks](docs/screenshots/admin-scheduled-tasks.webp) |
 
 ## What it does
 
