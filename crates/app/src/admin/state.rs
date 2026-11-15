@@ -14,6 +14,7 @@ pub enum Section {
     Resume,
     Streaming,
     Transcoding,
+    Trickplay,
     Devices,
     Activity,
     Plugins,
@@ -25,7 +26,7 @@ pub enum Section {
 }
 
 /// Sidebar order; keyboard Up/Down walks this list.
-pub const ALL: [Section; 17] = [
+pub const ALL: [Section; 18] = [
     Section::Dashboard,
     Section::General,
     Section::Branding,
@@ -35,6 +36,7 @@ pub const ALL: [Section; 17] = [
     Section::Resume,
     Section::Streaming,
     Section::Transcoding,
+    Section::Trickplay,
     Section::Devices,
     Section::Activity,
     Section::Plugins,
@@ -54,7 +56,7 @@ pub enum Row {
 
 use Row::*;
 use Section as S;
-pub const SIDEBAR: [Row; 22] = [
+pub const SIDEBAR: [Row; 23] = [
     Group("Server"),
     Item(S::Dashboard, false),
     Item(S::General, false),
@@ -66,6 +68,7 @@ pub const SIDEBAR: [Row; 22] = [
     Item(S::Resume, true),
     Item(S::Streaming, true),
     Item(S::Transcoding, true),
+    Item(S::Trickplay, true),
     Group("Devices"),
     Item(S::Devices, false),
     Item(S::Activity, false),
@@ -91,6 +94,7 @@ impl Section {
             Section::Resume => "Resume",
             Section::Streaming => "Streaming",
             Section::Transcoding => "Transcoding",
+            Section::Trickplay => "Trickplay",
             Section::Backups => "Backups",
             Section::Devices => "Devices",
             Section::Activity => "Activity",
@@ -145,6 +149,7 @@ pub struct Data {
     pub folders: L<Vec<VirtualFolder>>,
     pub users: L<Vec<User>>,
     pub plugins: L<Vec<Plugin>>,
+    pub packages: L<Vec<Package>>,
     pub logs: L<Vec<LogFile>>,
     pub branding: L<Branding>,
     pub config: L<ServerConfig>,
@@ -168,6 +173,7 @@ pub enum Msg {
     Folders(Option<Vec<VirtualFolder>>),
     Users(Option<Vec<User>>),
     Plugins(Option<Vec<Plugin>>),
+    Packages(Option<Vec<Package>>),
     Logs(Option<Vec<LogFile>>),
     Branding(Option<Branding>),
     Config(Option<ServerConfig>),
@@ -190,6 +196,7 @@ impl Data {
             Msg::Folders(v) => self.folders.set(v),
             Msg::Users(v) => self.users.set(v),
             Msg::Plugins(v) => self.plugins.set(v),
+            Msg::Packages(v) => self.packages.set(v),
             Msg::Logs(v) => self.logs.set(v),
             Msg::Branding(v) => self.branding.set(v),
             Msg::Config(v) => self.config.set(v),

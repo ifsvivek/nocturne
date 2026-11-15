@@ -67,6 +67,11 @@ impl Admin {
         self.client.rejected()
     }
 
+    /// A confirmation dialog is up and owns the keyboard.
+    pub fn dialog_open(&self) -> bool {
+        self.dialog.is_some()
+    }
+
     pub fn open(&mut self, cx: &mut Context<Self>) {
         self.st.in_side = true;
         self.go(Section::Dashboard, cx);
@@ -140,12 +145,17 @@ impl Admin {
             Branding => rd!(self, cx, Branding, |c| c.branding()),
             Users => rd!(self, cx, Users, |c| c.users()),
             Libraries => rd!(self, cx, Folders, |c| c.virtual_folders()),
-            Metadata | Resume | Streaming => rd!(self, cx, Config, |c| c.server_config()),
+            Metadata | Resume | Streaming | Trickplay => {
+                rd!(self, cx, Config, |c| c.server_config())
+            }
             Transcoding => rd!(self, cx, Encoding, |c| c.encoding_config()),
             Backups => rd!(self, cx, Backups, |c| c.backups()),
             Devices => rd!(self, cx, Devices, |c| c.devices()),
             Activity => rd!(self, cx, Activity, |c| c.activity_log(0, 100)),
-            Plugins => rd!(self, cx, Plugins, |c| c.plugins()),
+            Plugins => {
+                rd!(self, cx, Plugins, |c| c.plugins());
+                rd!(self, cx, Packages, |c| c.packages());
+            }
             Networking => rd!(self, cx, Network, |c| c.network_config()),
             ApiKeys => rd!(self, cx, Keys, |c| c.api_keys()),
             Logs => rd!(self, cx, Logs, |c| c.log_files()),

@@ -11,6 +11,8 @@ pub struct Field {
     pub optional: bool,
     /// Must be typed exactly (delete-user guard).
     pub must_equal: Option<String>,
+    /// Extra validity rule for non-empty input (time format, port range, and so on).
+    pub check: Option<fn(&str) -> bool>,
 }
 
 impl Field {
@@ -22,14 +24,29 @@ impl Field {
             numeric: false,
             optional: false,
             must_equal: None,
+            check: None,
         }
     }
 
-    fn ok(&self) -> bool {
+    pub fn checked(mut self, f: fn(&str) -> bool) -> Self {
+        self.check = Some(f);
+        self
+    }
+
+    /// Typed-confirmation field: valid only when `word` is typed exactly.
+    pub fn typed(label: &'static str, word: &str) -> Self {
+        let mut f = Self::new(label, "");
+        f.must_equal = Some(word.into());
+        f
+    }
+
+    /// True when the input may be submitted; the UI marks the field when it is not.
+    pub fn ok(&self) -> bool {
         let v = self.value.trim();
         match &self.must_equal {
             Some(m) => v == m,
-            None => self.optional || !v.is_empty(),
+            None if v.is_empty() => self.optional,
+            None => self.check.is_none_or(|c| c(v)),
         }
     }
 }
@@ -205,6 +222,20 @@ mod tests {
         d.key("b", Some("b"));
         d.focus = d.confirm_ix();
         assert_eq!(d.key("enter", None), Out::Confirm);
+    }
+
+    #[test]
+    fn check_rejects_bad_values_but_allows_optional_empty() {
+        let mut f = Field::new("t", "").checked(|s| s.len() == 2);
+        assert!(!f.ok(), "empty required");
+        f.value = "abc".into();
+        assert!(!f.ok());
+        f.value = "ab".into();
+        assert!(f.ok());
+        f.value.clear();
+        f.optional = true;
+        assert!(f.ok(), "optional empty skips the check");
+        assert!(!Field::typed("t", "NETWORK").ok());
     }
 
     #[test]

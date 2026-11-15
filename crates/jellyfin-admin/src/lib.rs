@@ -7,7 +7,7 @@
 //! (see [`guard::TestServerGuard`]), never the user's real server.
 
 mod client;
-mod edit;
+pub mod edit;
 pub mod guard;
 #[cfg(test)]
 mod mock;
@@ -15,7 +15,7 @@ mod model;
 mod write;
 
 pub use client::{AdminClient, tail_lines};
-pub use edit::*;
+pub use edit::NetworkEdit;
 pub use model::*;
 pub use nocturne_jellyfin::Config;
 pub use write::ConfigPatch;

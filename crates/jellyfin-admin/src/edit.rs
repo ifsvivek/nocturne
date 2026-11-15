@@ -151,7 +151,7 @@ pub fn split_list(s: &str) -> Vec<String> {
         .collect()
 }
 
-fn valid_network(s: &str) -> bool {
+pub fn valid_network(s: &str) -> bool {
     match s.split_once('/') {
         None => s.parse::<IpAddr>().is_ok(),
         Some((a, p)) => match (a.parse::<IpAddr>(), p.parse::<u8>()) {

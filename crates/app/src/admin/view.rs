@@ -385,7 +385,7 @@ impl Admin {
             let act = b.act.clone();
             d = d.child(ui::action_button(
                 format!("adm-{key}-{i}"),
-                b.label,
+                &b.label,
                 b.primary,
                 b.danger,
                 focus == Some(i),
@@ -580,6 +580,8 @@ impl Admin {
                             .border_1()
                             .border_color(if on {
                                 t::accent()
+                            } else if !f.value.is_empty() && !f.ok() {
+                                t::danger()
                             } else {
                                 t::hairline_strong()
                             })
@@ -749,18 +751,19 @@ impl Render for Admin {
             Section::General => "Server name, language, retention and folders.",
             Section::Branding => "Login message, custom styling and splash screen.",
             Section::Users => "Accounts, access and passwords.",
-            Section::Libraries => "Libraries and their folders.",
+            Section::Libraries => "Add and remove libraries, their folders and options.",
             Section::Metadata => "Where metadata comes from.",
             Section::Resume => "When playback counts as started or finished.",
             Section::Streaming => "Limits for streaming outside your network.",
             Section::Transcoding => {
                 "How the server converts video when a client cannot play it as is."
             }
+            Section::Trickplay => "Seek-bar preview thumbnails: size, interval and quality.",
             Section::Backups => "Server backups (read only).",
             Section::Devices => "Devices that have signed in.",
             Section::Activity => "Recent events on this server.",
-            Section::Plugins => "Installed plugins.",
-            Section::Networking => "Ports and network options.",
+            Section::Plugins => "Installed plugins and the plugin catalog.",
+            Section::Networking => "Ports, addresses and access. Changes can lock you out.",
             Section::ApiKeys => "Keys that let other apps use this server.",
             Section::Logs => "Server log files and a tail viewer.",
             Section::Tasks => "Scheduled maintenance, grouped by category.",

@@ -1,32 +1,32 @@
 //! Turns loaded data into rows and buttons for the list screens (Users, Libraries, Tasks,
 //! and so on). The dashboard's session cards use the same rows.
 use super::Admin;
-use super::act::{Act, Cfg};
+use super::act::{Act, Brand, Cfg, Net, Tp, TrigKind};
 use super::fmt::{bytes, short, when};
 use super::state::{Data, L, Section};
 
 pub struct Btn {
-    pub label: &'static str,
+    pub label: String,
     pub act: Act,
     pub danger: bool,
     pub primary: bool,
 }
 
-fn btn(label: &'static str, act: Act, danger: bool, primary: bool) -> Btn {
+fn btn(label: impl Into<String>, act: Act, danger: bool, primary: bool) -> Btn {
     Btn {
-        label,
+        label: label.into(),
         act,
         danger,
         primary,
     }
 }
-fn b(label: &'static str, act: Act) -> Btn {
+fn b(label: impl Into<String>, act: Act) -> Btn {
     btn(label, act, false, false)
 }
-fn bd(label: &'static str, act: Act) -> Btn {
+fn bd(label: impl Into<String>, act: Act) -> Btn {
     btn(label, act, true, false)
 }
-fn bp(label: &'static str, act: Act) -> Btn {
+fn bp(label: impl Into<String>, act: Act) -> Btn {
     btn(label, act, false, true)
 }
 
@@ -131,6 +131,7 @@ impl Admin {
                 )]
             }),
             Section::Transcoding => transcoding(d),
+            Section::Trickplay => trickplay(d),
             Section::Backups => backups(d),
             Section::Devices => devices(d),
             Section::Activity => activity(d),
@@ -296,11 +297,31 @@ fn branding(d: &Data) -> Model {
                     format!("set · {} chars", s.len())
                 })
         };
-        m.items
-            .push(row("Login message", set(&br.login_disclaimer), vec![]));
-        m.items.push(row("Custom CSS", set(&br.custom_css), vec![]));
-        m.items
-            .push(row("Splash screen", yes(br.splashscreen_enabled), vec![]));
+        let mut text = |title: &str, o: &Option<String>, k: Brand| {
+            let cur = o.clone().unwrap_or_default();
+            let mut it = row(
+                title,
+                set(o),
+                vec![b("Edit", Act::EditBrand(k, cur.clone()))],
+            );
+            it.text = Some(if cur.trim().is_empty() {
+                "Nothing set.".into()
+            } else {
+                cur
+            });
+            m.items.push(it);
+        };
+        text("Login message", &br.login_disclaimer, Brand::Disclaimer);
+        text("Custom CSS", &br.custom_css, Brand::Css);
+        let on = br.splashscreen_enabled;
+        m.items.push(row(
+            "Splash screen",
+            yes(on),
+            vec![b(
+                if on { "Turn off" } else { "Turn on" },
+                Act::ToggleSplash(!on),
+            )],
+        ));
     }
     m
 }
@@ -357,7 +378,10 @@ fn users(d: &Data) -> Model {
 
 fn libraries(d: &Data) -> Model {
     let mut m = Model {
-        toolbar: vec![b("Refresh all", Act::RefreshAll)],
+        toolbar: vec![
+            bp("Add library", Act::AddLibrary),
+            b("Refresh all", Act::RefreshAll),
+        ],
         status: status(&d.folders),
         ..Default::default()
     };
@@ -399,14 +423,49 @@ fn libraries(d: &Data) -> Model {
             chips: busy.map(|s| (s.to_lowercase(), true)).into_iter().collect(),
             progress: busy.and(f.refresh_progress).map(|p| (p / 100.0) as f32),
             detail,
-            acts: vec![b(
-                "Refresh",
-                Act::RefreshFolder((f.item_id.clone(), f.name.clone())),
-            )],
+            acts: lib_acts(f),
             ..Default::default()
         });
     }
     m
+}
+
+/// Buttons of one library: scan, folders, the common options, remove.
+fn lib_acts(f: &nocturne_jellyfin_admin::VirtualFolder) -> Vec<Btn> {
+    let t = (f.item_id.clone(), f.name.clone());
+    let mut v = vec![b("Refresh", Act::RefreshFolder(t.clone()))];
+    v.push(b("Add folder", Act::AddLibPath(t.clone())));
+    if f.locations.len() > 1 {
+        for (i, p) in f.locations.iter().enumerate() {
+            v.push(bd(
+                format!("Remove folder {}", i + 1),
+                Act::RemoveLibPath(t.clone(), p.clone()),
+            ));
+        }
+    }
+    let o = &f.library_options;
+    for (label, key) in [
+        ("Real-time monitor", "EnableRealtimeMonitor"),
+        ("Trickplay images", "EnableTrickplayImageExtraction"),
+        ("Chapter images", "EnableChapterImageExtraction"),
+        ("Save NFO files", "SaveLocalMetadata"),
+        ("Embedded titles", "EnableEmbeddedTitles"),
+        ("Internet providers", "EnableInternetProviders"),
+    ] {
+        if let Some(on) = o[key].as_bool() {
+            v.push(b(
+                format!("{label}: {}", yes(on)),
+                Act::LibOption(t.clone(), key, label, !on),
+            ));
+        }
+    }
+    let days = o["AutomaticRefreshIntervalDays"].as_i64().unwrap_or(0);
+    v.push(b(
+        format!("Auto refresh: {days} d"),
+        Act::LibRefreshDays(t.clone(), days.to_string()),
+    ));
+    v.push(bd("Remove library", Act::RemoveLibrary(t)));
+    v
 }
 
 fn transcoding(d: &Data) -> Model {
@@ -453,6 +512,108 @@ fn transcoding(d: &Data) -> Model {
     m
 }
 
+fn trickplay(d: &Data) -> Model {
+    config_page(d, |c| {
+        let t = &c.extra["TrickplayOptions"];
+        let num = |k: &str| t[k].as_i64().map_or("?".to_string(), |n| n.to_string());
+        let text = |k: &str| t[k].as_str().unwrap_or("?").to_string();
+        let flag = |title: &str, key: &'static str| {
+            let on = t[key].as_bool().unwrap_or(false);
+            row(
+                title,
+                yes(on),
+                vec![b(
+                    if on { "Turn off" } else { "Turn on" },
+                    Act::ToggleTrickplay(key, title.to_string(), !on),
+                )],
+            )
+        };
+        let edit = |title: &str, key: &'static str, kind: Tp, v: String, unit: &str| {
+            row(
+                title,
+                format!("{v}{unit}"),
+                vec![b(
+                    "Edit",
+                    Act::EditTrickplay(key, title.to_string(), kind, v),
+                )],
+            )
+        };
+        if t.is_null() {
+            return vec![row(
+                "Trickplay",
+                "This server reports no trickplay settings.".into(),
+                vec![],
+            )];
+        }
+        let widths = t["WidthResolutions"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_i64())
+                    .map(|n| n.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_default();
+        vec![
+            edit("Interval", "Interval", Tp::Num, num("Interval"), " ms"),
+            edit(
+                "Thumbnail widths",
+                "WidthResolutions",
+                Tp::List,
+                widths,
+                " px",
+            ),
+            edit(
+                "Tile width",
+                "TileWidth",
+                Tp::Num,
+                num("TileWidth"),
+                " images",
+            ),
+            edit(
+                "Tile height",
+                "TileHeight",
+                Tp::Num,
+                num("TileHeight"),
+                " images",
+            ),
+            edit(
+                "JPEG quality",
+                "JpegQuality",
+                Tp::Num,
+                num("JpegQuality"),
+                "",
+            ),
+            edit("Qscale", "Qscale", Tp::Num, num("Qscale"), ""),
+            edit(
+                "Process threads (0 = auto)",
+                "ProcessThreads",
+                Tp::Num,
+                num("ProcessThreads"),
+                "",
+            ),
+            edit(
+                "Scan behaviour",
+                "ScanBehavior",
+                Tp::Scan,
+                text("ScanBehavior"),
+                "",
+            ),
+            edit(
+                "Process priority",
+                "ProcessPriority",
+                Tp::Priority,
+                text("ProcessPriority"),
+                "",
+            ),
+            flag("Hardware decoding", "EnableHwAcceleration"),
+            flag("Hardware encoding", "EnableHwEncoding"),
+            flag("Key frames only", "EnableKeyFrameOnlyExtraction"),
+        ]
+    })
+}
+
 fn backups(d: &Data) -> Model {
     let mut m = Model {
         status: status(&d.backups),
@@ -487,7 +648,6 @@ fn tasks(d: &Data) -> Model {
     v.sort_by(|a, c| (&a.category, &a.name).cmp(&(&c.category, &c.name)));
     for t in v {
         let running = t.state == "Running";
-        let tgt = (t.id.clone(), t.name.clone());
         let last = t.last_execution_result.as_ref();
         m.items.push(Item {
             group: Some(t.category.clone()),
@@ -511,15 +671,59 @@ fn tasks(d: &Data) -> Model {
                 ("LAST RUN", when(last.map(|r| r.end_time_utc.as_str()))),
                 ("TRIGGERS", t.triggers.len().to_string()),
             ],
-            acts: vec![if running {
-                b("Stop", Act::StopTask(tgt))
-            } else {
-                b("Run now", Act::StartTask(tgt))
-            }],
+            acts: task_acts(t, running),
             ..Default::default()
         });
+        for (i, tr) in t.triggers.iter().enumerate().take(TRIG_KEYS.len()) {
+            m.items
+                .last_mut()
+                .expect("just pushed")
+                .detail
+                .push((TRIG_KEYS[i], tr.describe()));
+        }
     }
     m
+}
+
+const TRIG_KEYS: [&str; 8] = [
+    "TRIGGER 1",
+    "TRIGGER 2",
+    "TRIGGER 3",
+    "TRIGGER 4",
+    "TRIGGER 5",
+    "TRIGGER 6",
+    "TRIGGER 7",
+    "TRIGGER 8",
+];
+
+fn task_acts(t: &nocturne_jellyfin_admin::ScheduledTask, running: bool) -> Vec<Btn> {
+    let tgt = (t.id.clone(), t.name.clone());
+    let mut v = vec![if running {
+        b("Stop", Act::StopTask(tgt.clone()))
+    } else {
+        b("Run now", Act::StartTask(tgt.clone()))
+    }];
+    for (label, k) in [
+        ("Add daily", TrigKind::Daily),
+        ("Add weekly", TrigKind::Weekly),
+        ("Add interval", TrigKind::Interval),
+        ("Add on startup", TrigKind::Startup),
+    ] {
+        v.push(b(label, Act::AddTrigger(tgt.clone(), k)));
+    }
+    for (i, tr) in t.triggers.iter().enumerate().take(TRIG_KEYS.len()) {
+        if TrigKind::of(tr).is_some_and(|k| k != TrigKind::Startup) {
+            v.push(b(
+                format!("Edit trigger {}", i + 1),
+                Act::EditTrigger(tgt.clone(), i, tr.clone()),
+            ));
+        }
+        v.push(bd(
+            format!("Delete trigger {}", i + 1),
+            Act::DeleteTrigger(tgt.clone(), i, tr.describe()),
+        ));
+    }
+    v
 }
 
 fn devices(d: &Data) -> Model {
@@ -585,38 +789,177 @@ fn activity(d: &Data) -> Model {
 
 fn plugins(d: &Data) -> Model {
     let mut m = Model {
+        toolbar: vec![bd("Restart server to apply", Act::Restart)],
         status: status(&d.plugins),
         ..Default::default()
     };
-    for p in d.plugins.get().into_iter().flatten() {
+    let installed: Vec<_> = d.plugins.get().into_iter().flatten().collect();
+    for p in &installed {
         let mut it = row(
             &p.name,
             format!("v{} · {}", p.version, p.description),
             vec![],
         );
-        it.chips = vec![(p.status.to_lowercase(), p.status == "Active")];
+        let pending = matches!(p.status.as_str(), "Restart" | "Deleted");
+        it.chips = vec![(
+            if pending {
+                "restart needed".into()
+            } else {
+                p.status.to_lowercase()
+            },
+            p.status == "Active",
+        )];
         it.detail = vec![
             ("VERSION", p.version.clone()),
             ("STATUS", p.status.clone()),
             ("ID", short(&p.id)),
         ];
+        // Plugins bundled with the server cannot be switched off or removed from here.
+        if p.can_uninstall {
+            let off = p.status == "Disabled";
+            let tgt = |on| Act::PluginEnable(p.id.clone(), p.version.clone(), p.name.clone(), on);
+            it.acts = vec![
+                b(if off { "Enable" } else { "Disable" }, tgt(off)),
+                bd(
+                    "Uninstall",
+                    Act::PluginUninstall(p.id.clone(), p.version.clone(), p.name.clone()),
+                ),
+            ];
+        }
+        it.group = Some("Installed".into());
         m.items.push(it);
+    }
+    if m.status.is_none() {
+        match &d.packages {
+            L::Ready(pk) => {
+                let mut avail: Vec<_> = pk
+                    .iter()
+                    .filter(|x| {
+                        !installed.iter().any(|i| i.name == x.name) && !x.versions.is_empty()
+                    })
+                    .collect();
+                avail.sort_by(|a, c| a.name.cmp(&c.name));
+                for x in avail {
+                    let mut it = row(
+                        &x.name,
+                        format!("{} · {}", x.category, x.description.trim()),
+                        vec![b("Install", Act::PluginInstall(Box::new(x.clone())))],
+                    );
+                    it.detail = vec![
+                        ("OWNER", x.owner.clone()),
+                        ("LATEST", x.versions[0].version.clone()),
+                    ];
+                    it.group = Some("Available from the plugin catalog".into());
+                    m.items.push(it);
+                }
+            }
+            L::Failed => {
+                let mut it = row(
+                    "Plugin catalog unavailable",
+                    "The server could not reach its plugin repositories. Press R to try again."
+                        .into(),
+                    vec![],
+                );
+                it.group = Some("Available from the plugin catalog".into());
+                m.items.push(it);
+            }
+            L::Loading => {}
+        }
     }
     m
 }
 
 fn networking(d: &Data) -> Model {
     let mut m = Model {
+        toolbar: vec![bd("Restart server to apply", Act::Restart)],
         status: status(&d.network),
         ..Default::default()
     };
-    if let Some(n) = d.network.get() {
-        let port = |p: u16| p.to_string();
-        for (t, v) in [
-            ("HTTP port", port(n.internal_http_port)),
-            ("HTTPS port", port(n.internal_https_port)),
-            ("Public HTTP port", port(n.public_http_port)),
-            ("Public HTTPS port", port(n.public_https_port)),
+    let Some(n) = d.network.get() else { return m };
+    let mut grp = |g: &str, rows: Vec<Item>| {
+        for mut r in rows {
+            r.group = Some(g.into());
+            m.items.push(r);
+        }
+    };
+    let mut warn = row(
+        "Wrong values can lock you out",
+        "Read before changing anything here.".into(),
+        vec![],
+    );
+    warn.text = Some("A wrong port, bind address or network can make this server unreachable, including from NOCTURNE, until it is fixed on the server machine. Each change asks you to type NETWORK. Most changes apply after a restart.".into());
+    grp("Read this first", vec![warn]);
+    let port = |t: &str, p: u16, k: Net| {
+        row(
+            t,
+            p.to_string(),
+            vec![bd("Edit", Act::EditNet(k, p.to_string()))],
+        )
+    };
+    let list = |t: &str, l: &[String], k: Net, empty: &str| {
+        row(
+            t,
+            if l.is_empty() {
+                empty.to_string()
+            } else {
+                l.join(", ")
+            },
+            vec![bd("Edit", Act::EditNet(k, l.join(", ")))],
+        )
+    };
+    let flag = |k: Net, on: bool| {
+        row(
+            k.label(),
+            yes(on),
+            vec![bd(
+                if on { "Turn off" } else { "Turn on" },
+                Act::NetFlag(k, !on),
+            )],
+        )
+    };
+    grp(
+        "Ports",
+        vec![
+            port("HTTP port", n.internal_http_port, Net::HttpPort),
+            port("Public HTTP port", n.public_http_port, Net::PublicHttpPort),
+            port("HTTPS port", n.internal_https_port, Net::HttpsPort),
+            port(
+                "Public HTTPS port",
+                n.public_https_port,
+                Net::PublicHttpsPort,
+            ),
+        ],
+    );
+    grp(
+        "Addresses and networks",
+        vec![
+            list(
+                "Bind addresses",
+                &n.local_network_addresses,
+                Net::Bind,
+                "all interfaces",
+            ),
+            list(
+                "LAN networks",
+                &n.local_network_subnets,
+                Net::Lan,
+                "detected automatically",
+            ),
+        ],
+    );
+    grp(
+        "Access",
+        vec![
+            flag(Net::Remote, n.enable_remote_access),
+            flag(Net::Upnp, n.enable_upnp),
+            flag(Net::Discovery, n.auto_discovery),
+            flag(Net::Ipv4, n.enable_ipv4),
+            flag(Net::Ipv6, n.enable_ipv6),
+        ],
+    );
+    grp(
+        "Not editable here",
+        [
             (
                 "Base URL",
                 if n.base_url.is_empty() {
@@ -627,15 +970,11 @@ fn networking(d: &Data) -> Model {
             ),
             ("HTTPS", yes(n.enable_https)),
             ("Require HTTPS", yes(n.require_https)),
-            ("Remote access", yes(n.enable_remote_access)),
-            ("Auto discovery", yes(n.auto_discovery)),
-            ("UPnP", yes(n.enable_upnp)),
-            ("IPv4", yes(n.enable_ipv4)),
-            ("IPv6", yes(n.enable_ipv6)),
-        ] {
-            m.items.push(row(t, v, vec![]));
-        }
-    }
+        ]
+        .into_iter()
+        .map(|(t, v)| row(t, v, vec![]))
+        .collect(),
+    );
     m
 }
 
@@ -694,6 +1033,78 @@ fn logs(d: &Data) -> Model {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nocturne_jellyfin_admin::TaskTrigger;
+
+    fn data_with(f: impl FnOnce(&mut Data)) -> Data {
+        let mut d = Data::default();
+        f(&mut d);
+        d
+    }
+
+    #[test]
+    fn plugin_actions_follow_what_the_server_allows() {
+        let plug = |n: &str, st: &str, un: bool| nocturne_jellyfin_admin::Plugin {
+            name: n.into(),
+            status: st.into(),
+            can_uninstall: un,
+            ..Default::default()
+        };
+        let pkg = |n: &str| nocturne_jellyfin_admin::Package {
+            name: n.into(),
+            versions: vec![Default::default()],
+            ..Default::default()
+        };
+        let d = data_with(|d| {
+            d.plugins = L::Ready(vec![
+                plug("Bundled", "Active", false),
+                plug("Extra", "Disabled", true),
+            ]);
+            d.packages = L::Ready(vec![pkg("Extra"), pkg("New")]);
+        });
+        let m = plugins(&d);
+        let labels = |i: usize| {
+            m.items[i]
+                .acts
+                .iter()
+                .map(|a| a.label.clone())
+                .collect::<Vec<_>>()
+        };
+        assert!(labels(0).is_empty(), "bundled plugins offer nothing");
+        assert_eq!(labels(1), ["Enable", "Uninstall"]);
+        assert_eq!(m.items.len(), 3, "installed plugins are not offered again");
+        assert_eq!(labels(2), ["Install"]);
+    }
+
+    #[test]
+    fn network_buttons_are_all_danger_and_tasks_list_triggers() {
+        let d = data_with(|d| d.network = L::Ready(Default::default()));
+        let m = networking(&d);
+        let acts: Vec<_> = m.items.iter().flat_map(|i| &i.acts).collect();
+        assert!(acts.len() >= 11 && acts.iter().all(|a| a.danger));
+        let t = nocturne_jellyfin_admin::ScheduledTask {
+            id: "t".into(),
+            name: "Scan".into(),
+            triggers: vec![
+                TaskTrigger::daily("03:00").unwrap(),
+                TaskTrigger::on_startup(),
+            ],
+            ..Default::default()
+        };
+        let labels: Vec<_> = task_acts(&t, false).into_iter().map(|b| b.label).collect();
+        assert_eq!(
+            labels,
+            [
+                "Run now",
+                "Add daily",
+                "Add weekly",
+                "Add interval",
+                "Add on startup",
+                "Edit trigger 1",
+                "Delete trigger 1",
+                "Delete trigger 2"
+            ]
+        );
+    }
 
     #[test]
     fn child_index_counts_group_headers() {

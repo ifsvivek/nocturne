@@ -1358,6 +1358,15 @@ impl Root {
             cx.notify();
             return;
         }
+        // A typed value ("/media/films", "192.168.1.0/24") must not trigger the global shortcuts.
+        if self.admin_open
+            && let Some(a) = self.admin.clone()
+            && a.read(cx).dialog_open()
+        {
+            a.update(cx, |a, cx| a.on_key(ev, cx));
+            cx.notify();
+            return;
+        }
         if let Phase::Error(e) = self.phase {
             if matches!(key, "enter" | "r") && e != ConnectError::NotConfigured {
                 self.connect(cx);
