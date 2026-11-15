@@ -1,4 +1,10 @@
-//! Read-only Jellyfin client. Issues GET requests only; see `tests/readonly.rs`.
+//! Read-only Jellyfin client.
+//!
+//! **This layer is intentionally read-only.** It issues GET requests only: no POST, PUT,
+//! DELETE or PATCH, ever. The server holds the user's personal media and this client must not
+//! be able to change it (no watched-state writes, no deletes, no metadata edits).
+//! `tests/readonly.rs` fails the build if a write verb appears in `src/`.
+//! Adding any write call requires an explicit decision recorded in `STATUS.md` first.
 
 mod client;
 mod config;
@@ -6,7 +12,7 @@ mod model;
 
 pub use client::{Client, ImageType, ItemsQuery};
 pub use config::Config;
-pub use model::{Item, Items, PublicInfo, User};
+pub use model::{Item, Items, PublicInfo, User, UserData};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

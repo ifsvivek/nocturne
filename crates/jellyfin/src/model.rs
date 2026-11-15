@@ -21,6 +21,18 @@ pub struct Item {
     pub season_id: Option<String>,
     /// Image type name (e.g. "Primary") -> tag, for cache-busting image URLs.
     pub image_tags: HashMap<String, String>,
+    /// Backdrop image tags (first one busts the cache for `ImageType::Backdrop`).
+    pub backdrop_image_tags: Vec<String>,
+    pub genres: Vec<String>,
+    pub user_data: Option<UserData>,
+}
+
+/// Per-user playback state (read only; NOCTURNE never writes it back).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct UserData {
+    pub playback_position_ticks: u64,
+    pub played: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

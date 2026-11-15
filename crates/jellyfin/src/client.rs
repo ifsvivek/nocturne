@@ -72,8 +72,10 @@ impl ItemsQuery {
     }
 }
 
-/// Read-only Jellyfin client. The only request primitive is the private `get`;
-/// no write verb is reachable from this type (enforced by `tests/readonly.rs`).
+/// Read-only Jellyfin client. **Intentionally GET-only**: the only request primitives are the
+/// private `get`/`get_bytes`; no write verb is reachable from this type (enforced by
+/// `tests/readonly.rs`). The server holds personal media. Adding a write call requires an
+/// explicit decision recorded in `STATUS.md`.
 #[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,
@@ -181,6 +183,43 @@ impl Client {
             p.push(("seasonId", s.to_string()));
         }
         self.get(&["Shows", series_id, "Episodes"], &p).await
+    }
+
+    /// Items the user can resume (`GET /UserItems/Resume`), most recent first.
+    pub async fn resume(&self, user_id: &str, limit: u32) -> Result<Items> {
+        self.get(
+            &["UserItems", "Resume"],
+            &[
+                ("userId", user_id.to_string()),
+                ("limit", limit.to_string()),
+                ("mediaTypes", "Video".into()),
+            ],
+        )
+        .await
+    }
+
+    /// Authenticated image download (GET). The URL is built here from the item id, so the
+    /// auth header can only ever go to the configured server.
+    pub async fn image_bytes(
+        &self,
+        id: &str,
+        kind: ImageType,
+        max_width: Option<u32>,
+        tag: Option<&str>,
+    ) -> Result<Vec<u8>> {
+        let url = self.image_url(id, kind, max_width, tag);
+        let path = Url::parse(&url)
+            .map(|u| u.path().to_string())
+            .unwrap_or_default();
+        let resp = self.http.get(url).send().await.map_err(http_err)?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(Error::Status {
+                status: status.as_u16(),
+                path,
+            });
+        }
+        Ok(resp.bytes().await.map_err(http_err)?.to_vec())
     }
 
     // ---- URL builders (pure, no network) ----
@@ -380,6 +419,24 @@ mod tests {
             ]
         );
         assert_eq!(ItemsQuery::default().pairs("u").len(), 1);
+    }
+
+    #[test]
+    fn deserializes_resume_fields() {
+        let j = r#"{"Items":[{"Id":"1","Type":"Episode","RunTimeTicks":36000000000,
+            "Genres":["Drama","Noir"],"BackdropImageTags":["b1"],
+            "UserData":{"PlaybackPositionTicks":6000000000,"Played":false,"Key":"x"}},{"Id":"2"}]}"#;
+        let r: Items = serde_json::from_str(j).unwrap();
+        let a = &r.items[0];
+        assert_eq!(a.genres, ["Drama", "Noir"]);
+        assert_eq!(a.backdrop_image_tags, ["b1"]);
+        assert_eq!(a.run_time_ticks, Some(36_000_000_000));
+        let u = a.user_data.as_ref().unwrap();
+        assert_eq!(
+            (u.playback_position_ticks, u.played),
+            (6_000_000_000, false)
+        );
+        assert!(r.items[1].user_data.is_none() && r.items[1].genres.is_empty());
     }
 
     #[test]

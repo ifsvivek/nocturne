@@ -93,3 +93,37 @@ async fn seasons_and_episodes() {
     println!("episodes in first season: {}", eps.items.len());
     assert!(eps.items.iter().all(|e| e.kind == "Episode"));
 }
+
+#[tokio::test]
+#[ignore]
+async fn resume_and_image_bytes() {
+    let c = client();
+    let uid = c.first_user_id().await.unwrap();
+    let r = c.resume(&uid, 5).await.unwrap();
+    println!("resume items: {}", r.items.len());
+    assert!(r.items.len() <= 5);
+    let page = c
+        .items(
+            &uid,
+            &ItemsQuery {
+                include_types: vec!["Movie".into()],
+                limit: Some(1),
+                recursive: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let Some(m) = page.items.first() else { return };
+    println!("has genres: {}", !m.genres.is_empty());
+    println!("has user data: {}", m.user_data.is_some());
+    let tag = m.image_tags.get("Primary").map(String::as_str);
+    if tag.is_some() {
+        let b = c
+            .image_bytes(&m.id, ImageType::Primary, Some(200), tag)
+            .await
+            .unwrap();
+        println!("image bytes non-empty: {}", !b.is_empty());
+        assert!(!b.is_empty());
+    }
+}
