@@ -160,7 +160,13 @@ impl Root {
                                 .text_color(t::accent_text())
                                 .child(*k),
                         )
-                        .child(div().text_color(t::text_secondary()).child(*d)),
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .text_color(t::text_secondary())
+                                .child(*d),
+                        ),
                 );
             }
             cols = cols.child(sec);
@@ -168,6 +174,7 @@ impl Root {
         let p = self
             .overlay_panel("Keyboard shortcuts")
             .w(px(1100.0))
+            .max_w(px(f32::from(self.win.width) - 48.0))
             .child(cols)
             .child(ui::mono("Press Esc or ? to close".to_string()));
         Some(self.overlay_backdrop("help-away", p, cx))
