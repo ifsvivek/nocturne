@@ -144,10 +144,7 @@ impl Picker {
             "up" if self.sel >= c => self.sel -= c,
             "home" => self.sel = 0,
             "end" => self.sel = n - 1,
-            "space" | "d" => {
-                self.toggle();
-                return Act::Toggle;
-            }
+            "space" | "d" => self.toggle(),
             "enter" => return self.act_on(self.sel),
             _ => {}
         }
@@ -487,7 +484,7 @@ mod tests {
             DefaultChange::Keep,
             "just choosing keeps it"
         );
-        assert_eq!(p.key("space"), Act::Toggle);
+        assert_eq!(p.key("space"), Act::Stay);
         assert!(p.checked());
         p.key("right");
         assert!(p.checked(), "a touched box stays as the user left it");
