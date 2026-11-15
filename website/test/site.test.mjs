@@ -31,7 +31,9 @@ test("RELEASED=false: no repo or release links, coming soon", () => {
     assert.doesNotMatch(h, /releases/i, f);
   }
   assert.match(read(off, "index.html"), /Coming soon/);
-  assert.match(read(off, "index.html"), /Screenshots arrive with the first release/);
+  // Demo-library screenshots are in src/lib/screens; the placeholder only shows while that folder is empty.
+  assert.match(read(off, "index.html"), /Screenshot: home/);
+  assert.doesNotMatch(read(off, "index.html"), /Screenshots arrive with the first release/);
 });
 
 test("RELEASED=true: download, repo and version", () => {

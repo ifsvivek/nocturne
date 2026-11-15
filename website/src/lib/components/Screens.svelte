@@ -7,7 +7,7 @@
   {#if SCREENS.length}
     <div class="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))]">
       {#each SCREENS as s}
-        <figure class="m-0 aspect-video overflow-hidden rounded-xl border border-line bg-surface">
+        <figure class="m-0 aspect-[16/10] overflow-hidden rounded-xl border border-line bg-surface">
           <img class="size-full object-cover" src={s.src} alt={s.alt} width={s.width} height={s.height} loading="lazy" decoding="async">
         </figure>
       {/each}
