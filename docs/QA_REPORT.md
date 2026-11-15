@@ -80,6 +80,22 @@ isolated XDG directories and a unique keyring name. "UI" means driven through th
 - Second pass: typing the letter `a` in the search box opened the account menu (the new account shortcut was checked before the search box); the shortcut overlay clipped long descriptions on narrow windows.
 - Second pass (test tooling): `scripts/test-jellyfin.sh` could start before Jellyfin was ready to be configured, and the admin live test that restarts the server restarted the default instance instead of the one under test.
 
+## Settings drop-downs and scrolling (unreleased)
+
+Throwaway Jellyfin on port 8098, isolated XDG dirs, developer-token mode, 1280x720 window, debug build.
+Checked live: the page scrolls and End / Down move the selected row into view (the last row, Image cache, is
+reachable); Enter opens the drop-down under the chip, or above it when there is no room below (it painted over the
+rows, not under them); the menu scrolls, opens on the current entry (a hand-edited unknown value `xx-custom` appeared
+as its own marked entry and as the chip text); Home / Down / Enter chose English and `settings.toml` then held
+`audio_lang = "eng"` (stored format unchanged). Unit-tested: the menu model (open, clamp, Up / Down / Home / End,
+Enter / Space, Esc, ignored keys), the choice lists and picks per setting, unknown stored values and language aliases,
+and the scroll-child index and navigation-key logic. Not verified live: mouse clicks on chips and options, click-away
+and mouse-wheel scrolling (the desktop was shared with other sessions and focus and pointer moved under the
+test, so only the keyboard path was driven); Esc closing the menu was seen once but not repeated cleanly. Library
+Sort / Filter menus, player menus and admin dialogs were checked for click-to-cycle controls: none exist, so nothing
+else changed. Left alone on purpose: player repeat, A-B loop and speed controls (cycling is the expected behaviour
+there) and the library `V` view shortcut.
+
 ## Not verified / known gaps
 
 - Real server HDR; the photo viewer and music on real data (the real server has no photo or music library).

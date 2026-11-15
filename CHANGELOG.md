@@ -3,6 +3,20 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Settings: options with several choices (audio and subtitle language, subtitles, buffer ahead, refill below, max RAM
+  buffer, grid density, image cache) are now drop-downs. Click the value (or press Enter / Space) to open a menu under it
+  with the current choice marked; pick one to apply, Esc or a click elsewhere closes it unchanged, and Up / Down /
+  Home / End / Enter work from the keyboard. On / Off settings still flip with one click. The language lists now offer
+  Automatic plus 28 common languages instead of nine; saved values keep their format and an unknown saved value is
+  shown as it is.
+
+### Fixed
+- Settings: the page could not be scrolled, so the settings below the fold were out of reach. It now scrolls with the
+  wheel, trackpad, PgUp / PgDn, Home / End and the arrow keys, which keep the selected row in view.
+
 ## [0.1.1] - 2026-11-15
 
 ### Fixed
