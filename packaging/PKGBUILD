@@ -1,0 +1,51 @@
+# Maintainer: ifsvivek
+pkgname=nocturne
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Native Jellyfin desktop client (GPUI + libmpv), Wayland first'
+arch=(x86_64)
+url='https://github.com/ifsvivek/nocturne'
+license=(GPL-3.0-or-later)
+# Runtime list derived from `readelf -d` of the release binary plus dlopen'd libraries (see docs/PACKAGING.md).
+depends=(
+  dbus fontconfig freetype2 gcc-libs glibc libglvnd libxcb libxkbcommon libxkbcommon-x11
+  mpv          # provides libmpv.so.2
+  vulkan-icd-loader vulkan-driver wayland
+)
+optdepends=('gnome-keyring: Secret Service provider for storing the login token (or kwallet / KeePassXC)')
+options=(!lto) # aws-lc-sys C objects built with -flto cannot be linked by rustc
+makedepends=(cargo pkgconf)
+# libmpv2-sys uses pregenerated bindings (no clang/bindgen); it only needs libmpv to link, shipped by `mpv`.
+makedepends+=(mpv)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP') # replace with the real checksum of the release source tarball
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
+  cargo build --frozen --release -p nocturne-app
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
+  cargo test --frozen --workspace
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/nocturne "$pkgdir/usr/bin/nocturne"
+  install -Dm644 packaging/io.github.ifsvivek.nocturne.desktop -t "$pkgdir/usr/share/applications"
+  for s in 48 128 256 512; do
+    install -Dm644 "packaging/icons/nocturne-$s.png" "$pkgdir/usr/share/icons/hicolor/${s}x${s}/apps/nocturne.png"
+  done
+  install -Dm644 packaging/nocturne.svg -t "$pkgdir/usr/share/icons/hicolor/scalable/apps"
+  install -Dm644 packaging/*.metainfo.xml -t "$pkgdir/usr/share/metainfo"
+  install -Dm644 LICENSE THIRD_PARTY_NOTICES.md -t "$pkgdir/usr/share/licenses/$pkgname"
+}

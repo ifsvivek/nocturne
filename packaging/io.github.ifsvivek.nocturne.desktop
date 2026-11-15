@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=NOCTURNE
+GenericName=Media Player
+Comment=Native Jellyfin desktop client
+Exec=nocturne
+Icon=nocturne
+Terminal=false
+Categories=AudioVideo;Video;Player;
+Keywords=jellyfin;media;movies;shows;music;
+StartupWMClass=nocturne
+StartupNotify=false

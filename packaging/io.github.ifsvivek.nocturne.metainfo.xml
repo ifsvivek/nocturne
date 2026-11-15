@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.ifsvivek.nocturne</id>
+  <name>NOCTURNE</name>
+  <summary>Native Jellyfin desktop client with libmpv playback</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>NOCTURNE is a native Linux desktop client for Jellyfin media servers, built with GPUI and libmpv. It runs on Wayland first, with an X11 fallback.</p>
+    <p>NOCTURNE is an independent project and is not affiliated with or endorsed by the Jellyfin project.</p>
+  </description>
+  <url type="homepage">https://github.com/ifsvivek/nocturne</url>
+  <url type="bugtracker">https://github.com/ifsvivek/nocturne/issues</url>
+  <launchable type="desktop-id">io.github.ifsvivek.nocturne.desktop</launchable>
+  <provides>
+    <binary>nocturne</binary>
+  </provides>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+    <category>Player</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-15"/>
+  </releases>
+</component>
