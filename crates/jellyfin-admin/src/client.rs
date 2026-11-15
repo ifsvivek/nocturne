@@ -1,6 +1,7 @@
 use crate::{
-    ActivityPage, ApiKey, Branding, Config, Device, Error, LogFile, Plugin, Result, ScheduledTask,
-    ServerConfig, Session, SystemInfo, User, VirtualFolder, model::Page,
+    ActivityPage, ApiKey, Branding, Config, Device, Error, ItemCounts, LogFile, NetworkConfig,
+    Plugin, Result, ScheduledTask, ServerConfig, Session, SystemInfo, User, VirtualFolder,
+    model::Page,
 };
 use reqwest::{Method, Url, header};
 use serde::de::DeserializeOwned;
@@ -121,8 +122,7 @@ impl AdminClient {
             .text()
             .await
             .map_err(http_err)?;
-        let all: Vec<&str> = text.lines().collect();
-        Ok(all[all.len().saturating_sub(lines)..].join("\n"))
+        Ok(tail_lines(&text, lines))
     }
 
     /// READ `GET /Branding/Configuration` (public endpoint).
@@ -133,6 +133,16 @@ impl AdminClient {
     /// READ `GET /System/Configuration`.
     pub async fn server_config(&self) -> Result<ServerConfig> {
         self.get(&["System", "Configuration"], &[]).await
+    }
+
+    /// READ `GET /Items/Counts`.
+    pub async fn item_counts(&self) -> Result<ItemCounts> {
+        self.get(&["Items", "Counts"], &[]).await
+    }
+
+    /// READ `GET /System/Configuration/network`.
+    pub async fn network_config(&self) -> Result<NetworkConfig> {
+        self.get(&["System", "Configuration", "network"], &[]).await
     }
 
     /// READ `GET /Auth/Keys`.
@@ -191,6 +201,12 @@ impl AdminClient {
     }
 }
 
+/// Last `n` lines of `text`, joined with `\n` (no trailing newline).
+pub fn tail_lines(text: &str, n: usize) -> String {
+    let all: Vec<&str> = text.lines().collect();
+    all[all.len().saturating_sub(n)..].join("\n")
+}
+
 // Strip the URL from errors so nothing URL-borne (ids, names) lands in logs.
 pub(crate) fn http_err(e: reqwest::Error) -> Error {
     Error::Http(e.without_url())
@@ -207,6 +223,14 @@ mod tests {
             token: "tok123".into(),
         })
         .unwrap()
+    }
+
+    #[test]
+    fn tail_keeps_last_lines() {
+        assert_eq!(tail_lines("a\nb\nc\n", 2), "b\nc");
+        assert_eq!(tail_lines("a\nb", 10), "a\nb");
+        assert_eq!(tail_lines("a\nb", 0), "");
+        assert_eq!(tail_lines("", 3), "");
     }
 
     #[test]
@@ -281,6 +305,18 @@ mod tests {
             serde_json::from_str(r#"{"Items":[{"Id":"d","Name":"n"}],"TotalRecordCount":1}"#)
                 .unwrap();
         assert_eq!(p.items[0].id, "d");
+    }
+
+    #[test]
+    fn counts_and_network_deserialize() {
+        let c: ItemCounts =
+            serde_json::from_str(r#"{"MovieCount":3,"EpisodeCount":9,"Weird":1}"#).unwrap();
+        assert_eq!((c.movie_count, c.episode_count, c.series_count), (3, 9, 0));
+        let n: NetworkConfig = serde_json::from_str(
+            r#"{"InternalHttpPort":8097,"EnableUPnP":true,"EnableIPv6":false}"#,
+        )
+        .unwrap();
+        assert!(n.enable_upnp && !n.enable_ipv6 && n.internal_http_port == 8097);
     }
 
     #[test]

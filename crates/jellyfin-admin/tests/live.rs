@@ -1,6 +1,6 @@
 //! Live tests against the THROWAWAY Jellyfin only (see `guard`). Run:
 //!   scripts/test-jellyfin.sh start
-//!   NOCTURNE_JF_TEST_ENV=/tmp/nocturne-jf-test/test.env cargo test -p nocturne-jellyfin-admin -- --ignored
+//!   NOCTURNE_JF_TEST_ENV=/tmp/nocturne-jf-test/test.env cargo test -p nocturne-jellyfin-admin -- --ignored --test-threads=1
 //! Output policy: counts and booleans only.
 
 use nocturne_jellyfin_admin::guard::TestServerGuard;
@@ -103,6 +103,9 @@ async fn reads() {
     assert!(!c.api_keys().await.unwrap().is_empty());
     c.sessions().await.unwrap();
     c.devices().await.unwrap();
+    assert!(c.item_counts().await.unwrap().movie_count <= 1000);
+    let net = c.network_config().await.unwrap();
+    assert_eq!(net.internal_http_port, 8097);
 }
 
 #[tokio::test]
@@ -322,4 +325,51 @@ async fn restart_server_comes_back() {
         back,
         "throwaway server did not come back after restart (run scripts/test-jellyfin.sh start)"
     );
+}
+
+/// Shuts the throwaway down for real, checks it is gone, then starts it again with the script.
+#[tokio::test]
+#[ignore]
+async fn shutdown_server_stops_it() {
+    let _g = SERVER.write().await;
+    let c = TestServerGuard::connect().await.unwrap();
+    c.shutdown_server(yes()).await.unwrap();
+    let mut gone = false;
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        if c.system_info().await.is_err() {
+            gone = true;
+            break;
+        }
+    }
+    let script = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../scripts/test-jellyfin.sh"
+    );
+    // The process lingers briefly while shutting down; `start` must not see it as running.
+    for _ in 0..30 {
+        let st = std::process::Command::new(script)
+            .arg("status")
+            .output()
+            .unwrap();
+        if !st.status.success() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    let up = std::process::Command::new(script)
+        .arg("start")
+        .status()
+        .unwrap();
+    assert!(up.success(), "could not start the throwaway again");
+    assert!(gone, "server still answered after shutdown");
+    let mut back = false;
+    for _ in 0..30 {
+        if c.system_info().await.is_ok() {
+            back = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert!(back, "throwaway did not come back");
 }

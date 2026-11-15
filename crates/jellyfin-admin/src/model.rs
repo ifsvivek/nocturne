@@ -214,8 +214,57 @@ pub struct ServerConfig {
     pub activity_log_retention_days: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quick_connect_available: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_resume_pct: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_resume_pct: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_resume_duration_seconds: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_client_bitrate_limit: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preferred_metadata_language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata_country_code: Option<String>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// `GET /Items/Counts`: library totals by type.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct ItemCounts {
+    pub movie_count: u32,
+    pub series_count: u32,
+    pub episode_count: u32,
+    pub album_count: u32,
+    pub song_count: u32,
+    pub music_video_count: u32,
+    pub box_set_count: u32,
+    pub book_count: u32,
+    pub trailer_count: u32,
+    pub program_count: u32,
+}
+
+/// `GET /System/Configuration/network` (read-only view of the common fields).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct NetworkConfig {
+    pub base_url: String,
+    pub enable_https: bool,
+    pub require_https: bool,
+    pub internal_http_port: u16,
+    pub internal_https_port: u16,
+    pub public_http_port: u16,
+    pub public_https_port: u16,
+    pub auto_discovery: bool,
+    #[serde(rename = "EnableUPnP")]
+    pub enable_upnp: bool,
+    #[serde(rename = "EnableIPv4")]
+    pub enable_ipv4: bool,
+    #[serde(rename = "EnableIPv6")]
+    pub enable_ipv6: bool,
+    pub enable_remote_access: bool,
 }
 
 /// API key. `Debug` redacts the token.

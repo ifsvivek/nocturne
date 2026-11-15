@@ -13,6 +13,12 @@ pub struct ConfigPatch {
     pub log_file_retention_days: Option<i32>,
     pub activity_log_retention_days: Option<i32>,
     pub quick_connect_available: Option<bool>,
+    pub min_resume_pct: Option<i32>,
+    pub max_resume_pct: Option<i32>,
+    pub min_resume_duration_seconds: Option<i32>,
+    pub remote_client_bitrate_limit: Option<i32>,
+    pub preferred_metadata_language: Option<String>,
+    pub metadata_country_code: Option<String>,
 }
 
 impl AdminClient {
@@ -193,7 +199,13 @@ impl AdminClient {
             ui_culture,
             log_file_retention_days,
             activity_log_retention_days,
-            quick_connect_available
+            quick_connect_available,
+            min_resume_pct,
+            max_resume_pct,
+            min_resume_duration_seconds,
+            remote_client_bitrate_limit,
+            preferred_metadata_language,
+            metadata_country_code
         );
         let body = serde_json::to_value(&c).expect("config serializes");
         self.send(Method::POST, &["System", "Configuration"], &[], Some(body))
@@ -205,6 +217,14 @@ impl AdminClient {
     /// The only process-level call here; there is deliberately no shutdown.
     pub async fn restart_server(&self, _: Confirmed) -> Result<()> {
         self.send(Method::POST, &["System", "Restart"], &[], None)
+            .await
+            .map(drop)
+    }
+
+    /// WRITE `POST /System/Shutdown`: DESTRUCTIVE, stops the server process; it stays down until
+    /// started again from outside (there is no remote start).
+    pub async fn shutdown_server(&self, _: Confirmed) -> Result<()> {
+        self.send(Method::POST, &["System", "Shutdown"], &[], None)
             .await
             .map(drop)
     }

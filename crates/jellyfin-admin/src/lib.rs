@@ -11,7 +11,7 @@ pub mod guard;
 mod model;
 mod write;
 
-pub use client::AdminClient;
+pub use client::{AdminClient, tail_lines};
 pub use model::*;
 pub use nocturne_jellyfin::Config;
 pub use write::ConfigPatch;
