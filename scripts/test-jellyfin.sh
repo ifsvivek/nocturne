@@ -11,6 +11,9 @@ ENVF="$T/test.env"
 PIDF="$T/jellyfin.pid"
 
 case "$T" in /tmp/?*) ;; *) echo "refusing: test dir must be under /tmp (got $T)" >&2; exit 1;; esac
+case "$T" in *..*) echo "refusing: test dir must not contain '..' (got $T)" >&2; exit 1;; esac
+# Canonical path (symlinks resolved) must still be strictly under /tmp.
+case "$(realpath -m "$T")" in /tmp/?*) ;; *) echo "refusing: test dir resolves outside /tmp (got $T)" >&2; exit 1;; esac
 for b in jellyfin curl jq ffmpeg; do command -v "$b" >/dev/null || { echo "missing: $b" >&2; exit 1; }; done
 
 running() { [[ -f $PIDF ]] && kill -0 "$(cat "$PIDF")" 2>/dev/null; }
