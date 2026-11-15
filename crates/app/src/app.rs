@@ -1,9 +1,16 @@
 //! Root view: connection state, navigation stack, keyboard, and the screens.
+mod ui_browse;
+mod ui_detail;
+mod ui_search;
+
 use crate::account::{self, Accounts};
 use crate::admin::{self, Admin};
+use crate::detail::Full;
 use crate::hooks::{PlayerHooks, SyncHooks, ticks};
+use crate::imgcache::DiskCache;
 use crate::nav::{self, Dir};
 use crate::playback::{Now, Reporter, Tick};
+use crate::search::Search;
 use crate::settings::{ROWS, Settings};
 use crate::source::fmt_clock;
 use crate::source::{Art, ConnectError, Kind, Media, Source, sniff};
@@ -17,10 +24,13 @@ use nocturne_jellyfin_user::{Session, UserClient};
 use nocturne_player::{EmbeddedPlayer, Event, Options, Player};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::cell::Cell as StdCell;
+use std::collections::VecDeque;
 use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use ui_browse::{Browse, GLOBALS, Global};
+use ui_detail::DRow;
 
 /// Height of the docked now-playing bar.
 const BAR_H: f32 = 96.0;
@@ -95,12 +105,70 @@ struct Page {
     page_scroll: ScrollHandle,
     seasons: Load<Vec<Media>>,
     season_sel: usize,
-    season_open: bool,
+    /// Episodes (series/season), tracks, members: the page's main list.
     episodes: Load<Vec<Media>>,
     ep_sel: usize,
+    /// Library / collection browsing state (Grid pages).
+    br: Option<Box<Browse>>,
+    // Detail extras.
+    full: Option<Full>,
+    similar: Load<Vec<Media>>,
+    extras: Load<Vec<Media>>,
+    kids: Load<Vec<Media>>,
+    kids2: Load<Vec<Media>>,
+    neigh: (Option<Media>, Option<Media>),
+    /// Focused detail row / column (see `ui_detail::DRow`).
+    drow: usize,
+    dcol: usize,
+    dscroll: [ScrollHandle; 6],
+    /// Episode-card columns as last drawn.
+    dcols: usize,
 }
 
 impl Page {
+    fn new(
+        pid: u64,
+        view: View,
+        media: Option<Media>,
+        admin: bool,
+        show: (bool, bool, bool),
+    ) -> Self {
+        Self {
+            pid,
+            view,
+            media,
+            libs: Load::Loading,
+            rows: vec![],
+            resume: Load::Loading,
+            resume_scroll: ScrollHandle::new(),
+            nextup: Load::Loading,
+            nextup_scroll: ScrollHandle::new(),
+            admin,
+            show,
+            row: 1,
+            col: 0,
+            items: Load::Loading,
+            sel: 0,
+            scroll: UniformListScrollHandle::new(),
+            page_scroll: ScrollHandle::new(),
+            seasons: Load::Loading,
+            season_sel: 0,
+            episodes: Load::Loading,
+            ep_sel: 0,
+            br: None,
+            full: None,
+            similar: Load::Loading,
+            extras: Load::Loading,
+            kids: Load::Loading,
+            kids2: Load::Loading,
+            neigh: (None, None),
+            drow: 0,
+            dcol: 0,
+            dscroll: Default::default(),
+            dcols: 3,
+        }
+    }
+
     fn layout(&self) -> Vec<HRow> {
         let mut v = vec![HRow::Nav, HRow::Hero];
         if self.show.0 && !self.resume.items().is_empty() {
@@ -129,7 +197,7 @@ impl Page {
         if k == HRow::Hero {
             2
         } else if k == HRow::Nav {
-            self.libs.items().len() + self.admin as usize
+            self.libs.items().len() + GLOBALS.len() + self.admin as usize
         } else {
             self.row_items(k).len()
         }
@@ -236,6 +304,15 @@ pub struct Root {
     settings_sel: usize,
     menu: bool,
     menu_sel: usize,
+    /// Pages left by Back, restored by Forward (cleared by any new navigation).
+    fwd: Vec<Page>,
+    blurs: Cache<String, Arc<Image>>,
+    search: Option<Search>,
+    search_sel: usize,
+    search_scroll: ScrollHandle,
+    disk: Option<Arc<DiskCache>>,
+    /// Items waiting behind the one playing (Play all / Shuffle).
+    queue: VecDeque<Media>,
 }
 
 /// Account menu entries.
@@ -314,7 +391,20 @@ impl Root {
             settings_sel: 0,
             menu: false,
             menu_sel: 0,
+            fwd: vec![],
+            blurs: Cache::new(400),
+            search: None,
+            search_sel: 0,
+            search_scroll: ScrollHandle::new(),
+            disk: None,
+            queue: VecDeque::new(),
         };
+        me.disk = DiskCache::default_dir().map(|d| {
+            Arc::new(DiskCache::open(
+                d,
+                u64::from(me.settings.image_cache_mb) * 1024 * 1024,
+            ))
+        });
         me.dev = me.cfg.is_some();
         if me.dev {
             me.connect(cx);
@@ -399,7 +489,10 @@ impl Root {
         let cfg = self.cfg.clone();
         self.run(cx, Source::connect(cfg), |t, r, cx| match r {
             Ok(s) => {
-                t.source = Some(s);
+                t.source = Some(match t.disk.clone() {
+                    Some(d) => s.with_disk(d),
+                    None => s,
+                });
                 t.phase = Phase::Ready;
                 t.push(View::Home, None, cx);
                 t.run(cx, admin::probe(t.cfg.clone()), |t, c, cx| {
@@ -428,9 +521,13 @@ impl Root {
             UserClient::from_session(&url, &s).ok(),
             self.settings.sync_progress,
         ));
-        self.source = Some(src);
+        self.source = Some(match self.disk.clone() {
+            Some(d) => src.with_disk(d),
+            None => src,
+        });
         self.images = Cache::new(600);
         self.stack.clear();
+        self.fwd.clear();
         self.admin_open = false;
         // The admin section follows the account's own rights, with the session's token.
         self.admin = s
@@ -582,8 +679,15 @@ impl Root {
                 &mut p.items,
                 &mut p.seasons,
                 &mut p.episodes,
+                &mut p.similar,
+                &mut p.extras,
+                &mut p.kids,
+                &mut p.kids2,
             ] {
                 list(l);
+            }
+            if let Some(br) = p.br.as_deref_mut() {
+                br.slots.iter_mut().flatten().for_each(hit);
             }
             p.rows.iter_mut().for_each(|r| list(&mut r.items));
         }
@@ -658,11 +762,14 @@ impl Root {
                 HRow::Nav => None,
                 k => p.row_items(k).get(p.col).cloned(),
             },
-            View::Grid => p.items.items().get(p.sel).cloned(),
-            View::Detail if p.media.as_ref().is_some_and(|m| m.is_series()) => {
-                p.episodes.items().get(p.ep_sel).cloned()
+            View::Grid => p.br.as_deref()?.item(p.sel).cloned(),
+            View::Detail => {
+                let rows = p.drows();
+                match rows.get(p.drow) {
+                    Some(DRow::List) => p.episodes.items().get(p.ep_sel).cloned(),
+                    _ => p.media.clone(),
+                }
             }
-            View::Detail => p.media.clone(),
         }
     }
 
@@ -783,36 +890,26 @@ impl Root {
         self.stack.iter_mut().find(|p| p.pid == pid)
     }
 
+    /// A new page on top of the stack; whatever Back had parked is forgotten.
+    fn push_page(&mut self, view: View, media: Option<Media>) -> u64 {
+        self.next_pid += 1;
+        let pid = self.next_pid;
+        self.fwd.clear();
+        self.stack.push(Page::new(
+            pid,
+            view,
+            media,
+            self.admin.is_some(),
+            self.settings.home(),
+        ));
+        pid
+    }
+
     fn push(&mut self, view: View, media: Option<Media>, cx: &mut Context<Self>) {
         let Some(src) = self.source.clone() else {
             return;
         };
-        self.next_pid += 1;
-        let pid = self.next_pid;
-        self.stack.push(Page {
-            pid,
-            view,
-            media: media.clone(),
-            libs: Load::Loading,
-            rows: vec![],
-            resume: Load::Loading,
-            resume_scroll: ScrollHandle::new(),
-            nextup: Load::Loading,
-            nextup_scroll: ScrollHandle::new(),
-            admin: self.admin.is_some(),
-            show: self.settings.home(),
-            row: 1,
-            col: 0,
-            items: Load::Loading,
-            sel: 0,
-            scroll: UniformListScrollHandle::new(),
-            page_scroll: ScrollHandle::new(),
-            seasons: Load::Loading,
-            season_sel: 0,
-            season_open: true,
-            episodes: Load::Loading,
-            ep_sel: 0,
-        });
+        let pid = self.push_page(view, media.clone());
         match (view, media) {
             (View::Home, _) => {
                 let s2 = src.clone();
@@ -859,37 +956,7 @@ impl Root {
                     }
                 });
             }
-            (View::Grid, Some(m)) => {
-                self.run(cx, async move { src.children(&m).await }, move |t, r, _| {
-                    if let Some(p) = t.page_mut(pid) {
-                        p.items = r.map_or(Load::Failed, Load::Ready);
-                    }
-                })
-            }
-            (View::Detail, Some(m)) => {
-                let (s2, id) = (src.clone(), m.id.clone());
-                // Fuller record (overview) than the list entry carried.
-                self.run(cx, async move { s2.detail(&id).await }, move |t, r, _| {
-                    if let (Some(p), Ok(full)) = (t.page_mut(pid), r) {
-                        p.media = Some(full);
-                    }
-                });
-                if m.is_series() {
-                    self.run(
-                        cx,
-                        async move { src.seasons(&m.id).await },
-                        move |t, r, cx| {
-                            let first = r.as_ref().ok().and_then(|v| v.first().cloned());
-                            if let Some(p) = t.page_mut(pid) {
-                                p.seasons = r.map_or(Load::Failed, Load::Ready);
-                            }
-                            if let Some(s) = first {
-                                t.load_episodes(pid, s.id, cx);
-                            }
-                        },
-                    );
-                }
-            }
+            (View::Detail, Some(m)) => self.load_detail(pid, m, cx),
             _ => {}
         }
     }
@@ -924,16 +991,13 @@ impl Root {
     }
 
     fn open(&mut self, m: Media, cx: &mut Context<Self>) {
-        match m.kind {
-            Kind::Library => self.push(View::Grid, Some(m), cx),
-            _ => self.push(View::Detail, Some(m), cx),
-        }
+        self.open_any(m, cx);
     }
 
     /// Library tabs always replace whatever is above Home.
     fn open_library(&mut self, m: Media, cx: &mut Context<Self>) {
         self.stack.truncate(1);
-        self.push(View::Grid, Some(m), cx);
+        self.open_browse(ui_browse::scope_library(&m), cx);
     }
 
     fn open_admin(&mut self, cx: &mut Context<Self>) {
@@ -956,9 +1020,11 @@ impl Root {
     }
 
     fn back(&mut self) {
-        if self.stack.len() > 1 {
-            self.stack.pop();
-        }
+        nav::back(&mut self.stack, &mut self.fwd);
+    }
+
+    fn forward(&mut self) {
+        nav::forward(&mut self.stack, &mut self.fwd);
     }
 
     fn toast(&mut self, msg: &'static str, cx: &mut Context<Self>) {
@@ -1029,7 +1095,11 @@ impl Root {
         }
         self.muted_from = None;
         self.now = Some(Now::new(m));
-        if ep.kind == Kind::Episode {
+        if let Some(q) = self.queue.pop_front() {
+            if let Some(n) = self.now.as_mut() {
+                n.next = Some(q);
+            }
+        } else if ep.kind == Kind::Episode {
             self.run(
                 cx,
                 async move { (ep.id.clone(), src.next_episode(&ep).await) },
@@ -1274,6 +1344,7 @@ impl Root {
 
     fn stop(&mut self, cx: &mut Context<Self>) {
         self.report_stop();
+        self.queue.clear();
         self.playback = None; // dropping closes mpv / the video surface
         self.video = false;
         self.pending = None;
@@ -1520,12 +1591,33 @@ impl Root {
         }
     }
 
+    /// Blurhash placeholder (decoded once, kept small).
+    fn blur(&mut self, hash: &str) -> Option<Arc<Image>> {
+        if let Some(i) = self.blurs.get(&hash.to_string()) {
+            return Some(i.clone());
+        }
+        let px = crate::blurhash::decode(hash, 32, 32)?;
+        let i = ui::png(&px, 32, 32);
+        self.blurs.insert(hash.to_string(), i.clone());
+        Some(i)
+    }
+
     /// Cached image lookup; starts a fetch the first time a slot is actually drawn (lazy).
+    /// While it loads the item's blurhash (when the server has one) stands in.
     fn pic(&mut self, m: &Media, art: Art, width: u32, cx: &mut Context<Self>) -> Pic {
-        let key = format!("{}:{:?}:{width}", m.id, art);
+        let extra = if art == Art::Chapter {
+            m.number.unwrap_or(0)
+        } else {
+            0
+        };
+        let key = format!("{}:{:?}:{width}:{extra}", m.id, art);
+        let loading = |me: &mut Self| match m.blur_for(art).and_then(|h| me.blur(h)) {
+            Some(i) => Pic::Blur(i),
+            None => Pic::Loading,
+        };
         match self.images.get(&key) {
             Some(Img::Ready(i)) => return Pic::Ready(i.clone()),
-            Some(Img::Loading) => return Pic::Loading,
+            Some(Img::Loading) => return loading(self),
             Some(Img::Failed) => return Pic::Missing,
             None => {}
         }
@@ -1533,10 +1625,10 @@ impl Root {
             return Pic::Loading;
         };
         self.images.insert(key.clone(), Img::Loading);
-        let m = m.clone();
+        let mc = m.clone();
         self.run(
             cx,
-            async move { src.image(&m, art, width).await },
+            async move { src.image(&mc, art, width).await },
             move |t, r, _| {
                 let state = match r
                     .ok()
@@ -1548,7 +1640,7 @@ impl Root {
                 t.images.insert(key, state);
             },
         );
-        Pic::Loading
+        loading(self)
     }
 
     // ---- keyboard ----
@@ -1680,6 +1772,31 @@ impl Root {
             }
             return;
         }
+        if matches!(self.phase, Phase::Ready) {
+            if self.search.is_some() {
+                return self.search_key(ev, cx);
+            }
+            let m = &ev.keystroke.modifiers;
+            if (m.control && key == "k") || (key == "/" && !m.control && !m.alt) {
+                self.close_admin(cx);
+                return self.open_search(cx);
+            }
+            if m.alt && matches!(key, "left" | "right") {
+                if key == "left" {
+                    self.back();
+                } else {
+                    self.forward();
+                }
+                return cx.notify();
+            }
+            if self.stack.last().is_some_and(|p| {
+                p.br.as_deref()
+                    .is_some_and(|b| b.menu != ui_browse::Menu::None)
+            }) {
+                self.browse_key(key, m.shift, cx);
+                return cx.notify();
+            }
+        }
         if self.admin_open
             && let Some(a) = self.admin.clone()
         {
@@ -1698,7 +1815,7 @@ impl Root {
             let spatial = self
                 .stack
                 .last()
-                .is_some_and(|p| matches!(p.view, View::Home | View::Grid));
+                .is_some_and(|p| matches!(p.view, View::Home | View::Grid | View::Detail));
             match key {
                 "space" => self.toggle(),
                 "s" => self.stop(cx),
@@ -1725,6 +1842,13 @@ impl Root {
             cx.notify();
             return;
         }
+        match self.stack.last().map(|p| p.view) {
+            Some(View::Grid) if self.browse_key(key, ev.keystroke.modifiers.shift, cx) => {
+                return cx.notify();
+            }
+            Some(View::Detail) => return self.detail_key(key, cx),
+            _ => {}
+        }
         let dir = match key {
             "up" => Some(Dir::Up),
             "down" => Some(Dir::Down),
@@ -1733,7 +1857,6 @@ impl Root {
             _ => None,
         };
         let enter = key == "enter";
-        let cols = self.cols;
         let Some(p) = self.stack.last_mut() else {
             return;
         };
@@ -1742,9 +1865,16 @@ impl Root {
                 let lay = p.layout();
                 let kind = lay.get(p.row).copied().unwrap_or(HRow::Hero);
                 let mut act = None;
-                let admin_col = kind == HRow::Nav && p.admin && p.col == p.libs.items().len();
+                let nlibs = p.libs.items().len();
+                let admin_col = kind == HRow::Nav && p.admin && p.col == nlibs + GLOBALS.len();
                 if enter && admin_col {
                     self.open_admin(cx);
+                    cx.notify();
+                    return;
+                }
+                if enter && kind == HRow::Nav && (nlibs..nlibs + GLOBALS.len()).contains(&p.col) {
+                    let g = GLOBALS[p.col - nlibs].0;
+                    self.open_global(g, cx);
                     cx.notify();
                     return;
                 }
@@ -1788,39 +1918,7 @@ impl Root {
                     None => {}
                 }
             }
-            View::Grid => {
-                if let Some(d) = dir {
-                    let n = p.items.items().len();
-                    p.sel = nav::step(p.sel, cols, n, d);
-                    p.scroll
-                        .scroll_to_item(p.sel / cols.max(1), ScrollStrategy::Center);
-                } else if enter && let Some(m) = p.items.items().get(p.sel).cloned() {
-                    self.open(m, cx);
-                }
-            }
-            View::Detail => {
-                let pid = p.pid;
-                match dir {
-                    Some(d @ (Dir::Up | Dir::Down)) => {
-                        let n = p.episodes.items().len();
-                        p.ep_sel = nav::step(p.ep_sel, 1, n, d);
-                        // children: hero, facts, "Episodes" heading, then headers/episodes
-                        p.page_scroll
-                            .scroll_to_item(3 + p.season_sel + 1 + p.ep_sel);
-                    }
-                    Some(d @ (Dir::Left | Dir::Right)) => {
-                        let n = p.seasons.items().len();
-                        let s = nav::step(p.season_sel, n.max(1), n, d);
-                        if s != p.season_sel {
-                            p.season_sel = s;
-                            let id = p.seasons.items()[s].id.clone();
-                            self.load_episodes(pid, id, cx);
-                        }
-                    }
-                    None if enter => self.play_current(cx),
-                    None => {}
-                }
-            }
+            View::Grid | View::Detail => {}
         }
         cx.notify();
     }
@@ -1893,12 +1991,34 @@ impl Root {
                 }),
             ));
         }
+        let cur_key = self
+            .stack
+            .get(1)
+            .and_then(|p| p.media.as_ref())
+            .map(|m| m.id.as_str());
+        for (gi, (g, label)) in GLOBALS.into_iter().enumerate() {
+            let key = match g {
+                Global::Collections => "collections",
+                Global::Playlists => "playlists",
+                Global::Favourites => "favourites",
+            };
+            nav = nav.child(ui::nav_link(
+                format!("nav-g{gi}"),
+                label,
+                cur_key == Some(key) && !at_home && !self.admin_open,
+                focus_col == Some(libs.len() + gi) && !self.admin_open,
+                cx.listener(move |t, _, _, cx| {
+                    t.open_global(g, cx);
+                    cx.notify();
+                }),
+            ));
+        }
         if self.admin.is_some() {
             nav = nav.child(ui::nav_link(
                 "nav-admin".into(),
                 "Admin",
                 self.admin_open,
-                focus_col == Some(libs.len()) && !self.admin_open,
+                focus_col == Some(libs.len() + GLOBALS.len()) && !self.admin_open,
                 cx.listener(|t, _, _, cx| {
                     t.open_admin(cx);
                     cx.notify();
@@ -1923,7 +2043,30 @@ impl Root {
                     .flex()
                     .items_center()
                     .gap(px(t::S8))
-                    .child(ui::wordmark(t::CAPTION + 1.0))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(t::S1))
+                            .child(self.hist_button(
+                                "hist-back",
+                                "\u{2039}",
+                                "Back (Alt+Left)",
+                                self.stack.len() > 1,
+                                true,
+                                cx,
+                            ))
+                            .child(self.hist_button(
+                                "hist-fwd",
+                                "\u{203A}",
+                                "Forward (Alt+Right)",
+                                !self.fwd.is_empty(),
+                                false,
+                                cx,
+                            ))
+                            .child(div().w(px(t::S3)))
+                            .child(ui::wordmark(t::CAPTION + 1.0)),
+                    )
                     .child(nav),
             )
             .child(
@@ -1931,9 +2074,131 @@ impl Root {
                     .flex()
                     .items_center()
                     .gap(px(t::S4))
-                    .child(ui::mono("YOUR MEDIA. YOUR NIGHT."))
+                    .child(
+                        div()
+                            .id("search-btn")
+                            .h(px(32.0))
+                            .px(px(t::S3))
+                            .flex()
+                            .items_center()
+                            .gap(px(t::S3))
+                            .rounded(px(6.0))
+                            .border_1()
+                            .border_color(t::hairline_strong())
+                            .cursor_pointer()
+                            .hover(|s| s.border_color(t::accent()))
+                            .tooltip(ui::tip("Search (Ctrl+K or /)"))
+                            .on_click(cx.listener(|t, _, _, cx| {
+                                t.open_search(cx);
+                                cx.notify();
+                            }))
+                            .child(
+                                div()
+                                    .text_size(px(t::CAPTION + 1.0))
+                                    .text_color(t::text_secondary())
+                                    .child("Search"),
+                            )
+                            .child(ui::mono("/")),
+                    )
                     .child(self.avatar(cx)),
             )
+    }
+
+    fn hist_button(
+        &self,
+        id: &'static str,
+        glyph: &'static str,
+        tip: &'static str,
+        enabled: bool,
+        back: bool,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        div()
+            .id(id)
+            .size(px(28.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(6.0))
+            .text_size(px(t::BODY_LG + 4.0))
+            .text_color(if enabled {
+                t::text()
+            } else {
+                t::text_tertiary()
+            })
+            .opacity(if enabled { 1.0 } else { 0.5 })
+            .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(t::glass())))
+            .tooltip(ui::tip(tip))
+            .on_click(cx.listener(move |t, _, _, cx| {
+                if back {
+                    t.back()
+                } else {
+                    t.forward()
+                }
+                cx.notify();
+            }))
+            .child(glyph)
+    }
+
+    /// Breadcrumbs for deep pages: Home > ... > current; every crumb but the last goes back to it.
+    fn crumbs(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let n = self.stack.len();
+        if n < 3 {
+            return None;
+        }
+        let title = |p: &Page| {
+            if p.view == View::Home {
+                "Home".to_string()
+            } else {
+                p.media.as_ref().map_or(String::new(), |m| m.title.clone())
+            }
+        };
+        let (start, elided) = nav::crumb_window(n, 4);
+        let mut row = div()
+            .absolute()
+            .top(px(t::HEADER_H))
+            .left_0()
+            .w_full()
+            .h(px(28.0))
+            .px(px(t::PAGE_PAD))
+            .flex()
+            .items_center()
+            .gap(px(t::S2));
+        let shown: Vec<usize> = if elided {
+            std::iter::once(0).chain(start..n).collect()
+        } else {
+            (0..n).collect()
+        };
+        for (k, i) in shown.into_iter().enumerate() {
+            if k > 0 {
+                row = row.child(ui::mono(if elided && k == 1 {
+                    "\u{2026}  \u{203A}"
+                } else {
+                    "\u{203A}"
+                }));
+            }
+            let last = i == n - 1;
+            row = row.child(
+                div()
+                    .id(("crumb", i))
+                    .max_w(px(240.0))
+                    .truncate()
+                    .text_size(px(t::CAPTION))
+                    .text_color(if last { t::text() } else { t::text_secondary() })
+                    .when(!last, |d| {
+                        d.cursor_pointer()
+                            .hover(|s| s.text_color(t::accent_text()))
+                            .on_click(cx.listener(move |t, _, _, cx| {
+                                while t.stack.len() > i + 1 {
+                                    t.back();
+                                }
+                                cx.notify();
+                            }))
+                    })
+                    .child(title(&self.stack[i])),
+            );
+        }
+        Some(row)
     }
 
     /// Initial in a hairline circle; opens the account menu.
@@ -2201,6 +2466,24 @@ impl Root {
                 }
                 t.drag_move(e.position.x, cx)
             }))
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Back),
+                cx.listener(|t, _, _, cx| {
+                    if !t.video {
+                        t.back();
+                        cx.notify();
+                    }
+                }),
+            )
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Forward),
+                cx.listener(|t, _, _, cx| {
+                    if !t.video {
+                        t.forward();
+                        cx.notify();
+                    }
+                }),
+            )
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|t, _, _, cx| {
@@ -2832,7 +3115,12 @@ impl Root {
             .min(f32::from(self.win.height) * frac)
             .max(340.0)
             .round();
-        let backdrop = match self.pic(m, Art::Backdrop, 1920, cx) {
+        let hero_art = if m.backdrop_tag.is_none() && m.kind == Kind::Episode {
+            Art::Landscape
+        } else {
+            Art::Backdrop
+        };
+        let backdrop = match self.pic(m, hero_art, 1920, cx) {
             Pic::Ready(i) => ui::fade_in(
                 div()
                     .size_full()
@@ -2841,6 +3129,10 @@ impl Root {
                 t::SLOW,
             )
             .into_any_element(),
+            Pic::Blur(i) => div()
+                .size_full()
+                .child(img(i).size_full().object_fit(ObjectFit::Cover))
+                .into_any_element(),
             Pic::Loading => ui::tile(Pic::Loading, &m.title, "hero-sk")
                 .size_full()
                 .into_any_element(),
@@ -2863,6 +3155,40 @@ impl Root {
             chips = chips.child(ui::chip(g, false));
         }
         let size = (w / 26.0).clamp(40.0, 72.0);
+        // The title logo, when the item (or its show) has one; otherwise the title as text.
+        let logo = if m.logo.is_some() {
+            Some(self.pic(m, Art::Logo, 800, cx))
+        } else {
+            None
+        };
+        let title_el: AnyElement = match logo {
+            Some(Pic::Ready(i)) => ui::fade_in(
+                div()
+                    .h(px(110.0))
+                    .max_w(px(460.0))
+                    .child(img(i).h(px(110.0)).object_fit(ObjectFit::Contain)),
+                format!("logo-{}", m.id),
+                t::SLOW,
+            )
+            .into_any_element(),
+            Some(Pic::Blur(_) | Pic::Loading) => div().h(px(110.0)).into_any_element(),
+            _ => div()
+                .line_clamp(2)
+                .text_size(px(size))
+                .line_height(px(size * 1.08))
+                .font_weight(FontWeight::BOLD)
+                .text_color(t::text())
+                .child(m.title.clone())
+                .into_any_element(),
+        };
+        let season_line = (m.logo.is_some() && matches!(m.kind, Kind::Season | Kind::Episode))
+            .then(|| {
+                div()
+                    .text_size(px(t::HEADING))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(t::text())
+                    .child(m.title.clone())
+            });
         let sub = m.overview.clone().unwrap_or_else(|| m.meta_line());
         let text = div()
             .flex()
@@ -2872,15 +3198,8 @@ impl Root {
             .max_w(px(680.0))
             .child(ui::mono(eyebrow))
             .child(chips)
-            .child(
-                div()
-                    .line_clamp(2)
-                    .text_size(px(size))
-                    .line_height(px(size * 1.08))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(t::text())
-                    .child(m.title.clone()),
-            )
+            .child(title_el)
+            .children(season_line)
             .child(
                 div()
                     .max_w(px(560.0))
@@ -2954,6 +3273,7 @@ impl Root {
                     h: ch,
                     focused: false,
                     progress: None,
+                    badge: None,
                 }));
             }
         }
@@ -2991,6 +3311,7 @@ impl Root {
                     h: ch,
                     focused: focus == Some(ci),
                     progress: m.progress(),
+                    badge: ui_browse::badge(m),
                 })
                 .group("card")
                 .child(self.chips(m, cx))
@@ -3198,421 +3519,6 @@ impl Root {
         page.child(div().h(px(t::S8 * 2.0)).flex_none())
             .into_any_element()
     }
-
-    // ---- Grid ----
-
-    fn grid(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let Some(p) = self.stack.last() else {
-            return div().into_any_element();
-        };
-        let title = p
-            .media
-            .as_ref()
-            .map(|m| m.title.clone())
-            .unwrap_or_default();
-        let kind = p.media.as_ref().map(|m| m.kind_label()).unwrap_or_default();
-        let n = p.items.items().len();
-        let avail = self.colw() - 2.0 * t::PAGE_PAD - 1.0;
-        self.cols = nav::columns(avail, self.settings.density.card() + 2.0 * t::S3, 0.0);
-        let cols = self.cols;
-        let cell_w = (avail / cols as f32).floor();
-        let (w, h) = (
-            cell_w - 2.0 * t::S3 - 1.0,
-            ((cell_w - 2.0 * t::S3 - 1.0) * 1.5).round(),
-        );
-        let rows = n.div_ceil(cols);
-        let meta = match &p.items {
-            Load::Ready(_) => format!("{kind} · {n} titles"),
-            _ => kind,
-        };
-        let body: AnyElement = match &p.items {
-            Load::Loading => div()
-                .flex()
-                .children((0..cols.min(8)).map(|i| {
-                    ui::poster_cell(Cell {
-                        key: &format!("gsk-{i}"),
-                        pic: Pic::Loading,
-                        title: "",
-                        meta: String::new(),
-                        index: i,
-                        w,
-                        h,
-                        focused: false,
-                        progress: None,
-                    })
-                }))
-                .into_any_element(),
-            Load::Failed => {
-                Self::note_text("This couldn't be loaded. Press Esc to go back and try again.")
-                    .into_any_element()
-            }
-            Load::Ready(_) if n == 0 => Self::note_text("Nothing here yet.").into_any_element(),
-            Load::Ready(_) => uniform_list(
-                "grid",
-                rows,
-                cx.processor(move |this, range: std::ops::Range<usize>, _w, cx| {
-                    range
-                        .map(|r| this.grid_row(r, cols, w, h, cx))
-                        .collect::<Vec<_>>()
-                }),
-            )
-            .track_scroll(p.scroll.clone())
-            .size_full()
-            .into_any_element(),
-        };
-        div()
-            .size_full()
-            .pt(px(t::HEADER_H + t::S8))
-            .flex()
-            .flex_col()
-            .child(ui::section(
-                &title,
-                "Everything in this library, sorted by name.",
-                meta,
-            ))
-            .child(div().h(px(t::S6)).flex_none())
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .mx(px(t::PAGE_PAD))
-                    .mb(px(t::S6))
-                    .border_t_1()
-                    .border_l_1()
-                    .border_color(t::hairline())
-                    .rounded(px(t::R_PANEL))
-                    .overflow_hidden()
-                    .child(body),
-            )
-            .into_any_element()
-    }
-
-    fn grid_row(
-        &mut self,
-        r: usize,
-        cols: usize,
-        w: f32,
-        h: f32,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let (items, sel) = match self.stack.last() {
-            Some(p) => (p.items.items().to_vec(), p.sel),
-            None => return div().into_any_element(),
-        };
-        let end = ((r + 1) * cols).min(items.len());
-        let mut row = div().h(px(h + CELL_EXTRA)).flex();
-        for (idx, m) in items.iter().enumerate().take(end).skip(r * cols) {
-            let pic = self.pic(m, Art::Poster, (w * 2.0) as u32, cx);
-            let target = m.clone();
-            row = row.child(
-                ui::poster_cell(Cell {
-                    key: &format!("g-{}", m.id),
-                    pic,
-                    title: &m.title,
-                    meta: [m.kind_label(), m.meta_line()]
-                        .into_iter()
-                        .filter(|s| !s.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" · "),
-                    index: idx,
-                    w,
-                    h,
-                    focused: idx == sel,
-                    progress: m.progress(),
-                })
-                .group("card")
-                .child(self.chips(m, cx))
-                .on_hover(cx.listener(move |t, hov: &bool, _, cx| {
-                    if *hov
-                        && let Some(p) = t.stack.last_mut()
-                        && p.sel != idx
-                    {
-                        p.sel = idx;
-                        cx.notify();
-                    }
-                }))
-                .on_click(cx.listener(move |t, _, _, cx| {
-                    t.open(target.clone(), cx);
-                    cx.notify();
-                })),
-            );
-        }
-        row.into_any_element()
-    }
-
-    // ---- Detail ----
-
-    fn detail(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let Some(p) = self.stack.last() else {
-            return div().into_any_element();
-        };
-        let Some(m) = p.media.clone() else {
-            return div().into_any_element();
-        };
-        let (seasons, season_sel, season_open, episodes, ep_sel, scroll, pid) = (
-            p.seasons.clone(),
-            p.season_sel,
-            p.season_open,
-            p.episodes.clone(),
-            p.ep_sel,
-            p.page_scroll.clone(),
-            p.pid,
-        );
-        let buttons = div().flex().gap(px(t::S3)).child(ui::pill_button(
-            "play",
-            "Play",
-            true,
-            !m.is_series(),
-            cx.listener(move |t, _, _, cx| {
-                t.play_current(cx);
-                cx.notify();
-            }),
-        ));
-        let (mw, mf) = (m.clone(), m.clone());
-        let buttons = buttons
-            .child(ui::pill_button(
-                "detail-seen",
-                if m.played {
-                    "Watched \u{2713}"
-                } else {
-                    "Mark watched"
-                },
-                false,
-                false,
-                cx.listener(move |t, _, _, cx| {
-                    t.toggle_played(&mw, cx);
-                    cx.notify();
-                }),
-            ))
-            .child(ui::pill_button(
-                "detail-fav",
-                if m.favorite {
-                    "\u{2665} Favourite"
-                } else {
-                    "\u{2661} Favourite"
-                },
-                false,
-                false,
-                cx.listener(move |t, _, _, cx| {
-                    t.toggle_fav(&mf, cx);
-                    cx.notify();
-                }),
-            ));
-        let hero = self.hero_band(&m, format!("0x01 · {}", m.kind_label()), buttons, 0.55, cx);
-
-        // Metadata as feature cells (only what the server told us).
-        let mut facts: Vec<(String, String, String)> = vec![];
-        if let Some(y) = m.year {
-            facts.push(("year".into(), y.to_string(), "Release year".into()));
-        }
-        if let Some(r) = m.runtime_min {
-            facts.push((
-                "runtime".into(),
-                crate::source::fmt_runtime(r),
-                "Total running time".into(),
-            ));
-        }
-        if let Some(r) = m.rating {
-            facts.push(("rating".into(), format!("{r:.1}"), "Community score".into()));
-        }
-        if m.is_series() {
-            facts.push((
-                "seasons".into(),
-                seasons.items().len().to_string(),
-                "Seasons on the server".into(),
-            ));
-        }
-        facts.truncate(3);
-
-        let mut page = div()
-            .id("detail")
-            .size_full()
-            .overflow_y_scroll()
-            .track_scroll(&scroll)
-            .flex()
-            .flex_col()
-            .child(ui::band(hero));
-        if !facts.is_empty() {
-            let missing = 3 - facts.len();
-            let mut r = div().flex().border_t_1().border_color(t::hairline());
-            for (i, (k, v, txt)) in facts.into_iter().enumerate() {
-                r = r.child(ui::feature_cell(ui::Feature {
-                    key: &format!("fact-{k}"),
-                    top_l: format!("0x{:02x}", i + 1),
-                    top_r: k.clone(),
-                    pic: None,
-                    title: v,
-                    text: txt,
-                    foot: m.kind_label(),
-                    focused: false,
-                }));
-            }
-            for _ in 0..missing {
-                r = r.child(
-                    div()
-                        .flex_1()
-                        .border_r_1()
-                        .border_b_1()
-                        .border_color(t::hairline()),
-                );
-            }
-            page = page.child(ui::band(
-                div()
-                    .mx(px(t::PAGE_PAD))
-                    .mt(px(t::S8))
-                    .mb(px(t::S8))
-                    .border_l_1()
-                    .border_color(t::hairline())
-                    .child(r),
-            ));
-        }
-
-        if m.is_series() {
-            // Accordion: one season open at a time (click the open one to collapse).
-            let total = seasons.items().len();
-            page = page.child(ui::band(div().py(px(t::S8)).child(ui::section(
-                "Episodes",
-                "Pick a season to see its episodes.",
-                format!("{total} seasons"),
-            ))));
-            for (i, s) in seasons.items().iter().enumerate() {
-                let id = s.id.clone();
-                let open = i == season_sel && season_open;
-                let header = div()
-                    .id(ui::name(format!("season-{i}")))
-                    .px(px(t::PAGE_PAD))
-                    .h(px(64.0))
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .cursor_pointer()
-                    .hover(|s| s.bg(t::glass()))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(t::S4))
-                            .child(ui::mono(format!("0x{:02x}", i + 1)))
-                            .child(
-                                div()
-                                    .text_size(px(t::BODY_LG))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(if open { t::accent_text() } else { t::text() })
-                                    .child(s.title.clone()),
-                            ),
-                    )
-                    .child(ui::mono(if open {
-                        "collapse  \u{25B4}"
-                    } else {
-                        "expand  \u{25BE}"
-                    }))
-                    .on_click(cx.listener(move |t, _, _, cx| {
-                        let same = t.page_mut(pid).map(|p| p.season_sel == i).unwrap_or(false);
-                        if let Some(p) = t.page_mut(pid) {
-                            if same {
-                                p.season_open = !p.season_open;
-                            } else {
-                                p.season_open = true;
-                                p.season_sel = i;
-                            }
-                        }
-                        if !same {
-                            t.load_episodes(pid, id.clone(), cx);
-                        }
-                        cx.notify();
-                    }));
-                page = page.child(ui::band(header));
-                if open {
-                    match &episodes {
-                        Load::Loading => {
-                            page = page.child(ui::band(
-                                div().p(px(t::S6)).child(ui::mono("loading episodes")),
-                            ))
-                        }
-                        Load::Failed => {
-                            page = page.child(ui::band(
-                                div()
-                                    .p(px(t::S6))
-                                    .text_color(t::text_secondary())
-                                    .child("Episodes couldn't be loaded."),
-                            ))
-                        }
-                        Load::Ready(v) => {
-                            for (ei, e) in v.iter().enumerate() {
-                                let pic = self.pic(e, Art::Poster, 320, cx);
-                                let id = e.id.clone();
-                                let on = ei == ep_sel;
-                                let row = div()
-                                    .id(ui::name(format!("ep-{ei}")))
-                                    .px(px(t::PAGE_PAD))
-                                    .py(px(t::S3))
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(t::S4))
-                                    .bg(if on { t::accent_tint() } else { rgba(0) })
-                                    .cursor_pointer()
-                                    .hover(|s| s.bg(t::glass()))
-                                    .on_click(cx.listener(move |t, _, _, cx| {
-                                        if let Some(e) = t.page_mut(pid).and_then(|p| {
-                                            p.episodes.items().iter().find(|e| e.id == id).cloned()
-                                        }) {
-                                            t.play_item(e, cx);
-                                        }
-                                        cx.notify();
-                                    }))
-                                    .child(
-                                        div()
-                                            .w(px(40.0))
-                                            .child(ui::mono(format!("0x{:02x}", ei + 1))),
-                                    )
-                                    .child(
-                                        ui::tile(pic, &e.title, &format!("ep-{}", e.id))
-                                            .w(px(128.0))
-                                            .h(px(72.0))
-                                            .flex_none(),
-                                    )
-                                    .child(
-                                        div()
-                                            .flex_1()
-                                            .min_w_0()
-                                            .flex()
-                                            .flex_col()
-                                            .gap(px(2.0))
-                                            .child(
-                                                div()
-                                                    .truncate()
-                                                    .text_size(px(t::BODY))
-                                                    .font_weight(FontWeight::SEMIBOLD)
-                                                    .text_color(if on {
-                                                        t::text()
-                                                    } else {
-                                                        t::text_secondary()
-                                                    })
-                                                    .child(e.title.clone()),
-                                            )
-                                            .child(ui::mono(
-                                                [
-                                                    e.episode_label(),
-                                                    e.runtime_min
-                                                        .map(crate::source::fmt_runtime)
-                                                        .unwrap_or_default(),
-                                                ]
-                                                .into_iter()
-                                                .filter(|s| !s.is_empty())
-                                                .collect::<Vec<_>>()
-                                                .join(" · "),
-                                            )),
-                                    );
-                                page = page.child(ui::band(row));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        page.child(div().h(px(t::S8 * 2.0)).flex_none())
-            .into_any_element()
-    }
 }
 
 fn p_loading(rows: &[(Media, Load<Vec<Media>>, ScrollHandle)]) -> bool {
@@ -3702,10 +3608,19 @@ impl Render for Root {
             );
         if matches!(self.phase, Phase::Ready) {
             root = root.child(self.header(cx));
+            if !self.admin_open
+                && !self.settings_open
+                && let Some(c) = self.crumbs(cx)
+            {
+                root = root.child(c);
+            }
         }
         root = root.child(layer(self.grain.clone(), 0.02));
         if self.menu && matches!(self.phase, Phase::Ready) {
             root = root.child(self.account_menu(cx));
+        }
+        if self.search.is_some() && matches!(self.phase, Phase::Ready) {
+            root = root.child(self.search_overlay(cx));
         }
         if let Some(bar) = self.now_bar(cx) {
             root = root.child(bar);

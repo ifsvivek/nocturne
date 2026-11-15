@@ -144,81 +144,6 @@ pub fn section(title: &str, text: &str, meta: String) -> Div {
         .child(mono(meta))
 }
 
-/// Feature cell: mono caption row on top, optional image, then title, muted text, dim mono
-/// footer. Cells in a row share borders (right + bottom hairline).
-pub struct Feature<'a> {
-    pub key: &'a str,
-    pub top_l: String,
-    pub top_r: String,
-    pub pic: Option<Pic>,
-    pub title: String,
-    pub text: String,
-    pub foot: String,
-    pub focused: bool,
-}
-
-pub fn feature_cell(f: Feature) -> Stateful<Div> {
-    div()
-        .id(name(format!("feat-{}", f.key)))
-        .flex_1()
-        .min_w_0()
-        .flex()
-        .flex_col()
-        .border_r_1()
-        .border_b_1()
-        .border_color(t::hairline())
-        .cursor_pointer()
-        .hover(|s| s.bg(t::glass()))
-        .when(f.focused, |d| {
-            d.bg(t::accent_tint())
-                .border_color(t::accent())
-                .shadow(glow_shadow(0.5))
-        })
-        .child(
-            div()
-                .px(px(t::S4))
-                .h(px(36.0))
-                .flex()
-                .items_center()
-                .justify_between()
-                .border_b_1()
-                .border_color(t::hairline())
-                .child(mono(f.top_l))
-                .child(mono(f.top_r.clone())),
-        )
-        .when_some(f.pic, |d, pic| {
-            let art = match pic {
-                Pic::Missing => placeholder(&f.title, &f.top_r),
-                pic => tile(pic, &f.title, f.key),
-            };
-            d.child(div().p(px(t::S4)).child(art.w_full().h(px(150.0))))
-        })
-        .child(
-            div()
-                .p(px(t::S4))
-                .flex()
-                .flex_col()
-                .gap(px(t::S2))
-                .child(
-                    div()
-                        .truncate()
-                        .text_size(px(18.0))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(t::text())
-                        .child(f.title.clone()),
-                )
-                .child(
-                    div()
-                        .line_clamp(2)
-                        .text_size(px(t::BODY))
-                        .line_height(px(t::BODY * 1.55))
-                        .text_color(t::text_secondary())
-                        .child(f.text),
-                )
-                .child(mono(f.foot)),
-        )
-}
-
 /// Primary: solid blue, dark label. Secondary: hairline outline. `focused` = soft glow.
 pub fn pill_button(
     id: &'static str,
@@ -318,6 +243,58 @@ pub fn nav_link(
         })
 }
 
+/// Tooltip bubble for icon-only buttons.
+pub struct Tip(pub SharedString);
+
+impl Render for Tip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px(px(t::S2))
+            .py(px(t::S1))
+            .rounded(px(t::R_XS))
+            .border_1()
+            .border_color(t::hairline_strong())
+            .bg(t::raised())
+            .font_family(t::MONO)
+            .text_size(px(t::MICRO))
+            .text_color(t::text())
+            .child(self.0.clone())
+    }
+}
+
+/// `el.tooltip(ui::tip("Back"))`: names an icon-only control for pointer and screen-reader users.
+pub fn tip(text: &'static str) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    move |_, cx| cx.new(|_| Tip(text.into())).into()
+}
+
+/// Text tab: active = white with a blue underline; `focused` = blue text.
+pub fn tab(
+    id: String,
+    text: &str,
+    active: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    div()
+        .id(name(id))
+        .h(px(36.0))
+        .px(px(t::S3))
+        .flex()
+        .items_center()
+        .border_b_2()
+        .border_color(if active { t::accent() } else { rgba(0) })
+        .text_size(px(t::BODY))
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(if active {
+            t::text()
+        } else {
+            t::text_secondary()
+        })
+        .cursor_pointer()
+        .hover(|s| s.text_color(t::text()))
+        .on_click(on_click)
+        .child(text.to_string())
+}
+
 /// Compact text button for admin rows and dialogs. `danger` = red outline (destructive only),
 /// `primary` = solid blue, otherwise hairline. `focused` adds the soft glow; `off` dims it.
 pub fn action_button(
@@ -366,6 +343,8 @@ pub fn action_button(
 /// What an image slot can show.
 pub enum Pic {
     Ready(Arc<Image>),
+    /// Real image still loading: its blurhash, upscaled.
+    Blur(Arc<Image>),
     Loading,
     Missing,
 }
@@ -397,6 +376,11 @@ pub fn tile(pic: Pic, title: &str, key: &str) -> Div {
             format!("img-{key}"),
             t::SLOW,
         )),
+        Pic::Blur(i) => base.child(
+            div()
+                .size_full()
+                .child(img(i).size_full().object_fit(ObjectFit::Cover)),
+        ),
         Pic::Loading => base.child(
             div().size_full().bg(rgb(0xffffff)).with_animation(
                 name(format!("shimmer-{key}")),
@@ -418,37 +402,6 @@ pub fn tile(pic: Pic, title: &str, key: &str) -> Div {
                 .child(initial(title)),
         ),
     }
-}
-
-/// Art slot for something with no image: quiet blue-navy gradient, big initial, mono caption.
-pub fn placeholder(title: &str, caption: &str) -> Div {
-    div()
-        .relative()
-        .overflow_hidden()
-        .rounded(px(t::R_XS))
-        .bg(linear_gradient(
-            135.0,
-            linear_color_stop(rgb(0x18284d), 0.0),
-            linear_color_stop(t::surface(), 1.0),
-        ))
-        .child(
-            div()
-                .size_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_size(px(64.0))
-                .font_weight(FontWeight::BOLD)
-                .text_color(rgba(0x9cc0ff40))
-                .child(initial(title)),
-        )
-        .child(
-            div()
-                .absolute()
-                .left(px(t::S3))
-                .bottom(px(t::S2))
-                .child(mono(caption.to_string())),
-        )
 }
 
 /// Thin progress line: faint track, blue fill. `frac` is 0..1.
@@ -513,6 +466,8 @@ pub struct Cell<'a> {
     pub focused: bool,
     /// Watched fraction; draws a thin blue line along the bottom of the image.
     pub progress: Option<f32>,
+    /// Small count shown in the image's bottom-right corner (unwatched episodes).
+    pub badge: Option<String>,
 }
 
 pub fn poster_cell(c: Cell) -> Stateful<Div> {
@@ -552,6 +507,21 @@ pub fn poster_cell(c: Cell) -> Stateful<Div> {
                             mono(format!("0x{:02x}", c.index + 1)).text_color(rgba(0xffffffb0)),
                         ),
                     )
+                    .when_some(c.badge.clone(), |d, b| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .bottom(px(t::S2))
+                                .right(px(t::S2))
+                                .px(px(t::S2))
+                                .rounded(px(R_CHIP))
+                                .bg(t::accent())
+                                .font_family(t::MONO)
+                                .text_size(px(t::MICRO))
+                                .text_color(t::on_accent())
+                                .child(b),
+                        )
+                    })
                     .when_some(c.progress, |d, p| {
                         d.child(
                             div()
@@ -656,7 +626,7 @@ pub fn grain() -> Arc<Image> {
     png(&buf, N, N)
 }
 
-fn png(rgba: &[u8], w: u32, h: u32) -> Arc<Image> {
+pub fn png(rgba: &[u8], w: u32, h: u32) -> Arc<Image> {
     use image::ImageEncoder;
     let mut out = Vec::new();
     image::codecs::png::PngEncoder::new(&mut out)
