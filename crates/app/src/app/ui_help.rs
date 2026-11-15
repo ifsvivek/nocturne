@@ -4,7 +4,7 @@ use super::*;
 use nocturne_jellyfin_user::OwnSession;
 
 /// (heading, [(keys, what it does)]). The player has its own `?` panel with playback keys.
-pub(super) const SHORTCUTS: [(&str, &[(&str, &str)]); 6] = [
+pub(super) const SHORTCUTS: [(&str, &[(&str, &str)]); 7] = [
     (
         "Everywhere",
         &[
@@ -35,6 +35,22 @@ pub(super) const SHORTCUTS: [(&str, &[(&str, &str)]); 6] = [
             ("+ -  Up / Down", "Zoom in / out"),
             ("0", "Reset zoom"),
             ("Esc", "Close the viewer"),
+        ],
+    ),
+    (
+        "Playlists and music queue",
+        &[
+            ("n", "New playlist (on the Playlists page)"),
+            (
+                "x  [  ]",
+                "Remove / move up / move down the selected entry of your playlist",
+            ),
+            ("More ...", "Add to playlist, Play next, Add to queue"),
+            ("Account menu", "Play or clear the music queue"),
+            (
+                "u (player)",
+                "Queue: Enter play, [ ] move, X remove, Z shuffle, R repeat",
+            ),
         ],
     ),
     (

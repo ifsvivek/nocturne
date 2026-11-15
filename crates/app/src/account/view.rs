@@ -395,11 +395,25 @@ impl Accounts {
                 "The language the server keeps for your account. Other Jellyfin apps you use read it too.",
                 "Save",
             ),
+            DlgKind::NewPlaylist => ("New playlist", "Make an empty playlist you own.", "Create"),
+            DlgKind::RenamePlaylist => {
+                ("Rename playlist", "Give the playlist a new name.", "Rename")
+            }
+            DlgKind::DeletePlaylist => ("Delete playlist", "", "Delete playlist"),
+            DlgKind::AddToPlaylist => (
+                "Add to a playlist",
+                "Type the name of one of your playlists to add to it, or a new name to start one.",
+                "Add",
+            ),
         };
-        let mut p =
-            panel()
-                .w(px(480.0))
-                .child(heading("Please confirm", title.into(), Some(body.into())));
+        let body = match &d.hint {
+            Some(h) if body.is_empty() => h.clone(),
+            Some(h) => format!("{body} {h}"),
+            None => body.to_string(),
+        };
+        let mut p = panel()
+            .w(px(480.0))
+            .child(heading("Please confirm", title.into(), Some(body)));
         for (i, fld) in f.fields.iter().enumerate() {
             p = p.child(self.field(
                 "pw-f",

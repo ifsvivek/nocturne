@@ -18,6 +18,10 @@ pub enum Event {
     SignedIn { url: String, session: Session },
     /// Calm one-liner for the toast.
     Notice(&'static str),
+    /// A playlist changed: the page showing it should load again.
+    Reload,
+    /// The playlist on screen was deleted: leave its page.
+    Deleted,
 }
 
 impl EventEmitter<Event> for Accounts {}
@@ -33,6 +37,23 @@ pub enum DlgKind {
     RemoveImage,
     /// Display language (a code the server offers, such as `de`).
     Language,
+    /// New playlist, optionally with the items it is made from.
+    NewPlaylist,
+    RenamePlaylist,
+    DeletePlaylist,
+    /// Add items to one of the user's playlists by name; an unknown name makes a new one.
+    AddToPlaylist,
+}
+
+/// What a playlist dialog acts on.
+#[derive(Clone, Default)]
+pub enum Target {
+    #[default]
+    None,
+    /// An existing playlist: (id, name).
+    Playlist(String, String),
+    /// Items to put in a playlist, and the playlists the user owns: (id, name).
+    Items(Vec<String>, Vec<(String, String)>),
 }
 
 struct PwDialog {
@@ -41,6 +62,9 @@ struct PwDialog {
     form: Form,
     busy: bool,
     msg: Option<&'static str>,
+    target: Target,
+    /// Extra line under the dialog's text (the user's playlists, for example).
+    hint: Option<String>,
 }
 
 pub struct Accounts {
@@ -56,7 +80,16 @@ enum ProfileFail {
     File,
     Image,
     Language,
+    NotOwner,
     Server,
+}
+
+fn playlist_fail(e: Error) -> ProfileFail {
+    match e {
+        Error::Status { status: 403, .. } => ProfileFail::NotOwner,
+        Error::Config(_) => ProfileFail::Language,
+        _ => ProfileFail::Server,
+    }
 }
 
 impl ProfileFail {
@@ -65,6 +98,7 @@ impl ProfileFail {
             ProfileFail::File => "That file couldn't be read. Check the path.",
             ProfileFail::Image => "That isn't a PNG, JPEG, WebP or GIF image of at most 10 MB.",
             ProfileFail::Language => "The server doesn't offer that language code.",
+            ProfileFail::NotOwner => "You can only change playlists you own.",
             ProfileFail::Server => "Couldn't save that. Check the server and try again.",
         }
     }
@@ -432,6 +466,59 @@ impl Accounts {
             form,
             busy: false,
             msg: None,
+            target: Target::None,
+            hint: None,
+        });
+        cx.notify();
+    }
+
+    /// Playlist dialogs: a one-line form plus what it acts on.
+    pub fn open_playlist(
+        &mut self,
+        kind: DlgKind,
+        client: UserClient,
+        target: Target,
+        cx: &mut Context<Self>,
+    ) {
+        let (label, value, hint) = match (&kind, &target) {
+            (DlgKind::RenamePlaylist, Target::Playlist(_, n)) => ("New name", n.clone(), None),
+            (DlgKind::DeletePlaylist, Target::Playlist(_, n)) => (
+                "Type the playlist name to confirm",
+                String::new(),
+                Some(format!(
+                    "This deletes {n} for good. The items in it are not touched."
+                )),
+            ),
+            (DlgKind::AddToPlaylist, Target::Items(_, own)) => (
+                "Playlist name",
+                String::new(),
+                Some(if own.is_empty() {
+                    "You have no playlists yet; a new one is created.".to_string()
+                } else {
+                    format!(
+                        "Yours: {}.",
+                        own.iter()
+                            .map(|o| o.1.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                }),
+            ),
+            _ => ("Playlist name", String::new(), None),
+        };
+        let f = Fld {
+            label,
+            value,
+            ..Default::default()
+        };
+        self.dialog = Some(PwDialog {
+            kind,
+            client,
+            form: Form::new(vec![f], 2),
+            busy: false,
+            msg: None,
+            target,
+            hint,
         });
         cx.notify();
     }
@@ -464,9 +551,23 @@ impl Accounts {
             return;
         };
         let value = d.form.value(0).to_string();
-        let kind = d.kind;
+        let (kind, target) = (d.kind, d.target.clone());
         if kind == DlgKind::ProfileImage && value.is_empty() {
             d.msg = Some("Type the path of an image file.");
+            return;
+        }
+        if matches!(
+            kind,
+            DlgKind::NewPlaylist | DlgKind::RenamePlaylist | DlgKind::AddToPlaylist
+        ) && value.is_empty()
+        {
+            d.msg = Some("A playlist needs a name.");
+            return;
+        }
+        if let (DlgKind::DeletePlaylist, Target::Playlist(_, n)) = (kind, &target)
+            && value != *n
+        {
+            d.msg = Some("Type the playlist name exactly to confirm.");
             return;
         }
         d.busy = true;
@@ -488,6 +589,34 @@ impl Accounts {
                         .remove_own_image(UserConfirmed::i_have_asked_the_user())
                         .await
                         .map_err(|_| ProfileFail::Server),
+                    DlgKind::NewPlaylist => c
+                        .create_playlist(&value, &[])
+                        .await
+                        .map(drop)
+                        .map_err(playlist_fail),
+                    DlgKind::RenamePlaylist => match &target {
+                        Target::Playlist(id, _) => {
+                            c.rename_playlist(id, &value).await.map_err(playlist_fail)
+                        }
+                        _ => Err(ProfileFail::Server),
+                    },
+                    DlgKind::DeletePlaylist => match &target {
+                        Target::Playlist(id, _) => {
+                            c.delete_playlist(id).await.map_err(playlist_fail)
+                        }
+                        _ => Err(ProfileFail::Server),
+                    },
+                    DlgKind::AddToPlaylist => match &target {
+                        Target::Items(ids, own) => {
+                            let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+                            match own.iter().find(|o| o.1.eq_ignore_ascii_case(&value)) {
+                                Some((pid, _)) => c.add_to_playlist(pid, &ids).await,
+                                None => c.create_playlist(&value, &ids).await.map(drop),
+                            }
+                            .map_err(playlist_fail)
+                        }
+                        _ => Err(ProfileFail::Server),
+                    },
                     _ => c.set_display_language(&value).await.map_err(|e| match e {
                         Error::Config(_) => ProfileFail::Language,
                         _ => ProfileFail::Server,
@@ -500,8 +629,18 @@ impl Accounts {
                     cx.emit(Event::Notice(match kind {
                         DlgKind::Language => "Display language saved.",
                         DlgKind::RemoveImage => "Profile image removed.",
-                        _ => "Profile image updated.",
+                        DlgKind::NewPlaylist => "Playlist created.",
+                        DlgKind::RenamePlaylist => "Playlist renamed.",
+                        DlgKind::DeletePlaylist => "Playlist deleted.",
+                        DlgKind::AddToPlaylist => "Added to the playlist.",
+                        DlgKind::ProfileImage => "Profile image updated.",
+                        _ => "Saved.",
                     }));
+                    cx.emit(if kind == DlgKind::DeletePlaylist {
+                        Event::Deleted
+                    } else {
+                        Event::Reload
+                    });
                 }
                 Err(e) => {
                     if let Some(d) = a.dialog.as_mut() {
@@ -534,6 +673,8 @@ impl Accounts {
             ),
             busy: false,
             msg: None,
+            target: Target::None,
+            hint: None,
         });
         cx.notify();
     }
@@ -552,6 +693,8 @@ impl Accounts {
             ),
             busy: false,
             msg: None,
+            target: Target::None,
+            hint: None,
         });
         cx.notify();
     }
@@ -595,9 +738,15 @@ impl Accounts {
     fn pw_confirm(&mut self, cx: &mut Context<Self>) {
         match self.dialog.as_ref().map(|d| d.kind) {
             Some(DlgKind::Authorize) => return self.authorize_confirm(cx),
-            Some(DlgKind::ProfileImage | DlgKind::RemoveImage | DlgKind::Language) => {
-                return self.profile_confirm(cx);
-            }
+            Some(
+                DlgKind::ProfileImage
+                | DlgKind::RemoveImage
+                | DlgKind::Language
+                | DlgKind::NewPlaylist
+                | DlgKind::RenamePlaylist
+                | DlgKind::DeletePlaylist
+                | DlgKind::AddToPlaylist,
+            ) => return self.profile_confirm(cx),
             _ => {}
         }
         let Some(d) = self.dialog.as_mut().filter(|d| !d.busy) else {

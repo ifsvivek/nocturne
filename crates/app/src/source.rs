@@ -64,6 +64,8 @@ pub struct Media {
     pub duration_s: Option<f64>,
     pub played: bool,
     pub favorite: bool,
+    /// The user may delete it; for a playlist that means they own it and may edit it.
+    pub can_delete: bool,
     pub official_rating: Option<String>,
     /// Series/season: episodes not yet watched.
     pub unplayed: Option<u32>,
@@ -138,6 +140,7 @@ impl Media {
             duration_s: i.run_time_ticks.map(|t| t as f64 / TICKS_PER_S),
             played: i.user_data.as_ref().is_some_and(|u| u.played),
             favorite: i.user_data.as_ref().is_some_and(|u| u.is_favorite),
+            can_delete: i.x.can_delete.unwrap_or(false),
             official_rating: i.x.official_rating.clone(),
             unplayed: i.user_data.as_ref().and_then(|u| u.unplayed_item_count),
             child_count: i.x.child_count.or(i.x.recursive_item_count),
@@ -585,6 +588,23 @@ impl Source {
             .await
             .map_err(|_| Failed)?;
         Ok(v.iter().map(Media::from_item).collect())
+    }
+
+    /// The playlists this user owns and may edit, by name: `(id, name)`.
+    pub async fn own_playlists(&self) -> Result<Vec<(String, String)>, Failed> {
+        let q = jf::BrowseQuery {
+            include_types: vec!["Playlist".into()],
+            sort_by: vec!["SortName".into()],
+            recursive: true,
+            limit: Some(200),
+            ..Default::default()
+        };
+        let (items, _) = self.browse(&q).await?;
+        Ok(items
+            .into_iter()
+            .filter(|m| m.can_delete)
+            .map(|m| (m.id, m.title))
+            .collect())
     }
 
     pub async fn playlist_items(&self, id: &str) -> Result<Vec<Media>, Failed> {

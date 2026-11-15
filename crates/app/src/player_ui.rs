@@ -193,6 +193,11 @@ impl PlayerView {
                     self.queue_sel = (self.queue_sel + 1).min(self.queue.len().saturating_sub(1))
                 }
                 "enter" => self.jump(self.queue_sel, cx),
+                "[" => self.queue_shift(self.queue_sel, true),
+                "]" => self.queue_shift(self.queue_sel, false),
+                "x" | "delete" => self.queue_drop(self.queue_sel),
+                "z" => self.toggle_shuffle(),
+                "r" => self.cycle_repeat(),
                 "escape" | "u" => self.queue_open = false,
                 _ => return true,
             }
@@ -481,6 +486,28 @@ impl PlayerView {
             return None;
         }
         let bottom = if shown { BAR_H + 8.0 } else { 8.0 };
+        let chip = |id: &'static str, label: &'static str, on: bool| {
+            div()
+                .id(id)
+                .px(px(t::S2))
+                .py(px(3.0))
+                .rounded(px(6.0))
+                .border_1()
+                .border_color(if on {
+                    t::accent()
+                } else {
+                    t::hairline_strong()
+                })
+                .text_size(px(t::CAPTION))
+                .text_color(if on {
+                    t::accent_text()
+                } else {
+                    t::text_secondary()
+                })
+                .cursor_pointer()
+                .hover(|s| s.border_color(t::accent()))
+                .child(label)
+        };
         Some(
             panel()
                 .id("queue")
@@ -499,8 +526,53 @@ impl PlayerView {
                     div()
                         .px(px(t::S3))
                         .py(px(t::S2))
-                        .child(ui::mono(format!("QUEUE  {}", self.queue.len()))),
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .child(ui::mono(format!("QUEUE  {}", self.queue.len())))
+                        .child(
+                            div()
+                                .flex()
+                                .gap(px(t::S2))
+                                .child(
+                                    chip(
+                                        "q-shuffle",
+                                        if self.shuffle {
+                                            "Shuffle: on"
+                                        } else {
+                                            "Shuffle: off"
+                                        },
+                                        self.shuffle,
+                                    )
+                                    .on_click(cx.listener(
+                                        |t, _, _, cx| {
+                                            t.toggle_shuffle();
+                                            cx.notify();
+                                        },
+                                    )),
+                                )
+                                .child(
+                                    chip(
+                                        "q-repeat",
+                                        match self.set.repeat {
+                                            Repeat::Off => "Repeat: off",
+                                            Repeat::All => "Repeat: all",
+                                            Repeat::One => "Repeat: one",
+                                        },
+                                        self.set.repeat != Repeat::Off,
+                                    )
+                                    .on_click(cx.listener(
+                                        |t, _, _, cx| {
+                                            t.cycle_repeat();
+                                            cx.notify();
+                                        },
+                                    )),
+                                ),
+                        ),
                 )
+                .child(div().px(px(t::S3)).pb(px(t::S2)).child(ui::mono(
+                    "Enter play  [ ] move  X remove  Z shuffle  R repeat",
+                )))
                 .children(self.queue.iter().enumerate().map(|(i, m)| {
                     let (cur, kb) = (i == self.qi, i == self.queue_sel);
                     let n = m.short_ep();

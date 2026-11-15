@@ -2,6 +2,7 @@
 mod ui_browse;
 mod ui_detail;
 mod ui_help;
+mod ui_playlists;
 mod ui_search;
 
 use crate::account::{self, Accounts};
@@ -260,6 +261,7 @@ pub struct Root {
     settings_sel: usize,
     menu: bool,
     menu_sel: usize,
+    audio_queue: ui_playlists::AudioQueue,
     other_accounts: Vec<nocturne_session::Account>,
     /// Pages left by Back, restored by Forward (cleared by any new navigation).
     fwd: Vec<Page>,
@@ -308,6 +310,8 @@ enum AcctAct {
     /// Switch to remembered account `i` (index into `Root::other_accounts`).
     SwitchTo(usize),
     AddAccount,
+    PlayQueue,
+    ClearQueue,
     ProfileImage,
     RemoveImage,
     Language,
@@ -353,6 +357,7 @@ impl Root {
             settings_sel: 0,
             menu: false,
             menu_sel: 0,
+            audio_queue: Default::default(),
             other_accounts: vec![],
             fwd: vec![],
             blurs: Cache::new(400),
@@ -384,6 +389,11 @@ impl Root {
                     t.activate(url.clone(), session.clone(), cx)
                 }
                 account::Event::Notice(n) => t.toast(n, cx),
+                account::Event::Reload => t.retry_page(cx),
+                account::Event::Deleted => {
+                    t.back();
+                    t.retry_page(cx);
+                }
             })
             .detach();
             me.accounts = Some(acct);
@@ -570,6 +580,11 @@ impl Root {
             add("Display language", AcctAct::Language);
             add("Authorize a device", AcctAct::Authorize);
             add("Your devices", AcctAct::Devices);
+            if !self.audio_queue.items.is_empty() {
+                let n = self.audio_queue.items.len();
+                v.push((format!("Play music queue ({n})"), AcctAct::PlayQueue));
+                v.push(("Clear music queue".to_string(), AcctAct::ClearQueue));
+            }
             for (i, a) in self.other_accounts.iter().enumerate() {
                 v.push((format!("Switch to {}", a.user_name), AcctAct::SwitchTo(i)));
             }
@@ -709,6 +724,8 @@ impl Root {
                 }
             }
             AcctAct::SwitchTo(i) => self.switch_to(i, cx),
+            AcctAct::PlayQueue => self.play_queue(cx),
+            AcctAct::ClearQueue => self.clear_queue(cx),
             AcctAct::AddAccount => {
                 self.leave_session(cx);
                 if let Some(a) = self.accounts.clone() {
@@ -1125,6 +1142,10 @@ impl Root {
     /// Ends playback now (sign-out, switch server): report, release the player.
     fn close_player(&mut self, cx: &mut Context<Self>) {
         self.report_stop();
+        if let Some(p) = self.player.clone() {
+            let q = p.read(cx).music_queue();
+            self.keep_music(q);
+        }
         if let Some(p) = self.player.take() {
             p.update(cx, |p, _| p.shutdown());
         }
@@ -1390,6 +1411,10 @@ impl Root {
             let PlayerEvent::Closed { failed, leave_fs } = ev;
             t.report_stop();
             t.refresh_resume(cx);
+            if let Some(p) = t.player.clone() {
+                let p = p.read(cx).music_queue();
+                t.keep_music(p);
+            }
             t.player = None;
             t._player_sub = None;
             t.fs_exit = *leave_fs;

@@ -2,7 +2,9 @@
 //! albums. One page, a list of focusable rows (actions, chips, episode/track list, carousels);
 //! the data comes from `detail.rs`.
 use super::ui_browse::{caption, scope_tag};
+use super::ui_playlists::Edit;
 use super::*;
+use crate::account::{DlgKind, Target};
 use crate::detail::{self, Full};
 use crate::sync::NEED_WRITES;
 
@@ -91,6 +93,11 @@ pub(super) enum MoreAct {
     Watched,
     Fav,
     Info,
+    AddToPlaylist,
+    RenamePlaylist,
+    DeletePlaylist,
+    PlayNext,
+    AddToQueue,
 }
 
 #[derive(Clone)]
@@ -127,7 +134,7 @@ pub(super) fn actions(m: &Media, has_prev: bool, has_next: bool) -> Vec<DAct> {
             }
             v
         }
-        Kind::BoxSet | Kind::Playlist | Kind::MusicAlbum => vec![PlayAll, Shuffle, Fav],
+        Kind::BoxSet | Kind::Playlist | Kind::MusicAlbum => vec![PlayAll, Shuffle, Fav, More],
         Kind::Photo => vec![View, Fav],
         _ => vec![Fav],
     };
@@ -539,10 +546,49 @@ impl Root {
                 MoreAct::Fav,
             ));
         }
+        // Music goes to the session queue (nothing is written to the server).
+        let tracks = self.page_tracks();
+        if !tracks.is_empty() {
+            v.push(("Play next", MoreAct::PlayNext));
+            v.push(("Add to queue", MoreAct::AddToQueue));
+        }
+        if self.hooks.can_write() && !self.page_playables().is_empty() && m.kind != Kind::Playlist {
+            v.push(("Add to playlist\u{2026}", MoreAct::AddToPlaylist));
+        }
+        if self.hooks.can_write() && self.owned_playlist().is_some() {
+            v.push(("Rename playlist\u{2026}", MoreAct::RenamePlaylist));
+            v.push(("Delete playlist\u{2026}", MoreAct::DeletePlaylist));
+        }
         if p.full.as_ref().is_some_and(|f| !f.info.is_empty()) {
             v.push(("Media info", MoreAct::Info));
         }
         v
+    }
+
+    /// Everything on the open page that plays: the item itself, or the items of a list page.
+    fn page_playables(&self) -> Vec<Media> {
+        let Some(p) = self.stack.last() else {
+            return vec![];
+        };
+        match &p.media {
+            Some(m) if m.playable() => vec![m.clone()],
+            Some(m) if matches!(m.kind, Kind::MusicAlbum | Kind::Playlist | Kind::BoxSet) => p
+                .episodes
+                .items()
+                .iter()
+                .filter(|e| e.playable())
+                .cloned()
+                .collect(),
+            _ => vec![],
+        }
+    }
+
+    /// The music among [`Self::page_playables`].
+    fn page_tracks(&self) -> Vec<Media> {
+        self.page_playables()
+            .into_iter()
+            .filter(|m| m.kind == Kind::Audio)
+            .collect()
     }
 
     pub(super) fn more_act(&mut self, a: MoreAct, cx: &mut Context<Self>) {
@@ -561,6 +607,22 @@ impl Root {
             MoreAct::Watched => self.toggle_played(&m, cx),
             MoreAct::Fav => self.toggle_fav(&m, cx),
             MoreAct::Info => self.info_open = true,
+            MoreAct::AddToPlaylist => {
+                let ids = self.page_playables().into_iter().map(|m| m.id).collect();
+                self.add_to_playlist(ids, cx);
+            }
+            MoreAct::RenamePlaylist => self.playlist_dialog(
+                DlgKind::RenamePlaylist,
+                Target::Playlist(m.id.clone(), m.title.clone()),
+                cx,
+            ),
+            MoreAct::DeletePlaylist => self.playlist_dialog(
+                DlgKind::DeletePlaylist,
+                Target::Playlist(m.id.clone(), m.title.clone()),
+                cx,
+            ),
+            MoreAct::PlayNext => self.queue_tracks(self.page_tracks(), true, cx),
+            MoreAct::AddToQueue => self.queue_tracks(self.page_tracks(), false, cx),
         }
         cx.notify();
     }
@@ -714,6 +776,7 @@ impl Root {
     }
 
     pub(super) fn detail_key(&mut self, key: &str, cx: &mut Context<Self>) {
+        let owned = self.owned_playlist().is_some();
         let Some(p) = self.stack.last_mut() else {
             return;
         };
@@ -780,6 +843,12 @@ impl Root {
             (None, _) if key == "enter" => {
                 let col = p.dcol;
                 self.do_row(cur, col, cx);
+                return cx.notify();
+            }
+            (None, _) if cur == DRow::List && Edit::of(key).is_some() && owned => {
+                if let Some(e) = Edit::of(key) {
+                    self.playlist_item_edit(e, cx);
+                }
                 return cx.notify();
             }
             (None, _) if key == "i" && cur == DRow::List => {
@@ -1823,7 +1892,7 @@ mod tests {
         assert_eq!(actions(&m("Season"), false, false), [Play, Series]);
         assert_eq!(
             actions(&m("Playlist"), false, false),
-            [PlayAll, Shuffle, Fav]
+            [PlayAll, Shuffle, Fav, More]
         );
         assert_eq!(actions(&m("Person"), false, false), [Fav]);
     }

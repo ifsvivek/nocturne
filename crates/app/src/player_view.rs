@@ -117,6 +117,9 @@ pub struct PlayerView {
     // panels
     pub queue_open: bool,
     pub queue_sel: usize,
+    /// Shuffle is on; `unshuffled` is the order to return to when it is turned off.
+    pub shuffle: bool,
+    pub unshuffled: Vec<Media>,
     pub ctx_menu: Option<Point<Pixels>>,
     pub mini: bool,
     pub restore_size: Option<Size<Pixels>>,
@@ -186,6 +189,8 @@ impl PlayerView {
             play_session: String::new(),
             queue_open: false,
             queue_sel: 0,
+            shuffle: false,
+            unshuffled: vec![],
             ctx_menu: None,
             mini: false,
             restore_size: None,
@@ -956,6 +961,76 @@ impl PlayerView {
         self.queue_open = false;
         self.begin(m, cx);
         cx.notify();
+    }
+
+    // ---- queue editing (audio queue panel) ----
+
+    /// Move entry `i` one place up or down; the selection follows it.
+    pub fn queue_shift(&mut self, i: usize, up: bool) {
+        if let Some(j) = pl::queue_move(&mut self.queue, &mut self.qi, i, up) {
+            self.queue_sel = j;
+        } else {
+            self.osd("Already at the end");
+        }
+    }
+
+    /// Take entry `i` out of the queue (not the one playing).
+    pub fn queue_drop(&mut self, i: usize) {
+        if pl::queue_remove(&mut self.queue, &mut self.qi, i) {
+            self.queue_sel = self.queue_sel.min(self.queue.len().saturating_sub(1));
+            self.osd("Removed from the queue");
+        } else {
+            self.osd("That one is playing");
+        }
+    }
+
+    pub fn toggle_shuffle(&mut self) {
+        if self.shuffle {
+            let (q, at) = pl::unshuffle(
+                &self.queue,
+                &self.unshuffled,
+                |m| m.id.as_str(),
+                &self.media.id,
+            );
+            (self.queue, self.qi) = (q, at);
+            self.unshuffled.clear();
+        } else {
+            self.unshuffled = self.queue.clone();
+            let mut s = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0x9E37_79B9, |d| d.as_nanos() as u64)
+                | 1;
+            pl::shuffle_after(&mut self.queue, self.qi, &mut |n| {
+                s ^= s << 13;
+                s ^= s >> 7;
+                s ^= s << 17;
+                (s % n as u64) as usize
+            });
+        }
+        self.shuffle = !self.shuffle;
+        self.queue_sel = self.qi;
+        self.osd(if self.shuffle {
+            "Shuffle on"
+        } else {
+            "Shuffle off"
+        });
+    }
+
+    /// Off, then all, then one (what the transport buttons of a music player do).
+    pub fn cycle_repeat(&mut self) {
+        let r = match self.set.repeat {
+            Repeat::Off => Repeat::All,
+            Repeat::All => Repeat::One,
+            Repeat::One => Repeat::Off,
+        };
+        self.set_repeat(r);
+    }
+
+    /// The queue worth keeping for the session: only music (a video queue is rebuilt from its
+    /// show). (items, index, repeat, shuffled?)
+    pub fn music_queue(&self) -> Option<(Vec<Media>, usize, Repeat, bool)> {
+        (self.media.kind == Kind::Audio && self.queue.len() > 1)
+            .then(|| (self.queue.clone(), self.qi, self.set.repeat, self.shuffle))
     }
 
     pub fn step(&mut self, dir: i8, cx: &mut Context<Self>) {

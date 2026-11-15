@@ -420,9 +420,128 @@ pub fn step_queue(cur: usize, len: usize, dir: i8, wrap: bool) -> Option<usize> 
     }
 }
 
+/// Move queue entry `i` one place up or down. `cur` (the playing entry) keeps following the same
+/// track. Returns the entry's new index, or None at the edge.
+pub fn queue_move<T>(q: &mut [T], cur: &mut usize, i: usize, up: bool) -> Option<usize> {
+    let j = if up { i.checked_sub(1)? } else { i + 1 };
+    if i >= q.len() || j >= q.len() {
+        return None;
+    }
+    q.swap(i, j);
+    if *cur == i {
+        *cur = j;
+    } else if *cur == j {
+        *cur = i;
+    }
+    Some(j)
+}
+
+/// Remove entry `i`. The playing entry cannot be removed (it would stop the sound under the
+/// user); returns whether something was removed.
+pub fn queue_remove<T>(q: &mut Vec<T>, cur: &mut usize, i: usize) -> bool {
+    if i >= q.len() || i == *cur {
+        return false;
+    }
+    q.remove(i);
+    if i < *cur {
+        *cur -= 1;
+    }
+    true
+}
+
+/// Put `items` right after the playing entry (`next`) or at the end of the queue.
+pub fn queue_insert<T>(q: &mut Vec<T>, cur: usize, items: Vec<T>, next: bool) {
+    let at = if next {
+        (cur + 1).min(q.len())
+    } else {
+        q.len()
+    };
+    q.splice(at..at, items);
+}
+
+/// Shuffle everything after the playing entry (Fisher-Yates); what already played and the
+/// playing entry stay put. `rnd(n)` returns a number below `n`.
+pub fn shuffle_after<T>(q: &mut [T], cur: usize, rnd: &mut impl FnMut(usize) -> usize) {
+    let start = (cur + 1).min(q.len());
+    let tail = &mut q[start..];
+    for i in (1..tail.len()).rev() {
+        tail.swap(i, rnd(i + 1));
+    }
+}
+
+/// Undo a shuffle: the original order restricted to what is still queued, then anything added
+/// since. Returns the queue and where the playing entry (`playing` id) ended up.
+pub fn unshuffle<T: Clone>(
+    q: &[T],
+    original: &[T],
+    id: impl Fn(&T) -> &str,
+    playing: &str,
+) -> (Vec<T>, usize) {
+    let queued = |x: &&T| q.iter().any(|y| id(y) == id(x));
+    let mut out: Vec<T> = original.iter().filter(queued).cloned().collect();
+    let added: Vec<T> = q
+        .iter()
+        .filter(|x| !out.iter().any(|y| id(y) == id(x)))
+        .cloned()
+        .collect();
+    out.extend(added);
+    let at = out.iter().position(|x| id(x) == playing).unwrap_or(0);
+    (out, at)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn queue_edits_keep_the_playing_track() {
+        let mut q = vec!["a", "b", "c", "d"];
+        let mut cur = 1; // b is playing
+        assert_eq!(queue_move(&mut q, &mut cur, 2, true), Some(1));
+        assert_eq!(
+            (q.clone(), cur),
+            (vec!["a", "c", "b", "d"], 2),
+            "b is still current"
+        );
+        assert_eq!(queue_move(&mut q, &mut cur, 0, true), None);
+        assert_eq!(queue_move(&mut q, &mut cur, 3, false), None);
+        assert!(
+            !queue_remove(&mut q, &mut cur, 2),
+            "the playing track stays"
+        );
+        assert!(queue_remove(&mut q, &mut cur, 0));
+        assert_eq!((q.clone(), cur), (vec!["c", "b", "d"], 1));
+        queue_insert(&mut q, cur, vec!["x", "y"], true);
+        assert_eq!(q, ["c", "b", "x", "y", "d"]);
+        queue_insert(&mut q, cur, vec!["z"], false);
+        assert_eq!(q.last(), Some(&"z"));
+    }
+
+    #[test]
+    fn shuffle_touches_only_what_comes_next_and_can_be_undone() {
+        let original: Vec<String> = ["a", "b", "c", "d", "e"].map(String::from).to_vec();
+        let mut q = original.clone();
+        let mut n = 0;
+        shuffle_after(&mut q, 1, &mut |m| {
+            n += 1;
+            n % m
+        });
+        assert_eq!(&q[..2], ["a", "b"], "played and playing entries stay");
+        let mut sorted = q.clone();
+        sorted.sort();
+        assert_eq!(sorted, original, "nothing lost");
+        assert_ne!(q, original);
+        q.push("f".into()); // added while shuffled
+        let (back, at) = unshuffle(&q, &original, |s| s.as_str(), "b");
+        assert_eq!(back, ["a", "b", "c", "d", "e", "f"]);
+        assert_eq!(at, 1);
+        q.retain(|x| x != "d");
+        assert!(
+            !unshuffle(&q, &original, |s| s.as_str(), "b")
+                .0
+                .contains(&"d".to_string())
+        );
+    }
 
     fn seg(kind: SegKind, s: f64, e: f64) -> Seg {
         Seg {

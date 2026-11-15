@@ -145,7 +145,7 @@ pub(super) fn scope_global(g: Global) -> Scope {
         Global::Playlists => (
             "playlists",
             "Playlists",
-            "Your lists, in the order you made them.",
+            "Your lists. Press N to start a new one.",
             &["Playlist"],
             false,
         ),
@@ -517,6 +517,13 @@ impl Root {
             return true;
         }
         match key {
+            "n" if br.scope.key == "playlists" => {
+                self.playlist_dialog(
+                    crate::account::DlgKind::NewPlaylist,
+                    crate::account::Target::None,
+                    cx,
+                );
+            }
             "o" => self.browse_menu(pid, Menu::Sort, cx),
             "l" => self.browse_menu(pid, Menu::Filter, cx),
             "v" => {
