@@ -8,11 +8,12 @@ mod ui_search;
 use crate::account::{self, Accounts};
 use crate::admin::{self, Admin};
 use crate::detail::Full;
+use crate::dropdown::{Dropdown, Outcome};
 use crate::imgcache::DiskCache;
 use crate::nav::{self, Dir};
 use crate::player_view::{PlayerCtx, PlayerEvent, PlayerView};
 use crate::search::Search;
-use crate::settings::{self, ROWS, Settings};
+use crate::settings::{self, Settings};
 use crate::source::{Art, ConnectError, Kind, Media, Source, image_key, sniff};
 use crate::sync::{NEED_WRITES, Reporter, SyncHooks, Tick, ticks};
 use crate::ui::{self, Cell, Pic};
@@ -259,6 +260,12 @@ pub struct Root {
     settings: Settings,
     settings_open: bool,
     settings_sel: usize,
+    /// Open Settings drop-down and its scroll.
+    dd: Option<Dropdown>,
+    /// Entry still to be scrolled into view once the open menu has been laid out.
+    dd_reveal: std::cell::Cell<Option<usize>>,
+    dd_scroll: ScrollHandle,
+    set_scroll: ScrollHandle,
     menu: bool,
     menu_sel: usize,
     audio_queue: ui_playlists::AudioQueue,
@@ -355,6 +362,10 @@ impl Root {
             settings: Settings::load(),
             settings_open: false,
             settings_sel: 0,
+            dd: None,
+            dd_reveal: Default::default(),
+            dd_scroll: ScrollHandle::new(),
+            set_scroll: ScrollHandle::new(),
             menu: false,
             menu_sel: 0,
             audio_queue: Default::default(),
@@ -681,6 +692,7 @@ impl Root {
                 self.close_admin(cx);
                 self.settings_open = true;
                 self.settings_sel = 0;
+                self.dd = None;
             }
             AcctAct::Devices => self.open_devices(cx),
             AcctAct::Authorize
@@ -781,6 +793,16 @@ impl Root {
     /// Settings row `i` stepped; applies at once and is saved.
     fn cycle_setting(&mut self, i: usize, dir: i32, cx: &mut Context<Self>) {
         self.settings.cycle(i, dir);
+        self.settings_changed(cx);
+    }
+
+    /// Entry `idx` of row `i`'s drop-down chosen.
+    fn choose_setting(&mut self, i: usize, idx: usize, cx: &mut Context<Self>) {
+        self.settings.choose(i, idx);
+        self.settings_changed(cx);
+    }
+
+    fn settings_changed(&mut self, cx: &mut Context<Self>) {
         self.settings.save();
         self.apply_write_settings(cx);
         let show = self.settings.home();
@@ -791,13 +813,42 @@ impl Root {
         cx.notify();
     }
 
+    /// Open the drop-down of a multi-choice row (a toggle row is flipped instead).
+    fn open_setting(&mut self, i: usize, cx: &mut Context<Self>) {
+        self.settings_sel = i;
+        self.set_scroll.scroll_to_item(settings::scroll_child(i));
+        let Some((labels, cur)) = self.settings.choices(i) else {
+            return self.cycle_setting(i, 1, cx);
+        };
+        self.dd = Dropdown::open(i, labels.len(), cur);
+        self.dd_reveal.set(Some(cur));
+        cx.notify();
+    }
+
     fn settings_key(&mut self, key: &str, cx: &mut Context<Self>) {
+        if let Some(d) = &mut self.dd {
+            match d.key(key) {
+                Outcome::Stay => self.dd_scroll.scroll_to_item(d.sel),
+                Outcome::Close => self.dd = None,
+                Outcome::Pick(idx) => {
+                    let row = d.row;
+                    self.dd = None;
+                    self.choose_setting(row, idx, cx);
+                }
+            }
+            return cx.notify();
+        }
         match key {
             "escape" | "backspace" => self.settings_open = false,
-            "up" => self.settings_sel = self.settings_sel.saturating_sub(1),
-            "down" => self.settings_sel = (self.settings_sel + 1).min(ROWS - 1),
+            "up" | "down" | "pageup" | "pagedown" | "home" | "end" => {
+                if let Some(r) = settings::nav_row(self.settings_sel, key) {
+                    self.settings_sel = r;
+                    self.set_scroll.scroll_to_item(settings::scroll_child(r));
+                }
+            }
             "left" => self.cycle_setting(self.settings_sel, -1, cx),
-            "right" | "enter" | "space" => self.cycle_setting(self.settings_sel, 1, cx),
+            "right" => self.cycle_setting(self.settings_sel, 1, cx),
+            "enter" | "space" => self.open_setting(self.settings_sel, cx),
             _ => {}
         }
         cx.notify();
@@ -1953,6 +2004,11 @@ impl Root {
             .left_0()
             .w_full()
             .h(px(28.0))
+            .size(px(32.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_full()
             .px(px(t::PAGE_PAD))
             .flex()
             .items_center()
@@ -2004,11 +2060,6 @@ impl Root {
             .map_or("dev", |(_, s)| s.user_name.as_str());
         div()
             .id("avatar")
-            .size(px(32.0))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_full()
             .border_1()
             .border_color(if self.menu {
                 t::accent()
@@ -2115,14 +2166,29 @@ impl Root {
             .child(p)
     }
 
-    /// Settings screen: one row per preference; click or Enter steps it, changes apply and save at once.
+    /// Settings screen: one row per preference; a toggle flips on click, a multi-choice row opens a drop-down. Changes apply and save at once.
     fn settings_page(&self, cx: &mut Context<Self>) -> AnyElement {
-        let mut list = div().flex().flex_col();
+        let mut page = div()
+            .id("settings")
+            .size_full()
+            .overflow_y_scroll()
+            .track_scroll(&self.set_scroll)
+            .pt(px(t::HEADER_H + t::S8))
+            .pb(px(t::S8))
+            .flex()
+            .flex_col()
+            .child(div().flex_none().child(ui::section(
+                "Settings",
+                "Changes apply immediately and are saved on this device.",
+                "Esc to go back".into(),
+            )));
         for (i, r) in self.settings.rows().into_iter().enumerate() {
             let on = i == self.settings_sel;
             if let Some(h) = settings::head(i) {
-                list = list.child(
+                page = page.child(
                     div()
+                        .flex_none()
+                        .mx(px(t::PAGE_PAD))
                         .px(px(t::S6))
                         .pt(px(t::S6))
                         .pb(px(t::S3))
@@ -2143,9 +2209,11 @@ impl Root {
                         }),
                 );
             }
-            list = list.child(
+            page = page.child(
                 div()
                     .id(("set-row", i))
+                    .flex_none()
+                    .mx(px(t::PAGE_PAD))
                     .px(px(t::S6))
                     .py(px(t::S4))
                     .flex()
@@ -2159,7 +2227,11 @@ impl Root {
                     .hover(|s| s.bg(t::glass()))
                     .on_click(cx.listener(move |t, _, _, cx| {
                         t.settings_sel = i;
-                        t.cycle_setting(i, 1, cx);
+                        if t.dd.is_some() {
+                            t.dd = None; // clicking out of an open menu only closes it
+                            return cx.notify();
+                        }
+                        t.open_setting(i, cx);
                     }))
                     .child(
                         div()
@@ -2179,34 +2251,90 @@ impl Root {
                                     .child(r.hint),
                             ),
                     )
-                    .child(ui::chip(&r.value, on)),
+                    .child(self.setting_chip(i, &r.value, on, cx)),
             );
         }
-        div()
-            .id("settings")
-            .size_full()
-            .overflow_y_scroll()
-            .pt(px(t::HEADER_H + t::S8))
-            .pb(px(t::S8))
-            .flex()
-            .flex_col()
-            .gap(px(t::S6))
-            .child(ui::section(
-                "Settings",
-                "Changes apply immediately and are saved on this device.",
-                "Esc to go back".into(),
-            ))
-            .child(
-                div()
-                    .mx(px(t::PAGE_PAD))
-                    .border_t_1()
-                    .border_l_1()
-                    .border_color(t::hairline())
-                    .rounded(px(t::R_PANEL))
-                    .overflow_hidden()
-                    .child(list),
-            )
-            .into_any_element()
+        page.into_any_element()
+    }
+
+    /// The value chip of Settings row `i`; for a multi-choice row it carries a caret and, while open,
+    /// its drop-down menu. The menu and its click-away layer are deferred so they paint over the rows below.
+    fn setting_chip(&self, i: usize, value: &str, on: bool, cx: &mut Context<Self>) -> Div {
+        let Some((labels, cur)) = self.settings.choices(i) else {
+            return div().child(ui::chip(value, on));
+        };
+        let open = self.dd.as_ref().is_some_and(|d| d.row == i);
+        let mut wrap = div()
+            .relative()
+            .child(ui::chip(&format!("{value} \u{25BE}"), on || open));
+        if open {
+            let sel = self.dd.as_ref().map_or(0, |d| d.sel);
+            let n = labels.len();
+            if let Some(k) = self.dd_reveal.get() {
+                if self.dd_scroll.bounds_for_item(k).is_some() {
+                    self.dd_scroll.scroll_to_item(k);
+                    self.dd_reveal.set(None);
+                }
+                cx.notify(); // one more frame: the list has no bounds before its first paint
+            }
+            let mut list = ui_browse::panel("set-menu")
+                .right(px(0.0))
+                .w(px(220.0))
+                .max_h(px(300.0))
+                .overflow_y_scroll()
+                .track_scroll(&self.dd_scroll);
+            // Open below the chip unless that runs off the page and there is more room above.
+            let (page, row) = (
+                self.set_scroll.bounds(),
+                self.set_scroll.bounds_for_item(settings::scroll_child(i)),
+            );
+            let need = px((n as f32 * 42.0 + 16.0).min(300.0) + 30.0);
+            let up = row
+                .is_some_and(|r| r.bottom() + need > page.bottom() && r.top() - page.top() > need);
+            list = if up {
+                list.bottom(px(26.0))
+            } else {
+                list.top(px(26.0))
+            };
+            for (k, name) in labels.into_iter().enumerate() {
+                list = list.child(
+                    ui_browse::menu_row(("set-opt", k), k == sel)
+                        .on_click(cx.listener(move |t, _, _, cx| {
+                            t.dd = None;
+                            t.choose_setting(i, k, cx);
+                        }))
+                        .child(
+                            div()
+                                .text_color(if k == cur {
+                                    t::accent_text()
+                                } else {
+                                    t::text()
+                                })
+                                .child(name),
+                        )
+                        .child(ui::mono(if k == cur { "\u{2713}" } else { "" })),
+                );
+            }
+            let away = div()
+                .id("set-away")
+                .absolute()
+                .top(px(-3000.0))
+                .left(px(-3000.0))
+                .w(px(9000.0))
+                .h(px(9000.0))
+                .occlude()
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|t, _, _, cx| {
+                        t.dd = None;
+                        cx.notify();
+                    }),
+                );
+            wrap = wrap
+                .child(deferred(away).with_priority(1))
+                .child(deferred(list).with_priority(2));
+        }
+        wrap
     }
 
     fn centered(&self) -> Div {

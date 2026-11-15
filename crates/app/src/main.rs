@@ -6,6 +6,7 @@ mod blurhash;
 mod bridge;
 mod cache;
 mod detail;
+mod dropdown;
 mod imgcache;
 mod libview;
 mod nav;

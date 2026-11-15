@@ -1192,7 +1192,7 @@ fn list_header() -> Div {
         .child(div().w(px(24.0)).flex_none())
 }
 
-fn panel(id: &'static str) -> Stateful<Div> {
+pub(super) fn panel(id: &'static str) -> Stateful<Div> {
     div()
         .id(id)
         .absolute()
@@ -1207,7 +1207,7 @@ fn panel(id: &'static str) -> Stateful<Div> {
         .occlude()
 }
 
-fn menu_row(id: (&'static str, usize), on: bool) -> Stateful<Div> {
+pub(super) fn menu_row(id: (&'static str, usize), on: bool) -> Stateful<Div> {
     div()
         .id(id)
         .px(px(t::S3))

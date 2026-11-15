@@ -254,22 +254,47 @@ pub fn parse_tracks(v: &Value) -> Vec<Track> {
         .collect()
 }
 
-/// ISO 639 code to a name for the common cases; anything else is shown as given.
+/// Languages the app knows by name: (English name, ISO 639 codes). The first code is what the
+/// Settings language lists store; the others are aliases tracks may carry.
+pub const LANGUAGES: [(&str, &[&str]); 28] = [
+    ("Arabic", &["ara", "ar"]),
+    ("Chinese", &["zho", "chi", "zh"]),
+    ("Czech", &["ces", "cze", "cs"]),
+    ("Danish", &["dan", "da"]),
+    ("Dutch", &["nld", "dut", "nl"]),
+    ("English", &["eng", "en"]),
+    ("Finnish", &["fin", "fi"]),
+    ("French", &["fra", "fre", "fr"]),
+    ("German", &["deu", "ger", "de"]),
+    ("Greek", &["ell", "gre", "el"]),
+    ("Hebrew", &["heb", "he"]),
+    ("Hindi", &["hin", "hi"]),
+    ("Hungarian", &["hun", "hu"]),
+    ("Indonesian", &["ind", "id"]),
+    ("Italian", &["ita", "it"]),
+    ("Japanese", &["jpn", "ja"]),
+    ("Korean", &["kor", "ko"]),
+    ("Norwegian", &["nor", "nob", "nno", "no"]),
+    ("Polish", &["pol", "pl"]),
+    ("Portuguese", &["por", "pt"]),
+    ("Romanian", &["ron", "rum", "ro"]),
+    ("Russian", &["rus", "ru"]),
+    ("Spanish", &["spa", "es"]),
+    ("Swedish", &["swe", "sv"]),
+    ("Thai", &["tha", "th"]),
+    ("Turkish", &["tur", "tr"]),
+    ("Ukrainian", &["ukr", "uk"]),
+    ("Vietnamese", &["vie", "vi"]),
+];
+
+/// ISO 639 code to a name for the languages in `LANGUAGES`; anything else is shown as given.
 pub fn language(code: &str) -> String {
     match code {
         "" | "und" => "Unknown".into(),
-        "eng" | "en" => "English".into(),
-        "jpn" | "ja" => "Japanese".into(),
-        "spa" | "es" => "Spanish".into(),
-        "fra" | "fre" | "fr" => "French".into(),
-        "deu" | "ger" | "de" => "German".into(),
-        "ita" | "it" => "Italian".into(),
-        "por" | "pt" => "Portuguese".into(),
-        "rus" | "ru" => "Russian".into(),
-        "kor" | "ko" => "Korean".into(),
-        "zho" | "chi" | "zh" => "Chinese".into(),
-        "hin" | "hi" => "Hindi".into(),
-        c => c.to_string(),
+        c => LANGUAGES
+            .iter()
+            .find(|(_, codes)| codes.contains(&c))
+            .map_or_else(|| c.to_string(), |(n, _)| n.to_string()),
     }
 }
 

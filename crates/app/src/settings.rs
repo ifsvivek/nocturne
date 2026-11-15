@@ -2,7 +2,7 @@
 //! never any secret (the login lives in the keyring). Every field has a default, so a missing,
 //! older or half-written file still loads.
 use crate::libview::LibPrefs;
-use crate::video::{PlayerPrefs, SubMode};
+use crate::video::{LANGUAGES, PlayerPrefs, SubMode, language};
 use nocturne_player::Buffering;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -102,40 +102,39 @@ impl Default for Settings {
     }
 }
 
-/// ISO 639-2 codes the language rows cycle through (`None` first = "Automatic").
-const LANGS: [(&str, &str); 9] = [
-    ("eng", "English"),
-    ("jpn", "Japanese"),
-    ("spa", "Spanish"),
-    ("fra", "French"),
-    ("deu", "German"),
-    ("ita", "Italian"),
-    ("por", "Portuguese"),
-    ("kor", "Korean"),
-    ("hin", "Hindi"),
-];
-
 fn lang_name(l: &Option<String>) -> String {
+    l.as_deref().map_or("Automatic".into(), language)
+}
+
+/// Menu entries for a language row: Automatic, then `LANGUAGES` in order.
+fn lang_labels() -> Vec<String> {
+    std::iter::once("Automatic".to_string())
+        .chain(LANGUAGES.iter().map(|(n, _)| n.to_string()))
+        .collect()
+}
+
+fn lang_index(l: &Option<String>) -> Option<usize> {
     match l {
-        None => "Automatic".into(),
-        Some(c) => LANGS
+        None => Some(0),
+        Some(c) => LANGUAGES
             .iter()
-            .find(|(k, _)| k == c)
-            .map_or(c.clone(), |(_, n)| n.to_string()),
+            .position(|(_, cs)| cs.contains(&c.as_str()))
+            .map(|i| i + 1),
     }
 }
 
-fn next_lang(l: &Option<String>, dir: i32) -> Option<String> {
-    // Index 0 = automatic, 1.. = LANGS.
-    let n = LANGS.len() as i32 + 1;
-    let cur = l
-        .as_ref()
-        .and_then(|c| LANGS.iter().position(|(k, _)| k == c))
-        .map_or(0, |i| i as i32 + 1);
-    match (cur + dir).rem_euclid(n) {
-        0 => None,
-        i => Some(LANGS[i as usize - 1].0.into()),
+fn lang_pick(i: usize) -> Option<Option<String>> {
+    match i {
+        0 => Some(None),
+        i => LANGUAGES.get(i - 1).map(|(_, cs)| Some(cs[0].to_string())),
     }
+}
+
+/// Language after/before `l` in the menu order (wrapping); an unknown value starts from Automatic.
+fn next_lang(l: &Option<String>, dir: i32) -> Option<String> {
+    let n = LANGUAGES.len() as i32 + 1;
+    let cur = lang_index(l).unwrap_or(0) as i32;
+    lang_pick((cur + dir).rem_euclid(n) as usize).flatten()
 }
 
 fn onoff(b: bool) -> String {
@@ -148,7 +147,7 @@ pub struct Row {
     pub value: String,
 }
 
-/// Number of rows in the Settings screen (`rows()` / `cycle()` index them).
+/// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
 pub const ROWS: usize = 15;
 
 /// Section title shown above row `i`, if a section starts there.
@@ -162,6 +161,29 @@ pub fn head(i: usize) -> Option<&'static str> {
     }
 }
 
+/// Index of row `i` among the Settings page's scroll children: a title, then each row preceded by its
+/// section header, if it starts one. Lets the page scroll the focused row into view.
+pub fn scroll_child(i: usize) -> usize {
+    1 + i + (0..=i).filter(|r| head(*r).is_some()).count()
+}
+
+/// The row a navigation key lands on from `sel` (Up / Down / PgUp / PgDn / Home / End), clamped.
+pub fn nav_row(sel: usize, key: &str) -> Option<usize> {
+    const PAGE: usize = 5;
+    Some(
+        match key {
+            "up" => sel.saturating_sub(1),
+            "down" => sel + 1,
+            "pageup" => sel.saturating_sub(PAGE),
+            "pagedown" => sel + PAGE,
+            "home" => 0,
+            "end" => ROWS - 1,
+            _ => return None,
+        }
+        .min(ROWS - 1),
+    )
+}
+
 /// Two plain sentences under the "Server changes" title.
 pub const WRITES_NOTE: &str = "When this is on, NOCTURNE can mark items watched, set favourites, report what you watch (if sync is on) and, for administrators, change server settings, always asking before anything destructive. When it is off, NOCTURNE only reads from your server and never changes anything on it.";
 
@@ -169,6 +191,23 @@ const CACHE_MB: [u32; 5] = [128, 256, 512, 1024, 2048];
 const AHEAD_S: [u32; 6] = [60, 120, 180, 300, 600, 900];
 const REFILL_S: [u32; 5] = [30, 60, 120, 180, 300];
 const BUF_MB: [u32; 7] = [256, 512, 1024, 1536, 2048, 3072, 4096];
+
+const SUB_MODES: [(SubPref, &str); 3] = [
+    (SubPref::Off, "Off"),
+    (SubPref::ForeignOnly, "Foreign audio only"),
+    (SubPref::Always, "Always"),
+];
+const DENSITIES: [Density; 3] = [Density::Compact, Density::Comfortable, Density::Spacious];
+
+fn fmt_secs(v: u32) -> String {
+    format!("{v} s")
+}
+fn fmt_gib(mb: u32) -> String {
+    format!("{:.1} GiB", mb as f64 / 1024.0)
+}
+fn fmt_mb(v: u32) -> String {
+    format!("{v} MB")
+}
 
 /// The value after/before `cur` in `opts` (wrapping); unknown values start from `at`.
 fn step(opts: &[u32], cur: u32, at: usize, d: i32) -> u32 {
@@ -203,12 +242,11 @@ impl Settings {
             r(
                 "Subtitles",
                 "When to turn subtitles on by default.",
-                match self.sub_mode {
-                    SubPref::Off => "Off",
-                    SubPref::ForeignOnly => "Foreign audio only",
-                    SubPref::Always => "Always",
-                }
-                .into(),
+                SUB_MODES
+                    .iter()
+                    .find(|(m, _)| *m == self.sub_mode)
+                    .map_or("Off", |(_, n)| n)
+                    .into(),
             ),
             r(
                 "Skip intros",
@@ -223,17 +261,17 @@ impl Settings {
             r(
                 "Buffer ahead",
                 "How much video to download ahead while playing.",
-                format!("{} s", self.buffer_ahead_secs),
+                fmt_secs(self.buffer_ahead_secs),
             ),
             r(
                 "Refill below",
                 "Start downloading again once the buffer drops under this.",
-                format!("{} s", self.buffer_refill_secs),
+                fmt_secs(self.buffer_refill_secs),
             ),
             r(
                 "Max RAM buffer",
                 "Memory cap for the buffer. A 4K remux hits this cap before the seconds above.",
-                format!("{:.1} GiB", self.buffer_max_mb as f64 / 1024.0),
+                fmt_gib(self.buffer_max_mb),
             ),
             r(
                 "Home: Continue watching",
@@ -258,12 +296,75 @@ impl Settings {
             r(
                 "Image cache",
                 "Disk space for posters and backdrops; oldest are removed first.",
-                format!("{} MB", self.image_cache_mb),
+                fmt_mb(self.image_cache_mb),
             ),
         ]
     }
 
-    /// Step row `i` forward (`dir` > 0) or back. Out-of-range rows do nothing.
+    /// The entries of a multi-choice row and the index of the current one. A stored value that is not
+    /// one of the presets (hand-edited file) is appended as its own entry and shown as it is.
+    /// `None` for On / Off rows (they toggle) and out-of-range rows.
+    pub fn choices(&self, i: usize) -> Option<(Vec<String>, usize)> {
+        let nums = |opts: &[u32], cur: u32, f: fn(u32) -> String| {
+            let mut v: Vec<String> = opts.iter().map(|o| f(*o)).collect();
+            let at = opts.iter().position(|o| *o == cur).unwrap_or_else(|| {
+                v.push(f(cur));
+                v.len() - 1
+            });
+            (v, at)
+        };
+        let lang = |l: &Option<String>| {
+            let mut v = lang_labels();
+            let at = lang_index(l).unwrap_or_else(|| {
+                v.push(lang_name(l));
+                v.len() - 1
+            });
+            (v, at)
+        };
+        Some(match i {
+            2 => lang(&self.audio_lang),
+            3 => lang(&self.sub_lang),
+            4 => (
+                SUB_MODES.iter().map(|(_, n)| n.to_string()).collect(),
+                SUB_MODES.iter().position(|(m, _)| *m == self.sub_mode)?,
+            ),
+            7 => nums(&AHEAD_S, self.buffer_ahead_secs, fmt_secs),
+            8 => nums(&REFILL_S, self.buffer_refill_secs, fmt_secs),
+            9 => nums(&BUF_MB, self.buffer_max_mb, fmt_gib),
+            13 => (
+                DENSITIES.iter().map(|d| format!("{d:?}")).collect(),
+                DENSITIES.iter().position(|d| *d == self.density)?,
+            ),
+            14 => nums(&CACHE_MB, self.image_cache_mb, fmt_mb),
+            _ => return None,
+        })
+    }
+
+    /// Apply entry `idx` of `choices(i)`. The appended "unknown value" entry and anything out of
+    /// range change nothing.
+    pub fn choose(&mut self, i: usize, idx: usize) {
+        match i {
+            2 => self.audio_lang = lang_pick(idx).unwrap_or_else(|| self.audio_lang.take()),
+            3 => self.sub_lang = lang_pick(idx).unwrap_or_else(|| self.sub_lang.take()),
+            4 => self.sub_mode = SUB_MODES.get(idx).map_or(self.sub_mode, |(m, _)| *m),
+            7 => {
+                self.buffer_ahead_secs = AHEAD_S.get(idx).copied().unwrap_or(self.buffer_ahead_secs)
+            }
+            8 => {
+                self.buffer_refill_secs = REFILL_S
+                    .get(idx)
+                    .copied()
+                    .unwrap_or(self.buffer_refill_secs)
+            }
+            9 => self.buffer_max_mb = BUF_MB.get(idx).copied().unwrap_or(self.buffer_max_mb),
+            13 => self.density = DENSITIES.get(idx).copied().unwrap_or(self.density),
+            14 => self.image_cache_mb = CACHE_MB.get(idx).copied().unwrap_or(self.image_cache_mb),
+            _ => {}
+        }
+    }
+
+    /// Step row `i` forward (`dir` > 0) or back; toggles flip. The keyboard's Left / Right use this; clicks open a menu
+    /// for multi-choice rows (`choices`). Out-of-range rows do nothing.
     pub fn cycle(&mut self, i: usize, dir: i32) {
         let d = if dir < 0 { -1 } else { 1 };
         match i {
@@ -402,7 +503,7 @@ mod tests {
         let mut s = Settings::default();
         s.cycle(0, 1);
         s.cycle(1, 1);
-        s.cycle(2, 1);
+        s.choose(2, 6); // English
         s.cycle(4, 1);
         s.cycle(13, -1);
         s.cycle(7, 1);
@@ -459,7 +560,7 @@ mod tests {
         s.cycle(2, -1);
         assert_eq!(
             s.audio_lang.as_deref(),
-            Some("hin"),
+            Some("vie"),
             "back from automatic wraps to the end"
         );
         s.cycle(2, 1);
@@ -478,6 +579,84 @@ mod tests {
         s.cycle(14, -1);
         s.cycle(14, -1);
         assert_eq!(s.image_cache_mb, 256);
+    }
+
+    #[test]
+    fn choices_list_every_option_and_mark_the_current_one() {
+        let mut s = Settings::default();
+        assert!(s.choices(0).is_none() && s.choices(12).is_none() && s.choices(99).is_none());
+        let (l, at) = s.choices(2).unwrap();
+        assert_eq!((l[0].as_str(), at, l.len()), ("Automatic", 0, 29));
+        assert!(
+            ["English", "Arabic", "Vietnamese", "Hindi"]
+                .iter()
+                .all(|n| l.iter().any(|x| x == n))
+        );
+        let eng = l.iter().position(|x| x == "English").unwrap();
+        s.choose(2, eng);
+        assert_eq!(
+            s.audio_lang.as_deref(),
+            Some("eng"),
+            "stored format unchanged"
+        );
+        assert_eq!(s.choices(2).unwrap().1, eng);
+        s.choose(2, 0);
+        assert_eq!(s.audio_lang, None);
+        let (l, at) = s.choices(4).unwrap();
+        assert_eq!((l.len(), at), (3, 0));
+        s.choose(4, 1);
+        assert_eq!(s.sub_mode, SubPref::ForeignOnly);
+        s.choose(13, 2);
+        assert_eq!(s.density, Density::Spacious);
+        let (l, at) = s.choices(9).unwrap();
+        assert_eq!((l[at].as_str(), l.len()), ("1.5 GiB", 7));
+        s.choose(7, 5);
+        assert_eq!(s.buffer_ahead_secs, 900);
+        s.choose(14, 99); // out of range: no change
+        assert_eq!(s.image_cache_mb, 512);
+    }
+
+    #[test]
+    fn unknown_stored_values_show_as_is_and_survive() {
+        let mut s = Settings {
+            audio_lang: Some("xx-custom".into()),
+            buffer_ahead_secs: 77,
+            ..Default::default()
+        };
+        let (l, at) = s.choices(2).unwrap();
+        assert_eq!((l.len(), l[at].as_str()), (30, "xx-custom"));
+        assert_eq!(s.rows()[2].value, "xx-custom");
+        s.choose(2, at); // picking the extra entry again keeps it
+        assert_eq!(s.audio_lang.as_deref(), Some("xx-custom"));
+        let (l, at) = s.choices(7).unwrap();
+        assert_eq!((l.len(), l[at].as_str()), (7, "77 s"));
+        s.choose(7, at);
+        assert_eq!(s.buffer_ahead_secs, 77);
+        // An alias a hand-edited file may hold is the known language, not a duplicate entry.
+        s.audio_lang = Some("en".into());
+        let (l, at) = s.choices(2).unwrap();
+        assert_eq!((l.len(), l[at].as_str()), (29, "English"));
+    }
+
+    #[test]
+    fn scroll_and_focus_logic() {
+        // Child 0 is the title; heads sit before rows 0, 2, 10 and 13.
+        assert_eq!(scroll_child(0), 2);
+        assert_eq!(scroll_child(1), 3);
+        assert_eq!(scroll_child(2), 5);
+        assert_eq!(scroll_child(10), 14);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 4);
+        assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
+        assert_eq!(nav_row(0, "up"), Some(0));
+        assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));
+        assert_eq!(nav_row(3, "pagedown"), Some(8));
+        assert_eq!(nav_row(12, "pagedown"), Some(ROWS - 1));
+        assert_eq!(nav_row(3, "pageup"), Some(0));
+        assert_eq!(
+            (nav_row(7, "home"), nav_row(7, "end")),
+            (Some(0), Some(ROWS - 1))
+        );
+        assert_eq!(nav_row(7, "x"), None);
     }
 
     #[test]
@@ -504,7 +683,7 @@ mod tests {
     #[test]
     fn prefs_follow_settings() {
         let mut s = Settings::default();
-        s.cycle(2, 1);
+        s.choose(2, 6); // English
         s.cycle(4, 1);
         s.cycle(5, 1);
         let p = s.prefs();
