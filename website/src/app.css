@@ -93,14 +93,22 @@ body::after {
 .stage-tilt { transform: rotateY(-14deg) rotateX(4deg); transform-origin: 0% 50%; transform-style: preserve-3d; }
 @media (max-width: 1279px) { .stage-tilt { transform: none; } }
 
-/* Exploded view of the video path: three real layers, separated in z. */
-.explode { perspective: 1800px; }
+/* Exploded view of the video path: three real layers separated in z. This static, exploded state is what reduced
+   motion and old browsers get; the loop below only animates between it and the flat, assembled window. */
+.explode { perspective: 1800px; --z2: 90px; --z3: 180px; }
+@media (max-width: 639px) { .explode { --z2: 60px; --z3: 120px; } }
 .explode-stack { transform-style: preserve-3d; transform: rotateX(56deg) rotateZ(-32deg); }
 .explode-stack > * { transform-style: preserve-3d; }
-.layer-1 { transform: translateZ(0); }
-.layer-2 { transform: translateZ(90px); }
-.layer-3 { transform: translateZ(180px); }
-@media (max-width: 639px) { .layer-2 { transform: translateZ(60px); } .layer-3 { transform: translateZ(120px); } }
+.layer-2 { transform: translateZ(var(--z2)); }
+.layer-3 { transform: translateZ(var(--z3)); }
+/* Labels sit on each layer's right edge and undo the stack's rotation, so they face the reader. */
+.tag {
+  position: absolute; left: 100%; top: 50%; margin-left: 14px; white-space: nowrap;
+  transform: translateY(-50%) rotateZ(32deg) rotateX(-56deg); transform-origin: left center;
+  @apply rounded-full bg-frame/85 px-2.5 py-1 text-[0.72rem] font-medium text-ink-2 ring-1 ring-white/15 ring-inset;
+}
+.tag-accent { @apply text-accent-ink ring-accent/40; }
+@media (max-width: 639px) { .tag { @apply text-[0.62rem] px-2; } }
 
 @keyframes rise { from { opacity: 0; transform: translateY(24px); } }
 @keyframes settle { from { opacity: 0; transform: translateY(60px) rotateY(-24deg) rotateX(8deg); } }
@@ -108,8 +116,15 @@ body::after {
 @keyframes float-up { to { transform: translateY(-90px); } }
 @keyframes reveal { from { opacity: 0; transform: translateY(40px); } }
 @keyframes widen { from { transform: scale(0.86); border-radius: 2rem; } }
-@keyframes separate-2 { from { transform: translateZ(0); } }
-@keyframes separate-3 { from { transform: translateZ(0); } }
+/* One 12 s cycle: exploded with labels, fold flat, hold the assembled window, tilt and split again. */
+@keyframes tilt {
+  0%, 26% { transform: rotateX(56deg) rotateZ(-32deg); }
+  44%, 60% { transform: rotateX(0deg) rotateZ(0deg); }
+  80%, 100% { transform: rotateX(56deg) rotateZ(-32deg); }
+}
+@keyframes split-2 { 0%, 20% { transform: translateZ(var(--z2)); } 36%, 72% { transform: translateZ(0); } 90%, 100% { transform: translateZ(var(--z2)); } }
+@keyframes split-3 { 0%, 20% { transform: translateZ(var(--z3)); } 36%, 72% { transform: translateZ(0); } 90%, 100% { transform: translateZ(var(--z3)); } }
+@keyframes tag-in { 0%, 16% { opacity: 1; } 22%, 88% { opacity: 0; } 96%, 100% { opacity: 1; } }
 
 /* Motion. Content is visible by default; animations only run when motion is welcome, and the scroll-driven ones
    only where animation-timeline exists, so an old browser or a failed animation never hides anything. */
@@ -119,13 +134,17 @@ body::after {
   .stage-tilt.rise { animation: settle 1.6s var(--ease-glide) 240ms both; }
   @media (max-width: 1279px) { .stage-tilt.rise { animation-name: rise; } }
   .drift { animation: drift 30s ease-in-out infinite alternate; }
+  .explode-stack, .explode .layer-2, .explode .layer-3, .explode .tag { animation-duration: 12s; animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); animation-iteration-count: infinite; }
+  .explode-stack { animation-name: tilt; }
+  .explode .layer-2 { animation-name: split-2; }
+  .explode .layer-3 { animation-name: split-3; }
+  .explode .tag { animation-name: tag-in; }
+  .explode:hover * { animation-play-state: paused; }
 
   @supports (animation-timeline: view()) {
     .reveal { animation: reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 55%; }
     .float { animation: float-up linear both; animation-timeline: scroll(root); animation-range: 0 900px; }
     .widen { animation: widen linear both; animation-timeline: view(); animation-range: entry 0% cover 45%; }
-    .layer-2 { animation: separate-2 linear both; animation-timeline: view(); animation-range: entry 10% cover 50%; }
-    .layer-3 { animation: separate-3 linear both; animation-timeline: view(); animation-range: entry 10% cover 50%; }
   }
 }
 

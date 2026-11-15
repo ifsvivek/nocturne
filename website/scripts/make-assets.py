@@ -19,6 +19,7 @@ for f in sorted(glob.glob(f"{SRC}/*.webp")):
 CROPS = {
     "search-crop": ("05-search", (560, 60, 1360, 620)),
     "settings-crop": ("07-settings", (20, 180, 1900, 500)),
+    "video-crop": ("06-playback", (0, 60, 1920, 1100)),
     "controls-crop": ("06-playback", (0, 1100, 1920, 1200)),
     "admin-crop": ("08-admin-dashboard", (250, 50, 1880, 1110)),
 }

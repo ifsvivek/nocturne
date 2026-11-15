@@ -36,6 +36,7 @@ const ALT = {
   "admin-dashboard": "The administrator dashboard inside the same app",
   "search-crop": "The search palette listing matching movies, shows and episodes",
   "settings-crop": "The setting Allow NOCTURNE to change data on the server, switched off",
+  "video-crop": "The video picture on its own, without the player controls",
   "controls-crop": "The player control bar: seek, play, chapters, audio, subtitles and volume",
   "admin-crop": "Admin dashboard: server details, library counts, sessions and recent activity",
 };

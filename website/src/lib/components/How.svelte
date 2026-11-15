@@ -1,6 +1,6 @@
 <script>
   import { shot } from "#lib/site.js";
-  const video = shot("playback");
+  const video = shot("video-crop");
   const controls = shot("controls-crop");
   const steps = [
     ["Your server", "NOCTURNE talks only to the Jellyfin server you configure. Browsing and playback only read from it."],
@@ -25,18 +25,23 @@
       </ol>
     </div>
 
-    <!-- Exploded view of the window, top to bottom: controls, transparent window, video. -->
+    <!-- The window taking itself apart: flat (what you see), then tilted and split into its three real layers. -->
     <figure class="explode reveal m-0 grid aspect-[1/0.82] place-items-center">
-      <div class="explode-stack relative aspect-[16/10] w-[78%] max-sm:w-[86%]">
+      <div class="explode-stack relative aspect-[24/13] w-[66%] -translate-x-[8%] max-sm:w-[60%] max-sm:-translate-x-[14%]">
         <div class="layer-1 absolute inset-0">
-          <img class="size-full rounded-xl object-cover shadow-[0_60px_80px_-30px_rgb(0_0_0/0.9)] ring-1 ring-white/10" src={video.src} srcset={video.srcset} sizes="(min-width: 1024px) 560px, 86vw" alt={video.alt} width={video.width} height={video.height} loading="lazy" decoding="async">
+          <img class="size-full rounded-xl object-cover shadow-[0_60px_80px_-30px_rgb(0_0_0/0.9)] ring-1 ring-white/10" src={video.src} srcset={video.srcset} sizes="(min-width: 1024px) 480px, 60vw" alt={video.alt} width={video.width} height={video.height} loading="lazy" decoding="async">
+          <span class="tag">Video &middot; libmpv</span>
         </div>
-        <div class="layer-2 absolute inset-0 rounded-xl bg-[linear-gradient(140deg,rgb(255_255_255/0.07),rgb(255_255_255/0.01))] ring-1 ring-white/30"></div>
+        <div class="layer-2 absolute inset-0 rounded-xl bg-[linear-gradient(140deg,rgb(255_255_255/0.07),rgb(255_255_255/0.01))] ring-1 ring-white/30">
+          <span class="tag">Transparent window</span>
+        </div>
         <div class="layer-3 absolute inset-0 flex items-end rounded-xl ring-1 ring-accent/40">
-          <img class="w-full rounded-b-xl mix-blend-screen" src={controls.src} srcset={controls.srcset} sizes="(min-width: 1024px) 560px, 86vw" alt={controls.alt} width={controls.width} height={controls.height} loading="lazy" decoding="async">
+          <img class="w-full rounded-b-xl mix-blend-screen" src={controls.src} srcset={controls.srcset} sizes="(min-width: 1024px) 480px, 60vw" alt={controls.alt} width={controls.width} height={controls.height} loading="lazy" decoding="async">
         </div>
+        <!-- Own element: the blend mode above flattens its layer, which would squash a label inside it. -->
+        <div class="layer-3 pointer-events-none absolute inset-0"><span class="tag tag-accent">Controls &middot; GPUI</span></div>
       </div>
-      <figcaption class="sr-only">The video path as three layers: libmpv video at the bottom, the transparent GPUI window above it, the GPUI controls on top.</figcaption>
+      <figcaption class="sr-only">The video path as three layers: libmpv video at the bottom, the transparent GPUI window above it, the GPUI controls on top. The view loops from the assembled window to the separated layers.</figcaption>
     </figure>
   </div>
 </section>
