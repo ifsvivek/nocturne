@@ -1,6 +1,7 @@
 //! Accounts: connect, sign in (password or Quick Connect), restore, sign out, change password.
 //! One GPUI entity owns the state (`state::Account`); `Root` forwards keys to it while an account
 //! screen is up and reacts to its events. All I/O goes through the tokio bridge, never the UI thread.
+pub mod picker;
 mod state;
 mod view;
 
@@ -22,6 +23,8 @@ pub enum Event {
     Reload,
     /// The playlist on screen was deleted: leave its page.
     Deleted,
+    /// Esc on the sign-in form that the profile picker opened: show the picker again.
+    BackToPicker,
 }
 
 impl EventEmitter<Event> for Accounts {}
@@ -72,6 +75,8 @@ pub struct Accounts {
     servers: Servers,
     qc_secret: Option<String>,
     dialog: Option<PwDialog>,
+    /// The sign-in form was opened from the profile picker, so Esc returns there.
+    from_picker: bool,
 }
 
 /// Why a profile change did not go through (calm one-liners for the dialog).
@@ -136,7 +141,7 @@ fn poll_of(r: Result<bool, Error>) -> Poll {
 }
 
 /// Is `url` a server, what is it called, and does the keyring hold a session that still works?
-async fn probe(url: String) -> Result<(Probe, Option<Session>), ConnectFail> {
+async fn probe(url: String, restore: bool) -> Result<(Probe, Option<Session>), ConnectFail> {
     let c = UserClient::anonymous(&url).map_err(|e| classify(&e))?;
     let info = c.public_info().await.map_err(|e| classify(&e))?;
     if info.id.is_empty() {
@@ -148,6 +153,9 @@ async fn probe(url: String) -> Result<(Probe, Option<Session>), ConnectFail> {
         ..Default::default()
     };
     let u = url.clone();
+    if !restore {
+        return Ok((p, None));
+    }
     match tokio::task::spawn_blocking(move || nocturne_session::load(&u)).await {
         Ok(Ok(Some(s))) => {
             let me = UserClient::from_session(&url, &s).map_err(|e| classify(&e))?;
@@ -205,9 +213,10 @@ impl Accounts {
             servers,
             qc_secret: None,
             dialog: None,
+            from_picker: false,
         };
         if let Some(r) = last.and_then(|u| me.st.start_restore(&u)) {
-            me.check(r, cx);
+            me.check(r, true, cx);
         }
         me
     }
@@ -220,9 +229,20 @@ impl Accounts {
         self.st.keyring_down
     }
 
-    fn check(&mut self, (epoch, url): (u64, String), cx: &mut Context<Self>) {
+    /// Sign-in form for the profile picker: no stored session is restored, `name` is prefilled.
+    pub fn sign_in_form(&mut self, url: &str, name: Option<String>, cx: &mut Context<Self>) {
+        self.qc_secret = None;
+        self.dialog = None;
+        self.from_picker = true;
+        if let Some(r) = self.st.start_form(url, name) {
+            self.check(r, false, cx);
+        }
+        cx.notify();
+    }
+
+    fn check(&mut self, (epoch, url): (u64, String), restore: bool, cx: &mut Context<Self>) {
         let u = url.clone();
-        bridge::run(cx, probe(u), move |a, r, cx| {
+        bridge::run(cx, probe(u, restore), move |a, r, cx| {
             let (probe, session) = match r {
                 Ok((p, s)) => (Ok(p), s),
                 Err(e) => (Err(e), None),
@@ -236,6 +256,7 @@ impl Accounts {
     }
 
     fn signed_in(&mut self, url: String, session: Session, saved: bool, cx: &mut Context<Self>) {
+        self.from_picker = false;
         self.servers.remember(&url);
         let _ = self.servers.save();
         self.st.keyring_down |= !saved;
@@ -260,14 +281,14 @@ impl Accounts {
 
     fn connect_go(&mut self, cx: &mut Context<Self>) {
         if let Some(r) = self.st.start_connect() {
-            self.check(r, cx);
+            self.check(r, true, cx);
         }
         cx.notify();
     }
 
     fn pick(&mut self, i: usize, cx: &mut Context<Self>) {
         if let Some(r) = self.st.pick_server(i) {
-            self.check(r, cx);
+            self.check(r, true, cx);
         }
         cx.notify();
     }
@@ -366,11 +387,17 @@ impl Accounts {
     }
 
     fn back_to_servers(&mut self, cx: &mut Context<Self>) {
+        if std::mem::take(&mut self.from_picker) {
+            self.st.busy = false;
+            self.st.bump_epoch();
+            return cx.emit(Event::BackToPicker);
+        }
         self.switch_server(cx);
     }
 
     /// Show the address screen again (the stored login for the current server stays in the keyring).
     pub fn switch_server(&mut self, cx: &mut Context<Self>) {
+        self.from_picker = false;
         self.qc_secret = None;
         self.servers = Servers::load().unwrap_or_default();
         self.st.switch_server(self.servers.servers.clone());
@@ -399,6 +426,7 @@ impl Accounts {
     /// The server rejected the stored login mid-session: forget it, show the login form with a
     /// calm note.
     pub fn session_expired(&mut self, user_id: Option<String>, cx: &mut Context<Self>) {
+        self.from_picker = false;
         let url = self.st.url.clone();
         bridge::spawn(async move {
             let _ = tokio::task::spawn_blocking(move || {
@@ -423,6 +451,7 @@ impl Accounts {
         user_id: Option<String>,
         cx: &mut Context<Self>,
     ) {
+        self.from_picker = false;
         let url = self.st.url.clone();
         bridge::spawn(async move {
             if let Some(c) = client {
@@ -445,6 +474,7 @@ impl Accounts {
     /// "Add another account": show the login form of the same server. Nothing is signed out or
     /// forgotten; the current account stays remembered and can be switched back to.
     pub fn add_account(&mut self, cx: &mut Context<Self>) {
+        self.from_picker = false;
         self.qc_secret = None;
         self.dialog = None;
         self.st.signed_out();

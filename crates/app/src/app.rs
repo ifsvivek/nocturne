@@ -5,6 +5,7 @@ mod ui_help;
 mod ui_playlists;
 mod ui_search;
 
+use crate::account::picker::{self, DefaultChange, Picker, Start};
 use crate::account::{self, Accounts};
 use crate::admin::{self, Admin};
 use crate::detail::Full;
@@ -240,6 +241,8 @@ enum Act {
 enum Phase {
     /// Login mode: the account screens (connect, sign in, restore) own the window.
     Account,
+    /// "Who's watching?": several remembered accounts and no default (or Switch profile).
+    Picker,
     Connecting,
     Error(ConnectError),
     Ready,
@@ -287,6 +290,10 @@ pub struct Root {
     menu_sel: usize,
     audio_queue: ui_playlists::AudioQueue,
     other_accounts: Vec<nocturne_session::Account>,
+    /// The profile picker, while it is (or can be returned to) on screen.
+    picker: Option<Picker>,
+    /// Token-less source that only fetches the profile pictures shown by the picker.
+    anon_src: Option<Source>,
     /// `PrimaryImageTag` of the signed-in user (None: no profile picture, or not known yet).
     my_tag: Option<String>,
     /// Pages left by Back, restored by Forward (cleared by any new navigation).
@@ -335,6 +342,8 @@ enum AcctAct {
     SignOut,
     /// Switch to remembered account `i` (index into `Root::other_accounts`).
     SwitchTo(usize),
+    /// Back to the "Who's watching?" screen (stays signed in until a profile is chosen).
+    SwitchProfile,
     AddAccount,
     PlayQueue,
     ClearQueue,
@@ -390,6 +399,8 @@ impl Root {
             menu_sel: 0,
             audio_queue: Default::default(),
             other_accounts: vec![],
+            picker: None,
+            anon_src: None,
             fwd: vec![],
             blurs: Cache::new(400),
             search: None,
@@ -414,7 +425,19 @@ impl Root {
             me.connect(cx);
         } else {
             me.phase = Phase::Account;
-            let acct = cx.new(|cx| Accounts::new(true, cx));
+            // Several remembered accounts on the last used server: ask who is watching (or open
+            // the default profile) instead of restoring the last token.
+            let last = nocturne_session::Servers::load()
+                .ok()
+                .and_then(|s| s.last_used);
+            let list = last
+                .as_deref()
+                .map(|u| {
+                    picker::accounts_of(&nocturne_session::Accounts::load().unwrap_or_default(), u)
+                })
+                .unwrap_or_default();
+            let start = picker::decide(false, &list);
+            let acct = cx.new(|cx| Accounts::new(matches!(start, Start::Restore), cx));
             cx.subscribe(&acct, |t, _, ev: &account::Event, cx| match ev {
                 account::Event::SignedIn { url, session } => {
                     t.activate(url.clone(), session.clone(), cx)
@@ -428,9 +451,20 @@ impl Root {
                     t.back();
                     t.retry_page(cx);
                 }
+                account::Event::BackToPicker => t.show_picker(cx),
             })
             .detach();
             me.accounts = Some(acct);
+            if let (Some(server), true) = (last, !matches!(start, Start::Restore)) {
+                me.picker = Some(Picker::new(&server, list.clone(), None, 1));
+                match start {
+                    Start::Direct(i) => {
+                        me.phase = Phase::Connecting;
+                        me.switch_account(list[i].clone(), true, DefaultChange::Keep, cx);
+                    }
+                    _ => me.show_picker(cx),
+                }
+            }
         }
         // Teardown order: the video subsurface must go before the window, and not from inside the
         // compositor's close event (joining the render thread there deadlocks). So while a video
@@ -598,7 +632,8 @@ impl Root {
 
     /// Start fetching a user's profile picture (once per tag; a failure is retried later).
     fn load_user_pic(&mut self, uid: &str, tag: Option<String>, cx: &mut Context<Self>) {
-        let (Some(tag), Some(src)) = (tag, self.source.clone()) else {
+        let (Some(tag), Some(src)) = (tag, self.source.clone().or_else(|| self.anon_src.clone()))
+        else {
             return;
         };
         let key = user_pic_key(uid, &tag);
@@ -685,6 +720,9 @@ impl Root {
             for (i, a) in self.other_accounts.iter().enumerate() {
                 v.push((format!("Switch to {}", a.user_name), AcctAct::SwitchTo(i)));
             }
+            if !self.other_accounts.is_empty() {
+                v.push(("Switch profile".to_string(), AcctAct::SwitchProfile));
+            }
             v.push(("Add another account".to_string(), AcctAct::AddAccount));
             v.push(("Switch server".to_string(), AcctAct::Switch));
             v.push(("Sign out".to_string(), AcctAct::SignOut));
@@ -715,13 +753,30 @@ impl Root {
         }
     }
 
-    /// Switch to a remembered account: its token comes from the keyring and is checked with one
-    /// read; no password is asked. A dead token removes that account and says so.
+    /// Switch to a remembered account of the account menu.
     fn switch_to(&mut self, i: usize, cx: &mut Context<Self>) {
-        let Some(acct) = self.other_accounts.get(i).cloned() else {
-            return;
-        };
-        self.toast("Switching account.", cx);
+        if let Some(acct) = self.other_accounts.get(i).cloned() {
+            self.switch_account(acct, false, DefaultChange::Keep, cx);
+        }
+    }
+
+    /// Sign in as a remembered account: its token comes from the keyring and is checked with one
+    /// read; no password is asked and nothing is written to the server. A dead token from the menu
+    /// removes that account and says so; from the picker it opens the sign-in form with the name
+    /// typed. `default` is what choosing in the picker does to the stored default profile.
+    fn switch_account(
+        &mut self,
+        acct: nocturne_session::Account,
+        via_picker: bool,
+        default: DefaultChange,
+        cx: &mut Context<Self>,
+    ) {
+        if matches!(self.phase, Phase::Ready) {
+            self.toast("Switching account.", cx);
+        }
+        if let Some(p) = &mut self.picker {
+            p.busy = true;
+        }
         let a2 = acct.clone();
         self.run(
             cx,
@@ -745,15 +800,32 @@ impl Root {
             move |t, r, cx| match r {
                 Ok(s) => {
                     t.leave_session(cx);
+                    t.picker = None;
+                    t.anon_src = None;
                     let (u, s2) = (acct.server.clone(), s.clone());
                     // Make it the active login (keyring) so a relaunch restores this account.
                     bridge::spawn(async move {
                         let _ = tokio::task::spawn_blocking(move || {
-                            nocturne_session::remember_login(&u, &s2)
+                            let _ = nocturne_session::remember_login(&u, &s2);
+                            match default {
+                                DefaultChange::Set => {
+                                    nocturne_session::remember_default(&u, Some(&s2.user_id))
+                                }
+                                DefaultChange::Clear => nocturne_session::remember_default(&u, None),
+                                DefaultChange::Keep => {}
+                            }
                         })
                         .await;
                     });
                     t.activate(acct.server.clone(), s, cx);
+                }
+                Err(SwitchFail::Gone) if via_picker => {
+                    t.phase = Phase::Account;
+                    if let Some(a) = t.accounts.clone() {
+                        a.update(cx, |a, cx| {
+                            a.sign_in_form(&acct.server, Some(acct.user_name.clone()), cx)
+                        });
+                    }
                 }
                 Err(SwitchFail::Gone) => {
                     let (u, id) = (acct.server.clone(), acct.user_id.clone());
@@ -768,9 +840,102 @@ impl Root {
                         cx,
                     );
                 }
-                Err(SwitchFail::Offline) => t.toast("Couldn't reach the server. Try again.", cx),
+                Err(SwitchFail::Offline) => {
+                    t.toast("Couldn't reach the server. Try again.", cx);
+                    if t.picker.is_some() {
+                        t.show_picker(cx); // also covers a failed launch with a default profile
+                    }
+                }
             },
         );
+    }
+
+    /// Show "Who's watching?" for `picker` (kept up to date with the window width) and fetch the
+    /// pictures the server has for its profiles.
+    fn show_picker(&mut self, cx: &mut Context<Self>) {
+        let Some(p) = &mut self.picker else {
+            return;
+        };
+        p.busy = false;
+        let server = p.server.clone();
+        let pics: Vec<_> = p
+            .accounts
+            .iter()
+            .map(|a| (a.user_id.clone(), a.image_tag.clone()))
+            .collect();
+        if self.anon_src.is_none() {
+            let cfg = nocturne_jellyfin::Config {
+                base_url: server,
+                token: String::new(),
+            };
+            self.anon_src = Source::with_user(cfg, "")
+                .ok()
+                .map(|s| match self.disk.clone() {
+                    Some(d) => s.with_disk(d),
+                    None => s,
+                });
+        }
+        self.phase = Phase::Picker;
+        for (uid, tag) in pics {
+            self.load_user_pic(&uid, tag, cx);
+        }
+        cx.notify();
+    }
+
+    /// Menu "Switch profile": leave the session (the login stays remembered) and ask who is watching.
+    fn switch_profile(&mut self, cx: &mut Context<Self>) {
+        let Some((url, s)) = self.session.clone() else {
+            return;
+        };
+        let list = picker::accounts_of(
+            &nocturne_session::Accounts::load().unwrap_or_default(),
+            &url,
+        );
+        if list.len() < 2 {
+            return;
+        }
+        self.leave_session(cx);
+        self.picker = Some(Picker::new(&url, list, Some(&s.user_id), 1));
+        self.show_picker(cx);
+    }
+
+    fn picker_act(&mut self, act: picker::Act, cx: &mut Context<Self>) {
+        use picker::Act;
+        let Some(p) = &mut self.picker else {
+            return;
+        };
+        match act {
+            Act::Stay => {}
+            Act::Toggle if !p.busy => p.toggle(),
+            Act::Toggle => {}
+            Act::Add if !p.busy => {
+                let server = p.server.clone();
+                self.phase = Phase::Account;
+                if let Some(a) = self.accounts.clone() {
+                    a.update(cx, |a, cx| a.sign_in_form(&server, None, cx));
+                }
+            }
+            Act::Add => {}
+            Act::Pick(i) => {
+                if p.busy {
+                    return;
+                }
+                p.sel = i;
+                let (acct, change) = (p.accounts[i].clone(), p.default_change(i));
+                self.switch_account(acct, true, change, cx);
+            }
+        }
+        cx.notify();
+    }
+
+    fn picker_key(&mut self, key: &str, cx: &mut Context<Self>) {
+        let cols = picker::columns(f32::from(self.win.width));
+        if let Some(p) = &mut self.picker {
+            p.cols = cols;
+            let act = p.key(key);
+            self.picker_act(act, cx);
+        }
+        cx.notify();
     }
 
     /// Shortcut help sits above everything: drop open menus first.
@@ -785,6 +950,7 @@ impl Root {
         match act {
             AcctAct::Settings => {
                 self.close_admin(cx);
+                self.refresh_profiles();
                 self.settings_open = true;
                 self.settings_sel = 0;
                 self.dd = None;
@@ -831,6 +997,7 @@ impl Root {
                 }
             }
             AcctAct::SwitchTo(i) => self.switch_to(i, cx),
+            AcctAct::SwitchProfile => self.switch_profile(cx),
             AcctAct::PlayQueue => self.play_queue(cx),
             AcctAct::ClearQueue => self.clear_queue(cx),
             AcctAct::AddAccount => {
@@ -888,14 +1055,55 @@ impl Root {
 
     /// Settings row `i` stepped; applies at once and is saved.
     fn cycle_setting(&mut self, i: usize, dir: i32, cx: &mut Context<Self>) {
+        if i == settings::PROFILE_ROW {
+            let n = self.settings.profiles.list.len() + 1;
+            if n > 2 {
+                let at = (self.settings.profiles.current() + n)
+                    .wrapping_add_signed(dir.signum() as isize)
+                    % n;
+                self.set_default_profile(at, cx);
+            }
+            return;
+        }
         self.settings.cycle(i, dir);
         self.settings_changed(cx);
     }
 
     /// Entry `idx` of row `i`'s drop-down chosen.
     fn choose_setting(&mut self, i: usize, idx: usize, cx: &mut Context<Self>) {
+        if i == settings::PROFILE_ROW {
+            return self.set_default_profile(idx, cx);
+        }
         self.settings.choose(i, idx);
         self.settings_changed(cx);
+    }
+
+    /// Remembered profiles of this server and the default one, for the Settings row.
+    fn refresh_profiles(&mut self) {
+        self.settings.profiles = match &self.session {
+            Some((url, _)) if !self.dev => {
+                let all = nocturne_session::Accounts::load().unwrap_or_default();
+                settings::Profiles {
+                    list: all
+                        .for_server(url)
+                        .iter()
+                        .map(|a| (a.user_id.clone(), a.user_name.clone()))
+                        .collect(),
+                    default: all.default_for(url).map(|a| a.user_id.clone()),
+                }
+            }
+            _ => settings::Profiles::default(),
+        };
+    }
+
+    /// "Default profile" drop-down entry `idx`: 0 asks every time, otherwise that profile opens at launch.
+    fn set_default_profile(&mut self, idx: usize, cx: &mut Context<Self>) {
+        if let Some((url, _)) = &self.session {
+            let id = self.settings.profiles.id_at(idx).map(str::to_string);
+            nocturne_session::remember_default(url, id.as_deref());
+        }
+        self.refresh_profiles();
+        cx.notify();
     }
 
     fn settings_changed(&mut self, cx: &mut Context<Self>) {
@@ -1671,6 +1879,9 @@ impl Root {
         if let Some(p) = self.player.clone() {
             p.update(cx, |p, cx| p.on_key(ev, window, cx));
             return;
+        }
+        if matches!(self.phase, Phase::Picker) {
+            return self.picker_key(key, cx);
         }
         if let Some(a) = self.accounts.clone()
             && (matches!(self.phase, Phase::Account) || a.read(cx).dialog_open())
@@ -3027,6 +3238,9 @@ fn p_loading(rows: &[(Media, Load<Vec<Media>>, ScrollHandle)]) -> bool {
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.win = window.viewport_size();
+        if let Some(p) = &mut self.picker {
+            p.cols = picker::columns(f32::from(self.win.width));
+        }
         if std::mem::take(&mut self.fs_exit) && window.is_fullscreen() {
             window.toggle_fullscreen();
         }
@@ -3053,6 +3267,15 @@ impl Render for Root {
         let body = match self.phase {
             Phase::Account => match self.accounts.clone() {
                 Some(a) => a.into_any_element(),
+                None => self.connecting(),
+            },
+            Phase::Picker => match &self.picker {
+                Some(p) => picker::view(
+                    p,
+                    &|a| self.user_pic(&a.user_id, a.image_tag.as_deref()),
+                    |t: &mut Self, act, cx| t.picker_act(act, cx),
+                    cx,
+                ),
                 None => self.connecting(),
             },
             Phase::Connecting => self.connecting(),

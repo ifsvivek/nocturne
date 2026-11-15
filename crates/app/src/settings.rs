@@ -44,9 +44,44 @@ impl Density {
     }
 }
 
+/// The remembered profiles of the signed-in server, for the "Default profile" row. Read from
+/// `accounts.toml` by the app (never stored in `settings.toml`); the row is changed there, not here.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Profiles {
+    /// (user id, name) in the order they were remembered.
+    pub list: Vec<(String, String)>,
+    /// The default profile's user id; `None` asks every time.
+    pub default: Option<String>,
+}
+
+impl Profiles {
+    /// Entry of the drop-down that is current: 0 is "Ask every time", then one per profile.
+    pub fn current(&self) -> usize {
+        self.default
+            .as_ref()
+            .and_then(|d| self.list.iter().position(|(id, _)| id == d))
+            .map_or(0, |i| i + 1)
+    }
+
+    pub fn labels(&self) -> Vec<String> {
+        std::iter::once("Ask every time".to_string())
+            .chain(self.list.iter().map(|(_, n)| n.clone()))
+            .collect()
+    }
+
+    /// The user id behind drop-down entry `idx` (`None`: ask every time or out of range).
+    pub fn id_at(&self, idx: usize) -> Option<&str> {
+        self.list
+            .get(idx.checked_sub(1)?)
+            .map(|(id, _)| id.as_str())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    #[serde(skip)]
+    pub profiles: Profiles,
     /// A file without a version predates versioning (0).
     #[serde(default = "zero")]
     pub version: u32,
@@ -80,6 +115,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            profiles: Profiles::default(),
             version: VERSION,
             allow_server_writes: false,
             sync_progress: false,
@@ -148,7 +184,10 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 15;
+pub const ROWS: usize = 16;
+
+/// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
+pub const PROFILE_ROW: usize = 15;
 
 /// Section title shown above row `i`, if a section starts there.
 pub fn head(i: usize) -> Option<&'static str> {
@@ -157,6 +196,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         2 => Some("Playback"),
         10 => Some("Home"),
         13 => Some("Appearance and storage"),
+        15 => Some("Profiles"),
         _ => None,
     }
 }
@@ -298,6 +338,11 @@ impl Settings {
                 "Disk space for posters and backdrops; oldest are removed first.",
                 fmt_mb(self.image_cache_mb),
             ),
+            r(
+                "Default profile",
+                "Opens at launch without asking. Ask every time shows Who's watching. Needs two or more profiles on this server.",
+                self.profiles.labels()[self.profiles.current()].clone(),
+            ),
         ]
     }
 
@@ -336,6 +381,9 @@ impl Settings {
                 DENSITIES.iter().position(|d| *d == self.density)?,
             ),
             14 => nums(&CACHE_MB, self.image_cache_mb, fmt_mb),
+            PROFILE_ROW if self.profiles.list.len() > 1 => {
+                (self.profiles.labels(), self.profiles.current())
+            }
             _ => return None,
         })
     }
@@ -639,13 +687,49 @@ mod tests {
     }
 
     #[test]
+    fn default_profile_row_lists_ask_every_time_then_each_profile() {
+        let mut s = Settings::default();
+        assert_eq!(s.rows().len(), ROWS);
+        assert_eq!(s.rows()[PROFILE_ROW].value, "Ask every time");
+        assert!(
+            s.choices(PROFILE_ROW).is_none(),
+            "nothing to choose with fewer than two"
+        );
+        s.profiles = Profiles {
+            list: vec![("a".into(), "Ann".into()), ("b".into(), "Bob".into())],
+            default: Some("b".into()),
+        };
+        let (l, at) = s.choices(PROFILE_ROW).unwrap();
+        assert_eq!(
+            (l.as_slice(), at),
+            (
+                &["Ask every time".to_string(), "Ann".into(), "Bob".into()][..],
+                2
+            )
+        );
+        assert_eq!(s.rows()[PROFILE_ROW].value, "Bob");
+        assert_eq!(
+            (
+                s.profiles.id_at(0),
+                s.profiles.id_at(1),
+                s.profiles.id_at(9)
+            ),
+            (None, Some("a"), None)
+        );
+        s.profiles.default = Some("gone".into()); // removed meanwhile: shows as ask every time
+        assert_eq!(s.profiles.current(), 0);
+        // Never written to settings.toml.
+        assert!(!toml::to_string_pretty(&s).unwrap().contains("Bob"));
+    }
+
+    #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 10 and 13.
+        // Child 0 is the title; heads sit before rows 0, 2, 10, 13 and 15.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
         assert_eq!(scroll_child(10), 14);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 4);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 5);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));
         assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));

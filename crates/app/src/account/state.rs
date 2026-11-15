@@ -168,6 +168,8 @@ pub struct Account {
     pub qc: Qc,
     pub qc_available: bool,
     pub keyring_down: bool,
+    /// Username to put in the sign-in form once the server has been checked (profile picker).
+    prefill: Option<String>,
     hiccups: u8,
 }
 
@@ -203,6 +205,7 @@ impl Account {
             qc: Qc::Off,
             qc_available: false,
             keyring_down: false,
+            prefill: None,
             hiccups: 0,
         };
         a.reset_connect(last.as_deref().unwrap_or(""));
@@ -218,6 +221,10 @@ impl Account {
         self.connect = Form::new(vec![url_f], 1 + self.servers.len());
     }
 
+    pub fn bump_epoch(&mut self) {
+        self.bump();
+    }
+
     fn bump(&mut self) -> u64 {
         self.epoch += 1;
         self.epoch
@@ -230,6 +237,13 @@ impl Account {
             return None;
         };
         self.begin_check(url, false)
+    }
+
+    /// Sign-in form of `url` for the profile picker: check the server, then show the form with
+    /// `name` already typed (empty for a new profile).
+    pub fn start_form(&mut self, url: &str, name: Option<String>) -> Option<(u64, String)> {
+        self.prefill = name;
+        self.begin_check(url.to_string(), false)
     }
 
     /// Launch: try the last used server (restore its session if the keyring has one).
@@ -284,6 +298,7 @@ impl Account {
     }
 
     fn enter_login(&mut self) {
+        let prefill = self.prefill.take();
         self.stage = Stage::Login;
         self.qc = Qc::Off;
         self.bump(); // drop any Quick Connect poll from a previous visit
@@ -301,6 +316,11 @@ impl Account {
             ],
             2 + self.qc_available as usize,
         );
+        if let Some(n) = prefill {
+            self.login.fields[0].value = n;
+            self.login.focus = 1; // straight to the password
+            self.msg = Some(MSG_EXPIRED);
+        }
     }
 
     /// Sign-in button / Enter on the password.
@@ -707,5 +727,22 @@ mod tests {
         assert_eq!(f.focus, 0, "wraps");
         f.key("backspace", None);
         assert_eq!(f.value(0), "");
+    }
+
+    #[test]
+    fn picker_form_prefills_the_name_and_skips_the_restore_message_for_new_profiles() {
+        let mut a = acct();
+        let (e, url) = a.start_form("http://a:1", Some("alice".into())).unwrap();
+        assert!(a.probed(e, Ok(probe(false)), &url));
+        assert_eq!(a.stage, Stage::Login);
+        assert_eq!(
+            (a.login.value(0), a.login.focus),
+            ("alice", 1),
+            "password next"
+        );
+        assert_eq!(a.msg, Some(MSG_EXPIRED));
+        let (e, url) = a.start_form("http://a:1", None).unwrap();
+        assert!(a.probed(e, Ok(probe(false)), &url));
+        assert_eq!((a.login.value(0), a.login.focus, a.msg), ("", 0, None));
     }
 }
