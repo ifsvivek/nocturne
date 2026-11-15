@@ -441,8 +441,15 @@ impl Source {
             .map_err(|_| Failed)
     }
 
+    /// The user's libraries for the top nav. Collections and Playlists are views of their own
+    /// (always in the nav), so a server library with that type or name is not listed twice.
     pub async fn libraries(&self) -> Result<Vec<Media>, Failed> {
-        Self::media(self.client.libraries(&self.user).await)
+        let mut r = self.client.libraries(&self.user).await;
+        if let Ok(i) = &mut r {
+            i.items
+                .retain(|x| !is_global_view(x.collection_type.as_deref(), &x.name));
+        }
+        Self::media(r)
     }
 
     pub async fn latest(&self, parent: &Media) -> Result<Vec<Media>, Failed> {
@@ -688,8 +695,48 @@ impl Source {
     }
 }
 
+/// Cache key of one drawn image. It includes the tags the server gave the item, so an item
+/// first seen without tags (a search hit) does not keep its "missing" mark once the full
+/// record brings the tags.
+pub fn image_key(m: &Media, art: Art, width: u32, extra: u32) -> String {
+    format!(
+        "{}:{:?}:{width}:{extra}:{:?}{:?}{:?}{:?}",
+        m.id, art, m.poster_tag, m.backdrop_tag, m.backdrop_id, m.logo
+    )
+}
+
+/// Server views that the nav already offers as Collections and Playlists.
+fn is_global_view(collection_type: Option<&str>, name: &str) -> bool {
+    matches!(collection_type, Some("boxsets" | "playlists"))
+        || ["collections", "playlists"].contains(&name.trim().to_lowercase().as_str())
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn image_key_changes_when_the_server_supplies_tags() {
+        use super::*;
+        let bare = Media::from_item(&jf::Item {
+            id: "s1".into(),
+            ..Default::default()
+        });
+        let mut full = bare.clone();
+        full.backdrop_tag = Some("t".into());
+        assert_ne!(
+            image_key(&bare, Art::Backdrop, 1920, 0),
+            image_key(&full, Art::Backdrop, 1920, 0),
+            "a search hit's failed slot is not reused for the full item"
+        );
+    }
+
+    #[test]
+    fn collections_and_playlists_are_not_listed_as_libraries() {
+        use super::is_global_view as g;
+        assert!(g(Some("boxsets"), "Anything") && g(Some("playlists"), "x"));
+        assert!(g(None, "Collections") && g(Some("movies"), " playlists "));
+        assert!(!g(Some("movies"), "Films") && !g(None, "Mixed"));
+    }
+
     use super::*;
 
     fn item(kind: &str) -> jf::Item {

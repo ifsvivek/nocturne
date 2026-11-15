@@ -12,7 +12,7 @@ use crate::nav::{self, Dir};
 use crate::player_view::{PlayerCtx, PlayerEvent, PlayerView};
 use crate::search::Search;
 use crate::settings::{self, ROWS, Settings};
-use crate::source::{Art, ConnectError, Kind, Media, Source, sniff};
+use crate::source::{Art, ConnectError, Kind, Media, Source, image_key, sniff};
 use crate::sync::{NEED_WRITES, Reporter, SyncHooks, Tick, ticks};
 use crate::ui::{self, Cell, Pic};
 use crate::video::PlayerHooks;
@@ -46,8 +46,11 @@ impl<T: AsRef<[Media]>> Load<T> {
 enum Img {
     Loading,
     Ready(Arc<Image>),
-    Failed,
+    /// When it failed: the slot is tried again after [`RETRY_FAILED`].
+    Failed(std::time::Instant),
 }
+
+const RETRY_FAILED: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[derive(PartialEq, Clone, Copy)]
 enum View {
@@ -1317,7 +1320,7 @@ impl Root {
         } else {
             0
         };
-        let key = format!("{}:{:?}:{width}:{extra}", m.id, art);
+        let key = image_key(m, art, width, extra);
         let loading = |me: &mut Self| match m.blur_for(art).and_then(|h| me.blur(h)) {
             Some(i) => Pic::Blur(i),
             None => Pic::Loading,
@@ -1325,8 +1328,8 @@ impl Root {
         match self.images.get(&key) {
             Some(Img::Ready(i)) => return Pic::Ready(i.clone()),
             Some(Img::Loading) => return loading(self),
-            Some(Img::Failed) => return Pic::Missing,
-            None => {}
+            Some(Img::Failed(at)) if at.elapsed() < RETRY_FAILED => return Pic::Missing,
+            Some(Img::Failed(_)) | None => {}
         }
         let Some(src) = self.source.clone() else {
             return Pic::Loading;
@@ -1342,7 +1345,7 @@ impl Root {
                     .and_then(|b| sniff(&b).map(|f| Image::from_bytes(f, b)))
                 {
                     Some(i) => Img::Ready(Arc::new(i)),
-                    None => Img::Failed,
+                    None => Img::Failed(std::time::Instant::now()),
                 };
                 t.images.insert(key, state);
             },
@@ -1783,7 +1786,9 @@ impl Root {
             .px(px(t::PAGE_PAD))
             .flex()
             .items_center()
-            .gap(px(t::S2));
+            .gap(px(t::S2))
+            // Same fill as the header: scrolled content must not show through behind the trail.
+            .bg(rgba(0x07080ce6));
         let shown: Vec<usize> = if elided {
             std::iter::once(0).chain(start..n).collect()
         } else {
@@ -2199,7 +2204,14 @@ impl Root {
                 div()
                     .h(px(110.0))
                     .max_w(px(460.0))
-                    .child(img(i).h(px(110.0)).object_fit(ObjectFit::Contain)),
+                    // The limit sits on the image itself so a very wide logo is scaled down to fit
+                    // (contain) instead of overflowing and being clipped by the hero.
+                    .child(
+                        img(i)
+                            .h(px(110.0))
+                            .max_w(px(460.0))
+                            .object_fit(ObjectFit::Contain),
+                    ),
                 format!("logo-{}", m.id),
                 t::SLOW,
             )
