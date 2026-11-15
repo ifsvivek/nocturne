@@ -1,39 +1,65 @@
 # Roadmap
 
-Honest list of what is missing in 0.1.0 and what is intentionally out of scope. Implemented features are in
-[FEATURES.md](FEATURES.md); verification gaps are in [QA_REPORT.md](QA_REPORT.md). No dates are promised.
+Everything NOCTURNE does not do yet, in the order it is likely to be built, plus what is intentionally out of scope.
+What already works is in [FEATURES.md](FEATURES.md); verification status is in [QA_REPORT.md](QA_REPORT.md).
+No dates are promised. Priorities can change with user feedback and with what upstream Jellyfin changes.
 
-## Known gaps
+## 0.1.0 (this release)
 
-**Admin**
-- Networking: base URL, HTTPS and certificates, proxies and IP filters stay view only on purpose
-- Per-user access schedules, "block unrated" kinds and per-folder deletion rights; subtitle, lyric and segment provider ordering (the throwaway server has none installed)
+Shipped: browsing, search, details, in-window GPU playback with a full player, accounts (password, Quick Connect,
+switching), playlists and a music queue, an admin dashboard inside the same app, settings, packaging for Arch Linux.
+See [FEATURES.md](FEATURES.md) for the full list.
+
+Still being verified on a real server (built and tested on a throwaway server, not yet on a real library):
+- Newer player features: resume prompt, A-B loop, audio device list, external subtitles, subtitle presets
+- Multi-season shows and the photo viewer on real data
+- A 401 in the middle of a session and the offline banner
+- The image cache size cap on a very large library, and a multi-day soak
+
+## Next: SyncPlay ("watch together")
+
+First feature after 0.1.0.
+- Create, list, join and leave SyncPlay groups on the same server
+- Synchronised play, pause, seek and stop across members (Jellyfin `/SyncPlay` endpoints plus the server WebSocket)
+- Clock-offset estimate against the server and drift correction in the player
+- A "Watch together" screen
+- Needs server changes switched on, like every feature that changes server state (see [WRITES.md](WRITES.md))
+
+## Then: research-driven improvements
+
+After the release, a review of the Jellyfin ecosystem (server, web and other official clients: open and closed issues,
+pull requests, API changes) to decide what to build and what to work around. Findings and priorities will be added here.
+Anything that belongs upstream will be prepared as a report for review, not filed automatically.
+
+## Later: missing features
 
 **Media types and playback**
-- Books and audiobooks are not playable (detail page only)
-- Music: album-art views, a persistent queue across launches, queue editing while browsing (the player owns the screen)
-- Collection create, add, remove and reorder; sharing playlists with other users
+- Books and audiobooks: playback and reading (the detail page exists)
+- Music: album-art views, a queue that survives closing the app, queue editing while browsing
+- Collections: create, add, remove, reorder
+- Sharing playlists with other users
+- Flatpak and other distribution packages; a verified AppImage only if it can be honest about system libraries
 
 **Accounts and settings**
-- A user picker on the sign-in screen (switching is in the account menu)
-- Theme and accent choice, subtitle appearance presets
-- Ending other sessions of your own account (the server only allows it for administrators)
+- A user picker on the sign-in screen (switching already works from the account menu)
+- Theme and accent choice
+- Subtitle appearance presets
+- Ending your other sessions (the server only allows it for administrators)
+
+**Admin**
+- Per-user access schedules, "block unrated" kinds, per-folder deletion rights
+- Subtitle, lyric and media-segment provider ordering
+- Networking: base URL, HTTPS and certificates, proxies and IP filters are view-only on purpose; editing them
+  safely needs a lock-out guard that can be tested
 
 **Platform**
-- Packages are tested on Arch Linux only; other distributions, Flatpak and AppImage are unverified or not provided
-- Screen-reader support is limited by GPUI
+- Packages are tested on Arch Linux only; other distributions are unverified
+- Better screen-reader support, limited today by GPUI
 - Windows and macOS: possible future work, not planned or supported
-
-**Verification still open**
-- Several newer player features on a real server (resume prompt, A-B loop, audio device list, external subtitles,
-  subtitle presets), multi-season shows and the photo viewer on a real library (both checked on generated
-  throwaway data), 401 mid-session and the offline banner against a real server
-- Cache size cap on a very large library; multi-day soak
 
 ## Dropped (will not be built)
 
 - Live TV and DVR
-- SyncPlay
 - DLNA setup
 - Acting as a cast target
 - Gapless music playback
