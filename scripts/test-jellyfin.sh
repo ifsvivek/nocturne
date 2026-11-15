@@ -73,6 +73,7 @@ rnd() { head -c 12 /dev/urandom | base64 | tr -d '/+='; }
 seed() { # first run only: wizard, admin, api key, users, library
   local pw; pw=$(head -c 18 /dev/urandom | base64 | tr -d '/+=')
   ( umask 077; printf '%s\n' "$pw" >"$T/admin-password" )
+  for _ in $(seq 60); do api GET /Startup/Configuration >/dev/null 2>&1 && break; sleep 1; done   # answers 503 for a while after /System/Info/Public is up
   api POST /Startup/Configuration '{"UICulture":"en-US","MetadataCountryCode":"US","PreferredMetadataLanguage":"en"}' >/dev/null
   api GET /Startup/User >/dev/null   # wizard needs the default user row created first
   api POST /Startup/User "$(jq -nc --arg p "$pw" '{Name:"admin",Password:$p}')" >/dev/null
