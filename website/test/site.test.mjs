@@ -33,7 +33,7 @@ test("RELEASED=false: no repo or release links, coming soon", () => {
   assert.match(read(off, "index.html"), /Coming soon/);
   // Full product content shows while unreleased; only links and download buttons are gated.
   const h = read(off, "index.html");
-  for (const s of ["The whole library, one window.", "Read-only until you say otherwise", "Requirements and install", "Questions", "srcset="]) assert.ok(h.includes(s), s);
+  for (const s of ["Scene 1", "Behind the scenes", "Nothing on your server changes until you allow it", "Coming soon to Linux", "Technical specifications", "Questions", "srcset="]) assert.ok(h.includes(s), s);
   assert.doesNotMatch(h, /makepkg|install\.sh|cargo build/);
 });
 
@@ -101,5 +101,5 @@ test("size budget", () => {
   assert.ok(statSync(join(off, "og.jpg")).size <= 100 * 1024);
   // Hero requests: eager images only; everything else lazy.
   const imgs = [...read(off, "index.html").matchAll(/<img\b[^>]*>/g)].map((m) => m[0]);
-  assert.ok(imgs.filter((i) => /loading="eager"/.test(i) && /srcset/.test(i)).length === 2, "two hero images eager");
+  assert.equal(imgs.filter((i) => /loading="eager"/.test(i)).length, 1, "only the opening still loads eagerly");
 });

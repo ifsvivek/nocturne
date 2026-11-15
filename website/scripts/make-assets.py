@@ -21,7 +21,6 @@ CROPS = {
     "settings-crop": ("07-settings", (20, 180, 1900, 500)),
     "video-crop": ("06-playback", (0, 60, 1920, 1100)),
     "controls-crop": ("06-playback", (0, 1100, 1920, 1200)),
-    "admin-crop": ("08-admin-dashboard", (250, 50, 1880, 1110)),
 }
 for key, (src, box) in CROPS.items():
     im = Image.open(f"{SRC}/{src}.webp").convert("RGB").crop(box)

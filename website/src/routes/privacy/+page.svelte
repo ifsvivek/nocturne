@@ -3,18 +3,18 @@
 </script>
 
 <Seo title="Privacy: NOCTURNE" description="NOCTURNE's site sets no cookies and loads no third-party resources. The app talks only to the server you configure." path="/privacy" />
-<div class="wrap max-w-[760px] py-[clamp(64px,9vw,120px)]">
-  <h1 class="display">Privacy</h1>
+<div class="wrap max-w-[760px] pt-[clamp(140px,18vh,200px)] pb-[clamp(64px,9vw,120px)]">
+  <h1 class="scene-title">Privacy</h1>
   <p class="mt-5 text-lg text-ink-2">Short version: this site tracks nothing, and the app only talks to the server you point it at.</p>
 
-  <h2 class="h3 mb-4 mt-14">This website</h2>
+  <h2 class="role mb-5 mt-14">This website</h2>
   <ul class="tick">
     <li>It sets no cookies, uses no local storage and runs no analytics.</li>
     <li>It loads no third-party resources: no scripts, embeds or tracking pixels. The one font is served from this domain, like every other file.</li>
     <li>Like any web host, the infrastructure serving it (Cloudflare) may process request metadata such as IP address to deliver pages and defend against abuse. We do not read or store that for any other purpose.</li>
   </ul>
 
-  <h2 class="h3 mb-4 mt-14">The NOCTURNE app</h2>
+  <h2 class="role mb-5 mt-14">The NOCTURNE app</h2>
   <ul class="tick">
     <li>It connects only to the Jellyfin server you configure. It sends no telemetry, usage statistics or crash reports anywhere.</li>
     <li>Your sign-in token is stored in the system keyring (Secret Service). It is not written to a plaintext file.</li>

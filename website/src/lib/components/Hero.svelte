@@ -1,35 +1,42 @@
 <script>
   import { RELEASED, REPO, RELEASES } from "#lib/site.js";
-  import Shot from "./Shot.svelte";
+  import { shot } from "#lib/site.js";
+  const s = shot("playback");
 </script>
 
-<section class="relative isolate -mt-[68px] overflow-hidden pt-[calc(68px+clamp(48px,8vw,96px))] pb-[clamp(72px,9vw,140px)]">
-  <div class="drift pointer-events-none absolute -inset-x-[15%] -top-[20%] -z-10 h-[110%] bg-[radial-gradient(ellipse_42%_46%_at_74%_30%,rgb(75_85_224/0.42),transparent_70%),radial-gradient(ellipse_30%_30%_at_12%_8%,rgb(76_141_255/0.16),transparent_70%)] [mask-image:linear-gradient(to_bottom,black_55%,transparent)]" aria-hidden="true"></div>
-
-  <div class="stars" aria-hidden="true"></div>
-  <div class="wrap grid items-center gap-y-14 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] xl:gap-x-12">
-    <div class="relative z-10">
-      <p class="label rise">YOUR MEDIA. YOUR NIGHT.</p>
-      <h1 class="display rise d1 mt-6 max-w-[15ch]">A native cinematic media experience for Linux.</h1>
-      <p class="lede rise d2 mt-7 max-w-[44ch]">An unofficial Jellyfin client written in Rust. Video plays inside the window, and nothing on your server changes until you allow it.</p>
-      <div class="rise d3 mt-10 flex flex-wrap items-center gap-3">
-        {#if RELEASED}
-          <a class="btn" href={RELEASES}>Download <i aria-hidden="true">&darr;</i></a>
-          <a class="btn btn-ghost" href={REPO} rel="noopener">Source code</a>
-        {:else}
-          <a class="btn" href="#tour">Take the tour <i aria-hidden="true">&rarr;</i></a>
-          <a class="btn btn-ghost" href="#safety">Read-only by default</a>
-        {/if}
-      </div>
-    </div>
-
-    <div class="stage relative xl:-mr-[clamp(0px,12vw,260px)] max-xl:mx-auto max-xl:w-[min(100%,920px)]">
-      <div class="stage-tilt rise relative">
-        <Shot name="home" eager class="sheen" sizes="(min-width: 1280px) 860px, (min-width: 960px) 920px, 100vw" />
-        <div class="float absolute -bottom-[14%] -left-[6%] w-[54%] min-w-[170px] max-xl:-bottom-[18%] max-xl:left-auto max-xl:-right-1">
-          <Shot name="playback" eager sizes="(min-width: 1280px) 470px, 54vw" class="bob shadow-[0_40px_90px_-20px_rgb(0_0_0/0.95)]" />
-        </div>
+<!-- The opening: black letterbox bars, and between them the app playing a film. -->
+<section class="grid min-h-[100svh] grid-rows-[auto_minmax(52svh,1fr)_auto] bg-black">
+  <div class="h-[clamp(64px,11vh,104px)]"></div>
+  <div class="screen relative overflow-hidden">
+    <img class="absolute inset-0 size-full object-cover object-[50%_78%]" src={s.src} srcset={s.srcset} sizes="100vw" alt={s.alt} width={s.width} height={s.height} fetchpriority="high" loading="eager" decoding="async">
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_45%,rgb(4_4_5/0.15),rgb(4_4_5/0.75))]" aria-hidden="true"></div>
+    <div class="relative grid h-full place-items-center px-5 py-16 text-center">
+      <div>
+        <h1 class="title-in m-0 mr-[-0.32em] text-[clamp(2.1rem,1rem+6.2vw,7.5rem)] font-medium leading-none tracking-[0.32em] text-ink">NOCTURNE<span class="sr-only">: a native cinematic media experience for Linux</span></h1>
+        <p class="fade-in m-0 mt-6 mr-[-0.42em] text-[clamp(0.72rem,0.64rem+0.35vw,0.95rem)] font-medium tracking-[0.42em] text-ink">YOUR MEDIA. YOUR NIGHT.</p>
       </div>
     </div>
   </div>
+  <div class="wrap fade-in flex flex-wrap items-center justify-between gap-x-10 gap-y-5 py-[clamp(20px,4vh,40px)]">
+    <p class="m-0 max-w-[46ch] text-ink-2">A native cinematic media experience for Linux. An unofficial Jellyfin client, read-only until you allow it.</p>
+    <div class="flex flex-wrap gap-3">
+      {#if RELEASED}
+        <a class="btn" href={RELEASES}>Download</a>
+        <a class="btn btn-ghost" href={REPO} rel="noopener">Source</a>
+      {:else}
+        <a class="btn" href="#tour">Watch the tour</a>
+      {/if}
+    </div>
+  </div>
+</section>
+
+<!-- Opening credits: what it is and what it is made of, one card at a time. -->
+<section class="py-[clamp(110px,16vw,240px)] text-center" aria-label="Credits">
+  <ul class="stagger m-0 grid list-none gap-[clamp(48px,7vw,88px)] p-0">
+    <li><span class="role">An unofficial client for</span><span class="name">Jellyfin</span></li>
+    <li><span class="role">Written in</span><span class="name">Rust</span></li>
+    <li><span class="role">Drawn by</span><span class="name">GPUI</span></li>
+    <li><span class="role">Played by</span><span class="name">libmpv</span></li>
+    <li><span class="role">Made for</span><span class="name">Linux</span></li>
+  </ul>
 </section>

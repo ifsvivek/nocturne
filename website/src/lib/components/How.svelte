@@ -10,33 +10,31 @@
   ];
 </script>
 
-<section id="how" class="section relative isolate overflow-hidden rule" aria-labelledby="how-h">
-  <div class="pool right-[-10%] top-[20%] size-[560px] bg-indigo/20" aria-hidden="true"></div>
+<section id="how" class="section rule" aria-labelledby="how-h">
   <div class="wrap grid items-center gap-16 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
     <div>
-      <h2 id="how-h" class="h2 reveal">How it works</h2>
-      <ol class="stagger m-0 mt-10 grid list-none gap-0 p-0">
+      <header class="reveal"><span class="role">Behind the scenes</span><h2 id="how-h" class="scene-title">How it works</h2></header>
+      <ol class="stagger m-0 mt-12 grid list-none gap-0 p-0">
         {#each steps as [name, text], i}
-          <li class="reveal grid gap-1.5 border-l py-4 pl-6 {i === 0 ? 'border-accent' : 'border-line-strong'}">
-            <strong class="text-[1.06rem] font-semibold text-ink">{name}</strong>
+          <li class="grid gap-1.5 border-l py-4 pl-6 {i === 0 ? 'border-ink' : 'border-line-strong'}">
+            <strong class="text-[1.02rem] font-semibold text-ink">{name}</strong>
             <span class="max-w-[46ch] text-ink-2">{text}</span>
           </li>
         {/each}
       </ol>
     </div>
-
     <!-- The window taking itself apart: flat (what you see), then tilted and split into its three real layers. -->
     <figure class="explode reveal m-0 grid aspect-[1/0.82] place-items-center">
       <div class="explode-stack relative aspect-[24/13] w-[66%] -translate-x-[8%] max-sm:w-[60%] max-sm:-translate-x-[14%]">
         <div class="layer-1 absolute inset-0">
-          <img class="size-full rounded-xl object-cover shadow-[0_60px_80px_-30px_rgb(0_0_0/0.9)] ring-1 ring-white/10" src={video.src} srcset={video.srcset} sizes="(min-width: 1024px) 480px, 60vw" alt={video.alt} width={video.width} height={video.height} loading="lazy" decoding="async">
+          <img class="size-full rounded-sm object-cover shadow-[0_60px_80px_-30px_rgb(0_0_0/0.9)] ring-1 ring-white/10" src={video.src} srcset={video.srcset} sizes="(min-width: 1024px) 480px, 60vw" alt={video.alt} width={video.width} height={video.height} loading="lazy" decoding="async">
           <span class="tag">Video &middot; libmpv</span>
         </div>
-        <div class="layer-2 absolute inset-0 rounded-xl bg-[linear-gradient(140deg,rgb(255_255_255/0.07),rgb(255_255_255/0.01))] ring-1 ring-white/30">
+        <div class="layer-2 absolute inset-0 rounded-sm bg-[linear-gradient(140deg,rgb(255_255_255/0.07),rgb(255_255_255/0.01))] ring-1 ring-white/30">
           <span class="tag">Transparent window</span>
         </div>
-        <div class="layer-3 absolute inset-0 flex items-end rounded-xl ring-1 ring-accent/40">
-          <img class="w-full rounded-b-xl mix-blend-screen" src={controls.src} srcset={controls.srcset} sizes="(min-width: 1024px) 480px, 60vw" alt={controls.alt} width={controls.width} height={controls.height} loading="lazy" decoding="async">
+        <div class="layer-3 absolute inset-0 flex items-end rounded-sm ring-1 ring-accent/40">
+          <img class="w-full rounded-b-sm mix-blend-screen" src={controls.src} srcset={controls.srcset} sizes="(min-width: 1024px) 480px, 60vw" alt={controls.alt} width={controls.width} height={controls.height} loading="lazy" decoding="async">
         </div>
         <!-- Own element: the blend mode above flattens its layer, which would squash a label inside it. -->
         <div class="layer-3 pointer-events-none absolute inset-0"><span class="tag tag-accent">Controls &middot; GPUI</span></div>

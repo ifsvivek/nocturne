@@ -8,15 +8,12 @@
   ];
 </script>
 
-<section id="limits" class="pb-[clamp(88px,11vw,168px)]" aria-labelledby="limits-h">
+<section id="limits" class="section rule" aria-labelledby="limits-h">
   <div class="wrap">
-    <div class="reveal relative isolate overflow-hidden rounded-[1.75rem] bg-[linear-gradient(160deg,rgb(75_85_224/0.16),rgb(12_14_22/0.6)_55%)] p-[clamp(28px,5vw,72px)] ring-1 ring-white/10 ring-inset">
-      <h2 id="limits-h" class="h2">What it does not do yet</h2>
-      <p class="lede mt-5">Early software, version {VERSION}. Here is the honest list.</p>
-      <div class="mt-12 grid gap-12 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:gap-16">
-        <div><h3 class="text-[1.06rem] font-semibold">Not implemented</h3><ul class="tick stagger mt-5">{#each missing as m}<li>{m}</li>{/each}</ul></div>
-        <div><h3 class="text-[1.06rem] font-semibold">Rough edges</h3><ul class="tick stagger mt-5">{#each rough as m}<li>{m}</li>{/each}</ul></div>
-      </div>
+    <header class="reveal"><h2 id="limits-h" class="h2">Not in this cut</h2><p class="lede mt-4">Early software, version {VERSION}. Here is the honest list.</p></header>
+    <div class="mt-12 grid gap-12 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:gap-16">
+      <div><h3 class="role">Not implemented</h3><ul class="tick stagger mt-5">{#each missing as m}<li>{m}</li>{/each}</ul></div>
+      <div><h3 class="role">Rough edges</h3><ul class="tick stagger mt-5">{#each rough as m}<li>{m}</li>{/each}</ul></div>
     </div>
   </div>
 </section>
