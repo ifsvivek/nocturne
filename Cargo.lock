@@ -3434,6 +3434,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nocturne-jellyfin-admin"
+version = "0.1.0"
+dependencies = [
+ "nocturne-jellyfin",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "nocturne-player"
 version = "0.1.0"
 dependencies = [
