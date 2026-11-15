@@ -77,7 +77,7 @@ impl ItemsQuery {
 #[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,
-    base: String,
+    base: Url,
     token: String,
     device_id: String,
 }
@@ -85,7 +85,7 @@ pub struct Client {
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
-            .field("base", &self.base)
+            .field("base", &self.base.as_str())
             .field("token", &"<redacted>")
             .finish()
     }
@@ -93,6 +93,10 @@ impl std::fmt::Debug for Client {
 
 impl Client {
     pub fn new(cfg: Config) -> Result<Self> {
+        let base = Url::parse(&cfg.base_url)
+            .ok()
+            .filter(|u| matches!(u.scheme(), "http" | "https") && u.host().is_some())
+            .ok_or_else(|| Error::Config("base_url is not a valid http(s) URL".into()))?;
         let device_id = device_id();
         let mut auth = header::HeaderValue::from_str(&auth_header(&device_id, &cfg.token))
             .map_err(|_| Error::Config("token contains invalid header characters".into()))?;
@@ -106,7 +110,7 @@ impl Client {
             .map_err(http_err)?;
         Ok(Self {
             http,
-            base: cfg.base_url,
+            base,
             token: cfg.token,
             device_id,
         })
@@ -121,12 +125,12 @@ impl Client {
 
     /// `GET /System/Info/Public` (no auth required).
     pub async fn public_info(&self) -> Result<PublicInfo> {
-        self.get("/System/Info/Public", &[]).await
+        self.get(&["System", "Info", "Public"], &[]).await
     }
 
     /// `GET /Users`. API-key auth has no implicit user, so callers pick one id.
     pub async fn users(&self) -> Result<Vec<User>> {
-        self.get("/Users", &[]).await
+        self.get(&["Users"], &[]).await
     }
 
     /// First user id on the server.
@@ -141,25 +145,25 @@ impl Client {
 
     /// Libraries visible to the user (`GET /UserViews`).
     pub async fn libraries(&self, user_id: &str) -> Result<Items> {
-        self.get("/UserViews", &[("userId", user_id.to_string())])
+        self.get(&["UserViews"], &[("userId", user_id.to_string())])
             .await
     }
 
     /// `GET /Items`.
     pub async fn items(&self, user_id: &str, q: &ItemsQuery) -> Result<Items> {
-        self.get("/Items", &q.pairs(user_id)).await
+        self.get(&["Items"], &q.pairs(user_id)).await
     }
 
     /// `GET /Items/{id}` for one user (includes overview).
     pub async fn item(&self, user_id: &str, id: &str) -> Result<Item> {
-        self.get(&format!("/Items/{id}"), &[("userId", user_id.to_string())])
+        self.get(&["Items", id], &[("userId", user_id.to_string())])
             .await
     }
 
     /// `GET /Shows/{id}/Seasons`.
     pub async fn seasons(&self, user_id: &str, series_id: &str) -> Result<Items> {
         self.get(
-            &format!("/Shows/{series_id}/Seasons"),
+            &["Shows", series_id, "Seasons"],
             &[("userId", user_id.to_string())],
         )
         .await
@@ -176,7 +180,7 @@ impl Client {
         if let Some(s) = season_id {
             p.push(("seasonId", s.to_string()));
         }
-        self.get(&format!("/Shows/{series_id}/Episodes"), &p).await
+        self.get(&["Shows", series_id, "Episodes"], &p).await
     }
 
     // ---- URL builders (pure, no network) ----
@@ -197,19 +201,15 @@ impl Client {
         if let Some(t) = tag {
             p.push(("tag", t.to_string()));
         }
-        self.url(&format!("/Items/{id}/Images/{}", kind.as_str()), &p)
-            .into()
+        self.url(&["Items", id, "Images", kind.as_str()], &p).into()
     }
 
     /// Direct-play URL (`/Videos/{id}/stream?static=true`) with NO credentials.
     /// Preferred for mpv: pass [`Client::auth_header`] via `http-header-fields`, so the
     /// token never appears in the URL, mpv's log/playlist/`path` property, or process args.
     pub fn stream_url(&self, id: &str) -> String {
-        self.url(
-            &format!("/Videos/{id}/stream"),
-            &[("static", "true".into())],
-        )
-        .into()
+        self.url(&["Videos", id, "stream"], &[("static", "true".into())])
+            .into()
     }
 
     /// Same as [`Client::stream_url`] plus `api_key=<token>`. Simpler (works with any
@@ -217,7 +217,7 @@ impl Client {
     /// into logs, `ps` output and history. Treat the returned string as a secret.
     pub fn stream_url_with_key(&self, id: &str) -> String {
         self.url(
-            &format!("/Videos/{id}/stream"),
+            &["Videos", id, "stream"],
             &[("static", "true".into()), ("api_key", self.token.clone())],
         )
         .into()
@@ -225,28 +225,28 @@ impl Client {
 
     // ---- internals ----
 
-    fn url(&self, path: &str, pairs: &[(&str, String)]) -> Url {
-        // base was validated as a URL in `Client::new` callers' config; fall back is unreachable for sane input.
-        let mut u =
-            Url::parse(&format!("{}{path}", self.base)).expect("base_url must be a valid URL");
+    /// Infallible: `base` was validated in `new`; segments are percent-encoded.
+    fn url(&self, segs: &[&str], pairs: &[(&str, String)]) -> Url {
+        let mut u = self.base.clone();
+        u.path_segments_mut()
+            .expect("http(s) base can have path segments")
+            .pop_if_empty()
+            .extend(segs);
         if !pairs.is_empty() {
             u.query_pairs_mut().extend_pairs(pairs);
         }
         u
     }
 
-    async fn get<T: DeserializeOwned>(&self, path: &str, pairs: &[(&str, String)]) -> Result<T> {
-        let resp = self
-            .http
-            .get(self.url(path, pairs))
-            .send()
-            .await
-            .map_err(http_err)?;
+    async fn get<T: DeserializeOwned>(&self, segs: &[&str], pairs: &[(&str, String)]) -> Result<T> {
+        let url = self.url(segs, pairs);
+        let path = url.path().to_string();
+        let resp = self.http.get(url).send().await.map_err(http_err)?;
         let status = resp.status();
         if !status.is_success() {
             return Err(Error::Status {
                 status: status.as_u16(),
-                path: path.split('?').next().unwrap_or("").into(),
+                path,
             });
         }
         resp.json().await.map_err(http_err)
@@ -322,6 +322,32 @@ mod tests {
         assert_eq!(plain, "http://jf.test:8096/Videos/abc/stream?static=true");
         assert!(!plain.contains("tok123"));
         assert!(c.stream_url_with_key("abc").ends_with("&api_key=tok123"));
+    }
+
+    #[test]
+    fn invalid_base_url_is_config_error() {
+        for bad in ["not a url", "", "ftp://h", "mailto:a@b"] {
+            let r = Client::new(Config {
+                base_url: bad.into(),
+                token: "t".into(),
+            });
+            assert!(matches!(r, Err(Error::Config(_))), "{bad}");
+        }
+    }
+
+    #[test]
+    fn path_segments_are_encoded() {
+        let c = client();
+        assert_eq!(
+            c.stream_url("a/b?c#d e"),
+            "http://jf.test:8096/Videos/a%2Fb%3Fc%23d%20e/stream?static=true"
+        );
+        let c = Client::new(Config {
+            base_url: "http://h/jf/".into(),
+            token: "t".into(),
+        })
+        .unwrap();
+        assert_eq!(c.stream_url("x"), "http://h/jf/Videos/x/stream?static=true");
     }
 
     #[test]
