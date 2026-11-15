@@ -16,10 +16,10 @@ Legend: Y = yes, n/a = not applicable, - = not done, partial = see notes.
 | Collections, Playlists, Favourites pages | Y | - | Y | Y (empty states) | Empty state said "loading" forever; now "Nothing here yet" |
 | Search (Ctrl+K and /) | Y | Y | Y | Y | |
 | Movie page | Y | Y | Y | Y | Hero was clipped at 1280x800; min height raised |
-| Series page (logo hero, season tabs, episode card grid, cast, Next Up, More) | Y | partial | Y | Y | Two-season generated show on the throwaway: season tabs with counts, episode card grid, episode page with media info, Next Up starts playback and autoplays the next episode. Not seen on real multi-season data |
+| Series page (logo hero, season tabs, episode card grid, cast, Next Up, More) | Y | partial | Y | Y | Two-season generated show on the throwaway: season tabs with counts, episode card grid, episode page with media info, Next Up starts playback and autoplays the next episode. Seen on a real two-season show in the second pass (season tabs with episode counts, episode cards) |
 | Episode page, Person page | Y | partial | Y | Y | |
 | Breadcrumbs, back/forward, Esc/Backspace | Y | Y | Y | Y | Header made more opaque so scrolled content no longer shows through |
-| In-window playback: controls, audio/subtitle menus, speed, chapters, seek, fullscreen, trickplay hover, quality menu, stats overlay, clean stop | Y | Y (logic) | Y | Y (one playback) | Real-server playback made only GET requests. Stats overlay opened; the buffered value was not recorded numerically |
+| In-window playback: controls, audio/subtitle menus, speed, chapters, seek, fullscreen, trickplay hover, quality menu, stats overlay, clean stop | Y | Y (logic) | Y | Y (one playback) | Real-server playback made only GET requests. Stats overlay opened; in the second pass the Buffered row showed a numeric value (about 287 s) during a direct-play playback |
 | Progress/played/favourite writes | Y | Y | Y | n/a (never on real) | Verified: writes-off sends nothing (server state unchanged, no session); writes-on updates favourite, played and resume position |
 | Login, session restore, sign-out | Y | Y | Y | n/a | Restore via keyring across relaunch |
 | Quick Connect | Y | Y | Y | n/a | Approved from a second session on the throwaway |
@@ -42,6 +42,27 @@ Legend: Y = yes, n/a = not applicable, - = not done, partial = see notes.
 | SIGTERM | Y | - | Y | n/a | Now a clean quit (was a hard kill). Settings are written on every change, so nothing is pending |
 | X11 fallback | Y | n/a | Y | n/a | Reached the connect screen, signed in, external mpv started and exited with the app. Note: `wtype` cannot type into Xwayland; used `ydotool` |
 
+## Second pass: features added since the first pass
+
+Same safety rules: the real server was used only through a GET-only recording proxy (199 requests, 0 non-GET,
+one in-window playback with server changes off), every write and sign-in ran on a throwaway Jellyfin 12.4 with
+isolated XDG directories and a unique keyring name. "UI" means driven through the release binary.
+
+| Feature | Implemented | Unit-tested | Throwaway-integration-tested | Real-server read-only verified | Notes |
+|---|---|---|---|---|---|
+| Account switching (add account, switch without a password, Admin entry follows the account) | Y | Y | Y (crate live tests, two stored tokens) | n/a | UI: signed in as a second user, switched to the administrator and back. The expired-token (401) path of a switch is covered by a crate live test only |
+| Plugin repositories, library rename, metadata / image providers | Y | Y (validators, mock server) | Y (crate live tests, all passed again) | Y (Providers and Plugins pages, view-only banner, actions dimmed) | Writes were not repeated through the UI in this pass (done in the first pass) |
+| User access and limits | Y | Y | Y (crate live tests) | Y (library and feature switches listed, controls dimmed) | Dialogs for the less common limits are covered by unit tests only |
+| Playlists (create, add, reorder, rename, delete) | Y | Y | Y (crate live tests) | Y (empty-state page only: the real server has none) | UI this pass: create with N and add a track from More; reorder, rename and delete were not repeated in the UI |
+| Music queue | Y | Y | partial | n/a | UI: Add to queue from More, then "Play music queue (1)" and "Clear music queue" appeared in the account menu. Queue playback was not exercised in this pass |
+| Shortcut overlay (`?`) | Y | Y | n/a | n/a | UI: opened and closed. Long descriptions were clipped at 1269x689 (fixed) |
+| Quick Connect: authorize a device | Y | Y | Y | n/a | UI: approved a code requested from a second client; the server then reported it authenticated |
+| Your devices | Y | Y | Y | n/a | UI: lists this device and the other session |
+| Season cards, episode grid | Y | partial | Y | Y | Real two-season show and a generated three-season show |
+| Photo viewer | Y | Y (actions) | Y | n/a (the real server has no photo library) | UI on generated photos: opens a folder grid, Right steps, `+` zooms, Esc closes |
+| Collections and Playlists pages | Y | - | Y | Y (empty states) | |
+| Search | Y | Y | Y | Y | Regression found and fixed: typing `a` opened the account menu instead of entering text |
+
 ## Defects fixed in this pass
 
 - Admin page 401 did not return to sign-in; the admin client now records a 401 and the app acts on it.
@@ -56,10 +77,12 @@ Legend: Y = yes, n/a = not applicable, - = not done, partial = see notes.
 - Admin: detail panel with nothing to show was blank; now says it is view only.
 - Photo albums and folders opened as a broken detail page; Book items showed a Play button that failed.
 - SIGTERM killed the app without cleanup; the now-playing poster file in `$XDG_RUNTIME_DIR` was never removed.
+- Second pass: typing the letter `a` in the search box opened the account menu (the new account shortcut was checked before the search box); the shortcut overlay clipped long descriptions on narrow windows.
+- Second pass (test tooling): `scripts/test-jellyfin.sh` could start before Jellyfin was ready to be configured, and the admin live test that restarts the server restarted the default instance instead of the one under test.
 
 ## Not verified / known gaps
 
-- Real server with several seasons (season cards), real server HDR, Photo viewer on real data.
+- Real server HDR; the photo viewer and music on real data (the real server has no photo or music library).
 - Cache size cap reached on a real library; multi-day soak.
 - Session message action (no remote-controllable client available).
 - (Fixed) the `crates/jellyfin-user` live test `playback_reporting_sets_resume_then_played` no longer assumes a 2 s clip: positions now scale with the item runtime.
