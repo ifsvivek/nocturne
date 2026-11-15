@@ -1078,9 +1078,9 @@ impl Root {
     }
 
     fn push(&mut self, view: View, media: Option<Media>, cx: &mut Context<Self>) {
-        let Some(src) = self.source.clone() else {
+        if self.source.is_none() {
             return;
-        };
+        }
         let pid = self.push_page(view, media.clone());
         match (view, media) {
             (View::Home, _) => self.load_home(pid, cx),
