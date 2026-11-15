@@ -104,6 +104,13 @@ Admin actions additionally need an administrator account and a confirmation dial
 and ends this app's own session. The browsing and playback crate is GET-only and a test enforces it.
 Details and the full table: [docs/WRITES.md](docs/WRITES.md).
 
+## Contributing and AI-agent friendly
+
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the throwaway-server test workflow and
+the ground rules. The repository is set up so coding agents can work in it safely: [CLAUDE.md](CLAUDE.md) (also
+referenced from [AGENTS.md](AGENTS.md)) has the crate map, commands and safety rules, and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how the pieces fit together.
+
 ## Documentation
 
 [Features](docs/FEATURES.md) | [Architecture](docs/ARCHITECTURE.md) | [Design](docs/DESIGN.md) |
