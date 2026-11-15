@@ -19,6 +19,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
   gains an optional `default = true` marker on one entry per server (no token; older files load unchanged).
 
 ### Changed
+- Contrast and Settings controls: tertiary text rose from 3.5:1 to at least 4.6:1 and secondary text is lighter, so every
+  text token now reaches WCAG AA 4.5:1 on every surface (a unit test checks all token and surface pairs). Interactive
+  controls (buttons, inputs, chips, avatar buttons, profile tiles) got a new `edge` outline of at least 3:1. Settings
+  value controls are now 32 px filled drop-downs with 13 px text, a caret and clear hover, focus, pressed and open states;
+  On / Off settings are switches that keep the ON / OFF word; the selected row has an accent bar; section captions,
+  descriptions and row spacing are larger and easier to read.
 - Settings: options with several choices (audio and subtitle language, subtitles, buffer ahead, refill below, max RAM
   buffer, grid density, image cache) are now drop-downs. Click the value (or press Enter / Space) to open a menu under it
   with the current choice marked; pick one to apply, Esc or a click elsewhere closes it unchanged, and Up / Down /

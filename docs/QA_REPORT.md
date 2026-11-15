@@ -134,6 +134,21 @@ files), the Settings row and the name prefill. Not verified: the wrapped layout 
 navigation are unit-tested only), a failed server at launch with a default set (falls back to the picker, not run), and
 more than three profiles. All three tokens were revoked together because the app uses one device id for every account.
 
+## Contrast and Settings controls (unreleased)
+
+Throwaway Jellyfin on port 8101 (synthetic demo library), isolated XDG dirs, unique keyring service name, debug binary
+started from a directory without a `.env` and with the developer variables unset; focus and pid were checked before every
+keystroke. Checked live at 1280x720 (and Settings at 1900x1180): Settings closed, drop-down open (opens upward near the
+page bottom, current choice ticked), scrolled; the switches (ON and OFF words), caret flip, keyboard focus ring and the
+selected-row bar; Movies, an item's detail page and Admin Dashboard with the new tokens. Before and after screenshots
+were compared by eye; contrast measured on real pixels (text against the local background): Settings caption 3.9 before,
+8.0 after; description text 6.9; chip text 11.9; ON label 8.6 (the OFF label sat in the focus glow at 4.3 until the
+focused switch got a solid fill). Unit-tested: all token and surface contrast pairs (text 4.5:1, outlines and focus
+ring 3:1, secondary distinct from tertiary). Not verified live: the profile picker, dialogs and the player overlay with
+the new tokens (their colours come from the same tokens and the audited list, but they were not opened), narrower
+windows than 1280x720, and the drop-down at 1900x1180. Some overlay scrims and hover tints in the player still use raw
+rgba values outside `theme.rs` (decorative, not text).
+
 ## Not verified / known gaps
 
 - Real server HDR; the photo viewer and music on real data (the real server has no photo or music library).
