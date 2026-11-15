@@ -13,6 +13,7 @@ mod browse;
 mod client;
 mod config;
 mod model;
+mod play;
 
 pub use browse::{
     BrowseQuery, Chapter, ExternalUrl, FilterOptions, ItemExtra, MediaSource, NameId, Person,
@@ -21,6 +22,7 @@ pub use browse::{
 pub use client::{Client, ImageType, ItemsQuery};
 pub use config::Config;
 pub use model::{Item, Items, PublicInfo, User, UserData};
+pub use play::{MediaStream, PlayItem, Segment, SegmentKind, Transcode, TrickplayInfo};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

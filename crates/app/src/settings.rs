@@ -1,8 +1,8 @@
 //! User settings: TOML at `$XDG_CONFIG_HOME/nocturne/settings.toml`, atomic write, versioned,
 //! never any secret (the login lives in the keyring). Every field has a default, so a missing,
 //! older or half-written file still loads.
-use crate::hooks::{PlayerPrefs, SubMode};
 use crate::libview::LibPrefs;
+use crate::video::{PlayerPrefs, SubMode};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

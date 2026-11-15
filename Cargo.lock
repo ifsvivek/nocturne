@@ -3471,10 +3471,15 @@ dependencies = [
  "libc",
  "nocturne-jellyfin",
  "nocturne-jellyfin-admin",
+ "nocturne-jellyfin-user",
  "nocturne-player",
+ "nocturne-session",
  "raw-window-handle",
+ "serde",
  "serde_json",
  "tokio",
+ "toml 1.2.1+spec-1.1.0",
+ "zbus 5.19.0",
 ]
 
 [[package]]

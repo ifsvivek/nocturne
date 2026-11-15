@@ -1,38 +1,13 @@
-//! Contract with the player (video.rs): `PlayerPrefs` flows in from Settings, `PlayerHooks` is how
-//! the player reports back. The three prefs types below are PLACEHOLDERS with the exact shape the
-//! player engineer defines in video.rs; the orchestrator removes them when both halves land.
-//! `SyncHooks` is the real implementation: user-scope writes on the tokio bridge, never the UI thread.
-#![allow(dead_code)]
+//! Server writes from the app: playback reports, played and favourite. `SyncHooks` is the real
+//! `PlayerHooks`: user-scope writes on the tokio bridge, never the UI thread. `Reporter` decides when
+//! a playing item is reported (pure; the caller owns the clock).
 use crate::bridge;
+use crate::video::PlayerHooks;
 use nocturne_jellyfin_user::{PlaybackReport, UserClient};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SubMode {
-    #[default]
-    Off,
-    ForeignOnly,
-    Always,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct PlayerPrefs {
-    pub audio_lang: Option<String>,
-    pub sub_lang: Option<String>,
-    pub sub_mode: SubMode,
-    pub auto_skip_intro: bool,
-    pub autoplay_next: bool,
-}
-
-pub trait PlayerHooks {
-    fn started(&self, item_id: &str, position_ticks: i64);
-    fn progress(&self, item_id: &str, position_ticks: i64, paused: bool);
-    fn stopped(&self, item_id: &str, position_ticks: i64);
-    fn set_favorite(&self, item_id: &str, fav: bool);
-    fn is_favorite(&self, item_id: &str) -> bool;
-}
+use std::time::{Duration, Instant};
 
 /// 1 tick = 100 ns.
 pub fn ticks(secs: f64) -> i64 {
@@ -200,6 +175,69 @@ impl PlayerHooks for SyncHooks {
     }
 }
 
+/// How often a playing item is reported to the server.
+const REPORT_EVERY: Duration = Duration::from_secs(10);
+/// A jump larger than this against the expected position counts as a seek.
+const SEEK_JUMP: f64 = 3.0;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Tick {
+    Started,
+    Progress,
+}
+
+struct Last {
+    id: String,
+    at: Instant,
+    pos: f64,
+    paused: bool,
+    /// Latest position seen (reported or not), for the final "stopped" report.
+    seen: f64,
+}
+
+/// Decides when a playing item is reported: once at start, every 10 s, and at once on pause,
+/// resume or seek. Pure (the caller owns the clock and does the sending).
+#[derive(Default)]
+pub struct Reporter(Option<Last>);
+
+impl Reporter {
+    pub fn tick(&mut self, now: Instant, id: &str, pos: f64, paused: bool) -> Option<Tick> {
+        let cur = Last {
+            id: id.into(),
+            at: now,
+            pos,
+            paused,
+            seen: pos,
+        };
+        let Some(l) = self.0.as_mut().filter(|l| l.id == id) else {
+            self.0 = Some(cur);
+            return Some(Tick::Started);
+        };
+        l.seen = pos;
+        let dt = now.duration_since(l.at);
+        let expect = if l.paused {
+            l.pos
+        } else {
+            l.pos + dt.as_secs_f64()
+        };
+        if l.paused != paused || (pos - expect).abs() > SEEK_JUMP || dt >= REPORT_EVERY {
+            self.0 = Some(cur);
+            return Some(Tick::Progress);
+        }
+        None
+    }
+
+    /// The item currently reported on.
+    pub fn id(&self) -> Option<&str> {
+        self.0.as_ref().map(|l| l.id.as_str())
+    }
+
+    /// The item reported as started and its last position (seconds), forgotten.
+    pub fn stop(&mut self) -> Option<(String, f64)> {
+        self.0.take().map(|l| (l.id, l.seen))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,5 +303,62 @@ mod tests {
         let h = SyncHooks::new(None, true);
         h.set_played("a", true);
         assert_eq!(h.drain()[0].played, Some(false));
+    }
+
+    #[test]
+    fn reporter_start_interval_pause_seek_stop() {
+        let t0 = Instant::now();
+        let at = |s: u64| t0 + Duration::from_secs(s);
+        let mut r = Reporter::default();
+        assert_eq!(r.tick(at(0), "a", 5.0, false), Some(Tick::Started));
+        assert_eq!(r.tick(at(1), "a", 6.0, false), None);
+        assert_eq!(
+            r.tick(at(9), "a", 14.0, false),
+            None,
+            "quiet between reports"
+        );
+        assert_eq!(
+            r.tick(at(10), "a", 15.0, false),
+            Some(Tick::Progress),
+            "every 10 s"
+        );
+        assert_eq!(
+            r.tick(at(11), "a", 16.0, true),
+            Some(Tick::Progress),
+            "pause"
+        );
+        assert_eq!(r.tick(at(15), "a", 16.0, true), None, "paused and still");
+        assert_eq!(
+            r.tick(at(16), "a", 16.0, false),
+            Some(Tick::Progress),
+            "resume"
+        );
+        assert_eq!(
+            r.tick(at(17), "a", 90.0, false),
+            Some(Tick::Progress),
+            "seek forward"
+        );
+        assert_eq!(
+            r.tick(at(18), "a", 10.0, false),
+            Some(Tick::Progress),
+            "seek back"
+        );
+        assert_eq!(
+            r.tick(at(19), "b", 0.0, false),
+            Some(Tick::Started),
+            "new item"
+        );
+        assert_eq!(r.tick(at(20), "b", 1.5, false), None);
+        assert_eq!(
+            r.stop(),
+            Some(("b".into(), 1.5)),
+            "stop carries the last position seen"
+        );
+        assert_eq!(r.stop(), None);
+        assert_eq!(
+            r.tick(at(21), "b", 0.0, false),
+            Some(Tick::Started),
+            "after stop it starts again"
+        );
     }
 }

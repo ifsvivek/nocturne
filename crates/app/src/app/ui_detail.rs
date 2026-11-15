@@ -423,8 +423,7 @@ impl Root {
             return self.toast("Nothing to play here yet.", cx);
         }
         let first = v.remove(0);
-        self.queue = v.into();
-        self.play_media(first, cx);
+        self.play_media(first, v, cx);
     }
 
     fn do_act(&mut self, a: DAct, cx: &mut Context<Self>) {
