@@ -62,7 +62,12 @@ impl Player {
                 i.set_option("ao", "null")?;
                 i.set_option("force-window", "no")?;
             } else {
-                i.set_option("vo", "gpu-next")?;
+                // KNOWN ISSUE: in-process GPU output (gpu/gpu-next) corrupts GPUI's Vulkan state
+                // on NVIDIA when mpv shuts down (SIGSEGV in the host app). Software output is
+                // the safe default until playback moves out of process or is embedded.
+                // `NOCTURNE_VO=gpu-next` opts back in.
+                let vo = std::env::var("NOCTURNE_VO").unwrap_or_else(|_| "wlshm".into());
+                i.set_option("vo", vo.as_str())?;
                 i.set_option("hwdec", "auto-safe")?;
                 i.set_option("force-window", "yes")?;
             }

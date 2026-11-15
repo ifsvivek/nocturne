@@ -426,37 +426,40 @@ pub fn progress_bar(frac: f32, h: f32) -> Div {
     )
 }
 
-/// Compact transport button for the now-playing bar.
+/// Compact icon button for the now-playing bar (optional tiny mono label beside the icon).
 pub fn ctl_button(
     id: &'static str,
-    text: &'static str,
+    icon: &'static str,
+    label: &'static str,
     primary: bool,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
+    let ink = if primary { t::on_accent() } else { t::text() };
     let d = div()
         .id(id)
-        .h(px(32.0))
-        .min_w(px(40.0))
-        .px(px(t::S3))
+        .h(px(34.0))
+        .min_w(px(36.0))
+        .px(px(t::S2))
         .flex()
         .items_center()
         .justify_center()
+        .gap(px(t::S1))
         .rounded(px(6.0))
         .border_1()
         .font_family(t::MONO)
-        .text_size(px(t::CAPTION))
+        .text_size(px(t::MICRO))
+        .text_color(ink)
         .cursor_pointer()
         .active(|s| s.opacity(0.85))
         .on_click(on_click)
-        .child(text);
+        .child(svg().path(icon).size(px(16.0)).flex_none().text_color(ink))
+        .when(!label.is_empty(), |d| d.child(label));
     if primary {
         d.bg(t::accent())
             .border_color(t::accent())
-            .text_color(t::on_accent())
             .hover(|s| s.bg(t::accent_hover()))
     } else {
         d.border_color(t::hairline_strong())
-            .text_color(t::text())
             .hover(|s| s.bg(t::glass()))
     }
 }

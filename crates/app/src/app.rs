@@ -8,11 +8,13 @@ use crate::{bridge, cache::Cache, theme as t};
 use gpui::prelude::*;
 use gpui::*;
 use nocturne_player::{Event, Options, Player};
+use std::cell::Cell as StdCell;
 use std::future::Future;
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// Height of the docked now-playing bar.
-const BAR_H: f32 = 66.0;
+const BAR_H: f32 = 76.0;
 
 #[derive(Clone)]
 enum Load<T> {
@@ -127,6 +129,13 @@ impl Page {
     }
 }
 
+/// Pointer drags on the now-playing bar (fraction 0..1 along the track).
+#[derive(Clone, Copy)]
+enum Drag {
+    Seek(f32),
+    Vol(f32),
+}
+
 enum Act {
     PlayHero,
     Play(Media),
@@ -149,6 +158,15 @@ pub struct Root {
     pub focus: FocusHandle,
     player: Option<Player>,
     now: Option<Now>,
+    /// Bar kept alive briefly after stop so it can slide out.
+    leaving: Option<Now>,
+    bar_gen: u64,
+    track_b: Rc<StdCell<Bounds<Pixels>>>,
+    vol_b: Rc<StdCell<Bounds<Pixels>>>,
+    drag: Option<Drag>,
+    hover_frac: Option<f32>,
+    bar_hover: bool,
+    muted_from: Option<f64>,
     grain: Arc<Image>,
     dots: Arc<Image>,
     glow: Arc<Image>,
@@ -177,6 +195,14 @@ impl Root {
             focus: cx.focus_handle(),
             player: None,
             now: None,
+            leaving: None,
+            bar_gen: 0,
+            track_b: Rc::default(),
+            vol_b: Rc::default(),
+            drag: None,
+            hover_frac: None,
+            bar_hover: false,
+            muted_from: None,
             grain: ui::grain(),
             dots: ui::dots(),
             glow: ui::glow(),
@@ -444,10 +470,15 @@ impl Root {
             .as_ref()
             .is_some_and(|p| p.load(&url, Some(&header)).is_ok())
         {
-            self.stop();
+            self.stop(cx);
             return self.toast("This couldn't be played.", cx);
         }
         let ep = m.clone();
+        self.leaving = None;
+        if self.now.is_none() {
+            self.bar_gen += 1;
+        }
+        self.muted_from = None;
         self.now = Some(Now::new(m));
         if ep.kind == Kind::Episode {
             self.run(
@@ -462,9 +493,81 @@ impl Root {
         }
     }
 
-    fn stop(&mut self) {
-        self.now = None;
+    fn stop(&mut self, cx: &mut Context<Self>) {
         self.player = None; // dropping closes mpv and its window
+        self.drag = None;
+        self.hover_frac = None;
+        let Some(n) = self.now.take() else { return };
+        self.leaving = Some(n);
+        self.bar_gen += 1;
+        let g = self.bar_gen;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(220))
+                .await;
+            this.update(cx, |t, cx| {
+                if t.bar_gen == g {
+                    t.leaving = None;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn track_frac(&self, x: Pixels, b: Bounds<Pixels>) -> f32 {
+        if b.size.width <= px(0.0) {
+            0.0
+        } else {
+            ((x - b.origin.x) / b.size.width).clamp(0.0, 1.0)
+        }
+    }
+
+    fn drag_move(&mut self, x: Pixels, cx: &mut Context<Self>) {
+        match self.drag {
+            Some(Drag::Seek(_)) => {
+                self.drag = Some(Drag::Seek(self.track_frac(x, self.track_b.get())))
+            }
+            Some(Drag::Vol(_)) => {
+                let f = self.track_frac(x, self.vol_b.get());
+                self.drag = Some(Drag::Vol(f));
+                self.muted_from = None;
+                if let Some(p) = &self.player {
+                    let _ = p.set_volume(f as f64 * 100.0);
+                }
+            }
+            None => return,
+        }
+        cx.notify();
+    }
+
+    fn drag_end(&mut self, cx: &mut Context<Self>) {
+        if let (Some(Drag::Seek(f)), Some(p), Some(d)) = (
+            self.drag.take(),
+            &self.player,
+            self.now.as_ref().and_then(|n| n.times().1),
+        ) {
+            let _ = p.seek_to(f as f64 * d);
+        }
+        cx.notify();
+    }
+
+    fn mute(&mut self) {
+        let v = self
+            .now
+            .as_ref()
+            .and_then(|n| n.state.as_ref())
+            .map_or(100.0, |s| s.volume);
+        let Some(p) = &self.player else { return };
+        match self.muted_from.take() {
+            Some(prev) => drop(p.set_volume(prev)),
+            None if v > 0.0 => {
+                self.muted_from = Some(v);
+                let _ = p.set_volume(0.0);
+            }
+            None => drop(p.set_volume(100.0)),
+        }
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
@@ -495,11 +598,11 @@ impl Root {
             gone = true;
         }
         if failed {
-            self.stop();
+            self.stop(cx);
             self.toast("This couldn't be played.", cx);
             cx.notify();
         } else if gone {
-            self.stop();
+            self.stop(cx);
             cx.notify();
         }
     }
@@ -513,17 +616,6 @@ impl Root {
     fn seek(&mut self, secs: f64) {
         if let Some(p) = &self.player {
             let _ = p.seek_by(secs);
-        }
-    }
-
-    fn volume(&mut self, delta: f64) {
-        let v = self
-            .now
-            .as_ref()
-            .and_then(|n| n.state.as_ref())
-            .map_or(100.0, |s| s.volume);
-        if let Some(p) = &self.player {
-            let _ = p.set_volume(v + delta);
         }
     }
 
@@ -600,7 +692,7 @@ impl Root {
                 .is_some_and(|p| matches!(p.view, View::Home | View::Grid));
             match key {
                 "space" => self.toggle(),
-                "s" => self.stop(),
+                "s" => self.stop(cx),
                 "n" => self.next_episode(cx),
                 // Left/Right navigate grids; elsewhere they seek.
                 "left" if !spatial => self.seek(-10.0),
@@ -875,20 +967,33 @@ impl Root {
 
     // ---- now playing ----
 
-    fn now_bar(&self, cx: &mut Context<Self>) -> Option<Div> {
-        let n = self.now.as_ref()?;
-        let (pos, dur) = n.times();
+    fn now_bar(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let leaving = self.now.is_none();
+        let n = self.now.as_ref().or(self.leaving.as_ref())?;
+        let media = n.media.clone();
+        let (mut pos, dur) = n.times();
         let st = n.state.as_ref();
         let paused = st.is_some_and(|s| s.paused);
-        let vol = st.map_or(100.0, |s| s.volume);
-        let status = if !n.loaded {
+        let mut vol = st.map_or(100.0, |s| s.volume);
+        let (loaded, ended, has_next, mut frac) = (n.loaded, n.ended, n.next.is_some(), n.frac());
+        if let (Some(Drag::Seek(f)), Some(d)) = (self.drag, dur) {
+            (frac, pos) = (f, f as f64 * d);
+        }
+        if let Some(Drag::Vol(f)) = self.drag {
+            vol = f as f64 * 100.0;
+        }
+        let tip = self
+            .hover_frac
+            .zip(dur)
+            .map(|(f, d)| (f, fmt_clock(f as f64 * d)));
+        let status = if !loaded {
             "loading".to_string()
-        } else if n.ended {
+        } else if ended {
             "finished".to_string()
         } else {
             [
-                n.media.series_name.clone().unwrap_or_default(),
-                n.media.episode_label(),
+                media.series_name.clone().unwrap_or_default(),
+                media.episode_label(),
             ]
             .into_iter()
             .filter(|s| !s.is_empty())
@@ -900,13 +1005,57 @@ impl Root {
             fmt_clock(pos),
             dur.map_or("--:--".into(), fmt_clock)
         );
+        let thumb = self.pic(&media, Art::Poster, 160, cx);
+
+        let tb = self.track_b.clone();
+        let big = self.bar_hover || matches!(self.drag, Some(Drag::Seek(_)));
+        let track = div()
+            .id("np-track")
+            .relative()
+            .w_full()
+            .h(px(12.0))
+            .flex_none()
+            .cursor_pointer()
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .w_full()
+                    .child(ui::progress_bar(frac, if big { 8.0 } else { 4.0 })),
+            )
+            .child(
+                canvas(move |b, _, _| tb.set(b), |_, _, _, _| {})
+                    .absolute()
+                    .size_full(),
+            )
+            .on_hover(cx.listener(|t, h: &bool, _, cx| {
+                t.bar_hover = *h;
+                if !*h {
+                    t.hover_frac = None;
+                }
+                cx.notify();
+            }))
+            .on_mouse_move(cx.listener(|t, e: &MouseMoveEvent, _, cx| {
+                t.hover_frac = Some(t.track_frac(e.position.x, t.track_b.get()));
+                cx.notify();
+            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|t, e: &MouseDownEvent, _, cx| {
+                    t.drag = Some(Drag::Seek(t.track_frac(e.position.x, t.track_b.get())));
+                    cx.notify();
+                }),
+            );
+
         let mut ctl = div()
             .flex()
             .items_center()
             .gap(px(t::S2))
             .child(ui::ctl_button(
                 "np-back",
-                "-10",
+                "icons/back.svg",
+                "10",
                 false,
                 cx.listener(|t, _, _, cx| {
                     t.seek(-10.0);
@@ -915,7 +1064,12 @@ impl Root {
             ))
             .child(ui::ctl_button(
                 "np-pause",
-                if paused { "Play" } else { "Pause" },
+                if paused {
+                    "icons/play.svg"
+                } else {
+                    "icons/pause.svg"
+                },
+                "",
                 true,
                 cx.listener(|t, _, _, cx| {
                     t.toggle();
@@ -924,17 +1078,19 @@ impl Root {
             ))
             .child(ui::ctl_button(
                 "np-fwd",
-                "+30",
+                "icons/fwd.svg",
+                "30",
                 false,
                 cx.listener(|t, _, _, cx| {
                     t.seek(30.0);
                     cx.notify();
                 }),
             ));
-        if n.ended && n.next.is_some() {
+        if ended && has_next {
             ctl = ctl.child(ui::ctl_button(
                 "np-next",
-                "Next episode",
+                "icons/play.svg",
+                "next",
                 true,
                 cx.listener(|t, _, _, cx| {
                     t.next_episode(cx);
@@ -942,86 +1098,150 @@ impl Root {
                 }),
             ));
         }
+        let vb = self.vol_b.clone();
         let volume = div()
             .flex()
             .items_center()
             .gap(px(t::S2))
             .child(ui::ctl_button(
-                "np-vol-",
-                "-",
+                "np-mute",
+                if vol <= 0.0 {
+                    "icons/mute.svg"
+                } else {
+                    "icons/volume.svg"
+                },
+                "",
                 false,
                 cx.listener(|t, _, _, cx| {
-                    t.volume(-10.0);
+                    t.mute();
                     cx.notify();
                 }),
             ))
             .child(
                 div()
-                    .w(px(44.0))
+                    .id("np-vol")
+                    .relative()
+                    .w(px(84.0))
+                    .h(px(24.0))
                     .flex()
-                    .justify_center()
-                    .child(ui::mono(format!("vol {}", vol.round() as i32))),
+                    .items_center()
+                    .cursor_pointer()
+                    .child(
+                        div()
+                            .w_full()
+                            .child(ui::progress_bar((vol / 100.0) as f32, 3.0)),
+                    )
+                    .child(
+                        canvas(move |b, _, _| vb.set(b), |_, _, _, _| {})
+                            .absolute()
+                            .size_full(),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|t, e: &MouseDownEvent, _, cx| {
+                            t.drag = Some(Drag::Vol(0.0));
+                            t.drag_move(e.position.x, cx);
+                        }),
+                    ),
+            );
+        let mut glow = t::glow();
+        glow.a = 0.10;
+        let bar = div()
+            .absolute()
+            .bottom_0()
+            .left_0()
+            .w_full()
+            .h(px(BAR_H))
+            .flex()
+            .flex_col()
+            .border_t_1()
+            .border_color(t::hairline_strong())
+            .bg(rgba(0x07080cf5))
+            .shadow(vec![BoxShadow {
+                color: glow.into(),
+                offset: point(px(0.0), px(-10.0)),
+                blur_radius: px(36.0),
+                spread_radius: px(0.0),
+            }])
+            .child(track)
+            .child(
+                div()
+                    .flex_1()
+                    .px(px(t::PAGE_PAD))
+                    .flex()
+                    .items_center()
+                    .gap(px(t::S6))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .items_center()
+                            .gap(px(t::S3))
+                            .child(
+                                ui::tile(thumb, &media.title, "np-thumb")
+                                    .w(px(36.0))
+                                    .h(px(48.0))
+                                    .flex_none(),
+                            )
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(2.0))
+                                    .child(
+                                        div()
+                                            .truncate()
+                                            .text_size(px(14.0))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(t::text())
+                                            .child(media.title.clone()),
+                                    )
+                                    .child(ui::mono(status)),
+                            )
+                            .child(div().w(px(t::S2)).flex_none())
+                            .child(ui::mono(clock).flex_none()),
+                    )
+                    .child(ctl)
+                    .child(volume)
+                    .child(ui::ctl_button(
+                        "np-stop",
+                        "icons/stop.svg",
+                        "",
+                        false,
+                        cx.listener(|t, _, _, cx| {
+                            t.stop(cx);
+                            cx.notify();
+                        }),
+                    )),
             )
-            .child(ui::ctl_button(
-                "np-vol+",
-                "+",
-                false,
-                cx.listener(|t, _, _, cx| {
-                    t.volume(10.0);
-                    cx.notify();
-                }),
-            ));
-        Some(
-            div()
-                .absolute()
-                .bottom_0()
-                .left_0()
-                .w_full()
-                .h(px(BAR_H))
-                .flex()
-                .flex_col()
-                .border_t_1()
-                .border_color(t::hairline_strong())
-                .bg(rgba(0x07080cf2))
-                .child(ui::progress_bar(n.frac(), 2.0))
-                .child(
+            .when_some(tip, |d, (f, text)| {
+                let w = self.track_b.get().size.width;
+                d.child(
                     div()
-                        .flex_1()
-                        .px(px(t::PAGE_PAD))
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .gap(px(t::S6))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .flex()
-                                .flex_col()
-                                .gap(px(2.0))
-                                .child(
-                                    div()
-                                        .truncate()
-                                        .text_size(px(t::BODY))
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(t::text())
-                                        .child(n.media.title.clone()),
-                                )
-                                .child(ui::mono(status)),
-                        )
-                        .child(ui::mono(clock))
-                        .child(ctl)
-                        .child(volume)
-                        .child(ui::ctl_button(
-                            "np-stop",
-                            "Stop",
-                            false,
-                            cx.listener(|t, _, _, cx| {
-                                t.stop();
-                                cx.notify();
-                            }),
-                        )),
-                ),
+                        .absolute()
+                        .top(px(-30.0))
+                        .left(w * f - px(22.0))
+                        .px(px(t::S2))
+                        .py(px(3.0))
+                        .rounded(px(4.0))
+                        .bg(t::raised())
+                        .border_1()
+                        .border_color(t::hairline_strong())
+                        .child(ui::mono(text).text_color(t::text())),
+                )
+            });
+        Some(
+            bar.with_animation(
+                ui::name(format!("np-bar-{}-{leaving}", self.bar_gen)),
+                Animation::new(std::time::Duration::from_millis(200)).with_easing(ease_out_quint()),
+                move |d, v| {
+                    let k = if leaving { v } else { 1.0 - v };
+                    d.bottom(px(-BAR_H * k)).opacity(1.0 - k)
+                },
+            )
+            .into_any_element(),
         )
     }
 
@@ -1901,6 +2121,17 @@ impl Render for Root {
             .id("root")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|t, ev, _, cx| t.on_key(ev, cx)))
+            .on_mouse_move(
+                cx.listener(|t, e: &MouseMoveEvent, _, cx| t.drag_move(e.position.x, cx)),
+            )
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|t, _, _, cx| {
+                    if t.drag.is_some() {
+                        t.drag_end(cx);
+                    }
+                }),
+            )
             .size_full()
             .relative()
             .font_family(t::FONT)
@@ -1911,7 +2142,9 @@ impl Render for Root {
             .child(
                 div()
                     .size_full()
-                    .when(self.now.is_some(), |d| d.pb(px(BAR_H)))
+                    .when(self.now.is_some() || self.leaving.is_some(), |d| {
+                        d.pb(px(BAR_H))
+                    })
                     .child(body),
             );
         if matches!(self.phase, Phase::Ready) {

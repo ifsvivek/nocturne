@@ -1,4 +1,5 @@
 mod app;
+mod assets;
 mod bridge;
 mod cache;
 mod nav;
@@ -12,29 +13,31 @@ use gpui::*;
 fn main() {
     // Config (and .env) is read once, before any other thread exists.
     let cfg = nocturne_jellyfin::Config::load().ok();
-    Application::new().run(move |cx: &mut App| {
-        let opts = WindowOptions {
-            titlebar: Some(TitlebarOptions {
-                title: Some("NOCTURNE".into()),
+    Application::new()
+        .with_assets(assets::Assets)
+        .run(move |cx: &mut App| {
+            let opts = WindowOptions {
+                titlebar: Some(TitlebarOptions {
+                    title: Some("NOCTURNE".into()),
+                    ..Default::default()
+                }),
+                app_id: Some("nocturne".into()),
+                window_min_size: Some(size(px(800.0), px(560.0))),
                 ..Default::default()
-            }),
-            app_id: Some("nocturne".into()),
-            window_min_size: Some(size(px(800.0), px(560.0))),
-            ..Default::default()
-        };
-        cx.open_window(opts, |window, cx| {
-            let view = cx.new(|cx| app::Root::new(cfg, window, cx));
-            let handle = view.read(cx).focus.clone();
-            window.focus(&handle);
-            view
-        })
-        .expect("open window");
-        cx.on_window_closed(|cx| {
-            if cx.windows().is_empty() {
-                cx.quit();
-            }
-        })
-        .detach();
-        cx.activate(true);
-    });
+            };
+            cx.open_window(opts, |window, cx| {
+                let view = cx.new(|cx| app::Root::new(cfg, window, cx));
+                let handle = view.read(cx).focus.clone();
+                window.focus(&handle);
+                view
+            })
+            .expect("open window");
+            cx.on_window_closed(|cx| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
+            cx.activate(true);
+        });
 }
