@@ -64,7 +64,8 @@ XML
     --ffmpeg "$(command -v ffmpeg)" >"$T/stdout.log" 2>&1 </dev/null &
   echo $! >"$PIDF"
   local n
-  for n in $(seq 60); do healthy && return 0; running || break; sleep 1; done
+  # Jellyfin answers once, then rebuilds its listener: only trust two successes a few seconds apart.
+  for n in $(seq 60); do healthy && { sleep 4; healthy && return 0; }; running || break; sleep 1; done
   echo "jellyfin did not become healthy; see $T/stdout.log and $T/log" >&2; exit 1
 }
 
