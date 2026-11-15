@@ -9,7 +9,7 @@ playing video in the app window through libmpv. Wayland first.
 
 [Website](https://nocturne.ifsvivek.in) · [Download](https://github.com/ifsvivek/nocturne/releases/latest) · [Features](docs/FEATURES.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
 
-Status: version 0.1.1, the first release. Linux only. See [docs/ROADMAP.md](docs/ROADMAP.md) for what is missing.
+Status: version 0.2.0, early software. Linux only. See [docs/ROADMAP.md](docs/ROADMAP.md) for what is missing.
 
 ## Screenshots
 
@@ -37,7 +37,8 @@ The full checklist is [docs/FEATURES.md](docs/FEATURES.md); verification notes a
   audio and subtitle menus with delays and styling, speed and picture controls, skip intro and credits,
   next-episode autoplay, queue, quality selector with transcode fallback, mini player, MPRIS and idle inhibit.
 - **Accounts**: username and password or Quick Connect (and authorizing other devices); switch between remembered accounts without
-  a password; the token lives in your system keyring.
+  a password, with a "Who's watching?" profile picker at launch (and an optional default profile); the token lives in your
+  system keyring.
 - **Playlists and music**: create, edit, reorder and delete your playlists; a music queue with play next, shuffle and repeat.
 - **Admin** (administrator accounts): dashboard, users (access and limits), libraries, providers, scheduled tasks and triggers,
   devices, activity, logs, API keys, branding, networking, transcoding, trickplay, backups and plugins, each change behind a
@@ -55,8 +56,8 @@ Linux only; see [docs/PACKAGING.md](docs/PACKAGING.md) for the full dependency l
 **Release tarball** (from the [latest release](https://github.com/ifsvivek/nocturne/releases/latest)):
 
 ```sh
-sha256sum -c nocturne-0.1.1-x86_64-linux.tar.gz.sha256
-tar xf nocturne-0.1.1-x86_64-linux.tar.gz && cd nocturne-0.1.1-x86_64-linux
+sha256sum -c nocturne-0.2.0-x86_64-linux.tar.gz.sha256
+tar xf nocturne-0.2.0-x86_64-linux.tar.gz && cd nocturne-0.2.0-x86_64-linux
 sudo ./install.sh              # PREFIX=/usr/local by default; `sudo ./install.sh uninstall` removes it
 ```
 

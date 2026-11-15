@@ -1,6 +1,6 @@
 # Features
 
-What NOCTURNE 0.1.1 does today. `[x]` implemented, `[~]` partial, `[ ]` not implemented.
+What NOCTURNE 0.2.0 does today. `[x]` implemented, `[~]` partial, `[ ]` not implemented.
 Verification detail per feature is in [QA_REPORT.md](QA_REPORT.md); remaining work is in [ROADMAP.md](ROADMAP.md).
 Which features change data on your server is in [WRITES.md](WRITES.md).
 

@@ -3,7 +3,7 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-11-15
 
 ### Added
 - Profile picker ("Who's watching?"): when the last used server has two or more remembered accounts and no default, the
@@ -39,15 +39,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
   is read with GET `/Users/{id}/Images/Primary`, cached on disk by server, user and image tag, and follows a change at
   once: setting or removing it from the app, or switching account, needs no restart. `accounts.toml` now also keeps the
   server's public image tag per account (no token, no image data).
+- The tarball installer (`install.sh`) now writes the absolute binary path into the desktop entry, refreshes the desktop
+  and icon caches, and says what to do when the app does not appear in the launcher. In 0.1.0 some launchers did not
+  list NOCTURNE after a tarball install.
 - Settings: the page could not be scrolled, so the settings below the fold were out of reach. It now scrolls with the
   wheel, trackpad, PgUp / PgDn, Home / End and the arrow keys, which keep the selected row in view.
-
-## [0.1.1] - 2026-11-15
-
-### Fixed
-- `install.sh` now writes the absolute binary path into the desktop entry, refreshes the desktop and icon caches, and
-  says what to do when the app does not appear in the launcher. In 0.1.0 some launchers did not list NOCTURNE after
-  a tarball install.
 
 ## [0.1.0] - 2026-11-15
 
@@ -77,5 +73,5 @@ First release. Linux only.
 ### Known limitations
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 
-[0.1.1]: https://github.com/ifsvivek/nocturne/releases/tag/v0.1.1
+[0.2.0]: https://github.com/ifsvivek/nocturne/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ifsvivek/nocturne/releases/tag/v0.1.0
