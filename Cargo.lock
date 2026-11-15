@@ -3497,6 +3497,7 @@ dependencies = [
 name = "nocturne-jellyfin-admin"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "nocturne-jellyfin",
  "reqwest",
  "serde",

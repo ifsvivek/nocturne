@@ -2,8 +2,8 @@
 //! the write it performs. `exec` is only reachable with a `Confirmed` token.
 use super::confirm::{Dialog, Field};
 use nocturne_jellyfin_admin::{
-    AdminClient, ConfigPatch, Confirmed, Error, NetworkEdit, Package, Result, TaskTrigger, edit,
-    edit::Fetcher,
+    AdminClient, ConfigPatch, Confirmed, Error, NetworkEdit, Package, PolicyEdit, Result,
+    TaskTrigger, edit, edit::Fetcher,
 };
 use serde_json::{Value, json};
 
@@ -327,6 +327,58 @@ fn is_port(s: &str) -> bool {
     s.parse::<u16>().is_ok_and(|p| p > 0)
 }
 
+/// Numeric per-user limits.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Lim {
+    Bitrate,
+    Sessions,
+    Attempts,
+}
+
+impl Lim {
+    fn text(self) -> (&'static str, &'static str) {
+        match self {
+            Lim::Bitrate => (
+                "Remote streaming limit",
+                "Highest bitrate this user may stream from outside the local network, in bits per second. 0 means no limit.",
+            ),
+            Lim::Sessions => (
+                "Simultaneous sessions",
+                "How many devices may be signed in at once. 0 means unlimited.",
+            ),
+            Lim::Attempts => (
+                "Failed sign-ins before lockout",
+                "The account locks after this many wrong passwords in a row. -1 never locks it, 0 uses the server default. Jellyfin has no other password rules.",
+            ),
+        }
+    }
+
+    fn edit(self, v: &str) -> Result<PolicyEdit> {
+        let n = v
+            .trim()
+            .parse::<i64>()
+            .map_err(|_| Error::Invalid("enter a whole number".into()))?;
+        Ok(match self {
+            Lim::Bitrate => PolicyEdit::BitrateLimit(n),
+            Lim::Sessions => PolicyEdit::MaxActiveSessions(i32::try_from(n).unwrap_or(-1)),
+            Lim::Attempts => PolicyEdit::LoginAttempts(i32::try_from(n).unwrap_or(-9)),
+        })
+    }
+
+    fn valid(self, s: &str) -> bool {
+        self.edit(s).is_ok_and(|e| e.apply(&mut json!({})).is_ok())
+    }
+
+    /// Field check (a plain fn pointer, so one per limit).
+    fn check(self) -> fn(&str) -> bool {
+        match self {
+            Lim::Bitrate => |s| Lim::Bitrate.valid(s),
+            Lim::Sessions => |s| Lim::Sessions.valid(s),
+            Lim::Attempts => |s| Lim::Attempts.valid(s),
+        }
+    }
+}
+
 #[derive(Clone)] // no Debug: DeleteKey carries an access token
 pub enum Act {
     CreateUser,
@@ -372,6 +424,20 @@ pub enum Act {
     RemoveLibPath(Tgt, String),
     RemoveLibrary(Tgt),
     RenameLibrary(Tgt),
+    /// (user, policy key, label, new value)
+    UserFlag(Tgt, &'static str, &'static str, bool),
+    /// (user, library, allow)
+    UserLibrary(Tgt, Tgt, bool),
+    /// (user, which limit, current value)
+    UserLimit(Tgt, Lim, String),
+    /// (user, current rating name, the names the server knows)
+    UserRating(Tgt, String, String),
+    /// (user, blocked tags? else allowed, current list)
+    UserTags(Tgt, bool, String),
+    UserImage(Tgt),
+    UserImageRemove(Tgt),
+    /// Read-only: load a user's display preferences (no dialog).
+    ViewPrefs(Tgt),
     /// (library, item type, images?, what changes, the whole new list)
     Fetchers(Tgt, String, bool, String, Vec<Fetcher>),
     /// (library, reader name, enable)
@@ -500,6 +566,39 @@ impl Act {
             RemoveLibPath((_, n), p) => d("Remove folder", format!("{n} will stop indexing {p}. The files stay where they are."), "Remove folder", true),
             RemoveLibrary((_, n)) => d("Remove library", format!("This removes the library {n} and its metadata from the server. Your media files are not deleted. It cannot be undone."), "Remove library", true)
                 .field(Field::typed("Type the library name to confirm", n)),
+            UserFlag((_, u), _, label, on) => d(label, format!("Turn {label} {} for {u}.", if *on { "on" } else { "off" }), "Save", false),
+            UserLibrary((_, u), (_, l), on) => d(
+                if *on { "Allow library" } else { "Block library" },
+                format!("{u} {} the library {l}.", if *on { "will be able to see" } else { "will no longer see" }),
+                if *on { "Allow" } else { "Block" },
+                false,
+            ),
+            UserLimit((_, u), k, cur) => {
+                let (t, body) = k.text();
+                let mut f = text("Value", cur);
+                f.numeric = *k != Lim::Attempts;
+                d(t, format!("{body} For {u}."), "Save", false).field(f.checked(k.check()))
+            }
+            UserRating((_, u), cur, names) => {
+                let mut f = text("Highest rating", cur).checked(|s| s.chars().all(|c| c.is_alphanumeric() || " -+/.".contains(c)));
+                f.optional = true;
+                d("Maximum parental rating", format!("{u} will not see items rated above this. Leave it empty for no limit. Known ratings: {names}."), "Save", false).field(f)
+            }
+            UserTags((_, u), blocked, cur) => {
+                let mut f = text("Tags, separated by commas", cur);
+                f.optional = true;
+                d(
+                    if *blocked { "Blocked tags" } else { "Allowed tags" },
+                    format!("{} for {u}. Leave it empty to clear the list.", if *blocked { "Items with any of these tags are hidden" } else { "Only items with one of these tags are shown" }),
+                    "Save",
+                    false,
+                )
+                .field(f)
+            }
+            UserImage((_, u)) => d("Profile image", format!("Upload a PNG, JPEG, WebP or GIF (up to 10 MB) from this computer as the profile image of {u}."), "Upload", false)
+                .field(text("Path of the image file", "").checked(|s| std::path::Path::new(s).is_file())),
+            UserImageRemove((_, u)) => d("Remove profile image", format!("The profile image of {u} is deleted from the server."), "Remove image", true),
+            ViewPrefs(_) => unreachable!("preference views have no dialog"),
             RenameLibrary((_, n)) => d("Rename library", format!("Give the library {n} a new name. Its media and settings are kept; the server refreshes it afterwards."), "Rename", false)
                 .field(text("New name", n).checked(is_name)),
             Fetchers((_, n), ty, images, what, _) => d(
@@ -552,6 +651,10 @@ impl Act {
             }
             (EditNet(..) | NetFlag(..), _) => "Saved. Restart the server to apply it.",
             (AddTrigger(..) | EditTrigger(..) | DeleteTrigger(..), _) => "Triggers updated.",
+            (UserImage(_) | UserImageRemove(_), _) => "Profile image updated.",
+            (UserFlag(..) | UserLibrary(..) | UserLimit(..) | UserRating(..) | UserTags(..), _) => {
+                "Access updated."
+            }
             (RenameLibrary(_), _) => "Library renamed.",
             (AddLibrary, _) => "Library added. Scanning has started.",
             (RemoveLibrary(_), _) => "Library removed.",
@@ -619,6 +722,50 @@ pub async fn exec(c: AdminClient, act: Act, v: Vec<String>, ok: Confirmed) -> Re
         AddLibPath((_, n)) => c.add_library_path(&n, &v[0]).await,
         RemoveLibPath((_, n), p) => c.remove_library_path(&n, &p, ok).await,
         RemoveLibrary((_, n)) => c.remove_library(&n, ok).await,
+        UserFlag((id, _), key, _, on) => {
+            c.edit_user_policy(&id, &PolicyEdit::Flag(key.into(), on))
+                .await
+        }
+        UserLibrary((id, _), (lib, _), on) => c.set_user_library_access(&id, &lib, on).await,
+        UserLimit((id, _), k, _) => c.edit_user_policy(&id, &k.edit(&v[0])?).await,
+        UserRating((id, _), _, _) => {
+            let level = match v[0].as_str() {
+                "" => None,
+                name => Some(
+                    c.parental_ratings()
+                        .await?
+                        .into_iter()
+                        .find(|r| r.name.eq_ignore_ascii_case(name))
+                        .and_then(|r| r.value)
+                        .ok_or_else(|| Error::Invalid("unknown rating".into()))?,
+                ),
+            };
+            c.edit_user_policy(&id, &PolicyEdit::MaxParentalRating(level))
+                .await
+        }
+        UserTags((id, _), blocked, _) => {
+            let l = edit::split_tags(&v[0]);
+            let e = if blocked {
+                PolicyEdit::BlockedTags(l)
+            } else {
+                PolicyEdit::AllowedTags(l)
+            };
+            c.edit_user_policy(&id, &e).await
+        }
+        UserImage((id, _)) => {
+            let path = std::path::Path::new(&v[0]);
+            let len = std::fs::metadata(path)
+                .map_err(|_| Error::Invalid("cannot read that file".into()))?
+                .len();
+            if len > edit::MAX_IMAGE_BYTES as u64 {
+                return Err(Error::Invalid("the image is larger than 10 MB".into()));
+            }
+            let bytes =
+                std::fs::read(path).map_err(|_| Error::Invalid("cannot read that file".into()))?;
+            c.set_user_image(&id, &bytes).await
+        }
+        UserImageRemove((id, _)) => c.remove_user_image(&id, ok).await,
+        ViewPrefs(_) => Ok(()),
         RenameLibrary((_, n)) => c.rename_library(&n, &v[0]).await,
         Fetchers((id, _), ty, images, _, list) => {
             c.set_library_fetchers(&id, &ty, images, &list).await
@@ -748,6 +895,33 @@ mod tests {
         assert!(d.valid());
         assert_eq!(Tp::Scan.value("blocking"), json!("Blocking"));
         assert_eq!(Tp::List.value("320, 640"), json!([320, 640]));
+    }
+
+    #[test]
+    fn user_dialogs_validate_input() {
+        let mut d = Act::UserLimit(tgt(), Lim::Attempts, "0".into()).dialog();
+        type_into(&mut d, 0, "-1");
+        assert!(d.valid());
+        type_into(&mut d, 0, "-2");
+        assert!(!d.valid(), "below -1 refused");
+        let mut d = Act::UserLimit(tgt(), Lim::Bitrate, "0".into()).dialog();
+        type_into(&mut d, 0, "-5");
+        assert_eq!(d.fields[0].value, "5", "bitrate input is numeric only");
+        assert!(Lim::Sessions.valid("3") && !Lim::Sessions.valid("5000"));
+        let mut d = Act::UserRating(tgt(), "".into(), "G, PG".into()).dialog();
+        assert!(d.valid(), "empty clears the limit");
+        type_into(&mut d, 0, "PG-13");
+        assert!(d.valid());
+        type_into(&mut d, 0, "<R>");
+        assert!(!d.valid());
+        let d = Act::UserImage(tgt()).dialog();
+        assert!(!d.valid(), "needs an existing file");
+        assert!(Act::UserImageRemove(tgt()).dialog().danger);
+        assert!(
+            !Act::UserFlag(tgt(), "EnableRemoteAccess", "Remote access", false)
+                .dialog()
+                .danger
+        );
     }
 
     #[test]

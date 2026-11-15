@@ -1,7 +1,7 @@
 //! Turns loaded data into rows and buttons for the list screens (Users, Libraries, Tasks,
 //! and so on). The dashboard's session cards use the same rows.
 use super::Admin;
-use super::act::{Act, Brand, Cfg, Net, Tp, TrigKind};
+use super::act::{Act, Brand, Cfg, Lim, Net, Tp, TrigKind};
 use super::fmt::{bytes, short, when};
 use super::state::{Data, L, LibProviders, Section};
 use nocturne_jellyfin_admin::edit::{self, Fetcher};
@@ -86,6 +86,7 @@ impl Admin {
             Section::General => general(d),
             Section::Branding => branding(d),
             Section::Users => users(d),
+            Section::Access => access(d),
             Section::Libraries => libraries(d),
             Section::Providers => providers(d),
             Section::Metadata => config_page(d, |c| {
@@ -374,6 +375,190 @@ fn users(d: &Data) -> Model {
             ],
             ..Default::default()
         });
+    }
+    m
+}
+
+/// Per user: library access, feature switches, limits and the profile image.
+fn access(d: &Data) -> Model {
+    let mut m = Model {
+        status: status(&d.users).or(status(&d.folders)),
+        ..Default::default()
+    };
+    let (Some(users), Some(folders)) = (d.users.get(), d.folders.get()) else {
+        return m;
+    };
+    let ratings = d.ratings.get().map(Vec::as_slice).unwrap_or_default();
+    for u in users {
+        let t = (u.id.clone(), u.name.clone());
+        let raw = serde_json::to_value(&u.policy).unwrap_or_default();
+        let mut add = |g: &str, mut it: Item| {
+            it.group = Some(format!("{} · {g}", u.name));
+            m.items.push(it);
+        };
+        for f in folders.iter().filter(|f| !f.item_id.is_empty()) {
+            let on = edit::folder_allowed(&raw, &f.item_id);
+            let mut it = row(
+                &f.name,
+                f.collection_type.clone().unwrap_or("mixed".into()),
+                vec![b(
+                    if on { "Block" } else { "Allow" },
+                    Act::UserLibrary(t.clone(), (f.item_id.clone(), f.name.clone()), !on),
+                )],
+            );
+            it.chips = vec![(if on { "allowed" } else { "blocked" }.into(), on)];
+            add("Libraries", it);
+        }
+        for (key, label) in edit::POLICY_FLAGS {
+            let on = u.policy.flag(key);
+            let mut it = row(
+                label,
+                String::new(),
+                vec![b(
+                    if on { "Turn off" } else { "Turn on" },
+                    Act::UserFlag(t.clone(), key, label, !on),
+                )],
+            );
+            it.chips = vec![(yes(on), on)];
+            add("Access", it);
+        }
+        let limit = |title: &str, k: Lim, v: i64, zero: &str| {
+            let sub = if v == 0 {
+                zero.to_string()
+            } else {
+                v.to_string()
+            };
+            row(
+                title,
+                sub,
+                vec![b("Edit", Act::UserLimit(t.clone(), k, v.to_string()))],
+            )
+        };
+        let level = u.policy.get("MaxParentalRating").as_i64();
+        let rating = level.map_or(String::new(), |l| {
+            ratings
+                .iter()
+                .find(|r| r.value.map(i64::from) == Some(l))
+                .map_or(format!("level {l}"), |r| r.name.clone())
+        });
+        let names: Vec<_> = ratings.iter().map(|r| r.name.as_str()).collect();
+        add(
+            "Limits and content",
+            row(
+                "Maximum parental rating",
+                if rating.is_empty() {
+                    "no limit".into()
+                } else {
+                    rating.clone()
+                },
+                vec![b(
+                    "Edit",
+                    Act::UserRating(t.clone(), rating, names.join(", ")),
+                )],
+            ),
+        );
+        for (title, blocked, key) in [
+            ("Blocked tags", true, "BlockedTags"),
+            ("Allowed tags", false, "AllowedTags"),
+        ] {
+            let l: Vec<String> = u
+                .policy
+                .get(key)
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect();
+            let sub = if l.is_empty() {
+                "none".into()
+            } else {
+                l.join(", ")
+            };
+            add(
+                "Limits and content",
+                row(
+                    title,
+                    sub,
+                    vec![b("Edit", Act::UserTags(t.clone(), blocked, l.join(", ")))],
+                ),
+            );
+        }
+        let n = |k: &str| u.policy.get(k).as_i64().unwrap_or(0);
+        add(
+            "Limits and content",
+            limit(
+                "Remote streaming limit (bit/s)",
+                Lim::Bitrate,
+                n("RemoteClientBitrateLimit"),
+                "no limit",
+            ),
+        );
+        add(
+            "Limits and content",
+            limit(
+                "Simultaneous sessions",
+                Lim::Sessions,
+                n("MaxActiveSessions"),
+                "unlimited",
+            ),
+        );
+        let att = u
+            .policy
+            .get("LoginAttemptsBeforeLockout")
+            .as_i64()
+            .unwrap_or(0);
+        add(
+            "Password and sign-in",
+            row(
+                "Failed sign-ins before lockout",
+                match att {
+                    -1 => "never locks".to_string(),
+                    0 => "server default".to_string(),
+                    n => n.to_string(),
+                },
+                vec![b(
+                    "Edit",
+                    Act::UserLimit(t.clone(), Lim::Attempts, att.to_string()),
+                )],
+            ),
+        );
+        let mut info = row(
+            "Password status",
+            format!(
+                "{} · {} failed sign-ins so far",
+                if u.has_password {
+                    "has a password"
+                } else {
+                    "no password"
+                },
+                n("InvalidLoginAttemptCount")
+            ),
+            vec![],
+        );
+        info.text = Some("Jellyfin has no password length, complexity or expiry rules. Set or reset a password on the Users page.".into());
+        add("Password and sign-in", info);
+        let has_img = u.primary_image_tag.is_some();
+        let mut acts = vec![b("Upload image", Act::UserImage(t.clone()))];
+        if has_img {
+            acts.push(bd("Remove image", Act::UserImageRemove(t.clone())));
+        }
+        let mut img = row(
+            "Profile image",
+            if has_img { "set".into() } else { "none".into() },
+            acts,
+        );
+        img.chips = vec![(if has_img { "set" } else { "none" }.into(), has_img)];
+        add("Profile", img);
+        let mut prefs = row(
+            "Display preferences",
+            "what this user saved in a client (read only)".into(),
+            vec![b("Load", Act::ViewPrefs(t.clone()))],
+        );
+        prefs.text = Some(match &d.prefs {
+            Some((id, text)) if *id == u.id => text.clone(),
+            _ => "Press Enter on Load to read them.".into(),
+        });
+        add("Profile", prefs);
     }
     m
 }
@@ -1263,6 +1448,57 @@ mod tests {
             .collect();
         assert_eq!(acts, [("Enable", false), ("Remove", true)]);
         assert_eq!(m.items[0].group.as_deref(), Some("Repositories"));
+    }
+
+    #[test]
+    fn access_rows_cover_libraries_features_limits_and_image() {
+        use nocturne_jellyfin_admin::{ParentalRating, User, VirtualFolder};
+        let mut u = User {
+            id: "u".into(),
+            name: "ann".into(),
+            ..Default::default()
+        };
+        u.policy = serde_json::from_value(serde_json::json!({
+            "EnableAllFolders": false, "EnabledFolders": ["AA"], "EnableRemoteAccess": true,
+            "MaxParentalRating": 13, "BlockedTags": ["gore"], "LoginAttemptsBeforeLockout": -1
+        }))
+        .unwrap();
+        let f = |id: &str, n: &str| VirtualFolder {
+            item_id: id.into(),
+            name: n.into(),
+            ..Default::default()
+        };
+        let d = data_with(|d| {
+            d.users = L::Ready(vec![u]);
+            d.folders = L::Ready(vec![f("aa", "A"), f("bb", "B")]);
+            d.ratings = L::Ready(vec![ParentalRating {
+                name: "PG-13".into(),
+                value: Some(13),
+            }]);
+        });
+        let m = access(&d);
+        let find = |t: &str| m.items.iter().find(|i| i.title == t).unwrap();
+        assert_eq!(find("A").chips[0].0, "allowed");
+        assert_eq!(find("B").chips[0].0, "blocked");
+        assert_eq!(find("B").acts[0].label, "Allow");
+        assert_eq!(find("Remote access").chips[0].0, "on");
+        assert_eq!(find("Downloads").chips[0].0, "off");
+        assert_eq!(find("Maximum parental rating").sub, "PG-13");
+        assert_eq!(find("Blocked tags").sub, "gore");
+        assert_eq!(find("Failed sign-ins before lockout").sub, "never locks");
+        assert_eq!(find("Profile image").acts.len(), 1, "nothing to remove yet");
+        assert!(
+            m.items
+                .iter()
+                .all(|i| i.group.as_deref().is_some_and(|g| g.starts_with("ann · ")))
+        );
+        assert!(
+            find("Password status")
+                .text
+                .as_deref()
+                .unwrap()
+                .contains("no password length")
+        );
     }
 
     #[test]

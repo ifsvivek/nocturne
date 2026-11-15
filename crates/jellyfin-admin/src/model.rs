@@ -164,6 +164,7 @@ pub struct User {
     pub has_password: bool,
     pub last_login_date: Option<String>,
     pub last_activity_date: Option<String>,
+    pub primary_image_tag: Option<String>,
     pub policy: UserPolicy,
 }
 
@@ -178,6 +179,26 @@ pub struct UserPolicy {
     pub enable_content_deletion: bool,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+impl UserPolicy {
+    /// Any policy field by its server name (`Null` when the server did not send it).
+    pub fn get(&self, key: &str) -> Value {
+        serde_json::to_value(self).map_or(Value::Null, |v| v[key].clone())
+    }
+
+    /// A boolean policy field; a missing one reads as `false`.
+    pub fn flag(&self, key: &str) -> bool {
+        self.get(key).as_bool().unwrap_or(false)
+    }
+}
+
+/// One entry of `GET /Localization/ParentalRatings`: a rating name and its numeric level.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+pub struct ParentalRating {
+    pub name: String,
+    pub value: Option<i32>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

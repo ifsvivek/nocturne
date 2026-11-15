@@ -200,6 +200,27 @@ impl AdminClient {
         self.get(&["Libraries", "AvailableOptions"], &q).await
     }
 
+    /// READ `GET /Localization/ParentalRatings`: rating names with a level, lowest first, one per name.
+    pub async fn parental_ratings(&self) -> Result<Vec<crate::ParentalRating>> {
+        let mut l: Vec<crate::ParentalRating> =
+            self.get(&["Localization", "ParentalRatings"], &[]).await?;
+        l.retain(|r| r.value.is_some());
+        l.sort_by_key(|r| r.value);
+        l.dedup_by(|a, b| a.name == b.name);
+        Ok(l)
+    }
+
+    /// READ `GET /DisplayPreferences/usersettings`: a user's display preferences (raw JSON; the
+    /// shape belongs to the client that saved them, here as `client`).
+    pub async fn display_preferences(
+        &self,
+        user_id: &str,
+        client: &str,
+    ) -> Result<serde_json::Value> {
+        let q = [("userId", user_id.to_string()), ("client", client.into())];
+        self.get(&["DisplayPreferences", "usersettings"], &q).await
+    }
+
     /// READ `GET /Backup` (server 10.11+; an error on older servers).
     pub async fn backups(&self) -> Result<Vec<serde_json::Value>> {
         self.get(&["Backup"], &[]).await
@@ -253,6 +274,36 @@ impl AdminClient {
             });
         }
         Ok(resp)
+    }
+
+    /// Send `body` as is with the given content type (image uploads).
+    pub(crate) async fn send_raw(
+        &self,
+        segs: &[&str],
+        content_type: &str,
+        body: String,
+    ) -> Result<()> {
+        let url = self.url(segs, &[]);
+        let path = url.path().to_string();
+        let resp = self
+            .http
+            .post(url)
+            .header(header::CONTENT_TYPE, content_type)
+            .body(body)
+            .send()
+            .await
+            .map_err(http_err)?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            self.rejected.store(true, Ordering::Relaxed);
+        }
+        if !status.is_success() {
+            return Err(Error::Status {
+                status: status.as_u16(),
+                path,
+            });
+        }
+        Ok(())
     }
 
     async fn get<T: DeserializeOwned>(&self, segs: &[&str], pairs: &[(&str, String)]) -> Result<T> {

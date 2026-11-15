@@ -9,6 +9,7 @@ pub enum Section {
     General,
     Branding,
     Users,
+    Access,
     Libraries,
     Providers,
     Metadata,
@@ -27,11 +28,12 @@ pub enum Section {
 }
 
 /// Sidebar order; keyboard Up/Down walks this list.
-pub const ALL: [Section; 19] = [
+pub const ALL: [Section; 20] = [
     Section::Dashboard,
     Section::General,
     Section::Branding,
     Section::Users,
+    Section::Access,
     Section::Libraries,
     Section::Providers,
     Section::Metadata,
@@ -57,12 +59,13 @@ pub enum Row {
 
 use Row::*;
 use Section as S;
-pub const SIDEBAR: [Row; 23] = [
+pub const SIDEBAR: [Row; 24] = [
     Group("Server"),
     Item(S::Dashboard, false),
     Item(S::General, false),
     Item(S::Branding, false),
     Item(S::Users, false),
+    Item(S::Access, true),
     Item(S::Libraries, false),
     Item(S::Providers, true),
     Item(S::Metadata, true),
@@ -90,6 +93,7 @@ impl Section {
             Section::General => "General",
             Section::Branding => "Branding",
             Section::Users => "Users",
+            Section::Access => "Access and limits",
             Section::Libraries => "Libraries",
             Section::Providers => "Providers",
             Section::Metadata => "Metadata",
@@ -141,6 +145,30 @@ impl<T> L<T> {
     }
 }
 
+/// Display preferences as readable lines: scalar fields, then the client's custom ones.
+pub fn pretty_prefs(v: &serde_json::Value) -> String {
+    let mut out = vec![];
+    let show = |x: &serde_json::Value| x.as_str().map_or_else(|| x.to_string(), str::to_string);
+    if let Some(o) = v.as_object() {
+        for (k, x) in o.iter().filter(|(k, x)| {
+            !x.is_null() && !x.is_object() && !matches!(k.as_str(), "Id" | "Client")
+        }) {
+            out.push(format!("{k}: {}", show(x)));
+        }
+        for (k, x) in v["CustomPrefs"].as_object().into_iter().flatten() {
+            if !x.is_null() {
+                out.push(format!("custom {k}: {}", show(x)));
+            }
+        }
+    }
+    if out.is_empty() {
+        "No display preferences saved.".into()
+    } else {
+        out.truncate(40);
+        out.join("\n")
+    }
+}
+
 /// A library together with the providers the server offers for its content type.
 pub struct LibProviders {
     pub folder: VirtualFolder,
@@ -180,6 +208,9 @@ pub struct Data {
     pub plugins: L<Vec<Plugin>>,
     pub packages: L<Vec<Package>>,
     pub repos: L<Vec<Repository>>,
+    pub ratings: L<Vec<ParentalRating>>,
+    /// Last viewed display preferences: (user id, formatted text).
+    pub prefs: Option<(String, String)>,
     pub providers: L<Vec<LibProviders>>,
     pub logs: L<Vec<LogFile>>,
     pub branding: L<Branding>,
@@ -206,6 +237,8 @@ pub enum Msg {
     Plugins(Option<Vec<Plugin>>),
     Packages(Option<Vec<Package>>),
     Repos(Option<Vec<Repository>>),
+    Ratings(Option<Vec<ParentalRating>>),
+    Prefs(String, Option<String>),
     Providers(Option<Vec<LibProviders>>),
     Logs(Option<Vec<LogFile>>),
     Branding(Option<Branding>),
@@ -231,6 +264,12 @@ impl Data {
             Msg::Plugins(v) => self.plugins.set(v),
             Msg::Packages(v) => self.packages.set(v),
             Msg::Repos(v) => self.repos.set(v),
+            Msg::Ratings(v) => self.ratings.set(v),
+            Msg::Prefs(id, text) => {
+                if let Some(t) = text {
+                    self.prefs = Some((id, t));
+                }
+            }
             Msg::Providers(v) => self.providers.set(v),
             Msg::Logs(v) => self.logs.set(v),
             Msg::Branding(v) => self.branding.set(v),
@@ -381,6 +420,20 @@ mod tests {
     }
 
     #[test]
+    fn prefs_are_flattened_to_lines() {
+        let v = serde_json::json!({"Id":"x","Client":"emby","SortBy":"SortName","ShowBackdrop":true,
+            "Gone":null,"CustomPrefs":{"skipForwardLength":"30000","tvhome":null}});
+        assert_eq!(
+            pretty_prefs(&v),
+            "SortBy: SortName\nShowBackdrop: true\ncustom skipForwardLength: 30000"
+        );
+        assert_eq!(
+            pretty_prefs(&serde_json::json!({})),
+            "No display preferences saved."
+        );
+    }
+
+    #[test]
     fn visibility_needs_a_successful_probe() {
         let st = |status| {
             Err::<(), _>(Error::Status {
@@ -438,9 +491,9 @@ mod tests {
     #[test]
     fn keyboard_flow() {
         let mut s = State::new();
-        s.enter(Section::Users);
+        s.enter(Section::Libraries);
         s.nav(Down, shape(2, 1));
-        assert_eq!(s.section, Section::Libraries);
+        assert_eq!(s.section, Section::Providers);
         s.nav(Right, shape(2, 1));
         assert!(!s.in_side && s.on_toolbar);
         s.nav(Down, shape(2, 1));

@@ -146,6 +146,11 @@ impl Admin {
             }
             Branding => rd!(self, cx, Branding, |c| c.branding()),
             Users => rd!(self, cx, Users, |c| c.users()),
+            Access => {
+                rd!(self, cx, Users, |c| c.users());
+                rd!(self, cx, Folders, |c| c.virtual_folders());
+                rd!(self, cx, Ratings, |c| c.parental_ratings());
+            }
             Libraries => {
                 rd!(self, cx, Folders, |c| c.virtual_folders());
                 rd!(self, cx, Tasks, |c| c.scheduled_tasks());
@@ -247,7 +252,13 @@ impl Admin {
     }
 
     fn do_act(&mut self, a: Act, cx: &mut Context<Self>) {
-        if let Act::ViewLog(name) = a {
+        if let Act::ViewPrefs((id, _)) = a {
+            let c = self.client.clone();
+            self.fetch(cx, async move {
+                let t = c.display_preferences(&id, "emby").await.ok();
+                Msg::Prefs(id, t.map(|v| state::pretty_prefs(&v)))
+            });
+        } else if let Act::ViewLog(name) = a {
             let c = self.client.clone();
             self.fetch(cx, async move {
                 let t = c.log_tail(&name, 200).await.ok();

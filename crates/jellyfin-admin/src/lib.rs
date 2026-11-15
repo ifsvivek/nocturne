@@ -1,7 +1,7 @@
 //! Jellyfin admin client: reads that need admin rights, and every write.
 //!
 //! `nocturne-jellyfin` stays strictly read-only; all mutation lives here, in [`write`].
-//! Destructive writes (`delete_*`, `remove_*`, `set_network`, `remove_plugin_repository`, `set_user_password`, `reset_user_password`, `restart_server`)
+//! Destructive writes (`delete_*`, `remove_*`, `set_network`, `remove_plugin_repository`, `remove_user_image`, `set_user_password`, `reset_user_password`, `restart_server`)
 //! take a [`Confirmed`] token that UI code may only mint after the user said yes.
 //! Writes are tested ONLY against the throwaway server from `scripts/test-jellyfin.sh`
 //! (see [`guard::TestServerGuard`]), never the user's real server.
@@ -15,7 +15,7 @@ mod model;
 mod write;
 
 pub use client::{AdminClient, tail_lines};
-pub use edit::NetworkEdit;
+pub use edit::{NetworkEdit, PolicyEdit};
 pub use model::*;
 pub use nocturne_jellyfin::Config;
 pub use write::ConfigPatch;

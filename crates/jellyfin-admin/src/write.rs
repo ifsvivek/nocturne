@@ -2,8 +2,8 @@
 
 use crate::client::AdminClient;
 use crate::{
-    ApiKey, Confirmed, Error, NetworkEdit, Package, Repository, Result, TaskTrigger, User,
-    UserPolicy, edit,
+    ApiKey, Confirmed, Error, NetworkEdit, Package, PolicyEdit, Repository, Result, TaskTrigger,
+    User, UserPolicy, edit,
 };
 use reqwest::Method;
 use serde_json::json;
@@ -83,6 +83,58 @@ impl AdminClient {
         self.send(Method::POST, &["Users", id, "Policy"], &[], Some(body))
             .await
             .map(drop)
+    }
+
+    /// WRITE read-modify-write of the policy: change one access setting or limit (validated).
+    pub async fn edit_user_policy(&self, id: &str, e: &PolicyEdit) -> Result<()> {
+        let mut raw = serde_json::to_value(self.user(id).await?.policy).expect("policy serializes");
+        e.apply(&mut raw)?;
+        let p: UserPolicy =
+            serde_json::from_value(raw).map_err(|_| Error::Invalid("bad policy".into()))?;
+        self.set_user_policy(id, &p).await
+    }
+
+    /// WRITE read-modify-write of the policy: allow or block one library for a user.
+    pub async fn set_user_library_access(
+        &self,
+        id: &str,
+        library_id: &str,
+        on: bool,
+    ) -> Result<()> {
+        let all: Vec<String> = self
+            .virtual_folders()
+            .await?
+            .into_iter()
+            .map(|f| f.item_id)
+            .filter(|i| !i.is_empty())
+            .collect();
+        let mut raw = serde_json::to_value(self.user(id).await?.policy).expect("policy serializes");
+        edit::set_folder_access(&mut raw, &all, library_id, on)?;
+        let p: UserPolicy =
+            serde_json::from_value(raw).map_err(|_| Error::Invalid("bad policy".into()))?;
+        self.set_user_policy(id, &p).await
+    }
+
+    /// WRITE `POST /Users/{id}/Images/Primary`: set the profile image from PNG, JPEG, WebP or GIF
+    /// bytes (checked first). Jellyfin wants the body base64 encoded, not raw.
+    pub async fn set_user_image(&self, id: &str, bytes: &[u8]) -> Result<()> {
+        use base64::Engine;
+        let mime = edit::image_mime(bytes)?;
+        let body = base64::engine::general_purpose::STANDARD.encode(bytes);
+        self.send_raw(&["Users", id, "Images", "Primary"], mime, body)
+            .await
+    }
+
+    /// WRITE `DELETE /Users/{id}/Images/Primary`: DESTRUCTIVE, removes the profile image.
+    pub async fn remove_user_image(&self, id: &str, _: Confirmed) -> Result<()> {
+        self.send(
+            Method::DELETE,
+            &["Users", id, "Images", "Primary"],
+            &[],
+            None,
+        )
+        .await
+        .map(drop)
     }
 
     /// WRITE read-modify-write of the policy: enable/disable the account.
@@ -803,6 +855,49 @@ mod tests {
             p[5].1,
             json!({"Id":"L1","LibraryOptions":{"EnableRealtimeMonitor":true,"PathInfos":[{"Path":"/m"}]}})
         );
+    }
+
+    #[tokio::test]
+    async fn policy_edits_library_access_and_image() {
+        let user = r#"{"Id":"u","Name":"n","Policy":{"IsAdministrator":false,"EnableRemoteAccess":true,"EnableAllFolders":true,"EnabledFolders":[],"Future":[1]}}"#;
+        let folders = r#"[{"Name":"A","ItemId":"aa"},{"Name":"B","ItemId":"bb"}]"#;
+        let (c, log) = serve(vec![
+            ("GET", "/Users/u", 200, user.into()),
+            ("GET", "/Library/VirtualFolders", 200, folders.into()),
+            ("POST", "/Users/u/Policy", 204, String::new()),
+            ("POST", "/Users/u/Images/Primary", 204, String::new()),
+            ("DELETE", "/Users/u/Images/Primary", 204, String::new()),
+        ])
+        .await;
+        assert!(
+            c.edit_user_policy("u", &PolicyEdit::BitrateLimit(-1))
+                .await
+                .is_err()
+        );
+        assert!(c.set_user_library_access("u", "zz", false).await.is_err());
+        assert!(c.set_user_image("u", b"not an image").await.is_err());
+        assert!(posts(&log).is_empty(), "refused edits sent nothing");
+        c.edit_user_policy("u", &PolicyEdit::Flag("EnableRemoteAccess".into(), false))
+            .await
+            .unwrap();
+        c.set_user_library_access("u", "bb", false).await.unwrap();
+        let png = [0x89, b'P', b'N', b'G', 1, 2, 3];
+        c.set_user_image("u", &png).await.unwrap();
+        c.remove_user_image("u", yes()).await.unwrap();
+        let p = posts(&log);
+        assert_eq!(p[0].1["EnableRemoteAccess"], false);
+        assert_eq!(p[0].1["Future"], json!([1]), "unknown fields survive");
+        assert_eq!(p[1].1["EnableAllFolders"], false);
+        assert_eq!(p[1].1["EnabledFolders"], json!(["aa"]));
+        let img = log
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|r| r.1 == "/Users/u/Images/Primary" && r.0 == "POST")
+            .cloned()
+            .unwrap();
+        assert_eq!(img.2, "iVBORwECAw==", "base64 body");
+        assert_eq!(p.last().unwrap().0, "DELETE /Users/u/Images/Primary");
     }
 
     #[tokio::test]

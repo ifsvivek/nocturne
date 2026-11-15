@@ -743,3 +743,116 @@ async fn library_rename_and_providers() {
     c.remove_library(&renamed, yes()).await.unwrap();
     std::fs::remove_dir_all(dir).ok();
 }
+
+#[tokio::test]
+#[ignore]
+async fn user_policy_access_and_image() {
+    use nocturne_jellyfin_admin::{PolicyEdit, edit};
+    let _g = SERVER.read().await;
+    let c = TestServerGuard::connect().await.unwrap();
+    let name = uniq("polu");
+    let u = c.create_user(&name, "pw-for-test-user").await.unwrap();
+    let pol = || async { c.user(&u.id).await.unwrap().policy };
+
+    c.edit_user_policy(&u.id, &PolicyEdit::Flag("EnableRemoteAccess".into(), false))
+        .await
+        .unwrap();
+    c.edit_user_policy(
+        &u.id,
+        &PolicyEdit::Flag("EnableContentDownloading".into(), false),
+    )
+    .await
+    .unwrap();
+    c.edit_user_policy(&u.id, &PolicyEdit::BitrateLimit(4_000_000))
+        .await
+        .unwrap();
+    c.edit_user_policy(&u.id, &PolicyEdit::MaxActiveSessions(2))
+        .await
+        .unwrap();
+    c.edit_user_policy(&u.id, &PolicyEdit::LoginAttempts(5))
+        .await
+        .unwrap();
+    c.edit_user_policy(
+        &u.id,
+        &PolicyEdit::BlockedTags(edit::split_tags("gore, Sci Fi")),
+    )
+    .await
+    .unwrap();
+    let ratings = c.parental_ratings().await.unwrap();
+    assert!(ratings.len() > 3 && ratings.windows(2).all(|w| w[0].value <= w[1].value));
+    let pg = ratings
+        .iter()
+        .find(|r| r.name == "PG-13")
+        .expect("PG-13")
+        .value;
+    c.edit_user_policy(&u.id, &PolicyEdit::MaxParentalRating(pg))
+        .await
+        .unwrap();
+    let p = pol().await;
+    assert!(!p.flag("EnableRemoteAccess") && !p.flag("EnableContentDownloading"));
+    assert!(p.flag("EnableMediaPlayback"), "untouched flags stay");
+    assert_eq!(p.get("RemoteClientBitrateLimit"), json!(4_000_000));
+    assert_eq!(p.get("MaxActiveSessions"), json!(2));
+    assert_eq!(p.get("LoginAttemptsBeforeLockout"), json!(5));
+    assert_eq!(p.get("BlockedTags"), json!(["gore", "Sci Fi"]));
+    assert_eq!(p.get("MaxParentalRating").as_i64().map(|v| v as i32), pg);
+    c.edit_user_policy(&u.id, &PolicyEdit::MaxParentalRating(None))
+        .await
+        .unwrap();
+    assert!(pol().await.get("MaxParentalRating").is_null());
+    assert!(
+        c.edit_user_policy(&u.id, &PolicyEdit::BitrateLimit(-1))
+            .await
+            .is_err()
+    );
+
+    // library access: block one library, then allow it again
+    let libs = c.virtual_folders().await.unwrap();
+    let lib = libs
+        .iter()
+        .find(|l| !l.item_id.is_empty())
+        .unwrap()
+        .item_id
+        .clone();
+    c.set_user_library_access(&u.id, &lib, false).await.unwrap();
+    let raw = serde_json::to_value(pol().await).unwrap();
+    assert!(!edit::folder_allowed(&raw, &lib), "blocked");
+    assert_eq!(raw["EnableAllFolders"], false);
+    c.set_user_library_access(&u.id, &lib, true).await.unwrap();
+    let raw = serde_json::to_value(pol().await).unwrap();
+    assert!(edit::folder_allowed(&raw, &lib) && raw["EnableAllFolders"] == true);
+
+    // profile image
+    let png = std::process::Command::new("ffmpeg")
+        .args([
+            "-v",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=32x32",
+            "-frames:v",
+            "1",
+            "-f",
+            "image2",
+            "-c:v",
+            "png",
+            "pipe:1",
+        ])
+        .output()
+        .unwrap()
+        .stdout;
+    assert!(png.starts_with(&[0x89, b'P']));
+    assert!(c.user(&u.id).await.unwrap().primary_image_tag.is_none());
+    c.set_user_image(&u.id, &png).await.unwrap();
+    assert!(c.user(&u.id).await.unwrap().primary_image_tag.is_some());
+    c.remove_user_image(&u.id, yes()).await.unwrap();
+    assert!(c.user(&u.id).await.unwrap().primary_image_tag.is_none());
+    assert!(c.set_user_image(&u.id, b"plain text").await.is_err());
+
+    // display preferences are readable (read only)
+    let dp = c.display_preferences(&u.id, "emby").await.unwrap();
+    assert!(dp.is_object());
+    c.delete_user(&u.id, yes()).await.unwrap();
+}

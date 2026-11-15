@@ -231,6 +231,167 @@ impl NetworkEdit {
     }
 }
 
+// ---- user policy ----
+
+/// Yes/no policy fields NOCTURNE may change, with their labels. Administrator and disabled
+/// have their own actions; live TV is out of scope.
+pub const POLICY_FLAGS: [(&str, &str); 12] = [
+    ("EnableRemoteAccess", "Remote access"),
+    ("EnableMediaPlayback", "Media playback"),
+    ("EnableAudioPlaybackTranscoding", "Audio transcoding"),
+    ("EnableVideoPlaybackTranscoding", "Video transcoding"),
+    ("EnablePlaybackRemuxing", "Remuxing"),
+    ("EnableContentDownloading", "Downloads"),
+    ("EnableContentDeletion", "Delete media"),
+    ("EnableCollectionManagement", "Manage collections"),
+    ("EnableSubtitleManagement", "Manage subtitles"),
+    (
+        "EnableRemoteControlOfOtherUsers",
+        "Control other users' sessions",
+    ),
+    ("EnablePublicSharing", "Public sharing"),
+    ("IsHidden", "Hidden on the sign-in screen"),
+];
+
+/// A change to one part of a user's policy; everything else is sent back as read.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PolicyEdit {
+    Flag(String, bool),
+    /// Remote streaming limit in bits per second; 0 = no limit.
+    BitrateLimit(i64),
+    /// Simultaneous sessions; 0 = unlimited.
+    MaxActiveSessions(i32),
+    /// Failed sign-ins before the account locks: -1 never, 0 server default.
+    LoginAttempts(i32),
+    /// Highest rating level the user may see (`None` = no limit).
+    MaxParentalRating(Option<i32>),
+    BlockedTags(Vec<String>),
+    AllowedTags(Vec<String>),
+}
+
+/// Split a tag list: commas and semicolons separate, spaces stay (tags can contain them).
+pub fn split_tags(s: &str) -> Vec<String> {
+    let mut v: Vec<String> = vec![];
+    for t in s.split([',', ';']).map(str::trim).filter(|t| !t.is_empty()) {
+        if !v.iter().any(|x| x.eq_ignore_ascii_case(t)) {
+            v.push(t.to_string());
+        }
+    }
+    v
+}
+
+impl PolicyEdit {
+    /// Validate and apply to the raw policy; every other field is untouched.
+    pub fn apply(&self, p: &mut Value) -> Result<()> {
+        let (key, val) = match self {
+            Self::Flag(k, on) => match POLICY_FLAGS.iter().find(|f| f.0 == k) {
+                Some(f) => (f.0, json!(on)),
+                None => return bad(format!("{k} is not an editable access setting")),
+            },
+            Self::BitrateLimit(n) if (0..=1_000_000_000_000).contains(n) => {
+                ("RemoteClientBitrateLimit", json!(n))
+            }
+            Self::BitrateLimit(_) => return bad("the bitrate limit must be 0 or more"),
+            Self::MaxActiveSessions(n) if (0..=1000).contains(n) => ("MaxActiveSessions", json!(n)),
+            Self::MaxActiveSessions(_) => return bad("sessions must be 0 to 1000"),
+            Self::LoginAttempts(n) if (-1..=1000).contains(n) => {
+                ("LoginAttemptsBeforeLockout", json!(n))
+            }
+            Self::LoginAttempts(_) => return bad("failed sign-ins must be -1 to 1000"),
+            Self::MaxParentalRating(Some(n)) if !(0..=1000).contains(n) => {
+                return bad("unknown rating level");
+            }
+            Self::MaxParentalRating(n) => ("MaxParentalRating", json!(n)),
+            Self::BlockedTags(l) | Self::AllowedTags(l) => {
+                if l.iter()
+                    .any(|t| t.len() > 100 || t.chars().any(char::is_control))
+                {
+                    return bad("a tag is at most 100 characters and has no control characters");
+                }
+                let k = if matches!(self, Self::BlockedTags(_)) {
+                    "BlockedTags"
+                } else {
+                    "AllowedTags"
+                };
+                (k, json!(l))
+            }
+        };
+        p[key] = val;
+        Ok(())
+    }
+}
+
+fn same_id(a: &str, b: &str) -> bool {
+    let n = |s: &str| s.replace('-', "").to_lowercase();
+    n(a) == n(b)
+}
+
+/// Allow or block one library for a user. `all` is every library id on the server. When every
+/// library ends up allowed the policy goes back to "all libraries", so libraries added later
+/// stay visible.
+pub fn set_folder_access(p: &mut Value, all: &[String], folder: &str, on: bool) -> Result<()> {
+    if !all.iter().any(|a| same_id(a, folder)) {
+        return bad("no such library");
+    }
+    let mut allowed: Vec<String> = if p["EnableAllFolders"].as_bool().unwrap_or(true) {
+        all.to_vec()
+    } else {
+        names(&p["EnabledFolders"])
+    };
+    allowed.retain(|a| !same_id(a, folder));
+    if on {
+        allowed.push(folder.to_string());
+    }
+    if all.iter().all(|a| allowed.iter().any(|x| same_id(x, a))) {
+        p["EnableAllFolders"] = json!(true);
+        p["EnabledFolders"] = json!([]);
+    } else {
+        p["EnableAllFolders"] = json!(false);
+        p["EnabledFolders"] = json!(allowed);
+    }
+    Ok(())
+}
+
+/// Whether the policy lets the user see library `folder`.
+pub fn folder_allowed(p: &Value, folder: &str) -> bool {
+    p["EnableAllFolders"].as_bool().unwrap_or(true)
+        || names(&p["EnabledFolders"])
+            .iter()
+            .any(|a| same_id(a, folder))
+}
+
+/// Largest profile image accepted (the server stores it as is).
+pub const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+
+/// MIME type of a PNG, JPEG, WebP or GIF by its first bytes; anything else is refused before
+/// it is sent.
+pub fn image_mime(bytes: &[u8]) -> Result<&'static str> {
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return bad("the image is larger than 10 MB");
+    }
+    match bytes {
+        [0x89, b'P', b'N', b'G', ..] => Ok("image/png"),
+        [0xFF, 0xD8, 0xFF, ..] => Ok("image/jpeg"),
+        [
+            b'R',
+            b'I',
+            b'F',
+            b'F',
+            _,
+            _,
+            _,
+            _,
+            b'W',
+            b'E',
+            b'B',
+            b'P',
+            ..,
+        ] => Ok("image/webp"),
+        [b'G', b'I', b'F', b'8', ..] => Ok("image/gif"),
+        _ => bad("that file is not a PNG, JPEG, WebP or GIF image"),
+    }
+}
+
 // ---- plugin repositories ----
 
 /// A repository needs a name and an http(s) manifest URL. Adding one makes the server download
@@ -628,6 +789,70 @@ mod tests {
         bad_l[0].name = "Z".into();
         assert!(apply_fetchers(&mut o, "Movie", &avail(), false, &bad_l).is_err());
         assert!(apply_fetchers(&mut o, "Movie", &avail(), false, &l[..1]).is_err());
+    }
+
+    #[test]
+    fn policy_edits_validate_and_keep_the_rest() {
+        let base = json!({"EnableRemoteAccess": true, "Keep": [1], "EnableAllFolders": true});
+        let mut p = base.clone();
+        PolicyEdit::Flag("EnableRemoteAccess".into(), false)
+            .apply(&mut p)
+            .unwrap();
+        PolicyEdit::BitrateLimit(8_000_000).apply(&mut p).unwrap();
+        PolicyEdit::MaxParentalRating(Some(13))
+            .apply(&mut p)
+            .unwrap();
+        PolicyEdit::BlockedTags(split_tags("Horror, gore ;horror, Sci Fi"))
+            .apply(&mut p)
+            .unwrap();
+        assert_eq!(p["EnableRemoteAccess"], false);
+        assert_eq!(p["RemoteClientBitrateLimit"], 8_000_000);
+        assert_eq!(p["BlockedTags"], json!(["Horror", "gore", "Sci Fi"]));
+        assert_eq!(p["Keep"], json!([1]));
+        PolicyEdit::MaxParentalRating(None).apply(&mut p).unwrap();
+        assert!(p["MaxParentalRating"].is_null());
+        for bad_edit in [
+            PolicyEdit::Flag("IsAdministrator".into(), false),
+            PolicyEdit::Flag("Nope".into(), true),
+            PolicyEdit::BitrateLimit(-1),
+            PolicyEdit::MaxActiveSessions(-1),
+            PolicyEdit::LoginAttempts(-2),
+            PolicyEdit::MaxParentalRating(Some(-5)),
+            PolicyEdit::AllowedTags(vec!["a\u{7}b".into()]),
+        ] {
+            assert!(bad_edit.apply(&mut base.clone()).is_err(), "{bad_edit:?}");
+        }
+    }
+
+    #[test]
+    fn library_access_collapses_back_to_all() {
+        let all: Vec<String> = ["aa", "bb", "cc"].map(String::from).to_vec();
+        let mut p = json!({"EnableAllFolders": true, "EnabledFolders": []});
+        set_folder_access(&mut p, &all, "BB", false).unwrap();
+        assert_eq!(
+            (p["EnableAllFolders"].clone(), names(&p["EnabledFolders"])),
+            (json!(false), vec!["aa".to_string(), "cc".to_string()])
+        );
+        assert!(!folder_allowed(&p, "bb") && folder_allowed(&p, "AA"));
+        set_folder_access(&mut p, &all, "bb", true).unwrap();
+        assert_eq!(
+            p["EnableAllFolders"], true,
+            "everything allowed = all libraries"
+        );
+        assert!(set_folder_access(&mut p, &all, "zz", true).is_err());
+    }
+
+    #[test]
+    fn image_types_by_magic_bytes() {
+        assert_eq!(
+            image_mime(&[0x89, b'P', b'N', b'G', 1]).unwrap(),
+            "image/png"
+        );
+        assert_eq!(image_mime(&[0xFF, 0xD8, 0xFF, 0xE0]).unwrap(), "image/jpeg");
+        assert_eq!(image_mime(b"RIFF\0\0\0\0WEBPVP8 ").unwrap(), "image/webp");
+        assert!(image_mime(b"<svg></svg>").is_err());
+        assert!(image_mime(&[]).is_err());
+        assert!(image_mime(&vec![0xFF; MAX_IMAGE_BYTES + 1]).is_err());
     }
 
     #[test]

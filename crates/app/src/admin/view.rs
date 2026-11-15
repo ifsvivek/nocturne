@@ -744,6 +744,9 @@ impl Render for Admin {
             Section::General => "Server name, language, retention and folders.",
             Section::Branding => "Login message, custom styling and splash screen.",
             Section::Users => "Accounts, access and passwords.",
+            Section::Access => {
+                "Library access, ratings, feature switches and limits for each account."
+            }
             Section::Libraries => "Add and remove libraries, their folders and options.",
             Section::Providers => {
                 "Metadata and image providers per library: what the server offers, in the order it tries them."
