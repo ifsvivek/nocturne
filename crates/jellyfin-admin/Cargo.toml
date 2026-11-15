@@ -3,6 +3,10 @@ name = "nocturne-jellyfin-admin"
 description = "Jellyfin admin client for NOCTURNE: admin reads and confirmed writes (test against a throwaway server only)"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 nocturne-jellyfin = { path = "../jellyfin" } # Config only

@@ -3,6 +3,10 @@ name = "nocturne-session"
 description = "Persist the NOCTURNE login: token in the system keyring (Secret Service), server URLs in XDG config"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 nocturne-jellyfin-user = { path = "../jellyfin-user" } # Session type

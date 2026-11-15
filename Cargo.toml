@@ -5,7 +5,20 @@ members = ["crates/*"]
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/ifsvivek/nocturne"
+homepage = "https://github.com/ifsvivek/nocturne"
+authors = ["ifsvivek"]
+# MSRV is the highest declared by a dependency (uuid 1.89); only tested with the current stable toolchain.
+rust-version = "1.89"
 
 # gpui -> zed-async-tar -> xattr 0.2.3 no longer builds with current libc (ENOATTR removed).
 [patch.crates-io]
 xattr = { path = "vendor/xattr" }
+
+[profile.release]
+# Measured clean builds, 16 cores: thin/16 cgu 135 s, 31 MB; fat/1 cgu 267 s, 24 MB.
+lto = "fat"
+codegen-units = 1
+strip = true
+# panic stays "unwind": worker-thread panics must not abort the UI, and we never unwind through libmpv callbacks.
