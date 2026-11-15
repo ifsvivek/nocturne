@@ -1,4 +1,5 @@
 //! Root view: connection state, navigation stack, keyboard, and the screens.
+use crate::admin::{self, Admin};
 use crate::nav::{self, Dir};
 use crate::playback::Now;
 use crate::source::fmt_clock;
@@ -72,6 +73,8 @@ struct Page {
     resume_scroll: ScrollHandle,
     nextup: Load<Vec<Media>>,
     nextup_scroll: ScrollHandle,
+    /// An `Admin` entry follows the libraries in the nav row.
+    admin: bool,
     row: usize,
     col: usize,
     // Grid.
@@ -113,6 +116,8 @@ impl Page {
     fn row_len(&self, k: HRow) -> usize {
         if k == HRow::Hero {
             2
+        } else if k == HRow::Nav {
+            self.libs.items().len() + self.admin as usize
         } else {
             self.row_items(k).len()
         }
@@ -159,6 +164,8 @@ pub struct Root {
     next_pid: u64,
     images: Cache<String, Img>,
     pub focus: FocusHandle,
+    admin: Option<Entity<Admin>>,
+    admin_open: bool,
     player: Option<Player>,
     now: Option<Now>,
     /// Bar kept alive briefly after stop so it can slide out.
@@ -196,6 +203,8 @@ impl Root {
             next_pid: 0,
             images: Cache::new(600),
             focus: cx.focus_handle(),
+            admin: None,
+            admin_open: false,
             player: None,
             now: None,
             leaving: None,
@@ -258,6 +267,12 @@ impl Root {
                 t.source = Some(s);
                 t.phase = Phase::Ready;
                 t.push(View::Home, None, cx);
+                t.run(cx, admin::probe(t.cfg.clone()), |t, c, cx| {
+                    t.admin = c.map(|c| cx.new(|_| Admin::new(c)));
+                    for p in &mut t.stack {
+                        p.admin = t.admin.is_some();
+                    }
+                });
             }
             Err(e) => t.phase = Phase::Error(e),
         });
@@ -283,6 +298,7 @@ impl Root {
             resume_scroll: ScrollHandle::new(),
             nextup: Load::Loading,
             nextup_scroll: ScrollHandle::new(),
+            admin: self.admin.is_some(),
             row: 1,
             col: 0,
             items: Load::Loading,
@@ -416,6 +432,23 @@ impl Root {
     fn open_library(&mut self, m: Media, cx: &mut Context<Self>) {
         self.stack.truncate(1);
         self.push(View::Grid, Some(m), cx);
+    }
+
+    fn open_admin(&mut self, cx: &mut Context<Self>) {
+        if let Some(a) = self.admin.clone() {
+            self.admin_open = true;
+            a.update(cx, |a, cx| a.open(cx));
+        }
+    }
+
+    /// Leave Admin (if open) before navigating elsewhere.
+    fn close_admin(&mut self, cx: &mut Context<Self>) {
+        if self.admin_open {
+            self.admin_open = false;
+            if let Some(a) = self.admin.clone() {
+                a.update(cx, |a, _| a.close());
+            }
+        }
     }
 
     fn back(&mut self) {
@@ -691,6 +724,15 @@ impl Root {
             }
             return;
         }
+        if self.admin_open
+            && let Some(a) = self.admin.clone()
+        {
+            if a.update(cx, |a, cx| a.on_key(ev, cx)) {
+                self.close_admin(cx);
+            }
+            cx.notify();
+            return;
+        }
         if matches!(key, "escape" | "backspace") {
             self.back();
             cx.notify();
@@ -732,6 +774,12 @@ impl Root {
                 let lay = p.layout();
                 let kind = lay.get(p.row).copied().unwrap_or(HRow::Hero);
                 let mut act = None;
+                let admin_col = kind == HRow::Nav && p.admin && p.col == p.libs.items().len();
+                if enter && admin_col {
+                    self.open_admin(cx);
+                    cx.notify();
+                    return;
+                }
                 if let Some(d) = dir {
                     let n = p.row_len(kind);
                     let c = nav::step(p.col, n.max(1), n, d);
@@ -855,9 +903,10 @@ impl Root {
         nav = nav.child(ui::nav_link(
             "nav-home".into(),
             "Home",
-            at_home && focus_col.is_none(),
+            at_home && focus_col.is_none() && !self.admin_open,
             false,
             cx.listener(|t, _, _, cx| {
+                t.close_admin(cx);
                 t.stack.truncate(1);
                 cx.notify();
             }),
@@ -867,10 +916,23 @@ impl Root {
             nav = nav.child(ui::nav_link(
                 format!("nav-{i}"),
                 &l.title,
-                top.map(|(a, _)| a == i).unwrap_or(false) && !at_home,
-                focus_col == Some(i),
+                top.map(|(a, _)| a == i).unwrap_or(false) && !at_home && !self.admin_open,
+                focus_col == Some(i) && !self.admin_open,
                 cx.listener(move |t, _, _, cx| {
+                    t.close_admin(cx);
                     t.open_library(m.clone(), cx);
+                    cx.notify();
+                }),
+            ));
+        }
+        if self.admin.is_some() {
+            nav = nav.child(ui::nav_link(
+                "nav-admin".into(),
+                "Admin",
+                self.admin_open,
+                focus_col == Some(libs.len()) && !self.admin_open,
+                cx.listener(|t, _, _, cx| {
+                    t.open_admin(cx);
                     cx.notify();
                 }),
             ));
@@ -2043,6 +2105,12 @@ impl Render for Root {
                 true,
                 cx,
             ),
+            Phase::Ready if self.admin_open && self.admin.is_some() => ui::fade_in(
+                div().size_full().children(self.admin.clone()),
+                "admin-page".into(),
+                t::BASE,
+            )
+            .into_any_element(),
             Phase::Ready => {
                 let (pid, view) = self.stack.last().map_or((0, View::Home), |p| (p.pid, p.view));
                 let page = match view {

@@ -59,6 +59,17 @@ pub fn on_accent() -> Rgba {
     rgb(0x050816)
 }
 
+// Destructive confirmations and warnings only; never decoration.
+pub fn danger() -> Rgba {
+    rgb(0xf0716f)
+}
+pub fn danger_tint() -> Rgba {
+    rgba(0xf0716f1f)
+}
+pub fn warn() -> Rgba {
+    rgb(0xe3b341)
+}
+
 // Type scale (px). Only mono micro-annotations may use MICRO; everything else >= 12.
 pub const MICRO: f32 = 11.0;
 pub const CAPTION: f32 = 12.0;

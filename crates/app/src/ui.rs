@@ -318,6 +318,51 @@ pub fn nav_link(
         })
 }
 
+/// Compact text button for admin rows and dialogs. `danger` = red outline (destructive only),
+/// `primary` = solid blue, otherwise hairline. `focused` adds the soft glow; `off` dims it.
+pub fn action_button(
+    id: String,
+    text: &str,
+    primary: bool,
+    danger: bool,
+    focused: bool,
+    off: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let (ink, edge) = match (primary, danger) {
+        (_, true) => (t::danger(), t::danger()),
+        (true, _) => (t::on_accent(), t::accent()),
+        _ => (t::text(), t::hairline_strong()),
+    };
+    let mut d = div()
+        .id(name(id))
+        .h(px(32.0))
+        .px(px(t::S3))
+        .flex()
+        .items_center()
+        .rounded(px(6.0))
+        .border_1()
+        .border_color(if focused && !danger {
+            t::accent()
+        } else {
+            edge
+        })
+        .text_size(px(t::CAPTION + 1.0))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(ink)
+        .cursor_pointer()
+        .on_click(on_click)
+        .when(primary && !danger, |d| d.bg(t::accent()))
+        .when(danger, |d| d.bg(t::danger_tint()))
+        .when(!primary && !danger && focused, |d| d.bg(t::accent_tint()))
+        .when(off, |d| d.opacity(0.4))
+        .child(text.to_string());
+    if focused {
+        d = d.shadow(glow_shadow(0.7));
+    }
+    d
+}
+
 /// What an image slot can show.
 pub enum Pic {
     Ready(Arc<Image>),
@@ -325,7 +370,7 @@ pub enum Pic {
     Missing,
 }
 
-fn initial(title: &str) -> String {
+pub fn initial(title: &str) -> String {
     title
         .chars()
         .find(|c| c.is_alphanumeric())
