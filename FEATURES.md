@@ -5,12 +5,12 @@ Legend: [x] done, [~] partial, [ ] todo. Tiers: P0 core, P1 expected, P2 complet
 Update this file at every task boundary. Scope risks are listed at the bottom.
 
 ## Accounts and connection (P0)
-- [~] Login with username/password; session in keyring (crates done: `nocturne-jellyfin-user`, `nocturne-session`; app UI not wired yet)
-- [~] Quick Connect (crate done; UI not wired)
-- [ ] Server address entry, validation, recent servers, multiple servers
+- [x] Login with username/password; session in keyring; session restore; sign out; change password
+- [x] Quick Connect
+- [~] Server address entry, validation, remembered servers (forget action missing)
 - [ ] User picker / profile switch / sign out
 - [~] API-key mode (dev/admin only, via env)
-- [ ] Password change, own profile image, display language
+- [~] Password change done; profile image, display language pending
 
 ## Browsing (P0)
 - [x] Home: hero, Continue Watching, libraries, latest per library
@@ -30,7 +30,7 @@ Update this file at every task boundary. Scope risks are listed at the bottom.
 - [ ] **Feature-rich video player (user, 2026-11-15; not barebone)**: audio/subtitle menus with styling and delays, speed, chapters on scrub bar, trickplay hover thumbnails, skip intro/credits (media segments), next-episode autoplay, aspect/zoom/picture controls, quality/transcode selector with direct-play fallback, stats overlay, shortcut help, OSD, resume prompt, context menu, screenshot, queue panel, MPRIS and idle inhibit
 - [x] Direct play via mpv (child process), now-playing bar, seek, volume
 - [ ] **PRIORITY (user): in-window GPU video** (mpv video inside the NOCTURNE window with overlay controls, GPU-accelerated, crash-safe). Prototype first, then integrate
-- [~] Playback progress reporting (client done in `nocturne-jellyfin-user`; player/app wiring pending), resume position
+- [x] Playback progress reporting + resume position (sync toggle in Settings, default on)
 - [ ] Mark played at end, next-episode autoplay with countdown, skip intro/credits (media segments)
 - [ ] Audio track and subtitle track selection, external/embedded/text and image subs, subtitle size/position/delay, audio delay
 - [ ] Quality/transcoding selection (bitrate cap, HLS fallback when direct play fails), play method info overlay
@@ -42,7 +42,7 @@ Update this file at every task boundary. Scope risks are listed at the bottom.
 ## Dropped by user (2026-11-15): Live TV/DVR, SyncPlay, DLNA setup, being a cast target, gapless music. Do not build.
 
 ## User settings (P1)
-- [ ] Display: language, theme/accent options, home layout, subtitle appearance
+- [~] Settings screen exists (language prefs, sync, grid density, home sections); theme/accent and subtitle appearance pending
 - [ ] Playback: preferred audio/subtitle languages, default quality, next-episode and skip behaviour
 - [ ] Controls: keyboard shortcut reference
 - [ ] Quick Connect authorize, devices/sessions of own account
