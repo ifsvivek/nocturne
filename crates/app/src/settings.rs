@@ -3,11 +3,12 @@
 //! older or half-written file still loads.
 use crate::libview::LibPrefs;
 use crate::video::{PlayerPrefs, SubMode};
+use nocturne_player::Buffering;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -49,6 +50,11 @@ pub struct Settings {
     pub sub_mode: SubPref,
     pub auto_skip_intro: bool,
     pub autoplay_next: bool,
+    /// Network read-ahead: fill to `buffer_ahead_secs`, refill once below `buffer_refill_secs`,
+    /// never hold more than `buffer_max_mb` MiB in RAM.
+    pub buffer_ahead_secs: u32,
+    pub buffer_refill_secs: u32,
+    pub buffer_max_mb: u32,
     pub home_resume: bool,
     pub home_next_up: bool,
     pub home_latest: bool,
@@ -71,6 +77,9 @@ impl Default for Settings {
             sub_mode: SubPref::Off,
             auto_skip_intro: false,
             autoplay_next: true,
+            buffer_ahead_secs: 300,
+            buffer_refill_secs: 120,
+            buffer_max_mb: 1536,
             home_resume: true,
             home_next_up: true,
             home_latest: true,
@@ -129,9 +138,18 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `cycle()` index them).
-pub const ROWS: usize = 11;
+pub const ROWS: usize = 14;
 
 const CACHE_MB: [u32; 5] = [128, 256, 512, 1024, 2048];
+const AHEAD_S: [u32; 6] = [60, 120, 180, 300, 600, 900];
+const REFILL_S: [u32; 5] = [30, 60, 120, 180, 300];
+const BUF_MB: [u32; 7] = [256, 512, 1024, 1536, 2048, 3072, 4096];
+
+/// The value after/before `cur` in `opts` (wrapping); unknown values start from `at`.
+fn step(opts: &[u32], cur: u32, at: usize, d: i32) -> u32 {
+    let i = opts.iter().position(|v| *v == cur).unwrap_or(at) as i32;
+    opts[(i + d).rem_euclid(opts.len() as i32) as usize]
+}
 
 impl Settings {
     pub fn rows(&self) -> Vec<Row> {
@@ -171,6 +189,21 @@ impl Settings {
                 "Play next episode",
                 "Continue with the next episode when one ends.",
                 onoff(self.autoplay_next),
+            ),
+            r(
+                "Buffer ahead",
+                "How much video to download ahead while playing.",
+                format!("{} s", self.buffer_ahead_secs),
+            ),
+            r(
+                "Refill below",
+                "Start downloading again once the buffer drops under this.",
+                format!("{} s", self.buffer_refill_secs),
+            ),
+            r(
+                "Max RAM buffer",
+                "Memory cap for the buffer. A 4K remux hits this cap before the seconds above.",
+                format!("{:.1} GiB", self.buffer_max_mb as f64 / 1024.0),
             ),
             r(
                 "Home: Continue watching",
@@ -217,10 +250,13 @@ impl Settings {
             }
             4 => self.auto_skip_intro ^= true,
             5 => self.autoplay_next ^= true,
-            6 => self.home_resume ^= true,
-            7 => self.home_next_up ^= true,
-            8 => self.home_latest ^= true,
-            9 => {
+            6 => self.buffer_ahead_secs = step(&AHEAD_S, self.buffer_ahead_secs, 3, d),
+            7 => self.buffer_refill_secs = step(&REFILL_S, self.buffer_refill_secs, 2, d),
+            8 => self.buffer_max_mb = step(&BUF_MB, self.buffer_max_mb, 3, d),
+            9 => self.home_resume ^= true,
+            10 => self.home_next_up ^= true,
+            11 => self.home_latest ^= true,
+            12 => {
                 use Density::*;
                 self.density = match (self.density, d) {
                     (Compact, 1) | (Spacious, -1) => Comfortable,
@@ -228,13 +264,7 @@ impl Settings {
                     _ => Compact,
                 }
             }
-            10 => {
-                let i = CACHE_MB
-                    .iter()
-                    .position(|m| *m == self.image_cache_mb)
-                    .unwrap_or(2) as i32;
-                self.image_cache_mb = CACHE_MB[(i + d).rem_euclid(CACHE_MB.len() as i32) as usize];
-            }
+            13 => self.image_cache_mb = step(&CACHE_MB, self.image_cache_mb, 2, d),
             _ => {}
         }
     }
@@ -244,8 +274,7 @@ impl Settings {
         (self.home_resume, self.home_next_up, self.home_latest)
     }
 
-    /// What the player gets (see `hooks::PlayerPrefs`).
-    #[allow(dead_code)] // consumed by the player once its setter lands
+    /// What the player gets (see `video::PlayerPrefs`).
     pub fn prefs(&self) -> PlayerPrefs {
         PlayerPrefs {
             audio_lang: self.audio_lang.clone(),
@@ -257,6 +286,16 @@ impl Settings {
             },
             auto_skip_intro: self.auto_skip_intro,
             autoplay_next: self.autoplay_next,
+        }
+    }
+
+    /// The read-ahead policy; the player clamps nonsense (refill must stay below ahead).
+    pub fn buffering(&self) -> Buffering {
+        Buffering {
+            high_secs: self.buffer_ahead_secs as f64,
+            low_secs: self.buffer_refill_secs as f64,
+            max_bytes: (self.buffer_max_mb as u64) << 20,
+            ..Default::default()
         }
     }
 
@@ -322,7 +361,8 @@ mod tests {
         s.cycle(0, 1);
         s.cycle(1, 1);
         s.cycle(3, 1);
-        s.cycle(9, -1);
+        s.cycle(12, -1);
+        s.cycle(6, 1);
         s.save_to(&p).unwrap();
         assert_eq!(Settings::load_from(&p), s);
         assert!(!p.with_extension("toml.tmp").exists());
@@ -350,6 +390,23 @@ mod tests {
     }
 
     #[test]
+    fn buffering_defaults_and_cycling() {
+        let mut s = Settings::default();
+        let b = s.buffering();
+        assert_eq!(
+            (b.high_secs, b.low_secs, b.max_bytes),
+            (300.0, 120.0, 3 << 29)
+        );
+        s.cycle(6, 1);
+        s.cycle(8, -1);
+        let b = s.buffering();
+        assert_eq!((b.high_secs, b.max_bytes), (600.0, 1024 << 20));
+        s.buffer_ahead_secs = 77; // unknown value (hand-edited file) starts from the default slot
+        s.cycle(6, 1);
+        assert_eq!(s.buffer_ahead_secs, 600);
+    }
+
+    #[test]
     fn cycling_wraps_both_ways() {
         let mut s = Settings::default();
         assert_eq!(s.audio_lang, None);
@@ -365,15 +422,15 @@ mod tests {
             s.cycle(3, 1);
         }
         assert_eq!(s.sub_mode, SubPref::Off);
-        s.cycle(9, 1);
+        s.cycle(12, 1);
         assert_eq!(s.density, Density::Spacious);
-        s.cycle(9, 1);
+        s.cycle(12, 1);
         assert_eq!(s.density, Density::Compact);
         s.cycle(99, 1); // out of range is a no-op
-        s.cycle(10, 1);
+        s.cycle(13, 1);
         assert_eq!(s.image_cache_mb, 1024);
-        s.cycle(10, -1);
-        s.cycle(10, -1);
+        s.cycle(13, -1);
+        s.cycle(13, -1);
         assert_eq!(s.image_cache_mb, 256);
     }
 

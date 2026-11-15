@@ -10,7 +10,7 @@ use crate::video::{
 };
 use gpui::*;
 use nocturne_jellyfin as jf;
-use nocturne_player::{EmbeddedPlayer, Event, Options, Player};
+use nocturne_player::{Buffering, EmbeddedPlayer, Event, Options, Player};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use std::cell::Cell as StdCell;
 use std::collections::HashMap;
@@ -28,6 +28,7 @@ pub struct PlayerCtx {
     pub user: String,
     pub hooks: Option<Arc<dyn PlayerHooks>>,
     pub prefs: PlayerPrefs,
+    pub buffering: Buffering,
 }
 
 pub enum PlayerEvent {
@@ -383,9 +384,12 @@ impl PlayerView {
 
     fn start_external(&mut self, url: &str, header: &str) -> bool {
         self.video = false;
-        let ok = Player::new(Options::default())
-            .ok()
-            .filter(|p| p.load(url, Some(header)).is_ok());
+        let ok = Player::new(Options {
+            buffering: self.ctx.buffering,
+            ..Default::default()
+        })
+        .ok()
+        .filter(|p| p.load(url, Some(header)).is_ok());
         self.playback = ok.map(Playback::External);
         self.playback.is_some()
     }
@@ -405,7 +409,7 @@ impl PlayerView {
             _ => None,
         };
         let p = handles
-            .and_then(|(d, s)| EmbeddedPlayer::new(d, s).ok())
+            .and_then(|(d, s)| EmbeddedPlayer::with_buffering(d, s, self.ctx.buffering).ok())
             .filter(|p| p.load(&url, Some(&header)).is_ok());
         match p {
             Some(p) => {
@@ -1207,7 +1211,12 @@ impl PlayerView {
     }
 
     fn poll_extras(&mut self, cx: &mut Context<Self>) {
-        let cache = self.num("demuxer-cache-time");
+        // End of the buffered range: position plus the demuxer's buffered-ahead seconds.
+        let cache = self
+            .state
+            .as_ref()
+            .filter(|s| s.buffered > 0.0)
+            .map(|s| s.position.unwrap_or(0.0) + s.buffered);
         if cache != self.cache_end {
             self.cache_end = cache;
             cx.notify();

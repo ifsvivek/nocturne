@@ -997,6 +997,7 @@ impl Root {
             user,
             hooks: Some(self.hooks.clone() as Arc<dyn PlayerHooks>),
             prefs: self.settings.prefs(),
+            buffering: self.settings.buffering(),
         };
         self.hooks.seed_favorite(&m.id, m.favorite);
         self.report_stop();
