@@ -23,25 +23,58 @@ stop and next, clock sync, drift correction and the Ready / Buffering handshake,
 Still to do: show what a group is playing (the API does not say), group repeat and shuffle modes, queue editing from the
 group, resume positions, and testing with more than two members and with transcoded members.
 
-## Then: research-driven improvements
+## Then: compatibility and correctness (0.4)
 
-After the release, a review of the Jellyfin ecosystem (server, web and other official clients: open and closed issues,
-pull requests, API changes) to decide what to build and what to work around. Findings and priorities will be added here.
-Anything that belongs upstream will be prepared as a report for review, not filed automatically.
+A review of the Jellyfin ecosystem (server, web and other official clients: issues, pull requests, API changes) found no
+critical problems in NOCTURNE. It did find a set of small fixes worth doing before new features.
+
+- Check playback with mpv 0.42, which now verifies HTTPS certificates by default, and decide whether a certificate
+  option is needed
+- Playback reports that describe the stream truthfully (direct play or transcode, media source, play session), so the
+  server can stop a transcode when you stop watching; visible, non-modal errors when a report fails, and one retry of
+  the final "stopped" report
+- A Latest row on Home that shows new episodes of shows already in your library, and Play on a show card that starts
+  the next unwatched episode
+- Trickplay hover previews that stay correct on libraries scanned before Jellyfin 12
+- Admin Users: stop showing a password status that Jellyfin 12 no longer reports reliably
+- Remove an unused helper that builds URLs with the removed `api_key` parameter
+- Tests ready for Jellyfin 13.0 changes once they are released (route casing, user lookup rules, new SyncPlay fields)
+- A hardware check of HDR HEVC with text subtitles on NVIDIA, after an open upstream mpv report
+
+## Then: playback depth (0.5)
+
+- Two subtitle tracks at once (mpv supports it; Jellyfin Web already has it)
+- A version picker for movies and episodes that have several versions (Jellyfin 12 added them for episodes)
+- Audio and subtitle language choices remembered per show across restarts, including "original audio" where the
+  server provides it; stored locally, never on the server
+- Intro and credits prompts that stay visible for the whole segment and cope with overlapping segments from two
+  providers
+- Optional per-server trust for a private or self-signed certificate, if the mpv 0.42 check shows it is needed
+
+## Then: library depth (0.6)
+
+- Library filters for audio and subtitle language
+- "Included in" collections on item pages
+- An optional combined Continue Watching and Next Up row
+- Display language sent to the server so library and genre names follow it
+- Lyrics for music, and audiobook playback with chapters, together with the music items under "Later"
 
 ## Later: missing features
 
 **Media types and playback**
-- Books and audiobooks: playback and reading (the detail page exists)
-- Music: album-art views, a queue that survives closing the app, queue editing while browsing
+- Books and audiobooks: reading and playback (chapters now come from the server)
+- Music: album-art views, a queue that survives closing the app, queue editing while browsing, multi-disc grouping
 - Collections: create, add, remove, reorder
 - Sharing playlists with other users
 - Flatpak and other distribution packages; a verified AppImage only if it can be honest about system libraries
+- Offline downloads: undecided, because it conflicts with the read-only default
 
 **Accounts and settings**
 - A user picker on the sign-in screen (switching already works from the account menu)
-- Theme and accent choice
-- Subtitle appearance presets
+- A local PIN for profiles (it would protect the profile picker only, not the server)
+- Optional extra HTTP header per server for use behind a reverse proxy
+- Quick Connect authorization on behalf of another user (administrators)
+- Theme and accent choice, subtitle appearance presets
 - Ending your other sessions (the server only allows it for administrators)
 
 **Admin**
@@ -52,7 +85,10 @@ Anything that belongs upstream will be prepared as a report for review, not file
 
 **Platform**
 - Packages are tested on Arch Linux only; other distributions are unverified
-- Better screen-reader support, limited today by GPUI
+- Screen-reader support depends on GPUI. The accessibility layer exists in GPUI's development branch but not in the
+  published release NOCTURNE uses; a GPUI upgrade will be evaluated when it ships in a release or when native video
+  composition lands upstream
+- HDR output depends on libmpv gaining a modern render API; until then HDR is tone-mapped to SDR
 - Windows and macOS: possible future work, not planned or supported
 
 ## Dropped (will not be built)
@@ -61,3 +97,9 @@ Anything that belongs upstream will be prepared as a report for review, not file
 - DLNA setup
 - Acting as a cast target
 - Gapless music playback
+
+## Upstream reports
+
+A review of the Jellyfin ecosystem (server, web and other official clients: issues, pull requests, API changes) found
+no critical problems in NOCTURNE; the items above come from it. Anything that belongs upstream is prepared as a draft
+and written up by hand by a person before it is sent; nothing is filed automatically.
