@@ -1,76 +1,127 @@
+<p align="center"><img src="packaging/nocturne.svg" alt="NOCTURNE" width="96"></p>
+
 # NOCTURNE
 
 **YOUR MEDIA. YOUR NIGHT.**
 
-A native cinematic media experience for Linux, written in Rust. Jellyfin is the first supported media source.
-UI with [GPUI](https://github.com/zed-industries/zed), playback with libmpv. Linux/Wayland first.
+A native, cinematic desktop client for Jellyfin on Linux. Written in Rust with [GPUI](https://www.gpui.rs/),
+playing video in the app window through libmpv. Wayland first.
 
-> Status: early development. Read-only browsing and playback are the first milestones.
+> **Unofficial. Not affiliated with, endorsed by or sponsored by the Jellyfin project.**
+> NOCTURNE is an independent client that talks to your own Jellyfin server over its public API.
 
-## Requirements
+Status: version 0.1.0, early. Linux only. See [docs/ROADMAP.md](docs/ROADMAP.md) for what is missing.
 
-- Rust (stable, 2024 edition)
-- libmpv dev files (`pkg-config --modversion mpv`)
-- A Jellyfin server (developed against 12.x)
-- Vulkan-capable GPU (UI); OpenGL/EGL (in-window video)
-- Wayland for in-window video; other sessions fall back to an external mpv window (`NOCTURNE_VIDEO=external` forces it)
+## Screenshots
 
-## Configuration
+Captured against a generated demo library, not personal media.
 
-Copy `.env.example` to `.env` and fill it in. `.env` is git-ignored; never commit it.
-
-| Variable | Meaning |
+| | |
 |---|---|
-| `NOCTURNE_JF_URL` | Server URL (default `http://127.0.0.1:8096`) |
-| `NOCTURNE_JF_TOKEN` | Jellyfin API key (Dashboard > API Keys) |
+| ![Home](docs/screenshots/home.webp) | ![Library](docs/screenshots/library.webp) |
+| ![Movie detail](docs/screenshots/detail.webp) | ![Series](docs/screenshots/series.webp) |
+| ![Search](docs/screenshots/search.webp) | ![Player](docs/screenshots/player.webp) |
+| ![Settings](docs/screenshots/settings.webp) | ![Admin](docs/screenshots/admin.webp) |
 
-## Development
+## What it does
+
+The full checklist is [docs/FEATURES.md](docs/FEATURES.md); verification notes are in
+[docs/QA_REPORT.md](docs/QA_REPORT.md).
+
+- **Browse**: home with Continue Watching and Next Up, paged libraries with sort, filters, A-Z and poster / thumb / list views,
+  genres, studios, years, tags, collections, playlists and favourites, global search (Ctrl+K or `/`), people pages.
+- **Details**: movie, series, season and episode pages with cast, chapters, similar items, extras and media info.
+- **Playback**: in-window GPU video via libmpv with hardware decoding, chapters and trickplay on the seek bar,
+  audio and subtitle menus with delays and styling, speed and picture controls, skip intro and credits,
+  next-episode autoplay, queue, quality selector with transcode fallback, mini player, MPRIS and idle inhibit.
+- **Accounts**: username and password or Quick Connect; the token lives in your system keyring.
+- **Admin** (administrator accounts): dashboard, users, libraries, scheduled tasks, devices, activity, logs, API keys
+  and several server settings, each change behind a confirmation dialog.
+
+Not implemented: Live TV, SyncPlay, DLNA, casting, gapless music, playable books and audiobooks, and some admin
+editing. Windows and macOS are not supported.
+
+## Install
+
+NOCTURNE needs mpv's library (`libmpv`), a Vulkan driver (GPUI renders with Vulkan), an OpenGL/EGL stack, and a
+Secret Service provider (gnome-keyring, KWallet or KeePassXC) to remember your login. Packages are tested on Arch
+Linux only; see [docs/PACKAGING.md](docs/PACKAGING.md) for the full dependency list.
+
+**Release tarball** (from the GitHub Releases page, once published):
 
 ```sh
-cargo build
-cargo run -p nocturne-app        # the desktop client (binary: nocturne); reads .env
-cargo test                       # offline tests
-cargo test -- --ignored          # live tests against your server (read-only GETs)
+tar xf nocturne-0.1.0-x86_64-linux.tar.gz && cd nocturne-0.1.0-x86_64-linux
+sudo ./install.sh              # PREFIX=/usr/local by default; `sudo ./install.sh uninstall` removes it
 ```
 
-**Throwaway Jellyfin for admin tests.** `scripts/test-jellyfin.sh {start|stop|reset|status}` runs the installed `/usr/sbin/jellyfin` (12.x) on `127.0.0.1:8097` with all state under `/tmp/nocturne-jf-test` (`--datadir/--configdir/--cachedir/--logdir`, a pre-written `network.xml` that binds loopback only and disables UDP autodiscovery/UPnP; it never touches `/var/lib/jellyfin`, `~/.config` or your server on 8096). First `start` completes the setup wizard, creates an admin with a random password (`admin-password`, temp dir only), an API key, users `alice`/`bob` and a library of three generated ffmpeg clips; URL and token go to `/tmp/nocturne-jf-test/test.env` (mode 600). Needs `jellyfin`, `ffmpeg`, `curl`, `jq`.
+**Arch Linux** (builds from the source archive of the release tag):
 
 ```sh
-scripts/test-jellyfin.sh start
-NOCTURNE_JF_TEST_ENV=/tmp/nocturne-jf-test/test.env cargo test -p nocturne-jellyfin-admin -- --ignored
-scripts/test-jellyfin.sh stop     # or `reset` to delete everything
+cd packaging && makepkg -si
 ```
 
-`crates/jellyfin-admin` holds all admin reads and writes. Destructive calls (`delete_*`, password set/reset, `restart_server`) require a `Confirmed` token that UI code mints only after the user confirms. Its live tests refuse to run (`guard::TestServerGuard`) unless the URL is loopback port 8097, differs from your real server, and the server reports a `/tmp` data path; they never read `.env`.
+**From source**:
 
-`vendor/xattr` is a one-line patched copy of the `xattr` crate (a transitive dependency of GPUI that no longer builds against current `libc`); see the `[patch.crates-io]` note in `Cargo.toml`.
-
-**Read-only boundary.** `crates/jellyfin` is strictly GET-only (no POST/PUT/DELETE/PATCH): the server holds your personal media and the browsing/playback layer must not be able to change it. `crates/jellyfin/tests/readonly.rs` enforces this. Write/admin calls (users, libraries, tasks, sessions, settings) live in the separate crate `crates/jellyfin-admin`; every write action will require explicit UI confirmation and will only be tested against a throwaway Jellyfin instance, never your real server. Integration tests here only issue read-only requests.
-
-## Wayland compositor notes
-
-Video plays in a subsurface of the app window, so the compositor applies its window opacity to it. If your compositor
-dims or fades non-fullscreen windows (Hyprland `active_opacity`/`inactive_opacity` below 1), video looks washed out until
-you exempt the app, class (app id) `nocturne`. Hyprland 0.57 (Lua config):
-
-```lua
-hl.window_rule({ name = "nocturne-opaque", match = { class = "^nocturne$" }, opaque = true })
+```sh
+# Arch: sudo pacman -S rust mpv pkgconf libxkbcommon-x11 vulkan-icd-loader
+# Debian/Ubuntu (names may differ): libmpv-dev pkg-config libxkbcommon-x11-dev libvulkan1 libwayland-dev libdbus-1-dev
+git clone https://github.com/ifsvivek/nocturne && cd nocturne
+cargo build --release --locked      # needs stable Rust 1.89+ and `pkg-config --modversion mpv` to succeed
+./target/release/nocturne
 ```
 
-Hyprland hyprlang config (`hyprland.conf`):
+A clean release build takes several minutes (fat LTO).
 
-```ini
-windowrule = opaque on, match:class ^(nocturne)$
-```
+## Usage notes
 
-(Older hyprlang syntax: `windowrulev2 = opaque, class:^(nocturne)$`.) Fullscreen is never affected. Other compositors
-need the equivalent "opaque / no opacity" rule for app id `nocturne`.
+- **Wayland / Hyprland.** Video plays in a subsurface of the app window, so the compositor's window opacity applies to
+  it. If you set `active_opacity` / `inactive_opacity` below 1, exempt the app id `nocturne`.
+  Hyprland (Lua config):
+  ```lua
+  hl.window_rule({ name = "nocturne-opaque", match = { class = "^nocturne$" }, opaque = true })
+  ```
+  Hyprland (`hyprland.conf`): `windowrule = opaque on, match:class ^(nocturne)$`
+  (older syntax: `windowrulev2 = opaque, class:^(nocturne)$`). Other compositors need the equivalent "opaque" rule.
+- **X11.** In-window video needs Wayland. On other sessions NOCTURNE plays in an external mpv window, which closes
+  with the app. `NOCTURNE_VIDEO=external` forces this on Wayland too.
+- **Fonts.** The UI uses Noto Sans and JetBrainsMono Nerd Font if installed, and falls back to system fonts.
 
-## Roadmap
+## Configuration and keyring
 
-1. Jellyfin client (libraries, items, images, stream URLs)
-2. libmpv playback
-3. UI shell and design system
-4. Polish: keyboard navigation, accessibility, image caching
+- Settings: `$XDG_CONFIG_HOME/nocturne/settings.toml` (default `~/.config/nocturne/`). It holds preferences only.
+- Remembered servers: `$XDG_CONFIG_HOME/nocturne/servers.toml`, URLs only.
+- Login token: your system keyring (Secret Service), never a file. If no Secret Service is running, NOCTURNE cannot
+  remember the login.
+- Developer mode: `NOCTURNE_JF_URL` and `NOCTURNE_JF_TOKEN` (a Jellyfin API key, read from the environment or a
+  git-ignored `.env`) skip sign-in. This mode is strictly read-only.
 
-See `CLAUDE.md` for the agent workflow used to build this project.
+## Safety model: read-only by default
+
+NOCTURNE changes nothing on your server unless you say so. One setting,
+**Settings > Allow NOCTURNE to change data on the server** (`allow_server_writes`), is off by default and gates
+everything that writes: playback progress, watched and favourite flags, own password, and every admin action.
+Admin actions additionally need an administrator account and a confirmation dialog. Signing in and out only creates
+and ends this app's own session. The browsing and playback crate is GET-only and a test enforces it.
+Details and the full table: [docs/WRITES.md](docs/WRITES.md).
+
+## Documentation
+
+[Features](docs/FEATURES.md) | [Architecture](docs/ARCHITECTURE.md) | [Design](docs/DESIGN.md) |
+[Roadmap](docs/ROADMAP.md) | [Writes](docs/WRITES.md) | [Packaging](docs/PACKAGING.md) | [QA report](docs/QA_REPORT.md) |
+[Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Changelog](CHANGELOG.md)
+
+## License
+
+GPL-3.0-or-later. See [LICENSE](LICENSE); third-party licences are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Acknowledgements and attribution
+
+- **[Jellyfin](https://jellyfin.org/)** is the media server NOCTURNE talks to. "Jellyfin" and its logo are trademarks of
+  the Jellyfin project. NOCTURNE is an unofficial third-party client; it is not affiliated with, endorsed by or
+  sponsored by Jellyfin, and uses the name only to say which server it works with.
+- **[GPUI](https://github.com/zed-industries/zed)** by Zed Industries, the UI framework (Apache-2.0).
+- **[mpv](https://mpv.io/) / libmpv** for playback and hardware decoding.
+- **[Rust](https://www.rust-lang.org/)** and the crates NOCTURNE builds on, including tokio, reqwest, rustls, serde, zbus,
+  keyring, wayland-client and image. The full list with licences is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- `vendor/xattr` is a patched copy of the [xattr](https://github.com/Stebalien/xattr) crate (MIT / Apache-2.0).
