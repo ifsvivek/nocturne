@@ -151,6 +151,10 @@ pub struct Account {
     pub user_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_tag: Option<String>,
+    /// The profile picked automatically at launch (a name/id marker, never a secret). At most one
+    /// per server; it lives on the entry, so forgetting the account clears it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub default: bool,
 }
 
 /// Remembered accounts across servers (`$XDG_CONFIG_HOME/nocturne/accounts.toml`).
@@ -206,6 +210,7 @@ impl Accounts {
                 user_id: session.user_id.clone(),
                 user_name: session.user_name.clone(),
                 image_tag: None,
+                default: false,
             }),
         }
     }
@@ -224,6 +229,35 @@ impl Accounts {
             }
             _ => false,
         }
+    }
+
+    /// The profile chosen to open automatically on `server_url`, if any.
+    pub fn default_for(&self, server_url: &str) -> Option<&Account> {
+        let server = key(server_url);
+        self.accounts
+            .iter()
+            .find(|a| a.server == server && a.default)
+    }
+
+    /// Make `user_id` the default profile of `server_url` (`None` clears it); true when something
+    /// changed. An unknown user changes nothing.
+    pub fn set_default(&mut self, server_url: &str, user_id: Option<&str>) -> bool {
+        let server = key(server_url);
+        if user_id.is_some_and(|u| {
+            !self
+                .accounts
+                .iter()
+                .any(|a| a.server == server && a.user_id == u)
+        }) {
+            return false;
+        }
+        let mut changed = false;
+        for a in self.accounts.iter_mut().filter(|a| a.server == server) {
+            let want = user_id == Some(a.user_id.as_str());
+            changed |= a.default != want;
+            a.default = want;
+        }
+        changed
     }
 
     pub fn forget(&mut self, server_url: &str, user_id: &str) {
@@ -246,6 +280,14 @@ impl Accounts {
 pub fn remember_image_tag(server_url: &str, user_id: &str, tag: Option<String>) {
     let mut a = Accounts::load().unwrap_or_default();
     if a.set_image_tag(server_url, user_id, tag) {
+        let _ = a.save();
+    }
+}
+
+/// Store the default profile of a server (`None`: ask every time); no-op when unchanged.
+pub fn remember_default(server_url: &str, user_id: Option<&str>) {
+    let mut a = Accounts::load().unwrap_or_default();
+    if a.set_default(server_url, user_id) {
         let _ = a.save();
     }
 }
@@ -380,6 +422,43 @@ mod tests {
             toml::from_str::<Accounts>(old).unwrap().accounts[0].image_tag,
             None
         );
+    }
+
+    #[test]
+    fn default_profile_is_one_per_server_clears_on_forget_and_old_files_load() {
+        let mut bob = session();
+        bob.user_id = "u2".into();
+        bob.user_name = "bob".into();
+        let mut a = Accounts::default();
+        a.remember("http://a:1", &session());
+        a.remember("http://a:1", &bob);
+        a.remember("http://b:1", &session());
+        assert!(a.default_for("http://a:1").is_none());
+        assert!(!a.set_default("http://a:1", Some("nobody")), "unknown user");
+        assert!(a.set_default("http://a:1", Some("u")));
+        assert!(!a.set_default("http://a:1", Some("u")), "unchanged");
+        assert!(a.set_default("http://a:1/", Some("u2")), "moves, never two");
+        assert_eq!(a.default_for("http://a:1").unwrap().user_id, "u2");
+        assert!(
+            a.default_for("http://b:1").is_none(),
+            "other server untouched"
+        );
+        a.remember("http://a:1", &bob); // re-login keeps the marker
+        assert!(a.default_for("http://a:1").is_some());
+        let text = toml::to_string_pretty(&a).unwrap();
+        assert_eq!(text.matches("default = true").count(), 1);
+        assert!(!text.contains("tok"));
+        assert_eq!(toml::from_str::<Accounts>(&text).unwrap(), a);
+        a.forget("http://a:1", "u2"); // removing the default account clears the default
+        assert!(a.default_for("http://a:1").is_none());
+        assert!(!toml::to_string_pretty(&a).unwrap().contains("default"));
+        assert!(a.set_default("http://a:1", Some("u")));
+        assert!(a.set_default("http://a:1", None));
+        assert!(a.default_for("http://a:1").is_none());
+        // Files written before the field existed still load, with no default.
+        let old = "[[accounts]]\nserver = \"h\"\nuser_id = \"u\"\nuser_name = \"n\"\n";
+        let old = toml::from_str::<Accounts>(old).unwrap();
+        assert!(!old.accounts[0].default && old.default_for("h").is_none());
     }
 
     #[test]
