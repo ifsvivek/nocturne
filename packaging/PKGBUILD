@@ -29,6 +29,7 @@ prepare() {
 build() {
   cd "$pkgname-$pkgver"
   export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
+  export RUSTFLAGS="$RUSTFLAGS --remap-path-prefix=$HOME=/home/build --remap-path-prefix=$PWD=/src"
   cargo build --frozen --release -p nocturne-app
 }
 

@@ -8,6 +8,8 @@ ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 name="nocturne-$ver-$(uname -m)-linux"
 bin="${CARGO_TARGET_DIR:-target}/release/nocturne"
 
+# Keep build-machine paths (home directory, checkout) out of the shipped binary.
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$HOME=/home/build --remap-path-prefix=$PWD=/src"
 cargo build --release --locked -p nocturne-app
 rm -rf "dist/$name" && mkdir -p "dist/$name/icons"
 install -m755 "$bin" "dist/$name/nocturne"
