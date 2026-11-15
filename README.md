@@ -1,6 +1,8 @@
 # NOCTURNE
 
-A native, dark, cinematic Jellyfin desktop client written in Rust.
+**YOUR MEDIA. YOUR NIGHT.**
+
+A native cinematic media experience for Linux, written in Rust. Jellyfin is the first supported media source.
 UI with [GPUI](https://github.com/zed-industries/zed), playback with libmpv. Linux/Wayland first.
 
 > Status: early development. Read-only browsing and playback are the first milestones.
