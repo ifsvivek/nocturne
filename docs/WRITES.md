@@ -15,6 +15,7 @@ work, each with its existing confirmation dialog where one exists. Developer API
 | Authorize another device with a Quick Connect code | yes | the code shown on that device |
 | Admin: scan library, run/stop tasks, users, sessions, server settings, transcoding settings, restart, API keys | yes | an administrator account and a confirmation dialog per action |
 | Admin: branding, task triggers, trickplay settings, libraries (add, remove, folders, options), plugins (enable, disable, uninstall, install) | yes | an administrator account and a confirmation dialog per action |
+| Admin: plugin repositories (add, enable, disable, remove), library rename, metadata / image fetcher order and enabling, local readers, per-user access and limits, user profile image (upload, remove) | yes | an administrator account and a confirmation dialog per action |
 | Admin: networking (ports, bind addresses, LAN networks, remote access, UPnP, discovery, IPv4 / IPv6) | yes | an administrator account, a confirmation dialog and the typed word NETWORK; wrong values can lock everyone out |
 | Admin: dashboards, activity, devices, logs, libraries (with display/NFO/trickplay flags), plugins and the plugin catalog, backups list, transcoding, trickplay and networking views, own sessions list | no (view only) | an administrator account |
 

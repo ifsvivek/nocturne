@@ -15,7 +15,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Dialog inputs are validated per field (time of day, ports, networks, paths) and marked when invalid.
 - `scripts/test-jellyfin.sh` and the test guard accept `NOCTURNE_JF_TEST_PORT` to run a second throwaway server.
 
+- Admin: plugin repositories (add, enable, disable, remove), library rename, a Providers page (metadata and image
+  fetcher order and on / off per library and item type, local readers, what the server offers), the library scan and
+  metadata refresh schedule, and an Access and limits page per user (library access, feature switches, parental
+  rating, tags, bitrate and session limits, lockout, profile image, display preferences read).
+
 ### Fixed
+- Admin sidebar: the "Playback" sub-heading is gone; the group lists consistently.
 - Typing `/` or `?` inside an admin dialog opened search or help instead of entering the character.
 
 ## [0.1.0]

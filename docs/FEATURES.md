@@ -55,8 +55,9 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] General, Metadata, Resume, Streaming settings (editable); Transcoding (view, three editable fields)
 - [x] API keys: create and delete; server restart
 - [x] Every write behind a confirmation dialog; view only while server changes are off
-- [ ] Plugin repositories; library rename, metadata providers, image fetchers and refresh schedule; a library's type cannot be changed
-- [ ] User policy details (library access, parental rating, bitrate limits)
+- [x] Plugin repositories: list, add, enable, disable, remove (adding one warns that plugins run with full server access)
+- [x] Libraries: rename; Providers page with the metadata and image fetchers the server offers per library and item type (order, on / off), local metadata readers, and what the server lacks (subtitle, lyric and segment providers shown read only); refresh schedule shown (metadata refresh days per library, the server-wide scan task's triggers). A library's type cannot be changed
+- [x] Access and limits per user: library access, feature switches (remote access, playback, transcoding, remuxing, downloads, deletion, collections, subtitles, public sharing, hidden), maximum parental rating, blocked and allowed tags, remote bitrate limit, session limit, failed-sign-in lockout, profile image upload / remove, display preferences (read only). Jellyfin has no password length or expiry rules, so none are offered
 
 ## Not planned
 Live TV / DVR, SyncPlay, DLNA, acting as a cast target, gapless music playback, Windows and macOS builds.

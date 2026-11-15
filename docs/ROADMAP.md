@@ -6,10 +6,8 @@ Honest list of what is missing in 0.1.0 and what is intentionally out of scope. 
 ## Known gaps
 
 **Admin**
-- Plugin repositories (add, remove, enable)
-- Library rename, metadata providers, image fetchers and refresh schedule (a library's type cannot be changed)
 - Networking: base URL, HTTPS and certificates, proxies and IP filters stay view only on purpose
-- User policy details: library access, parental rating, feature and bitrate limits, profile image
+- Per-user access schedules, "block unrated" kinds and per-folder deletion rights; subtitle, lyric and segment provider ordering (the throwaway server has none installed)
 
 **Media types and playback**
 - Books and audiobooks are not playable (detail page only)
