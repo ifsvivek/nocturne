@@ -35,7 +35,11 @@ fn wait(what: &str, mut f: impl FnMut() -> bool) {
 fn load_seek_pause_eof() {
     let path = std::env::temp_dir().join(format!("nocturne-smoke-{}.wav", std::process::id()));
     std::fs::write(&path, wav(2)).unwrap();
-    let p = Player::new(Options { headless: true }).unwrap();
+    let p = Player::new(Options {
+        headless: true,
+        ..Default::default()
+    })
+    .unwrap();
     assert!(p.state().idle);
 
     p.load(path.to_str().unwrap(), Some("X-Test: a, b"))
@@ -88,7 +92,11 @@ fn headers_reach_server_and_not_url() {
         let _ = c.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
         String::from_utf8_lossy(&buf[..n]).into_owned()
     });
-    let p = Player::new(Options { headless: true }).unwrap();
+    let p = Player::new(Options {
+        headless: true,
+        ..Default::default()
+    })
+    .unwrap();
     p.load(&url, Some("Authorization: Tok A=\"b\", C=\"d\""))
         .unwrap();
     let req = srv.join().unwrap();
@@ -103,7 +111,11 @@ fn headers_reach_server_and_not_url() {
 fn killed_child_emits_closed_and_next_load_respawns() {
     let path = std::env::temp_dir().join(format!("nocturne-kill-{}.wav", std::process::id()));
     std::fs::write(&path, wav(2)).unwrap();
-    let p = Player::new(Options { headless: true }).unwrap();
+    let p = Player::new(Options {
+        headless: true,
+        ..Default::default()
+    })
+    .unwrap();
     let old = p.child_pid().unwrap();
     assert!(
         std::process::Command::new("kill")
@@ -126,7 +138,11 @@ fn killed_child_emits_closed_and_next_load_respawns() {
 
 #[test]
 fn auth_header_not_on_child_command_line() {
-    let p = Player::new(Options { headless: true }).unwrap();
+    let p = Player::new(Options {
+        headless: true,
+        ..Default::default()
+    })
+    .unwrap();
     p.load("/nonexistent.wav", Some("Authorization: SECRET-TOKEN-123"))
         .unwrap();
     wait("failure", || {

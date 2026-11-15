@@ -24,7 +24,11 @@ async fn plays_first_item_and_position_advances() {
         .unwrap();
     let id = &page.items.first().expect("at least one playable item").id;
 
-    let p = Player::new(Options { headless: true }).unwrap();
+    let p = Player::new(Options {
+        headless: true,
+        ..Default::default()
+    })
+    .unwrap();
     p.load(
         &c.stream_url(id),
         Some(&format!("Authorization: {}", c.auth_header())),

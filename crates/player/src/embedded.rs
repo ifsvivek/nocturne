@@ -6,7 +6,7 @@
 //! thread owns the EGL context + mpv render context; one event thread feeds `State`/`Event`.
 //! Teardown order (see `Drop`) is load-bearing; see docs/video-embedding.md.
 
-use crate::{Error, Event, Result, State, e};
+use crate::{Buffering, Error, Event, Result, State, e};
 use libmpv2::events::{Event as MpvEvent, PropertyData};
 use libmpv2::render::{OpenGLInitParams, RenderParam, RenderParamApiType, mpv_render_update};
 use libmpv2::{Format, Mpv};
@@ -145,6 +145,15 @@ impl EmbeddedPlayer {
     /// available here" (no viewporter/subcompositor, EGL failure, ...) and callers fall back to
     /// [`crate::Player`].
     pub fn new(display: *mut c_void, parent: *mut c_void) -> Result<Self> {
+        Self::with_buffering(display, parent, Buffering::default())
+    }
+
+    /// Like [`Self::new`] with an explicit read-ahead policy.
+    pub fn with_buffering(
+        display: *mut c_void,
+        parent: *mut c_void,
+        buffering: Buffering,
+    ) -> Result<Self> {
         unsafe {
             // Wrap GPUI's connection (foreign display: we never own/close it) with our own queue.
             let backend = Backend::from_foreign_display(display as *mut _);
@@ -193,6 +202,9 @@ impl EmbeddedPlayer {
                 i.set_option("terminal", "no")?;
                 i.set_option("input-default-bindings", "no")?;
                 i.set_option("osc", "no")?;
+                for (k, v) in buffering.mpv_options() {
+                    i.set_option(k, v.as_str())?;
+                }
                 Ok(())
             })
             .map_err(|er| Error::Mpv(format!("init: {er:?}")))?;
@@ -204,6 +216,7 @@ impl EmbeddedPlayer {
                 ("volume", Format::Double),
                 ("eof-reached", Format::Flag),
                 ("idle-active", Format::Flag),
+                ("demuxer-cache-duration", Format::Double),
             ]
             .into_iter()
             .enumerate()
@@ -420,6 +433,10 @@ fn event_loop(mpv: Arc<Mpv>, state: Arc<Mutex<State>>, tx: Sender<Event>, sh: Ar
                     }
                     "volume" => {
                         s.volume = num(&change).unwrap_or(100.0);
+                        None
+                    }
+                    "demuxer-cache-duration" => {
+                        s.buffered = num(&change).unwrap_or(0.0);
                         None
                     }
                     _ => None,

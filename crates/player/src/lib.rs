@@ -41,6 +41,62 @@ pub(crate) fn e(err: impl std::fmt::Display) -> Error {
 pub struct Options {
     /// No window, no audio device (vo=null, ao=null). For tests and CI.
     pub headless: bool,
+    /// Network read-ahead policy (both backends). See [`Buffering`].
+    pub buffering: Buffering,
+}
+
+/// Watermark read-ahead: the demuxer reads until `high_secs` are buffered, then stops reading
+/// entirely, and only resumes once buffered time drains to `low_secs` (instead of topping up every
+/// few ms). Maps to mpv `demuxer-readahead-secs` = high, `demuxer-hysteresis-secs` = low. (mpv's hysteresis is the
+/// absolute remaining-buffer level at which reading resumes, NOT `readahead - hysteresis`: measured
+/// on mpv 0.41, see docs/buffering.md. 0 disables it, i.e. continuous top-up.)
+///
+/// RAM tradeoff: `max_bytes` caps the buffer regardless of seconds. A 4K remux at ~80 Mbit/s fills
+/// 1.5 GiB in about 150 s, so it never reaches 300 s; a 5 Mbit/s 1080p stream needs ~190 MiB for
+/// 300 s. Peak RAM is about `max_bytes + back_bytes` per player. When the byte cap is hit first, the
+/// effective high mark is whatever fits in `max_bytes` (the demuxer stops at the first limit hit).
+/// `back_bytes` is the already-played part kept for
+/// backward seeks.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Buffering {
+    pub high_secs: f64,
+    pub low_secs: f64,
+    pub max_bytes: u64,
+    pub back_bytes: u64,
+}
+
+impl Default for Buffering {
+    fn default() -> Self {
+        Self {
+            high_secs: 300.0,
+            low_secs: 120.0,
+            max_bytes: 3 << 29, // 1.5 GiB
+            back_bytes: 64 << 20,
+        }
+    }
+}
+
+impl Buffering {
+    /// The exact mpv options, sanitised: non-finite -> default; high in 2..=86400 s; low in
+    /// 1..high-1 (0 would disable the hysteresis); max_bytes >= 16 MiB; back_bytes <= max_bytes.
+    /// `cache-secs` must be set too: with `cache=yes` mpv 0.41 uses max(readahead, cache-secs) and
+    /// its default is 3600000 s, which would defeat the high mark.
+    pub fn mpv_options(&self) -> [(&'static str, String); 6] {
+        let d = Self::default();
+        let fin = |v: f64, dv: f64| if v.is_finite() { v } else { dv };
+        let high = fin(self.high_secs, d.high_secs).clamp(2.0, 86400.0);
+        let low = fin(self.low_secs, d.low_secs).clamp(1.0, high - 1.0);
+        let max = self.max_bytes.max(16 << 20);
+        let back = self.back_bytes.min(max);
+        [
+            ("cache", "yes".into()),
+            ("cache-secs", high.to_string()),
+            ("demuxer-readahead-secs", high.to_string()),
+            ("demuxer-hysteresis-secs", low.to_string()),
+            ("demuxer-max-bytes", max.to_string()),
+            ("demuxer-max-back-bytes", back.to_string()),
+        ]
+    }
 }
 
 /// Snapshot of playback state. `None` position/duration means "not known yet / nothing loaded".
@@ -50,6 +106,8 @@ pub struct State {
     pub duration: Option<f64>,
     pub paused: bool,
     pub volume: f64,
+    /// Seconds buffered ahead of the playback position (mpv `demuxer-cache-duration`); 0 if unknown.
+    pub buffered: f64,
     /// Reached end of file (the player keeps the file open, paused at the end).
     pub eof: bool,
     /// Nothing loaded.
@@ -63,6 +121,7 @@ impl Default for State {
             duration: None,
             paused: false,
             volume: 100.0,
+            buffered: 0.0,
             eof: false,
             idle: true,
         }
@@ -256,6 +315,9 @@ impl Player {
         let sock = self.dir.join("mpv.sock");
         let _ = std::fs::remove_file(&sock);
         let mut cmd = Command::new("mpv");
+        for (k, v) in self.opts.buffering.mpv_options() {
+            cmd.arg(format!("--{k}={v}"));
+        }
         cmd.args([
             "--no-config",
             "--no-terminal",
@@ -319,6 +381,7 @@ impl Player {
             "volume",
             "eof-reached",
             "idle-active",
+            "demuxer-cache-duration",
         ]
         .iter()
         .enumerate()
@@ -423,6 +486,10 @@ fn read_loop(
                         s.volume = d.as_f64().unwrap_or(100.0);
                         None
                     }
+                    "demuxer-cache-duration" => {
+                        s.buffered = d.as_f64().unwrap_or(0.0);
+                        None
+                    }
                     _ => None,
                 }
             }
@@ -435,4 +502,67 @@ fn read_loop(
     alive.store(false, Ordering::SeqCst);
     lock(&state).idle = true;
     let _ = tx.send(Event::Closed);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn get(b: Buffering) -> Vec<(&'static str, String)> {
+        b.mpv_options().to_vec()
+    }
+    fn s(k: &'static str, v: &str) -> (&'static str, String) {
+        (k, v.to_string())
+    }
+
+    #[test]
+    fn default_maps_to_mpv_options() {
+        assert_eq!(
+            get(Buffering::default()),
+            [
+                s("cache", "yes"),
+                s("cache-secs", "300"),
+                s("demuxer-readahead-secs", "300"),
+                s("demuxer-hysteresis-secs", "120"), // = low mark
+                s("demuxer-max-bytes", "1610612736"),
+                s("demuxer-max-back-bytes", "67108864"),
+            ]
+        );
+    }
+
+    #[test]
+    fn clamping() {
+        let d = Buffering::default();
+        let val = |b: Buffering, k: &str| get(b).into_iter().find(|o| o.0 == k).unwrap().1;
+        // low >= high -> low = high - 1
+        let b = Buffering {
+            high_secs: 30.0,
+            low_secs: 90.0,
+            ..d
+        };
+        assert_eq!(val(b, "demuxer-hysteresis-secs"), "29");
+        // high < 2 -> 2, low < 1 -> 1 (0 would disable hysteresis)
+        let b = Buffering {
+            high_secs: 0.0,
+            low_secs: -5.0,
+            ..d
+        };
+        assert_eq!(val(b, "demuxer-readahead-secs"), "2");
+        assert_eq!(val(b, "demuxer-hysteresis-secs"), "1");
+        // NaN -> defaults
+        let b = Buffering {
+            high_secs: f64::NAN,
+            low_secs: f64::INFINITY,
+            ..d
+        };
+        assert_eq!(val(b, "demuxer-hysteresis-secs"), "120");
+        // byte caps: floor 16 MiB, back <= max
+        let b = Buffering {
+            max_bytes: 0,
+            back_bytes: u64::MAX,
+            ..d
+        };
+        assert_eq!(val(b, "demuxer-max-bytes"), "16777216");
+        assert_eq!(val(b, "demuxer-max-back-bytes"), "16777216");
+    }
 }
