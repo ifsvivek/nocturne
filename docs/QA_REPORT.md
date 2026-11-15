@@ -62,7 +62,7 @@ Legend: Y = yes, n/a = not applicable, - = not done, partial = see notes.
 - Real server with several seasons (season cards), real server HDR, Photo viewer on real data.
 - Cache size cap reached on a real library; multi-day soak.
 - Session message action (no remote-controllable client available).
-- `crates/jellyfin-user` live test `playback_reporting_sets_resume_then_played` assumes the first movie is a 2 s clip; it fails once `scripts/gen-player-clips.sh` has added a longer movie. Not a product defect.
+- (Fixed) the `crates/jellyfin-user` live test `playback_reporting_sets_resume_then_played` no longer assumes a 2 s clip: positions now scale with the item runtime.
 - Admin still lacks: plugin repositories, library rename and provider options, user policy details.
 - Plugin install, disable and uninstall were not driven through the app UI (crate live test, dialog unit tests, and the rendered catalog only).
 - Jellyfin lets any plugin endpoint "uninstall" a bundled plugin without error in one case we hit and refuses to disable it in another; NOCTURNE only offers these actions for removable plugins.

@@ -155,6 +155,14 @@ async fn playback_reporting_sets_resume_then_played() {
     let (s, c) = login(&e).await;
     let r = reader(&e, &s);
     let id = movies(&r, &s).await.remove(0);
+    // Positions scale with the item's runtime, so any seeded clip length works.
+    let runtime = r
+        .item(&s.user_id, &id)
+        .await
+        .unwrap()
+        .run_time_ticks
+        .expect("test movie has a runtime");
+    let (resume, finished) = (runtime * 4 / 10, runtime * 975 / 1000);
     c.mark_unplayed(&id).await.unwrap();
     let mut rep = PlaybackReport {
         item_id: id.clone(),
@@ -162,18 +170,18 @@ async fn playback_reporting_sets_resume_then_played() {
         ..Default::default()
     };
     c.report_playback_start(&rep).await.unwrap();
-    rep.position_ticks = 8_000_000; // 0.8 s of a 2 s clip
+    rep.position_ticks = resume; // 40% in
     c.report_playback_progress(&rep).await.unwrap();
     rep.is_paused = true;
     c.report_playback_progress(&rep).await.unwrap();
     c.report_playback_stopped(&rep).await.unwrap();
     let ud = r.item(&s.user_id, &id).await.unwrap().user_data.unwrap();
-    assert_eq!(ud.playback_position_ticks, 8_000_000);
+    assert_eq!(ud.playback_position_ticks, resume);
     assert!(!ud.played);
 
     // finishing past the resume threshold marks it played and clears the position
     rep.is_paused = false;
-    rep.position_ticks = 19_500_000;
+    rep.position_ticks = finished;
     c.report_playback_start(&rep).await.unwrap();
     c.report_playback_stopped(&rep).await.unwrap();
     let ud = r.item(&s.user_id, &id).await.unwrap().user_data.unwrap();
