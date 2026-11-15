@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="g" cx="78%" cy="10%" r="70%"><stop offset="0" stop-color="#4b55e0" stop-opacity=".75"/><stop offset=".5" stop-color="#2a3a9c" stop-opacity=".25"/><stop offset="1" stop-color="#07080c" stop-opacity="0"/></radialGradient>
+    <linearGradient id="m" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8fa6ff"/><stop offset="1" stop-color="#4b55e0"/></linearGradient>
+    <pattern id="d" width="28" height="28" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#fff" fill-opacity=".06"/></pattern>
+    <mask id="c"><rect width="1200" height="630" fill="#fff"/><circle cx="1060" cy="140" r="118" fill="#000"/></mask>
+  </defs>
+  <rect width="1200" height="630" fill="#07080c"/><rect width="1200" height="630" fill="url(#d)"/><rect width="1200" height="630" fill="url(#g)"/>
+  <circle cx="1110" cy="180" r="140" fill="url(#m)" mask="url(#c)" opacity=".92"/>
+  <rect x="0.5" y="0.5" width="1199" height="629" fill="none" stroke="#fff" stroke-opacity=".12"/>
+  <text x="80" y="330" font-family="DejaVu Sans, Noto Sans, Arial, sans-serif" font-weight="300" font-size="132" letter-spacing="16" fill="#eceef5">NOCTURNE</text>
+  <text x="84" y="396" font-family="DejaVu Sans Mono, monospace" font-size="26" letter-spacing="10" fill="#9cc0ff">YOUR MEDIA. YOUR NIGHT.</text>
+  <text x="84" y="470" font-family="DejaVu Sans, Noto Sans, Arial, sans-serif" font-size="30" fill="#9096ab">A native cinematic media experience for Linux.</text>
+  <line x1="84" y1="540" x2="1116" y2="540" stroke="#fff" stroke-opacity=".1"/>
+  <text x="84" y="584" font-family="DejaVu Sans Mono, monospace" font-size="20" letter-spacing="4" fill="#7a8096">NOCTURNE.IFSVIVEK.IN</text>
+</svg>

@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+/* Tokens mirror crates/app/src/theme.rs. */
+@theme {
+  --color-frame: #07080c;
+  --color-surface: #0c0e16;
+  --color-raised: #12151f;
+  --color-ink: #eceef5;
+  --color-ink-2: #9096ab;
+  --color-ink-3: #7a8096;
+  --color-accent: #4c8dff;
+  --color-accent-hover: #6ba0ff;
+  --color-accent-ink: #9cc0ff;
+  --color-indigo: #4b55e0;
+  --color-on-accent: #050816;
+  --color-line: rgb(255 255 255 / 0.08);
+  --color-line-strong: rgb(255 255 255 / 0.16);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "JetBrainsMono Nerd Font", "SFMono-Regular", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html { color-scheme: dark; scroll-behavior: smooth; scroll-padding-top: 72px; -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-frame font-sans text-base leading-relaxed text-ink antialiased overflow-x-hidden;
+    background-image: radial-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  a { @apply text-accent-ink underline underline-offset-4 decoration-1 transition-colors duration-[140ms] hover:text-white; }
+  :focus-visible { @apply outline-2 outline-offset-2 outline-accent rounded; }
+  ::selection { background: rgb(76 141 255 / 0.35); }
+  code, kbd, pre { @apply font-mono; }
+  code { @apply rounded-md border border-line bg-white/5 px-1.5 py-px text-[0.88em]; }
+  pre code { @apply border-0 bg-transparent p-0 text-[1em]; }
+  kbd { @apply rounded-md border border-b-2 border-line-strong px-1.5 text-[0.8em] text-ink; }
+  h1, h2, h3 { @apply font-sans; }
+}
+
+@layer components {
+  .wrap { @apply mx-auto w-[min(1180px,100%-40px)]; }
+  .label { @apply m-0 font-mono text-[0.72rem] uppercase tracking-[0.14em] text-ink-3; }
+  .btn {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-transparent bg-accent px-[22px] text-[0.94rem] font-semibold text-on-accent no-underline;
+    @apply transition duration-[140ms] ease-out hover:-translate-y-px hover:bg-accent-hover hover:text-on-accent hover:shadow-[0_6px_28px_-6px_rgb(76_141_255/0.55)] active:translate-y-0;
+  }
+  .btn-ghost { @apply bg-transparent text-ink border-line-strong hover:bg-white/5 hover:text-white hover:shadow-none; }
+  .btn-sm { @apply min-h-[34px] px-4 text-[0.84rem]; }
+  .chip { @apply m-0 inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-line-strong bg-accent/10 px-3 py-[5px] font-mono text-[0.72rem] font-medium uppercase tracking-[0.12em] text-accent-ink; }
+  .chip i { @apply size-1.5 rounded-full bg-accent shadow-[0_0_10px_var(--color-accent)]; }
+  .tick { @apply m-0 grid list-none gap-2 p-0 text-ink-2; }
+  .tick li { @apply relative pl-5; }
+  .tick li::before { content: ""; @apply absolute left-0.5 top-[0.72em] h-px w-2 bg-accent; }
+  .tick b { @apply font-medium text-ink; }
+  .panel { @apply grid min-w-0 content-start gap-3.5 rounded-2xl border border-line bg-surface p-6; }
+  .panel p { @apply m-0; }
+}
+
+/* Scroll reveal with no JavaScript: scroll-driven animation where supported, visible everywhere else. */
+@keyframes reveal { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal { animation: reveal linear both; animation-timeline: view(); animation-range: entry 4% entry 38%; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation: none !important; }
+  .btn:hover { transform: none; }
+}
