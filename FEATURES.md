@@ -5,8 +5,8 @@ Legend: [x] done, [~] partial, [ ] todo. Tiers: P0 core, P1 expected, P2 complet
 Update this file at every task boundary. Scope risks are listed at the bottom.
 
 ## Accounts and connection (P0)
-- [ ] Login with username/password (no API key in `.env` needed); remember session in the system keyring (Secret Service), never in plain files
-- [ ] Quick Connect (code approval flow)
+- [~] Login with username/password; session in keyring (crates done: `nocturne-jellyfin-user`, `nocturne-session`; app UI not wired yet)
+- [~] Quick Connect (crate done; UI not wired)
 - [ ] Server address entry, validation, recent servers, multiple servers
 - [ ] User picker / profile switch / sign out
 - [~] API-key mode (dev/admin only, via env)
@@ -30,7 +30,7 @@ Update this file at every task boundary. Scope risks are listed at the bottom.
 - [ ] **Feature-rich video player (user, 2026-11-15; not barebone)**: audio/subtitle menus with styling and delays, speed, chapters on scrub bar, trickplay hover thumbnails, skip intro/credits (media segments), next-episode autoplay, aspect/zoom/picture controls, quality/transcode selector with direct-play fallback, stats overlay, shortcut help, OSD, resume prompt, context menu, screenshot, queue panel, MPRIS and idle inhibit
 - [x] Direct play via mpv (child process), now-playing bar, seek, volume
 - [ ] **PRIORITY (user): in-window GPU video** (mpv video inside the NOCTURNE window with overlay controls, GPU-accelerated, crash-safe). Prototype first, then integrate
-- [ ] Playback progress reporting (start/progress/stop), resume position (user writes)
+- [~] Playback progress reporting (client done in `nocturne-jellyfin-user`; player/app wiring pending), resume position
 - [ ] Mark played at end, next-episode autoplay with countdown, skip intro/credits (media segments)
 - [ ] Audio track and subtitle track selection, external/embedded/text and image subs, subtitle size/position/delay, audio delay
 - [ ] Quality/transcoding selection (bitrate cap, HLS fallback when direct play fails), play method info overlay
