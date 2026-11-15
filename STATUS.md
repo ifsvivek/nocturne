@@ -42,6 +42,8 @@ Orchestrator's running log. Update at every task boundary.
 
 - Admin (user, 2026-11-15): wants a full admin dashboard, reads AND writes with confirmations. `nocturne-jellyfin` stays strictly read-only; writes live only in `crates/jellyfin-admin`. Real-server writes are not tested; use a throwaway instance.
 
+- Single app only (user): admin is an Admin section inside the NOCTURNE app (shown only to Jellyfin administrators), not a separate binary. `jellyfin-admin` is a library crate.
+
 ## Rules
 - Jellyfin: GET only; tests print counts/booleans, never titles/paths/ids/tokens.
 - Commits: focused, no AI trailers. Max 2 subagents, one at a time by default.
