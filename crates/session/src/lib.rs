@@ -8,7 +8,16 @@ use nocturne_jellyfin_user::Session;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-const SERVICE: &str = "nocturne";
+/// Keyring service name. `NOCTURNE_KEYRING_SERVICE` overrides it so tests never touch real entries.
+fn service() -> &'static str {
+    static S: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    S.get_or_init(|| {
+        std::env::var("NOCTURNE_KEYRING_SERVICE")
+            .ok()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "nocturne".into())
+    })
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -78,17 +87,17 @@ fn load_from(s: &dyn Store, server_url: &str) -> Result<Option<Session>> {
 
 /// Store the login for `server_url` in the keyring.
 pub fn save(server_url: &str, session: &Session) -> Result<()> {
-    save_in(&Keyring(SERVICE), server_url, session)
+    save_in(&Keyring(service()), server_url, session)
 }
 
 /// The stored login for `server_url`, if any.
 pub fn load(server_url: &str) -> Result<Option<Session>> {
-    load_from(&Keyring(SERVICE), server_url)
+    load_from(&Keyring(service()), server_url)
 }
 
 /// Remove the stored login (no error if there is none).
 pub fn delete(server_url: &str) -> Result<()> {
-    Keyring(SERVICE).delete(key(server_url))
+    Keyring(service()).delete(key(server_url))
 }
 
 /// Known server URLs and the last used one. URLs only, never tokens.
