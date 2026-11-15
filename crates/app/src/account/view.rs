@@ -124,11 +124,7 @@ impl Accounts {
                     .items_center()
                     .rounded(px(6.0))
                     .border_1()
-                    .border_color(if focused {
-                        t::accent()
-                    } else {
-                        t::hairline_strong()
-                    })
+                    .border_color(if focused { t::accent() } else { t::edge() })
                     .font_family(t::MONO)
                     .text_size(px(t::BODY))
                     .overflow_hidden()
@@ -200,7 +196,7 @@ impl Accounts {
                         .items_center()
                         .rounded(px(6.0))
                         .border_1()
-                        .border_color(if on { t::accent() } else { t::hairline() })
+                        .border_color(if on { t::accent() } else { t::edge() })
                         .bg(if on { t::accent_tint() } else { rgba(0) })
                         .cursor_pointer()
                         .hover(|s| s.bg(t::glass()))

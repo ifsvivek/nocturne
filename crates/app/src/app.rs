@@ -1520,11 +1520,7 @@ impl Root {
                 .rounded_full()
                 .bg(rgba(0x07080ccc))
                 .border_1()
-                .border_color(if on {
-                    t::accent()
-                } else {
-                    t::hairline_strong()
-                })
+                .border_color(if on { t::accent() } else { t::edge() })
                 .text_size(px(13.0))
                 .text_color(if on {
                     t::accent_text()
@@ -2235,7 +2231,7 @@ impl Root {
                             .gap(px(t::S3))
                             .rounded(px(6.0))
                             .border_1()
-                            .border_color(t::hairline_strong())
+                            .border_color(t::edge())
                             .cursor_pointer()
                             .hover(|s| s.border_color(t::accent()))
                             .tooltip(ui::tip("Search (Ctrl+K or /)"))
@@ -2364,11 +2360,7 @@ impl Root {
         ui::avatar(32.0, name, pic)
             .id("avatar")
             .border_1()
-            .border_color(if self.menu {
-                t::accent()
-            } else {
-                t::hairline_strong()
-            })
+            .border_color(if self.menu { t::accent() } else { t::edge() })
             .bg(t::raised())
             .font_family(t::MONO)
             .text_size(px(t::CAPTION + 1.0))
@@ -2479,7 +2471,7 @@ impl Root {
                                 | AcctAct::RemoveImage
                                 | AcctAct::Language
                         ) && !writes,
-                        |d| d.opacity(0.4).tooltip(ui::tip(NEED_WRITES)),
+                        |d| d.opacity(0.55).tooltip(ui::tip(NEED_WRITES)),
                     )
                     .hover(|s| s.bg(t::glass()))
                     .on_click(cx.listener(move |t, _, _, cx| t.menu_act(act, cx)))
@@ -2528,19 +2520,26 @@ impl Root {
                         .flex_none()
                         .mx(px(t::PAGE_PAD))
                         .px(px(t::S6))
-                        .pt(px(t::S6))
+                        .pt(px(if i == 0 { t::S6 } else { t::S8 }))
                         .pb(px(t::S3))
                         .flex()
                         .flex_col()
                         .gap(px(t::S2))
                         .border_b_1()
                         .border_color(t::hairline())
-                        .child(ui::label(h))
+                        .child(
+                            div()
+                                .text_size(px(t::CONTROL_TEXT))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(t::text_secondary())
+                                .child(ui::tracked(h)),
+                        )
                         .when(i == 0, |d| {
                             d.child(
                                 div()
                                     .max_w(px(720.0))
                                     .text_size(px(t::BODY))
+                                    .line_height(px(t::BODY * 1.5))
                                     .text_color(t::text_secondary())
                                     .child(settings::WRITES_NOTE),
                             )
@@ -2550,10 +2549,12 @@ impl Root {
             page = page.child(
                 div()
                     .id(("set-row", i))
+                    .relative()
                     .flex_none()
                     .mx(px(t::PAGE_PAD))
                     .px(px(t::S6))
-                    .py(px(t::S4))
+                    .py(px(t::S3))
+                    .min_h(px(64.0))
                     .flex()
                     .items_center()
                     .justify_between()
@@ -2571,8 +2572,21 @@ impl Root {
                         }
                         t.open_setting(i, cx);
                     }))
+                    .when(on, |d| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .left_0()
+                                .top_0()
+                                .bottom_0()
+                                .w(px(3.0))
+                                .bg(t::accent()),
+                        )
+                    })
                     .child(
                         div()
+                            .flex_1()
+                            .min_w_0()
                             .flex()
                             .flex_col()
                             .gap(px(2.0))
@@ -2584,12 +2598,21 @@ impl Root {
                             )
                             .child(
                                 div()
-                                    .text_size(px(t::CAPTION + 1.0))
+                                    .max_w(px(640.0))
+                                    .text_size(px(t::CONTROL_TEXT))
+                                    .line_height(px(t::CONTROL_TEXT * 1.45))
                                     .text_color(t::text_secondary())
                                     .child(r.hint),
                             ),
                     )
-                    .child(self.setting_chip(i, &r.value, on, cx)),
+                    .child(
+                        div()
+                            .flex_none()
+                            .w(px(220.0))
+                            .flex()
+                            .justify_end()
+                            .child(self.setting_chip(i, &r.value, on, cx)),
+                    ),
             );
         }
         page.into_any_element()
@@ -2599,12 +2622,13 @@ impl Root {
     /// its drop-down menu. The menu and its click-away layer are deferred so they paint over the rows below.
     fn setting_chip(&self, i: usize, value: &str, on: bool, cx: &mut Context<Self>) -> Div {
         let Some((labels, cur)) = self.settings.choices(i) else {
-            return div().child(ui::chip(value, on));
+            return div().child(ui::switch(("set-ctl", i), value == "On", on));
         };
         let open = self.dd.as_ref().is_some_and(|d| d.row == i);
-        let mut wrap = div()
-            .relative()
-            .child(ui::chip(&format!("{value} \u{25BE}"), on || open));
+        let mut wrap =
+            div()
+                .relative()
+                .child(ui::value_chip(("set-ctl", i), value, true, on, open));
         if open {
             let sel = self.dd.as_ref().map_or(0, |d| d.sel);
             let n = labels.len();
@@ -2630,9 +2654,9 @@ impl Root {
             let up = row
                 .is_some_and(|r| r.bottom() + need > page.bottom() && r.top() - page.top() > need);
             list = if up {
-                list.bottom(px(26.0))
+                list.bottom(px(t::CONTROL_H + 4.0))
             } else {
-                list.top(px(26.0))
+                list.top(px(t::CONTROL_H + 4.0))
             };
             for (k, name) in labels.into_iter().enumerate() {
                 list = list.child(

@@ -202,7 +202,7 @@ pub fn view<T: 'static>(
             }))
             .child(
                 face.border_2()
-                    .border_color(if on_it { t::accent() } else { t::hairline() })
+                    .border_color(if on_it { t::accent() } else { t::edge() })
                     .when(on_it, |d| {
                         d.shadow(vec![BoxShadow {
                             color: t::glow().into(),
@@ -282,11 +282,7 @@ pub fn view<T: 'static>(
                 .justify_center()
                 .rounded(px(4.0))
                 .border_1()
-                .border_color(if p.checked() {
-                    t::accent()
-                } else {
-                    t::hairline_strong()
-                })
+                .border_color(if p.checked() { t::accent() } else { t::edge() })
                 .when(p.checked(), |d| d.bg(t::accent()))
                 .text_size(px(t::CAPTION))
                 .text_color(t::on_accent())

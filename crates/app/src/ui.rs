@@ -102,6 +102,119 @@ pub fn chip(s: &str, accent: bool) -> Div {
 }
 const R_CHIP: f32 = 4.0;
 
+/// Value control of a Settings row: filled, 1px `edge` outline (>= 3:1), 13px text, `CONTROL_H` tall.
+/// `caret` marks a drop-down (flips while `open`); `focused` is the keyboard ring.
+pub fn value_chip(
+    id: (&'static str, usize),
+    value: &str,
+    caret: bool,
+    focused: bool,
+    open: bool,
+) -> Stateful<Div> {
+    let lit = focused || open;
+    div()
+        .id(id)
+        .h(px(t::CONTROL_H))
+        .px(px(t::S3))
+        .gap(px(t::S2))
+        .flex()
+        .items_center()
+        .rounded(px(6.0))
+        .border_1()
+        .border_color(if lit { t::accent() } else { t::edge() })
+        .bg(if open { t::accent_tint() } else { t::control() })
+        .text_size(px(t::CONTROL_TEXT))
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(t::text())
+        .cursor_pointer()
+        .when(!open, |d| {
+            d.hover(|s| s.bg(t::control_hover()).border_color(t::text_secondary()))
+        })
+        .active(|s| s.bg(t::accent_tint()).border_color(t::accent()))
+        .when(focused, |d| d.shadow(glow_shadow(0.7)))
+        .child(
+            div()
+                .min_w_0()
+                .max_w(px(180.0))
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(value.to_string()),
+        )
+        .when(caret, |d| {
+            d.child(
+                svg()
+                    .path(if open {
+                        "icons/caret_up.svg"
+                    } else {
+                        "icons/caret_down.svg"
+                    })
+                    .size(px(12.0))
+                    .flex_none()
+                    .text_color(if open {
+                        t::accent_text()
+                    } else {
+                        t::text_secondary()
+                    }),
+            )
+        })
+}
+
+/// On / off switch: track + knob (on = accent, knob right) and the word ON / OFF beside it so the
+/// state never rests on colour alone. Clicks fall through to the row.
+pub fn switch(id: (&'static str, usize), on: bool, focused: bool) -> Stateful<Div> {
+    div()
+        .id(id)
+        .h(px(t::CONTROL_H))
+        .px(px(t::S2))
+        .gap(px(t::S3))
+        .flex()
+        .items_center()
+        .rounded(px(6.0))
+        .border_1()
+        .border_color(if focused { t::accent() } else { rgba(0) })
+        .cursor_pointer()
+        .hover(|s| s.bg(t::glass()))
+        // Solid fill under the glow, so the ON / OFF word keeps its contrast.
+        .when(focused, |d| d.bg(t::raised()).shadow(glow_shadow(0.7)))
+        .child(
+            div()
+                .w(px(28.0))
+                .text_size(px(t::CONTROL_TEXT))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(if on {
+                    t::accent_text()
+                } else {
+                    t::text_secondary()
+                })
+                .child(if on { "ON" } else { "OFF" }),
+        )
+        .child(
+            div()
+                .relative()
+                .w(px(40.0))
+                .h(px(22.0))
+                .flex_none()
+                .rounded_full()
+                .border_1()
+                .border_color(if on { t::accent() } else { t::edge() })
+                .bg(if on { t::accent() } else { t::control() })
+                .child(
+                    div()
+                        .absolute()
+                        .top(px(2.0))
+                        .left(px(if on { 20.0 } else { 2.0 }))
+                        .size(px(16.0))
+                        .rounded_full()
+                        .bg(if on {
+                            t::on_accent()
+                        } else {
+                            t::text_secondary()
+                        }),
+                ),
+        )
+}
+
 /// Full-width band: hairline divider below, content spans the window.
 pub fn band(content: impl IntoElement) -> Div {
     div()
@@ -187,11 +300,7 @@ pub fn pill_button(
         .hover(|s| s.bg(t::accent_hover()))
     } else {
         d.bg(if focused { t::accent_tint() } else { rgba(0) })
-            .border_color(if focused {
-                t::accent()
-            } else {
-                t::hairline_strong()
-            })
+            .border_color(if focused { t::accent() } else { t::edge() })
             .text_color(t::text())
             .hover(|s| s.bg(t::glass()).border_color(t::text_tertiary()))
     };
@@ -309,7 +418,7 @@ pub fn action_button(
     let (ink, edge) = match (primary, danger) {
         (_, true) => (t::danger(), t::danger()),
         (true, _) => (t::on_accent(), t::accent()),
-        _ => (t::text(), t::hairline_strong()),
+        _ => (t::text(), t::edge()),
     };
     let mut d = div()
         .id(name(id))
@@ -471,8 +580,7 @@ pub fn ctl_button(
             .border_color(t::accent())
             .hover(|s| s.bg(t::accent_hover()))
     } else {
-        d.border_color(t::hairline_strong())
-            .hover(|s| s.bg(t::glass()))
+        d.border_color(t::edge()).hover(|s| s.bg(t::glass()))
     }
 }
 

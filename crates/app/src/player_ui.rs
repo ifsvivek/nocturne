@@ -343,7 +343,7 @@ impl PlayerView {
                 .hover(|s| s.bg(t::accent_hover()))
         } else {
             d.bg(rgba(0x0b0d14ee))
-                .border_color(t::hairline_strong())
+                .border_color(t::edge())
                 .text_color(t::text())
                 .hover(|s| s.bg(t::glass()))
         }
@@ -493,11 +493,7 @@ impl PlayerView {
                 .py(px(3.0))
                 .rounded(px(6.0))
                 .border_1()
-                .border_color(if on {
-                    t::accent()
-                } else {
-                    t::hairline_strong()
-                })
+                .border_color(if on { t::accent() } else { t::edge() })
                 .text_size(px(t::CAPTION))
                 .text_color(if on {
                     t::accent_text()
@@ -814,7 +810,7 @@ impl PlayerView {
             .justify_center()
             .rounded(px(4.0))
             .border_1()
-            .border_color(t::hairline_strong())
+            .border_color(t::edge())
             .text_color(t::text())
             .hover(|s| s.bg(t::glass()))
             .child(glyph)

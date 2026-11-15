@@ -31,7 +31,9 @@ icons!(
     "queue",
     "pip",
     "heart",
-    "heart_on"
+    "heart_on",
+    "caret_down",
+    "caret_up"
 );
 
 impl AssetSource for Assets {
