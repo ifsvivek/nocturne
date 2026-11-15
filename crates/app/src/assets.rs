@@ -14,7 +14,19 @@ macro_rules! icons {
         }
     };
 }
-icons!("play", "pause", "back", "fwd", "volume", "mute", "stop");
+icons!(
+    "play",
+    "pause",
+    "back",
+    "fwd",
+    "volume",
+    "mute",
+    "stop",
+    "cc",
+    "audio",
+    "gear",
+    "fullscreen"
+);
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {

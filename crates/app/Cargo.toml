@@ -17,3 +17,5 @@ nocturne-player = { path = "../player" }
 # Procedural film-grain texture only.
 image = { version = "0.25.1", default-features = false, features = ["png"] }
 raw-window-handle = "0.6"
+serde_json = "1.0.154"
+libc = "0.2"

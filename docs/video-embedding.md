@@ -186,6 +186,12 @@ Teardown findings from integration (beyond the order above):
   stopping the render thread, and on close veto the compositor event, drop the player from a task, then `cx.quit()`.
 - A second `gpui` update from inside the close callback deadlocks; do the teardown from a spawned task.
 
+Player features (both backends, through `Playback::{command, prop, set}` which map to mpv commands/properties): two-row
+controls bar (transport, Ends at, title, subtitles/audio menus, volume to 130, settings, fullscreen, stop; scrub row with
+elapsed, buffered segment, chapter ticks, remaining/total toggle), popovers navigable by keyboard, speed 0.25-4x, aspect
+presets, repeat one, subtitle/audio delay, frame step, chapter navigation, playback info panel, key help, OSD chips,
+screenshot (Ctrl+S, `nocturne-<unix>.png` in the pictures dir).
+
 Known gaps: the first frames can show black before the first video frame; subsurface resize is not atomic with GPUI's
 repaint (see Resize); AMD/Intel-only and fractional-scale machines are untested; X11 sessions use the external player.
 
