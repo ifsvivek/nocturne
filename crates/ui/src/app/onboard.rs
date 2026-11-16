@@ -100,7 +100,7 @@ impl App {
             Some(Return::Server) => matches!(self.phase, Phase::Ready),
             None => false,
         };
-        if let (true, Some(r)) = (back, self.ob_away.take()) {
+        if back && let Some(r) = self.ob_away.take() {
             o.returned(r);
         }
     }

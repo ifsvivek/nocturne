@@ -688,6 +688,9 @@ impl App {
         if crate::platform::term_requested() {
             return self.quit();
         }
+        if crate::single::take_activate() {
+            return crate::single::bring_forward();
+        }
         self.drain_reverts();
         if self
             .note
