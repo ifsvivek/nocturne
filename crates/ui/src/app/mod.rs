@@ -4,7 +4,9 @@
 mod header;
 mod help;
 pub mod message;
+mod preview;
 mod settings;
+mod welcome;
 
 use crate::account::{self, Accounts, Event as AcctEvent, picker};
 use crate::keys::Key;
@@ -155,17 +157,37 @@ pub struct App {
     disk: Option<Arc<DiskCache>>,
     offline: Option<Offline>,
     help_open: bool,
+    /// First run (no source yet): the welcome choice, until one is made.
+    welcome: Option<welcome::Welcome>,
+    /// Debug-only preview of the player loading overlay.
+    preview: Option<preview::Preview>,
 }
 
 impl App {
     pub fn boot(cfg: Option<nocturne_jellyfin::Config>) -> (Self, Task<Message>) {
+        crate::timing::mark("boot");
         let settings = Settings::load();
-        let disk = DiskCache::default_dir().map(|d| {
-            Arc::new(DiskCache::open(
-                d,
-                u64::from(settings.image_cache_mb) * 1024 * 1024,
-            ))
-        });
+        crate::motion::set_reduced(
+            settings
+                .reduce_motion
+                .reduced(crate::platform::system_reduces_motion()),
+        );
+        // Opening the image cache scans its directory; that happens after the first frame.
+        let cache_max = u64::from(settings.image_cache_mb) * 1024 * 1024;
+        let open_disk = run(
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    DiskCache::default_dir().map(|d| Arc::new(DiskCache::open(d, cache_max)))
+                })
+                .await
+                .ok()
+                .flatten()
+            },
+            Message::DiskReady,
+        );
+        let welcome = (cfg.is_none()
+            && nocturne_session::Servers::load().is_ok_and(|s| s.servers.is_empty()))
+        .then(welcome::Welcome::new);
         let mut me = Self {
             dev: cfg.is_some(),
             cfg,
@@ -198,9 +220,11 @@ impl App {
             picker: None,
             anon_src: None,
             my_tag: None,
-            disk,
+            disk: None,
             offline: None,
             help_open: false,
+            welcome,
+            preview: preview::Preview::from_env(),
         };
         let size = window::oldest()
             .and_then(window::size)
@@ -236,7 +260,8 @@ impl App {
             }
             Task::batch(tasks)
         };
-        (me, Task::batch([size, task]))
+        crate::timing::mark("boot done");
+        (me, Task::batch([size, task, open_disk]))
     }
 
     pub fn theme(&self) -> iced::Theme {
@@ -265,15 +290,18 @@ impl App {
                 _ => None,
             }),
         ];
-        // Frames only while something pulses.
-        if self.animating() {
+        // Frames only while something pulses (and once, to time the first painted frame).
+        if self.animating() || crate::timing::first_frame_pending() {
             subs.push(window::frames().map(Message::Frame));
         }
         Subscription::batch(subs)
     }
 
     fn animating(&self) -> bool {
-        matches!(self.phase, Phase::Connecting)
+        self.preview
+            .as_ref()
+            .is_some_and(|p| p.animating(crate::motion::reduced()))
+            || matches!(self.phase, Phase::Connecting)
             || (matches!(self.phase, Phase::Account)
                 && self.accounts.as_ref().is_some_and(|a| a.animating()))
     }
@@ -289,6 +317,10 @@ impl App {
             }
             Message::Frame(now) => {
                 self.now = now;
+                crate::timing::first_frame();
+                if let Some(p) = self.preview.as_mut() {
+                    p.tick(Instant::now());
+                }
                 Task::none()
             }
             Message::Resized(s) => {
@@ -342,6 +374,7 @@ impl App {
             Message::Libraries(pid, r) => {
                 if let Some(p) = self.page_mut(pid) {
                     p.libs = r.map_or(Load::Failed, Load::Ready);
+                    crate::timing::shell_ready();
                 }
                 Task::none()
             }
@@ -443,6 +476,19 @@ impl App {
                 Task::none()
             }
             Message::PageRetry => self.retry_page(),
+            Message::Welcome(m) => {
+                if let Some(c) = self.welcome.as_mut().and_then(|w| w.update(m)) {
+                    self.first_run(c);
+                }
+                Task::none()
+            }
+            Message::DiskReady(d) => {
+                self.disk = d;
+                if let (Some(d), Some(s)) = (self.disk.clone(), self.source.take()) {
+                    self.source = Some(s.with_disk(d));
+                }
+                Task::none()
+            }
             Message::Noop => Task::none(),
         }
     }
@@ -1141,6 +1187,12 @@ impl App {
         if matches!(self.phase, Phase::Picker) {
             return self.picker_key(key);
         }
+        if let Some(w) = self.welcome.as_mut() {
+            if let Some(c) = w.key(key) {
+                self.first_run(c);
+            }
+            return Task::none();
+        }
         if let Some(a) = self.accounts.as_mut()
             && (matches!(self.phase, Phase::Account) || a.dialog_open())
         {
@@ -1214,6 +1266,9 @@ impl App {
 
     pub fn view(&self) -> Element<'_, Message> {
         let body: Element<Message> = match &self.phase {
+            Phase::Account if self.welcome.is_some() => {
+                welcome::view(self.welcome.as_ref().expect("checked")).map(Message::Welcome)
+            }
             Phase::Account => match &self.accounts {
                 Some(a) => a.view(self.now).map(Message::Account),
                 None => self.connecting(),
@@ -1275,6 +1330,9 @@ impl App {
             {
                 layers.push(c);
             }
+        }
+        if let Some(p) = &self.preview {
+            layers.push(p.view(Instant::now(), crate::motion::reduced(), self.win));
         }
         layers.push(layer(&self.grain, 0.02));
         if self.menu && ready {
@@ -1357,12 +1415,16 @@ impl App {
         ];
         if retry {
             v.push(space().height(t::S2).into());
-            v.push(widget::pill_button(
-                "Try again",
-                true,
-                false,
-                Message::Retry,
-            ));
+            v.push(
+                container(widget::pill_button(
+                    "Try again",
+                    true,
+                    false,
+                    Message::Retry,
+                ))
+                .width(160)
+                .into(),
+            );
         }
         self.centered(v)
     }
@@ -1377,6 +1439,19 @@ impl App {
                 })
                 .into(),
         ])
+    }
+
+    /// A first-run choice. Server and Both go to the server-address screen; Local waits for the
+    /// local folders screen (catalog milestone), so for now it says so.
+    fn first_run(&mut self, c: welcome::FirstRun) {
+        match c {
+            welcome::FirstRun::Local => {
+                if let Some(w) = self.welcome.as_mut() {
+                    w.local_note = true;
+                }
+            }
+            welcome::FirstRun::Server | welcome::FirstRun::Both => self.welcome = None,
+        }
     }
 
     /// Non-blocking: the page underneath stays usable.

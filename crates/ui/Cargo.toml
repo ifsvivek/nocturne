@@ -17,7 +17,7 @@ name = "nocturne-iced"
 path = "src/main.rs"
 
 [dependencies]
-iced = { version = "0.14", features = ["tokio", "image", "svg", "advanced", "lazy"] }
+iced = { version = "0.14", features = ["tokio", "image", "svg", "advanced", "lazy", "canvas"] }
 nocturne-core = { path = "../core" }
 nocturne-jellyfin = { path = "../jellyfin" }
 nocturne-jellyfin-admin = { path = "../jellyfin-admin" }

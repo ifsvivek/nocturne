@@ -20,6 +20,9 @@ pub fn icon<'a>(name: &str, size: f32, color: Color) -> svg::Svg<'a> {
         "heart" => include_bytes!("../../assets/icons/heart.svg"),
         "heart_on" => include_bytes!("../../assets/icons/heart_on.svg"),
         "gear" => include_bytes!("../../assets/icons/gear.svg"),
+        "folder" => include_bytes!("../../assets/icons/folder.svg"),
+        "server" => include_bytes!("../../assets/icons/server.svg"),
+        "layers" => include_bytes!("../../assets/icons/layers.svg"),
         _ => include_bytes!("../../assets/icons/stop.svg"),
     };
     svg(svg::Handle::from_memory(bytes))
@@ -47,6 +50,7 @@ fn st(bg: Option<Color>, ink: Color, edge: Option<Color>, radius: f32, shadow: S
 pub fn chip<'a, M: 'a>(s: &str, accent: bool) -> Element<'a, M> {
     container(
         text(tracked(s))
+            .shaping(iced::widget::text::Shaping::Advanced)
             .font(t::MONO)
             .size(t::MICRO)
             .color(if accent {

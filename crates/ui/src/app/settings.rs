@@ -42,6 +42,7 @@ impl App {
             if let Some(h) = s::head(i) {
                 let mut head = column![
                     text(tracked(h))
+                        .shaping(iced::widget::text::Shaping::Advanced)
                         .size(t::CONTROL_TEXT)
                         .font(t::BOLD)
                         .color(t::TEXT_SECONDARY)
@@ -253,6 +254,11 @@ impl App {
 
     fn settings_changed(&mut self) {
         self.settings.save();
+        crate::motion::set_reduced(
+            self.settings
+                .reduce_motion
+                .reduced(crate::platform::system_reduces_motion()),
+        );
         self.apply_write_settings();
     }
 

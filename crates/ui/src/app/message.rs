@@ -68,6 +68,10 @@ pub enum Message {
     /// A profile picture fetched: (cache key, decoded handle).
     UserPic(String, Option<Handle>),
     Pinged,
+    /// The on-disk image cache finished opening (after the first frame).
+    DiskReady(Option<std::sync::Arc<nocturne_core::imgcache::DiskCache>>),
+    /// First-run welcome screen.
+    Welcome(super::welcome::Msg),
     // header
     GoHome,
     OpenLibrary(usize),
