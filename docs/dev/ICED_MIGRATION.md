@@ -125,6 +125,10 @@ Demo library on a throwaway server: `scripts/make-demo-library.sh build` (prints
 - [x] first-run welcome, tracked-text glyph fix, normal-size buttons, reduce-motion setting, Stremio-style player
   buffering overlay widget (`widget/buffering.rs`, wired in 4d). Launch: ~9 ms app boot, ~430 ms to first frame
   (wgpu/Vulkan init dominates). Screenshots from now on via the debug `NOCTURNE_SNAP` in-app hook, never grim.
+- [x] GPUI baseline in docs/dev/PERF.md (25.7 MiB, 606 ms to window, 343/414 MiB idle RSS, ~2% idle CPU);
+  clean-container installs pass (Arch tarball + PKGBUILD, Debian/Ubuntu/Fedora dep names). Binaries built here need
+  glibc 2.44: fine for Arch; 0.4 .deb/.rpm must be built inside their distro containers; docs pass 2 must say the
+  tarball targets current Arch.
 - [~] M3 Iced root on the catalog (Sources settings, local folders screen, source filter/marks, local playback)
 - [ ] 4b-4e screens
 - [ ] 5 cut-over
