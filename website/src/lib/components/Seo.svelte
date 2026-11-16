@@ -22,7 +22,7 @@
   <meta property="og:image" content={og}>
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="NOCTURNE: the home screen and the player of a native Jellyfin client for Linux. Your media. Your night.">
+  <meta property="og:image:alt" content="NOCTURNE, a native media center for Linux: the home screen and the in-window player. Your media. Your night.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content={title}>
   <meta name="twitter:description" content={description}>

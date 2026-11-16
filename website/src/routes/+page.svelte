@@ -1,5 +1,6 @@
 <script>
   import Seo from "#lib/components/Seo.svelte";
+  import { shipped } from "#lib/site.js";
   import Hero from "#lib/components/Hero.svelte";
   import Tour from "#lib/components/Tour.svelte";
   import How from "#lib/components/How.svelte";
@@ -9,7 +10,9 @@
   import Limits from "#lib/components/Limits.svelte";
 </script>
 
-<Seo title="NOCTURNE: a native cinematic media client for Linux" description="NOCTURNE is a native, cinematic Jellyfin desktop client for Linux. In-window GPU video through libmpv, a full-featured player, library browsing and an admin dashboard. Read-only by default." />
+<Seo title="NOCTURNE: a native cinematic media center for Linux" description={shipped("0.3.0")
+  ? "NOCTURNE is a native media center for Linux: local folders and several Jellyfin servers in one cinematic, searchable library. In-window GPU video through libmpv. Never changes your files; read-only toward servers by default."
+  : "NOCTURNE is a native, cinematic media center for Linux with in-window GPU video through libmpv. Version 0.3, in development, brings local folders and several Jellyfin servers into one library. Read-only by default."} />
 <Hero />
 <Tour />
 <How />

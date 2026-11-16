@@ -1,9 +1,9 @@
 <script>
-  import { RELEASED, REPO, RELEASES } from "#lib/site.js";
+  import { RELEASED, REPO, RELEASES, UI } from "#lib/site.js";
   // End credits: role on the left of the gutter, name on the right.
   const credits = [
     ["Media server", "Jellyfin", "https://jellyfin.org"],
-    ["Interface", "GPUI, from Zed", "https://www.gpui.rs"],
+    ["Interface", ...UI],
     ["Playback", "mpv and libmpv", "https://mpv.io"],
     ["Language", "Rust", "https://www.rust-lang.org"],
     ["Typeface", "Geist", ""],

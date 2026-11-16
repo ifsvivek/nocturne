@@ -20,6 +20,7 @@
   --color-ink-3: #7f8597;
   --color-accent: #4c8dff;
   --color-accent-ink: #9cc0ff;
+  --color-night: #1b2a5c; /* the startup screen's midnight blue, only as a glow behind the One library figure */
   --color-line: rgb(255 255 255 / 0.09);
   --color-line-strong: rgb(255 255 255 / 0.2);
   --font-sans: "Geist", ui-sans-serif, system-ui, "Noto Sans", sans-serif;
@@ -63,6 +64,9 @@
   .bleed { @apply relative m-0 mx-auto w-full max-w-[1680px]; }
   .bleed img { @apply block h-auto w-full bg-surface; }
 
+  /* "Coming in 0.3": marks copy for a version that is not the one you can download yet (Next.svelte). */
+  .soon { @apply ml-[0.6em] inline-block rounded-[3px] px-2 py-0.5 align-[0.12em] text-[0.62rem] leading-normal font-medium tracking-[0.22em] whitespace-nowrap text-ink-2 uppercase ring-1 ring-line-strong ring-inset; }
+
   .tick { @apply m-0 grid list-none gap-3 p-0 text-ink-2; }
   .tick li { @apply relative pl-6; }
   .tick li::before { content: ""; @apply absolute left-0 top-[0.8em] h-px w-3 bg-ink-3; }
@@ -93,6 +97,22 @@ body::after {
 .tag-accent { @apply text-accent-ink ring-accent/40; }
 @media (max-width: 639px) { .tag { @apply px-1.5 text-[0.5rem] tracking-[0.08em]; margin-left: 8px; } }
 
+/* One library: source labels, beams into the moonlight slit, the flare line out. Static and complete by default. */
+.flow-src, .flow-out { @apply text-[clamp(0.56rem,0.48rem+0.4vw,0.78rem)] font-medium tracking-[0.24em] uppercase whitespace-nowrap; }
+.flow-src { @apply text-ink-2; }
+.flow-out { @apply text-ink; }
+@media (max-width: 479px) { .flow-src, .flow-out { letter-spacing: 0.1em; } }
+.flow .beam { fill: none; stroke: var(--color-line-strong); stroke-width: 1.25; vector-effect: non-scaling-stroke; }
+.flow .slit, .flow .flare, .flow .wipe { transform-box: fill-box; }
+.flow .slit { transform-origin: center; }
+.flow .flare, .flow .wipe { transform-origin: left center; }
+.s-ink { stop-color: var(--color-ink); }
+.s-accent { stop-color: var(--color-accent); }
+.s-accent-ink { stop-color: var(--color-accent-ink); }
+.s-night { stop-color: var(--color-night); stop-opacity: 0.55; }
+.s-80 { stop-opacity: 0.8; }
+.s-0 { stop-opacity: 0; }
+
 /* Read-only: a focus ring on the words "Off by default." in the settings-crop capture (4.3% / 83.5% of it). */
 .reticle { position: absolute; z-index: 2; pointer-events: none; left: 4.3%; top: 83.5%; width: 5.8%; height: 11%; transform: translate(-50%, -50%); @apply rounded-sm ring-2 ring-accent; }
 @media (max-width: 639px) { .reticle { display: none; } }
@@ -102,6 +122,8 @@ body::after {
 @keyframes fade { from { opacity: 0; } }
 @keyframes reveal { from { opacity: 0; transform: translateY(32px); } }
 @keyframes letterbox { from { clip-path: inset(16% 0 16% 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes rise-y { from { transform: scaleY(0); opacity: 0; } }
+@keyframes rise-x { from { transform: scaleX(0); opacity: 0; } }
 @keyframes lock-on { from { transform: translate(-50%, -50%) scale(3); opacity: 0; } }
 /* One 12 s cycle: exploded with labels, fold flat, hold the assembled window, tilt and split again. */
 @keyframes tilt {
@@ -113,8 +135,8 @@ body::after {
 @keyframes split-3 { 0%, 20% { transform: translateZ(var(--z3)); } 36%, 72% { transform: translateZ(0); } 90%, 100% { transform: translateZ(var(--z3)); } }
 @keyframes tag-in { 0%, 16% { opacity: 1; } 22%, 88% { opacity: 0; } 96%, 100% { opacity: 1; } }
 
-/* Motion, four ideas only: the screen opens, the credits roll in, the playback letterbox opens, the layers come
-   apart. Content is visible by default; scroll-driven parts need animation-timeline, and reduced motion gets none. */
+/* Motion, five ideas only: the screen opens, the credits roll in, the sources flow into one library, the playback
+   letterbox opens, the layers come apart. Content is visible by default; scroll-driven parts need animation-timeline, and reduced motion gets none. */
 @media (prefers-reduced-motion: no-preference) {
   .screen { animation: open 1.4s var(--ease-film) 0.15s both; }
   .title-in { animation: title-in 2.2s var(--ease-film) 0.9s both; }
@@ -131,6 +153,12 @@ body::after {
     .stagger > * { animation: reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 60%; }
     .letterbox { animation: letterbox linear both; animation-timeline: view(); animation-range: entry 10% cover 45%; }
     .reticle { animation: lock-on linear both; animation-timeline: view(); animation-range: entry 60% cover 45%; }
+    /* A mask wipes the beams in from the sources as the figure scrolls in, then the slit opens and the flare runs out. */
+    .flow { view-timeline-name: --flow; }
+    .flow .wipe { animation: rise-x linear both; animation-timeline: --flow; animation-range: entry 40% cover 42%; }
+    .flow .slit { animation: rise-y linear both; animation-timeline: --flow; animation-range: cover 40% cover 50%; }
+    .flow .flare { animation: rise-x linear both; animation-timeline: --flow; animation-range: cover 46% cover 56%; }
+    .flow .flow-out { animation: fade linear both; animation-timeline: --flow; animation-range: cover 50% cover 58%; }
   }
 }
 

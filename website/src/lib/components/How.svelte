@@ -1,12 +1,14 @@
 <script>
   import { shot } from "#lib/site.js";
+  import Next from "./Next.svelte";
   const video = shot("video-crop");
   const controls = shot("controls-crop");
   const steps = [
-    ["Your server", "NOCTURNE talks only to the Jellyfin server you configure. Browsing and playback only read from it."],
-    ["Controls, drawn by GPUI", "The whole interface is a native GPUI app rendered on the GPU: libraries, details, the player controls and the admin dashboard."],
+    ["Your sources", "Local files are read where they sit on disk. Jellyfin servers are only read from while you browse and play.", true],
+    ["Controls, drawn on the GPU", "The whole interface is a native Rust app rendered on the GPU: libraries, details, the player controls and the admin dashboard."],
     ["A transparent window", "The window is transparent and paints nothing where the video sits, so the picture underneath shows through."],
     ["Video, by libmpv", "libmpv decodes and renders through OpenGL and EGL into a Wayland subsurface below the window. On X11, video plays in an external mpv window instead."],
+    ["Loaded at run time", "NOCTURNE starts without libmpv. If it is missing, video plays in the external mpv player, or the app tells you which package to install.", true],
   ];
 </script>
 
@@ -15,9 +17,9 @@
     <div>
       <header class="reveal"><span class="role">Behind the scenes</span><h2 id="how-h" class="scene-title">How it works</h2></header>
       <ol class="stagger m-0 mt-12 grid list-none gap-0 p-0">
-        {#each steps as [name, text], i}
+        {#each steps as [name, text, next], i}
           <li class="grid gap-1.5 border-l py-4 pl-6 {i === 0 ? 'border-ink' : 'border-line-strong'}">
-            <strong class="text-[1.02rem] font-semibold text-ink">{name}</strong>
+            <strong class="text-[1.02rem] font-semibold text-ink">{name}{#if next} <Next />{/if}</strong>
             <span class="max-w-[46ch] text-ink-2">{text}</span>
           </li>
         {/each}
@@ -37,9 +39,9 @@
           <img class="w-full rounded-b-sm mix-blend-screen" src={controls.src} srcset={controls.srcset} sizes="(min-width: 1024px) 480px, 60vw" alt={controls.alt} width={controls.width} height={controls.height} loading="lazy" decoding="async">
         </div>
         <!-- Own element: the blend mode above flattens its layer, which would squash a label inside it. -->
-        <div class="layer-3 pointer-events-none absolute inset-0"><span class="tag tag-accent">Controls &middot; GPUI</span></div>
+        <div class="layer-3 pointer-events-none absolute inset-0"><span class="tag tag-accent">Controls &middot; App</span></div>
       </div>
-      <figcaption class="sr-only">The video path as three layers: libmpv video at the bottom, the transparent GPUI window above it, the GPUI controls on top. The view loops from the assembled window to the separated layers.</figcaption>
+      <figcaption class="sr-only">The video path as three layers: libmpv video at the bottom, the transparent app window above it, the app's controls on top. The view loops from the assembled window to the separated layers.</figcaption>
     </figure>
   </div>
 </section>

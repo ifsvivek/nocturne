@@ -33,6 +33,11 @@ CROPS = {
     "video-crop": ("06-playback", (0.025, 0.0, 0.975, 0.912), 1280),
     # the player control bar and seek line
     "controls-crop": ("06-playback", (0.0, 0.912, 1.0, 1.0), 1280),
+    # 0.3 close-ups, framed by eye on the Iced recapture (box None = not framed yet, skipped):
+    # the Alternate sources list on the movie detail page
+    "alternates-crop": ("03-movie-detail", None, 1920),
+    # the source filter (All / Local / each server) in the library toolbar
+    "filter-crop": ("02-library", None, 1280),
 }
 
 
@@ -65,7 +70,11 @@ for f in sorted(glob.glob(f"{SRC}/*.webp")):
     if base in SKIP_FULL:
         continue
     variants(Image.open(f).convert("RGB"), base, MAX_W.get(base, DEFAULT_MAX))
-for key, (src, (x0, y0, x1, y1), cap) in CROPS.items():
+for key, (src, frac, cap) in CROPS.items():
+    if frac is None or not os.path.exists(f"{SRC}/{src}.webp"):
+        print(f"skip {key}: no box or no capture yet")
+        continue
+    x0, y0, x1, y1 = frac
     im = Image.open(f"{SRC}/{src}.webp").convert("RGB")
     box = (round(x0 * im.width), round(y0 * im.height), round(x1 * im.width), round(y1 * im.height))
     variants(im.crop(box), key, cap)
