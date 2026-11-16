@@ -86,6 +86,28 @@ cd packaging && makepkg -si
 Release profile: fat LTO, one codegen unit, stripped, `panic = "unwind"` (a panic in a worker thread must not abort
 the UI). Clean build on 16 cores: about 4.5 minutes, about 24 MB binary (thin LTO: 2.3 minutes, 31 MB).
 
+## Pacman repository
+
+Served from the website at `https://nocturne.ifsvivek.in/repo/arch/x86_64/` (`nocturne.db`, `nocturne.files`, the two
+newest `nocturne-*.pkg.tar.zst`, each with a `.sig`); `repo/ARCH-GPG-KEY` is the public key, `repo/index.txt` the
+instructions. The directory `website/static/repo/` is generated and git-ignored; it ships when the website is deployed.
+Package, database and files database are all signed, so users set `SigLevel = Required TrustedOnly` (setup commands in
+the README). Static hosting cannot serve symlinks, so `nocturne.db`/`nocturne.files` are real copies.
+
+Signing key: "NOCTURNE Package Signing", fingerprint `5204B42AF768DE210D4979E397FA02EFCF1A4E3B`, ed25519, no passphrase.
+The public key is committed at `packaging/repo/ARCH-GPG-KEY`. The secret key exists only in the maintainer's GPG
+keyring: back it up offline (`gpg --export-secret-keys` to encrypted removable storage, never to the repository or
+the website), and keep the revocation certificate from `~/.gnupg/openpgp-revocs.d/` offline too. Rotating the key means
+a new fingerprint, a new `ARCH-GPG-KEY`, and users re-running the two `pacman-key` commands.
+
+Release procedure:
+
+1. Tag `vX.Y.Z`, set `pkgver` and the real `sha256sums` in `packaging/PKGBUILD` (sha256 of the GitHub tag archive).
+2. `scripts/publish-repo.sh` builds the package in a clean `archlinux:base-devel` container (deps installed as root,
+   `makepkg --nocheck` as a normal user, so it targets current Arch rather than the host), then on the host signs it,
+   runs `repo-add --sign --remove`, prunes to the newest two versions and verifies every signature.
+3. Deploy the website. The server never holds the key.
+
 ## Not shipped
 
 AppImage: not provided yet (planned, to be evaluated: [PLATFORMS.md](PLATFORMS.md)). libmpv's closure is about 205 shared libraries (about 240 MB uncompressed) including GPL

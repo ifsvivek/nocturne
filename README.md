@@ -70,7 +70,19 @@ Fedora), and needs a Vulkan driver, an OpenGL/EGL stack and a Secret Service pro
 KeePassXC) to remember logins. libmpv is loaded when needed, so the app starts and browses even without it. Packages are
 tested on Arch Linux only; see [docs/PACKAGING.md](docs/PACKAGING.md) for the full dependency list.
 
-**Arch Linux** (builds from the source archive of the release tag; the `PKGBUILD` is attached to the release and lives in
+**Package repository (Arch, recommended)**: signed, updates with `pacman -Syu`. pacman pulls in `mpv` and the other
+runtime libraries:
+
+```sh
+curl -fsSL https://nocturne.ifsvivek.in/repo/ARCH-GPG-KEY | sudo pacman-key --add -
+sudo pacman-key --lsign-key 5204B42AF768DE210D4979E397FA02EFCF1A4E3B
+printf '\n[nocturne]\nSigLevel = Required TrustedOnly\nServer = https://nocturne.ifsvivek.in/repo/arch/$arch\n' | sudo tee -a /etc/pacman.conf
+sudo pacman -Syu nocturne
+```
+
+Signing key fingerprint: `5204B42AF768DE210D4979E397FA02EFCF1A4E3B` (compare it with the output of the second command).
+
+**Arch Linux, from source** (builds from the source archive of the release tag; the `PKGBUILD` is attached to the release and lives in
 `packaging/`). pacman pulls in `mpv` and the other runtime libraries:
 
 ```sh
