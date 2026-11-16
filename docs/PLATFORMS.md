@@ -31,8 +31,9 @@ signals, window-handle extraction and media-key integration; `crates/session` pi
 | macOS `.dmg` | later | bundled, signed/notarised if the maintainer has an Apple Developer ID |
 | Windows `.msi`/`.exe` | later | bundled DLL; code signing needs a certificate |
 
-Builds: CI matrix per target (manual dispatch, as the existing CI). macOS/Windows cannot be built or tested on the
-maintainer's Linux machine; they depend on CI runners or real machines, and their verification is reported as such.
+Builds run locally (maintainer decision 2026-11-16: no hosted CI runs): Linux formats in Docker containers of each
+distribution; Windows as a cross-compile check only; macOS cannot be built on Linux and needs a real Mac. Verification
+is reported per target as built / installed / run / not tested.
 
 ## Footprint budget and measurements
 
