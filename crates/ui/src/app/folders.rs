@@ -141,7 +141,6 @@ impl App {
 
     /// First run, local choice: the folders screen without the app around it.
     pub(super) fn open_folders_setup(&mut self) -> Task<Message> {
-        self.welcome = None;
         self.account_back = None;
         let id = self.ensure_local_slot();
         self.folders = Some(Folders::new(id, true));

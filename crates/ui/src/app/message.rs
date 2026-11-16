@@ -195,8 +195,10 @@ pub enum Message {
     UserPic(String, Option<Handle>),
     /// The on-disk image cache finished opening (after the first frame).
     DiskReady(Option<std::sync::Arc<nocturne_core::imgcache::DiskCache>>),
-    /// First-run welcome screen.
-    Welcome(super::welcome::Msg),
+    /// The first-run walkthrough.
+    Onboarding(crate::onboarding::Msg),
+    /// Settings > Run setup again.
+    RunSetup,
     // header
     GoHome,
     OpenLibrary(usize),

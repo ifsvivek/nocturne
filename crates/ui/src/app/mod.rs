@@ -12,12 +12,12 @@ mod help;
 mod home;
 mod images;
 pub mod message;
+mod onboard;
 mod play;
 mod preview;
 mod search;
 mod settings;
 mod sources;
-mod welcome;
 
 use crate::account::{self, Accounts, Event as AcctEvent, devices, picker};
 use crate::keys::Key;
@@ -145,8 +145,6 @@ enum Phase {
 enum AccountBack {
     /// The app (the screens were opened from Sources).
     Ready,
-    /// The welcome choice (first run).
-    Welcome,
 }
 
 pub struct App {
@@ -232,8 +230,11 @@ pub struct App {
     my_tag: Option<String>,
     disk: Option<Arc<DiskCache>>,
     help_open: bool,
-    /// First run (no source yet): the welcome choice, until one is made.
-    welcome: Option<welcome::Welcome>,
+    /// The first-run walkthrough, and the screen it lent the window to (if any).
+    ob: Option<Box<crate::onboarding::Onboarding>>,
+    ob_away: Option<crate::onboarding::Return>,
+    /// This launch built its sources from the 0.2 files.
+    migrated: bool,
     /// Debug-only preview of the player loading overlay.
     preview: Option<preview::Preview>,
 }
@@ -325,7 +326,9 @@ impl App {
             my_tag: None,
             disk: None,
             help_open: false,
-            welcome: None,
+            ob: None,
+            ob_away: None,
+            migrated: false,
             preview: preview::Preview::from_env(),
         };
         let size = window::oldest()
@@ -399,6 +402,11 @@ impl App {
         self.preview
             .as_ref()
             .is_some_and(|p| p.animating(crate::motion::reduced()))
+            || self.ob_visible()
+                && self
+                    .ob
+                    .as_ref()
+                    .is_some_and(|o| o.animating(Instant::now()))
             || matches!(self.phase, Phase::Connecting)
             || (matches!(self.phase, Phase::Account)
                 && self.accounts.as_ref().is_some_and(|a| a.animating()))
@@ -412,6 +420,7 @@ impl App {
             Message::Tick(now) => {
                 self.now = now;
                 self.sync_detail();
+                self.sync_ob();
                 Task::batch([self.tick(), self.sync_extras()])
             }
             Message::Frame(now) => {
@@ -663,10 +672,8 @@ impl App {
                 Task::none()
             }
             Message::PageRetry => self.retry_page(),
-            Message::Welcome(m) => match self.welcome.as_mut().and_then(|w| w.update(m)) {
-                Some(c) => self.first_run(c),
-                None => Task::none(),
-            },
+            Message::Onboarding(m) => self.ob_msg(m),
+            Message::RunSetup => self.run_setup_again(),
             Message::DiskReady(d) => {
                 self.disk = d;
                 self.apply_disk();
@@ -873,11 +880,6 @@ impl App {
     /// Esc on an account screen opened from inside the app (or from the first-run choice).
     fn leave_account(&mut self) -> Task<Message> {
         match self.account_back.take() {
-            Some(AccountBack::Welcome) => {
-                self.setup = None;
-                self.welcome = Some(welcome::Welcome::new());
-                Task::none()
-            }
             Some(AccountBack::Ready) => {
                 let load = self
                     .active
@@ -1375,14 +1377,11 @@ impl App {
         if let Some(t) = self.extras_key(&k) {
             return t;
         }
+        if self.ob_visible() {
+            return self.ob_key(&k);
+        }
         if matches!(self.phase, Phase::Picker) {
             return self.picker_key(key);
-        }
-        if let Some(w) = self.welcome.as_mut() {
-            return match w.key(key) {
-                Some(c) => self.first_run(c),
-                None => Task::none(),
-            };
         }
         if key == "escape"
             && self.account_back.is_some()
@@ -1564,10 +1563,44 @@ impl App {
     // ---- view ----
 
     pub fn view(&self) -> Element<'_, Message> {
-        let body: Element<Message> = match &self.phase {
-            Phase::Account if self.welcome.is_some() => {
-                welcome::view(self.welcome.as_ref().expect("checked")).map(Message::Welcome)
+        if let Some(o) = self.ob.as_deref().filter(|_| self.ob_away.is_none()) {
+            let layer = |h: &Handle, op: f32| -> Element<Message> {
+                image(h.clone())
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .content_fit(ContentFit::Cover)
+                    .opacity(op)
+                    .into()
+            };
+            let mut layers: Vec<Element<Message>> = vec![
+                container(space())
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .style(crate::style::fill(t::FRAME))
+                    .into(),
+                layer(&self.glow, 1.0),
+                layer(&self.dots, 0.09),
+                o.view(Instant::now()).map(Message::Onboarding),
+                layer(&self.grain, 0.02),
+            ];
+            if let Some((n, _)) = &self.note {
+                layers.push(
+                    container(
+                        container(text(n.clone()).size(t::BODY).color(t::TEXT))
+                            .padding([t::S3, t::S4])
+                            .style(crate::style::raised_card),
+                    )
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Alignment::End)
+                    .align_y(Alignment::End)
+                    .padding(t::S6)
+                    .into(),
+                );
             }
+            return Stack::with_children(layers).into();
+        }
+        let body: Element<Message> = match &self.phase {
             Phase::Account => match &self.accounts {
                 Some(a) => a.view(self.now).map(Message::Account),
                 None => self.connecting(),
@@ -1652,7 +1685,7 @@ impl App {
             layer(&self.dots, 0.09),
             body,
         ];
-        let setting_up = self.folders.as_ref().is_some_and(|f| f.setup);
+        let setting_up = self.folders.as_ref().is_some_and(|f| f.setup) || self.ob_away.is_some();
         if ready && !setting_up {
             layers.push(self.header());
             if let Some(b) = self.source_banner() {
@@ -1780,22 +1813,6 @@ impl App {
                 })
                 .into(),
         ])
-    }
-
-    /// A first-run choice: Local goes to the folders screen, Server to the server address flow, Both
-    /// to the server and then the folders.
-    fn first_run(&mut self, c: FirstRun) -> Task<Message> {
-        self.setup = Some(c);
-        match c.first() {
-            Step::Server => {
-                self.welcome = None;
-                // Esc on the address screen returns to the choice until a source exists.
-                self.account_back = Some(AccountBack::Welcome);
-                Task::none()
-            }
-            Step::Folders => self.open_folders_setup(),
-            Step::Done => Task::none(),
-        }
     }
 }
 

@@ -150,8 +150,7 @@ impl App {
             self.src_open = false;
             self.settings_open = false;
             self.setup = None;
-            let t = self.ensure_accounts();
-            self.welcome = Some(super::welcome::Welcome::new());
+            let t = self.start_onboarding(crate::onboarding::Mode::Fresh);
             self.phase = Phase::Account;
             return t;
         }
