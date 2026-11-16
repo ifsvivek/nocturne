@@ -542,7 +542,7 @@ mod tests {
         assert_eq!(s.profiles.len(), 2);
         assert!(matches!(&s.get(a).unwrap().kind,
             ProfileKind::Jellyfin { user_id, .. } if user_id == "u7"));
-        assert!(s.needs_welcome() == false);
+        assert!(!s.needs_welcome());
         assert!(s.add_root("/m/films".into()));
         assert!(!s.add_root("/m/films".into()), "no duplicate folder");
         assert!(s.add_root("/m/shows".into()));

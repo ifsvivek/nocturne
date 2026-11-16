@@ -26,3 +26,23 @@ where
 pub fn after<M: Send + 'static>(d: Duration, msg: M) -> Task<M> {
     run(tokio::time::sleep(d), move |_| msg)
 }
+
+/// Hands a value that is not `Clone` (a built `Slot`, the loaded catalog) through a `Message`:
+/// the first `take` gets it.
+pub struct Handoff<T>(std::sync::Arc<std::sync::Mutex<Option<T>>>);
+
+impl<T> Handoff<T> {
+    pub fn new(v: T) -> Self {
+        Self(std::sync::Arc::new(std::sync::Mutex::new(Some(v))))
+    }
+
+    pub fn take(&self) -> Option<T> {
+        self.0.lock().ok()?.take()
+    }
+}
+
+impl<T> Clone for Handoff<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}

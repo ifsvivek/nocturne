@@ -2,24 +2,15 @@
 //! This module is visual state and messages only; the root decides what each choice does.
 use crate::style::{border, glow_shadow};
 use crate::theme as t;
-use crate::widget::{icon, label, mono, pill_button, wordmark};
+use crate::widget::{icon, label, mono, wordmark};
 use iced::widget::{column, container, mouse_area, row, space, text};
 use iced::{Alignment, Background, Element, Length, Shadow};
-
-/// What the person wants NOCTURNE to show.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FirstRun {
-    Local,
-    Server,
-    Both,
-}
+pub use nocturne_core::sources::FirstRun;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Msg {
     Select(usize),
     Pick(FirstRun),
-    /// Leave the "coming soon" note.
-    Back,
 }
 
 pub struct Choice {
@@ -52,28 +43,17 @@ pub const CHOICES: [Choice; 3] = [
 
 pub struct Welcome {
     pub sel: usize,
-    /// The Local choice was taken before the local folders screen exists.
-    pub local_note: bool,
 }
 
 impl Welcome {
     pub fn new() -> Self {
         // Most people have a server; start on it.
-        Self {
-            sel: 1,
-            local_note: false,
-        }
+        Self { sel: 1 }
     }
 
-    /// Arrow keys move, Enter picks; Esc leaves the note. `Some` when a choice was made.
+    /// Arrow keys move, Enter picks. `Some` when a choice was made.
     pub fn key(&mut self, key: &str) -> Option<FirstRun> {
         let n = CHOICES.len();
-        if self.local_note {
-            if matches!(key, "escape" | "backspace") {
-                self.local_note = false;
-            }
-            return None;
-        }
         match key {
             "left" | "up" => self.sel = (self.sel + n - 1) % n,
             "right" | "down" | "tab" => self.sel = (self.sel + 1) % n,
@@ -89,7 +69,6 @@ impl Welcome {
         match msg {
             Msg::Select(i) => self.sel = i.min(CHOICES.len() - 1),
             Msg::Pick(m) => return Some(m),
-            Msg::Back => self.local_note = false,
         }
         None
     }
@@ -187,31 +166,7 @@ fn card<'a>(i: usize, c: &Choice, active: bool) -> Element<'a, Msg> {
 }
 
 pub fn view<'a>(w: &Welcome) -> Element<'a, Msg> {
-    let body: Element<Msg> = if w.local_note {
-        column![
-            text("Local libraries are on their way")
-                .size(t::HEADING)
-                .font(t::BOLD),
-            container(
-                text("Adding folders arrives with the next update. You can connect a Jellyfin server now and add your folders when they are ready.")
-                    .size(t::BODY)
-                    .line_height(1.5)
-                    .color(t::TEXT_SECONDARY)
-                    .align_x(Alignment::Center),
-            )
-            .max_width(460),
-            space().height(t::S2),
-            row![
-                container(pill_button("Connect a server", true, true, Msg::Pick(FirstRun::Server)))
-                    .width(200),
-                container(pill_button("Back", false, false, Msg::Back)).width(120),
-            ]
-            .spacing(t::S3),
-        ]
-        .spacing(t::S3)
-        .align_x(Alignment::Center)
-        .into()
-    } else {
+    let body: Element<Msg> = {
         let mut cards = row![].spacing(t::S4);
         for (i, c) in CHOICES.iter().enumerate() {
             cards = cards.push(card(i, c, i == w.sel));
@@ -266,16 +221,6 @@ mod tests {
         assert_eq!(w.key("enter"), Some(FirstRun::Both));
         w.key("home");
         assert_eq!(w.key("enter"), Some(FirstRun::Local));
-    }
-
-    #[test]
-    fn the_note_swallows_keys_until_escape() {
-        let mut w = Welcome::new();
-        w.local_note = true;
-        assert_eq!(w.key("enter"), None);
-        assert!(w.local_note);
-        w.key("escape");
-        assert!(!w.local_note);
     }
 
     #[test]

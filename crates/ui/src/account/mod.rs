@@ -125,6 +125,20 @@ impl Accounts {
         (me, task)
     }
 
+    /// The address screen is up and idle (Esc may leave it for where the user came from).
+    pub fn at_connect(&self) -> bool {
+        self.st.stage == Stage::Connect && !self.st.busy && self.dialog.is_none()
+    }
+
+    /// Sign-out, add-account and expiry act on `url`: make it the server these screens talk about
+    /// (the launch no longer goes through the address screen, which used to set it).
+    pub fn point_at(&mut self, url: &str) {
+        if self.st.url != url {
+            self.st.url = url.to_string();
+            self.st.server_name = nocturne_core::profile::label_for(url);
+        }
+    }
+
     pub fn dialog_open(&self) -> bool {
         self.dialog.is_some()
     }
