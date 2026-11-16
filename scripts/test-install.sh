@@ -2,7 +2,7 @@
 # Clean-environment install tests in throwaway Docker containers. No sudo needed (docker group), no GitHub Actions.
 # usage: scripts/test-install.sh [all|arch|nompv|debian|ubuntu|fedora|pkgbuild ...]   (default: all except pkgbuild)
 #   pkgbuild is slow (a full release build in the container), so it only runs when named.
-# Builds the tarball with scripts/package.sh unless dist/ already has one for the current version
+# Builds the tarball with scripts/package.sh (PKG/BIN env choose the app package, see there) unless dist/ already has one for the current version
 # (set REBUILD=1 to force). Prints PASS/FAIL lines; exit status 1 if any FAIL. "INFO" lines are recorded facts
 # (expected failures such as a glibc mismatch on an older distro). Containers use --rm; images this script
 # pulled are removed at the end (KEEP_IMAGES=1 keeps them). Nothing here touches the host or any server.
@@ -45,7 +45,7 @@ echo "--- headless start"; timeout 15 "$1" 2>&1 | head -20; echo "exit=${PIPESTA
 EOF
 
 loader_ok() { # $1 = text of a headless start
-  grep -qE 'neither DISPLAY nor WAYLAND_DISPLAY|open window' <<<"$1" && # must actually reach the windowing stage
+  grep -qE 'neither DISPLAY nor WAYLAND_DISPLAY|neither WAYLAND_DISPLAY nor|open window' <<<"$1" && # must actually reach the windowing stage
   ! grep -qE 'error while loading shared libraries|cannot open shared object|version .GLIBC_[0-9.]+. not found' <<<"$1"
 }
 
@@ -55,7 +55,7 @@ t_arch() {
 . /w/pre.sh
 pacman -Syu --noconfirm >/dev/null 2>&1   # a real system is synced and upgraded; the image is stale (-Sy alone = partial upgrade, file conflicts)
 NOCTURNE_YES=1 ./install.sh; echo "install_rc=$?"
-echo "--- pacman"; for p in mpv libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon-x11 libxcb dbus; do pacman -Q $p >/dev/null 2>&1 && echo "have $p" || echo "MISSING $p"; done
+echo "--- pacman"; for p in mpv libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon-x11 libxcb dbus libx11 libxcursor libxi; do pacman -Q $p >/dev/null 2>&1 && echo "have $p" || echo "MISSING $p"; done
 echo "--- libmpv"; ldconfig -p | grep -c 'libmpv.so.2'
 echo "--- ldd"; ldd /usr/local/bin/nocturne | grep -c 'not found'
 bash /w/headless.sh /usr/local/bin/nocturne
@@ -76,7 +76,7 @@ t_nompv() {
   cat > "$WORK/nompv.sh" <<'EOF'
 . /w/pre.sh
 pacman -Syu --noconfirm >/dev/null 2>&1
-pacman -S --noconfirm --needed libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon-x11 libxcb dbus fontconfig freetype2 >/dev/null 2>&1
+pacman -S --noconfirm --needed libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon-x11 libxcb dbus libx11 libxcursor libxi >/dev/null 2>&1
 pacman -Q mpv >/dev/null 2>&1 && echo "mpv present (unexpected)" || echo "mpv absent"
 ./install.sh --no-deps >/dev/null; echo "install_rc=$?"
 echo "--- ldd"; ldd /usr/local/bin/nocturne | grep -c 'not found'
@@ -97,7 +97,7 @@ t_apt() { # image
   cat > "$WORK/$tag.sh" <<'EOF'
 . /w/pre.sh
 NOCTURNE_YES=1 ./install.sh; echo "install_rc=$?"
-echo "--- dpkg"; for p in libmpv2 mpv libegl1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3; do dpkg -s $p >/dev/null 2>&1 && echo "have $p" || echo "MISSING $p"; done
+echo "--- dpkg"; for p in libmpv2 mpv libegl1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3 libx11-6 libx11-xcb1 libxcursor1 libxi6; do dpkg -s $p >/dev/null 2>&1 && echo "have $p" || echo "MISSING $p"; done
 echo "--- ldd"; ldd /usr/local/bin/nocturne 2>&1 | grep -E 'not found|GLIBC' | head -5
 bash /w/headless.sh /usr/local/bin/nocturne
 EOF
@@ -112,7 +112,7 @@ t_fedora() {
   cat > "$WORK/fedora.sh" <<'EOF'
 . /w/pre.sh
 echo "--- per-package availability"
-for p in mpv-libs mpv libglvnd-egl vulkan-loader libwayland-client libwayland-egl libxkbcommon libxkbcommon-x11 libxcb dbus-libs; do
+for p in mpv-libs mpv libglvnd-egl vulkan-loader libwayland-client libwayland-egl libxkbcommon libxkbcommon-x11 libxcb dbus-libs libX11 libX11-xcb libXcursor libXi; do
   if dnf -q repoquery --available "$p" 2>/dev/null | grep -q .; then echo "available $p"; else echo "UNAVAILABLE $p"; fi
 done
 echo "--- install.sh"

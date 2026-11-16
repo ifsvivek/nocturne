@@ -11,11 +11,13 @@ P="${DESTDIR:-}${PREFIX:-/usr/local}"
 META=io.github.ifsvivek.nocturne.metainfo.xml
 
 # ---- runtime dependencies: the single list. Keep in sync with docs/PACKAGING.md and packaging/PKGBUILD. ----
-# Directly linked: libEGL libdbus-1 libxcb libxkbcommon(-x11) glibc libgcc_s.
-# dlopen()ed at run time (invisible to readelf/namcap): libmpv.so.2 (in-window video; the app falls back to the
-# `mpv` binary without it), libvulkan.so.1, libwayland-client.so.0, libwayland-egl.so.1.
-# A Vulkan driver (mesa vulkan / NVIDIA) is also needed but depends on the GPU, so it is not installed here.
-SONAMES="libmpv.so.2 libEGL.so.1 libvulkan.so.1 libwayland-client.so.0 libwayland-egl.so.1 libxkbcommon.so.0 libxkbcommon-x11.so.0 libxcb.so.1 libdbus-1.so.3"
+# Directly linked (readelf -d): libdbus-1 glibc libgcc_s. Everything else is dlopen()ed at run time (invisible to
+# readelf/namcap): libmpv.so.2 (in-window video; the app falls back to the `mpv` binary without it), libvulkan.so.1
+# and libEGL.so.1 (wgpu / video), libwayland-client.so.0, libwayland-egl.so.1, libxkbcommon(-x11), and for X11
+# sessions libxcb, libX11, libX11-xcb, libXcursor, libXi (winit). No fontconfig/freetype: fonts are found by
+# cosmic-text's own pure-Rust fontconfig parser. A Vulkan driver (mesa vulkan / NVIDIA) is also needed but depends on
+# the GPU, so it is not installed here. Evidence: docs/PACKAGING.md.
+SONAMES="libmpv.so.2 libEGL.so.1 libvulkan.so.1 libwayland-client.so.0 libwayland-egl.so.1 libxkbcommon.so.0 libxkbcommon-x11.so.0 libxcb.so.1 libdbus-1.so.3 libX11.so.6 libX11-xcb.so.1 libXcursor.so.1 libXi.so.6"
 
 # pkg_for DISTRO_FAMILY WHAT -> package name. WHAT is a soname or the word `mpv` (the binary).
 # Families: arch debian fedora suse.
@@ -23,13 +25,17 @@ pkg_for() {
   case "$2" in
   libmpv.so.2) case $1 in arch) echo mpv ;; debian) echo libmpv2 ;; fedora) echo mpv-libs ;; suse) echo libmpv2 ;; esac ;;
   mpv) echo mpv ;;
-  libEGL.so.1) case $1 in arch) echo libglvnd ;; debian) echo libegl1 ;; fedora) echo libglvnd-egl ;; suse) echo libEGL1 ;; esac ;;
+  libEGL.so.1) case $1 in arch) echo libglvnd ;; debian) echo libegl1 ;; fedora) echo libglvnd-egl ;; suse) echo libglvnd ;; esac ;;
   libvulkan.so.1) case $1 in arch) echo vulkan-icd-loader ;; debian) echo libvulkan1 ;; fedora) echo vulkan-loader ;; suse) echo libvulkan1 ;; esac ;;
   libwayland-client.so.0) case $1 in arch) echo wayland ;; debian) echo libwayland-client0 ;; fedora) echo libwayland-client ;; suse) echo libwayland-client0 ;; esac ;;
   libwayland-egl.so.1) case $1 in arch) echo wayland ;; debian) echo libwayland-egl1 ;; fedora) echo libwayland-egl ;; suse) echo libwayland-egl1 ;; esac ;;
   libxkbcommon.so.0) case $1 in arch | fedora) echo libxkbcommon ;; debian | suse) echo libxkbcommon0 ;; esac ;;
   libxkbcommon-x11.so.0) case $1 in arch | fedora) echo libxkbcommon-x11 ;; debian | suse) echo libxkbcommon-x11-0 ;; esac ;;
   libxcb.so.1) case $1 in arch | fedora) echo libxcb ;; debian | suse) echo libxcb1 ;; esac ;;
+  libX11.so.6) case $1 in arch) echo libx11 ;; debian) echo libx11-6 ;; fedora) echo libX11 ;; suse) echo libX11-6 ;; esac ;;
+  libX11-xcb.so.1) case $1 in arch) echo libx11 ;; debian) echo libx11-xcb1 ;; fedora) echo libX11-xcb ;; suse) echo libX11-xcb1 ;; esac ;;
+  libXcursor.so.1) case $1 in arch) echo libxcursor ;; debian) echo libxcursor1 ;; fedora) echo libXcursor ;; suse) echo libXcursor1 ;; esac ;;
+  libXi.so.6) case $1 in arch) echo libxi ;; debian) echo libxi6 ;; fedora) echo libXi ;; suse) echo libXi6 ;; esac ;;
   libdbus-1.so.3) case $1 in arch) echo dbus ;; debian) echo libdbus-1-3 ;; fedora) echo dbus-libs ;; suse) echo libdbus-1-3 ;; esac ;;
   esac
 }
