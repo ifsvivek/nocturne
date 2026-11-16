@@ -44,6 +44,27 @@ impl Density {
     }
 }
 
+/// Reduce motion: follow the desktop (`System`), or force it on / off.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReduceMotion {
+    #[default]
+    System,
+    On,
+    Off,
+}
+
+impl ReduceMotion {
+    /// Whether to cut decorative animation, given what the desktop asked for.
+    pub fn reduced(self, system_prefers: bool) -> bool {
+        match self {
+            Self::System => system_prefers,
+            Self::On => true,
+            Self::Off => false,
+        }
+    }
+}
+
 /// The remembered profiles of the signed-in server, for the "Default profile" row. Read from
 /// `accounts.toml` by the app (never stored in `settings.toml`); the row is changed there, not here.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -106,6 +127,7 @@ pub struct Settings {
     pub density: Density,
     /// Disk image cache cap in MB.
     pub image_cache_mb: u32,
+    pub reduce_motion: ReduceMotion,
     /// Sort, view and flag filters remembered per library (key = library id).
     pub libs: BTreeMap<String, LibPrefs>,
     /// Most recent first.
@@ -132,6 +154,7 @@ impl Default for Settings {
             home_latest: true,
             density: Density::Comfortable,
             image_cache_mb: 512,
+            reduce_motion: ReduceMotion::System,
             libs: BTreeMap::new(),
             recent_searches: vec![],
         }
@@ -184,10 +207,10 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 16;
+pub const ROWS: usize = 17;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
-pub const PROFILE_ROW: usize = 15;
+pub const PROFILE_ROW: usize = 16;
 
 /// Section title shown above row `i`, if a section starts there.
 pub fn head(i: usize) -> Option<&'static str> {
@@ -196,7 +219,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         2 => Some("Playback"),
         10 => Some("Home"),
         13 => Some("Appearance and storage"),
-        15 => Some("Profiles"),
+        16 => Some("Profiles"),
         _ => None,
     }
 }
@@ -236,6 +259,11 @@ const SUB_MODES: [(SubPref, &str); 3] = [
     (SubPref::Off, "Off"),
     (SubPref::ForeignOnly, "Foreign audio only"),
     (SubPref::Always, "Always"),
+];
+const MOTION: [(ReduceMotion, &str); 3] = [
+    (ReduceMotion::System, "System"),
+    (ReduceMotion::On, "On"),
+    (ReduceMotion::Off, "Off"),
 ];
 const DENSITIES: [Density; 3] = [Density::Compact, Density::Comfortable, Density::Spacious];
 
@@ -339,6 +367,15 @@ impl Settings {
                 fmt_mb(self.image_cache_mb),
             ),
             r(
+                "Reduce motion",
+                "Cut fades and the startup animation. System follows your desktop's animation setting.",
+                MOTION
+                    .iter()
+                    .find(|(m, _)| *m == self.reduce_motion)
+                    .map_or("System", |(_, n)| n)
+                    .into(),
+            ),
+            r(
                 "Default profile",
                 "Opens at launch without asking. Ask every time shows Who's watching. Needs two or more profiles on this server.",
                 self.profiles.labels()[self.profiles.current()].clone(),
@@ -381,6 +418,10 @@ impl Settings {
                 DENSITIES.iter().position(|d| *d == self.density)?,
             ),
             14 => nums(&CACHE_MB, self.image_cache_mb, fmt_mb),
+            15 => (
+                MOTION.iter().map(|(_, n)| n.to_string()).collect(),
+                MOTION.iter().position(|(m, _)| *m == self.reduce_motion)?,
+            ),
             PROFILE_ROW if self.profiles.list.len() > 1 => {
                 (self.profiles.labels(), self.profiles.current())
             }
@@ -407,6 +448,7 @@ impl Settings {
             9 => self.buffer_max_mb = BUF_MB.get(idx).copied().unwrap_or(self.buffer_max_mb),
             13 => self.density = DENSITIES.get(idx).copied().unwrap_or(self.density),
             14 => self.image_cache_mb = CACHE_MB.get(idx).copied().unwrap_or(self.image_cache_mb),
+            15 => self.reduce_motion = MOTION.get(idx).map_or(self.reduce_motion, |(m, _)| *m),
             _ => {}
         }
     }
@@ -445,6 +487,11 @@ impl Settings {
                 }
             }
             14 => self.image_cache_mb = step(&CACHE_MB, self.image_cache_mb, 2, d),
+            15 => {
+                let i = MOTION.iter().position(|(m, _)| *m == self.reduce_motion);
+                let i = (i.unwrap_or(0) as i32 + d).rem_euclid(MOTION.len() as i32) as usize;
+                self.reduce_motion = MOTION[i].0;
+            }
             _ => {}
         }
     }
@@ -723,8 +770,27 @@ mod tests {
     }
 
     #[test]
+    fn reduce_motion_follows_system_unless_forced() {
+        let mut s = Settings::default();
+        assert_eq!(s.reduce_motion, ReduceMotion::System);
+        assert!(s.reduce_motion.reduced(true) && !s.reduce_motion.reduced(false));
+        s.cycle(15, 1);
+        assert!(s.reduce_motion.reduced(false), "On forces it");
+        s.cycle(15, 1);
+        assert!(!s.reduce_motion.reduced(true), "Off forces motion");
+        s.cycle(15, 1);
+        assert_eq!(s.reduce_motion, ReduceMotion::System);
+        s.choose(15, 1);
+        assert_eq!(s.rows()[15].value, "On");
+        assert_eq!(s.choices(15).unwrap().1, 1);
+        // Older files without the field load as System.
+        let old: Settings = toml::from_str("version = 2\n").unwrap();
+        assert_eq!(old.reduce_motion, ReduceMotion::System);
+    }
+
+    #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 10, 13 and 15.
+        // Child 0 is the title; heads sit before rows 0, 2, 10, 13 and 16.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
