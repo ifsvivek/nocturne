@@ -1,11 +1,7 @@
 //! Admin section of the app: a GPUI entity that owns all admin state, so `app.rs` only
 //! forwards keys and swaps the body. Reads go through the shared tokio bridge; every response
 //! carries the page id it was requested for and is dropped if the user has moved on.
-mod act;
-mod confirm;
-pub(crate) mod fmt;
-mod model;
-mod state;
+pub use nocturne_core::admin::{act, confirm, fmt, model, state};
 mod view;
 
 use crate::bridge;
@@ -258,7 +254,7 @@ impl Admin {
             "right" => Some(Dir::Right),
             _ => None,
         };
-        let m = self.model();
+        let m = model::model(&self.st);
         match (key, dir) {
             ("backspace", _) if !self.st.in_side => {
                 (self.st.in_side, self.st.on_toolbar) = (true, false);
@@ -385,10 +381,10 @@ mod tests {
         let call = ["i_have_asked", "_the_user("].concat();
         let srcs = [
             include_str!("mod.rs"),
-            include_str!("act.rs"),
-            include_str!("confirm.rs"),
-            include_str!("model.rs"),
-            include_str!("state.rs"),
+            include_str!("../../../core/src/admin/act.rs"),
+            include_str!("../../../core/src/admin/confirm.rs"),
+            include_str!("../../../core/src/admin/model.rs"),
+            include_str!("../../../core/src/admin/state.rs"),
             include_str!("view.rs"),
         ];
         let hits: usize = srcs.iter().map(|s| s.matches(&call).count()).sum();

@@ -1,0 +1,26 @@
+[package]
+name = "nocturne-core"
+description = "UI-framework-free logic shared by NOCTURNE front ends"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nocturne-jellyfin = { path = "../jellyfin" }
+nocturne-jellyfin-admin = { path = "../jellyfin-admin" }
+nocturne-jellyfin-user = { path = "../jellyfin-user" }
+nocturne-player = { path = "../player" }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time"] }
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.2.1"
+serde_json = "1.0.154"
+zbus = "5.19"
+libc = "0.2"
+nocturne-session = { path = "../session" }

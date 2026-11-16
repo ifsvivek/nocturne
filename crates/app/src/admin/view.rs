@@ -730,7 +730,7 @@ impl Admin {
 
 impl Render for Admin {
     fn render(&mut self, _w: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let m = self.model();
+        let m = super::model::model(&self.st);
         self.load_pics(&m, cx);
         self.st.clamp(m.items.len());
         let section = self.st.section;

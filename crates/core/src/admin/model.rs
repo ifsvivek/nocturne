@@ -1,9 +1,8 @@
 //! Turns loaded data into rows and buttons for the list screens (Users, Libraries, Tasks,
 //! and so on). The dashboard's session cards use the same rows.
-use super::Admin;
 use super::act::{Act, Brand, Cfg, Lim, Net, Tp, TrigKind};
 use super::fmt::{bytes, short, when};
-use super::state::{Data, L, LibProviders, Section};
+use super::state::{Data, L, LibProviders, Section, State};
 use nocturne_jellyfin_admin::edit::{self, Fetcher};
 
 pub struct Btn {
@@ -80,72 +79,70 @@ fn yes(v: bool) -> String {
     if v { "on" } else { "off" }.into()
 }
 
-impl Admin {
-    pub(super) fn model(&self) -> Model {
-        let d = &self.st.data;
-        match self.st.section {
-            Section::Dashboard => dashboard(d),
-            Section::General => general(d),
-            Section::Branding => branding(d),
-            Section::Users => users(d),
-            Section::Access => access(d),
-            Section::Libraries => libraries(d),
-            Section::Providers => providers(d),
-            Section::Metadata => config_page(d, |c| {
-                vec![
-                    text_row(
-                        "Metadata language",
-                        c.preferred_metadata_language.clone(),
-                        Cfg::MetaLang,
-                    ),
-                    text_row(
-                        "Metadata country",
-                        c.metadata_country_code.clone(),
-                        Cfg::MetaCountry,
-                    ),
-                ]
-            }),
-            Section::Resume => config_page(d, |c| {
-                vec![
-                    num_row(
-                        "Minimum resume position",
-                        c.min_resume_pct,
-                        "%",
-                        Cfg::ResumeMin,
-                    ),
-                    num_row(
-                        "Maximum resume position",
-                        c.max_resume_pct,
-                        "%",
-                        Cfg::ResumeMax,
-                    ),
-                    num_row(
-                        "Minimum resume duration",
-                        c.min_resume_duration_seconds,
-                        " s",
-                        Cfg::ResumeSecs,
-                    ),
-                ]
-            }),
-            Section::Streaming => config_page(d, |c| {
-                vec![num_row(
-                    "Remote streaming limit",
-                    c.remote_client_bitrate_limit,
-                    " bit/s",
-                    Cfg::BitrateLimit,
-                )]
-            }),
-            Section::Transcoding => transcoding(d),
-            Section::Trickplay => trickplay(d),
-            Section::Backups => backups(d),
-            Section::Devices => devices(d),
-            Section::Activity => activity(d),
-            Section::Plugins => plugins(d),
-            Section::Networking => networking(d),
-            Section::ApiKeys => api_keys(d),
-            Section::Logs => logs(d),
-            Section::Tasks => tasks(d),
-        }
+pub fn model(st: &State) -> Model {
+    let d = &st.data;
+    match st.section {
+        Section::Dashboard => dashboard(d),
+        Section::General => general(d),
+        Section::Branding => branding(d),
+        Section::Users => users(d),
+        Section::Access => access(d),
+        Section::Libraries => libraries(d),
+        Section::Providers => providers(d),
+        Section::Metadata => config_page(d, |c| {
+            vec![
+                text_row(
+                    "Metadata language",
+                    c.preferred_metadata_language.clone(),
+                    Cfg::MetaLang,
+                ),
+                text_row(
+                    "Metadata country",
+                    c.metadata_country_code.clone(),
+                    Cfg::MetaCountry,
+                ),
+            ]
+        }),
+        Section::Resume => config_page(d, |c| {
+            vec![
+                num_row(
+                    "Minimum resume position",
+                    c.min_resume_pct,
+                    "%",
+                    Cfg::ResumeMin,
+                ),
+                num_row(
+                    "Maximum resume position",
+                    c.max_resume_pct,
+                    "%",
+                    Cfg::ResumeMax,
+                ),
+                num_row(
+                    "Minimum resume duration",
+                    c.min_resume_duration_seconds,
+                    " s",
+                    Cfg::ResumeSecs,
+                ),
+            ]
+        }),
+        Section::Streaming => config_page(d, |c| {
+            vec![num_row(
+                "Remote streaming limit",
+                c.remote_client_bitrate_limit,
+                " bit/s",
+                Cfg::BitrateLimit,
+            )]
+        }),
+        Section::Transcoding => transcoding(d),
+        Section::Trickplay => trickplay(d),
+        Section::Backups => backups(d),
+        Section::Devices => devices(d),
+        Section::Activity => activity(d),
+        Section::Plugins => plugins(d),
+        Section::Networking => networking(d),
+        Section::ApiKeys => api_keys(d),
+        Section::Logs => logs(d),
+        Section::Tasks => tasks(d),
     }
 }
 

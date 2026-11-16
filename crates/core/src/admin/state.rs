@@ -313,6 +313,12 @@ pub struct State {
 
 pub const POLL_SECS: u64 = 5;
 
+impl Default for State {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl State {
     pub fn new() -> Self {
         Self {
