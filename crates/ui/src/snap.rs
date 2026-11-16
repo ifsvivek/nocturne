@@ -13,6 +13,12 @@ pub fn on_boot() -> Task<Message> {
     let keys = std::env::var("NOCTURNE_KEYS").unwrap_or_default();
     let keys = keys.split(',').filter_map(|k| {
         let (name, ms) = k.split_once('@')?;
+        if name == "open-admin" {
+            return Some(crate::task::after(
+                Duration::from_millis(ms.parse().ok()?),
+                Message::OpenAdmin,
+            ));
+        }
         let key = crate::keys::Key {
             name: name.into(),
             text: (name.chars().count() == 1).then(|| name.into()),
