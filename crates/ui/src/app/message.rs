@@ -138,9 +138,26 @@ pub enum Message {
     PlayTarget(
         Media,
         Vec<Media>,
+        Option<String>,
         Result<nocturne_core::backend::PlayTarget, nocturne_core::backend::PlayError>,
     ),
     Player(crate::player::Msg),
+    Admin(crate::admin::Msg),
+    SyncPlay(crate::syncplay::Msg),
+    Queue(crate::queue::Msg),
+    Devices(crate::account::devices::Msg),
+    /// A SyncPlay group wants its item played: (source, list, index, start seconds, target).
+    GroupPlay(
+        SourceId,
+        Vec<Media>,
+        usize,
+        f64,
+        Result<nocturne_core::backend::PlayTarget, nocturne_core::backend::PlayError>,
+    ),
+    /// A message of detail page `pid`.
+    Detail(u64, crate::detail::Msg),
+    /// A write the detail page asked for finished.
+    DetailWrote(u64, crate::detail::Write, Result<(), &'static str>),
     HomeScroll(f32, f32),
     HomeStrip(usize, f32),
     Browse(u64, super::browse::BMsg),
@@ -178,8 +195,10 @@ pub enum Message {
     UserPic(String, Option<Handle>),
     /// The on-disk image cache finished opening (after the first frame).
     DiskReady(Option<std::sync::Arc<nocturne_core::imgcache::DiskCache>>),
-    /// First-run welcome screen.
-    Welcome(super::welcome::Msg),
+    /// The first-run walkthrough.
+    Onboarding(crate::onboarding::Msg),
+    /// Settings > Run setup again.
+    RunSetup,
     // header
     GoHome,
     OpenLibrary(usize),

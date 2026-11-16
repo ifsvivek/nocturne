@@ -195,7 +195,12 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   test-install.sh pkgbuild with defaults.
 - [x] single instance merged (`single.rs`: flock in config dir + activate socket; 2nd launch exits in ~10 ms; root hook: integration)
 - [x] onboarding module merged (`crates/ui/src/onboarding/`, 5-step fresh + 2-step upgrader path; wiring: integration)
-- [~] integration (worktree; owns app/): mpv 0.42 TLS check (test playback against an HTTPS throwaway server with a self-signed cert using
-  mpv 0.42 if available, else document; add per-server trust only if needed); wire the detail hook (and later 4e hooks) into app/mod.rs after 4b merges
+- [x] integration (root): detail pages, Admin, Watch together (SyncPlay), music queue, Your devices, onboarding
+  (replaces `welcome.rs`; Settings > Run setup again) and the single-instance hook are wired in `app/`
+  (`details.rs`, `extras.rs`, `onboard.rs`). mpv 0.42 TLS: no change needed (see QA_REPORT). Local art is cached
+  shrunken on disk (`images.rs::fetch_local`, keyed by file path+size+mtime); version sizes show KB; `pulse()`
+  honours reduce motion; first frame does not wait for an unreachable source (measured). Debug-only QA aids in
+  `snap.rs`: `NOCTURNE_KEYS="enter@3000,..."` (also `open-admin@ms`, `run-setup@ms`). Known: detail pages keep
+  their own image cache (not the root's); widget text fields cannot be driven by `NOCTURNE_KEYS`.
 - [ ] 5 cut-over
 - [ ] 6 verification

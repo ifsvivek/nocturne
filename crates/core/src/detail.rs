@@ -230,8 +230,10 @@ pub fn fmt_size(bytes: u64) -> String {
     let b = bytes as f64;
     if b >= GB {
         format!("{:.1} GB", b / GB)
-    } else {
+    } else if b >= MB {
         format!("{:.0} MB", b / MB)
+    } else {
+        format!("{:.0} KB", (b / 1024.0).max(1.0).round())
     }
 }
 
@@ -290,6 +292,8 @@ mod tests {
         assert_eq!(fmt_bitrate(640_000), "640 kbps");
         assert_eq!(fmt_size(4_500_000_000), "4.2 GB");
         assert_eq!(fmt_size(300 * 1024 * 1024), "300 MB");
+        assert_eq!(fmt_size(180 * 1024), "180 KB");
+        assert_eq!(fmt_size(100), "1 KB");
         assert_eq!(resolution_label(3840, 2160), "4K");
         assert_eq!(resolution_label(1920, 800), "1080p");
         assert_eq!(resolution_label(1280, 720), "720p");

@@ -34,6 +34,8 @@ pub struct Loaded {
     pub sources: io::Result<Sources>,
     pub catalog: Catalog,
     pub prefs: Preferred,
+    /// The sources were just built from the 0.2 servers.toml and keyring login.
+    pub migrated: bool,
 }
 
 /// A running scan of a local source.
@@ -55,7 +57,10 @@ impl App {
         run(
             async move {
                 tokio::task::spawn_blocking(move || {
+                    let existed = Sources::default_path().is_some_and(|p| p.exists());
                     let sources = Sources::load();
+                    let migrated =
+                        !existed && sources.as_ref().is_ok_and(|s| !s.profiles.is_empty());
                     let profiles = sources
                         .as_ref()
                         .map(|s| s.profiles.clone())
@@ -76,6 +81,7 @@ impl App {
                         sources,
                         catalog,
                         prefs,
+                        migrated,
                     }
                 })
                 .await
@@ -83,6 +89,7 @@ impl App {
                     sources: Err(io::Error::other("loading the sources failed")),
                     catalog: Catalog::default(),
                     prefs: Preferred::default(),
+                    migrated: false,
                 })
             },
             |l| Message::Loaded(Handoff::new(l)),
@@ -104,11 +111,14 @@ impl App {
         if self.dev {
             return self.connect();
         }
-        if self.sources.needs_welcome() {
-            let t = self.ensure_accounts();
-            self.welcome = Some(super::welcome::Welcome::new());
-            self.phase = Phase::Account;
-            return t;
+        if let Some(mode) = self.onboarding_due(l.migrated) {
+            let t = self.start_onboarding(mode);
+            if self.sources.profiles.is_empty() {
+                self.phase = Phase::Account;
+                return t;
+            }
+            // Upgraders: the app starts behind the walkthrough.
+            return Task::batch([t, self.launch()]);
         }
         self.launch()
     }
@@ -407,7 +417,7 @@ impl App {
     }
 
     /// The server refused this source's token: it is signed out, nothing else changes.
-    fn slot_rejected(&mut self, id: SourceId) -> Task<Message> {
+    pub(super) fn slot_rejected(&mut self, id: SourceId) -> Task<Message> {
         let Some(slot) = self.catalog.slot_mut(id) else {
             return Task::none();
         };

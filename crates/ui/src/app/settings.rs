@@ -70,6 +70,36 @@ impl App {
             ])
             .padding([t::S4, t::PAGE_PAD]),
         );
+        page = page.push(
+            container(column![
+                Press::new(
+                    row![
+                        column![
+                            text("Run setup again").size(t::BODY).font(t::SEMIBOLD),
+                            text("Walk through where your media lives and how NOCTURNE behaves.")
+                                .size(t::CONTROL_TEXT)
+                                .color(t::TEXT_SECONDARY),
+                        ]
+                        .spacing(2)
+                        .width(Length::Fill),
+                        text("\u{203A}").size(t::BODY_LG),
+                    ]
+                    .spacing(t::S4)
+                    .align_y(Alignment::Center),
+                )
+                .width(Length::Fill)
+                .padding([t::S3, t::S6])
+                .on_press(Message::RunSetup)
+                .style(|st| Style {
+                    background: matches!(st, Status::Hovered | Status::Pressed)
+                        .then_some(t::GLASS.into()),
+                    text_color: t::TEXT,
+                    ..Default::default()
+                }),
+                rule(),
+            ])
+            .padding([0.0, t::PAGE_PAD]),
+        );
         for (i, r) in self.settings.rows().into_iter().enumerate() {
             let on = i == self.settings_sel;
             if let Some(h) = s::head(i) {

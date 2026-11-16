@@ -134,6 +134,34 @@ impl LocalBackend {
             .flatten()
     }
 
+    /// Identity of the art file (path, size, modification time): the key of a shrunken copy in the
+    /// disk cache, so it follows the file and never an item id that a re-scan may reuse.
+    pub async fn image_sig(&self, m: &Media, art: Art) -> Option<String> {
+        let (id, kind) = (m.id.clone(), m.kind);
+        let path = self
+            .read(move |l, _| art_path(l, &id, kind, art))
+            .await
+            .ok()
+            .flatten()?;
+        tokio::task::spawn_blocking(move || {
+            let meta = std::fs::metadata(&path).ok()?;
+            let t = meta
+                .modified()
+                .ok()?
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()?;
+            Some(format!(
+                "{}|{}|{}",
+                path.display(),
+                meta.len(),
+                t.as_nanos()
+            ))
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+
     pub async fn provider_ids(
         &self,
         ids: &[String],

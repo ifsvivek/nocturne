@@ -1,24 +1,25 @@
 //! Root: connection state, navigation stack, keyboard and the screens. Port of the GPUI `Root`
-//! (`crates/app/src/app.rs`); step 4a covers connect / accounts / header / settings, the other
-//! pages render a "Not ported yet" panel.
+//! (`crates/app/src/app.rs`).
 mod actions;
 mod browse;
 mod catalog;
 mod cells;
+mod details;
+mod extras;
 mod folders;
 mod header;
 mod help;
 mod home;
 mod images;
 pub mod message;
+mod onboard;
 mod play;
 mod preview;
 mod search;
 mod settings;
 mod sources;
-mod welcome;
 
-use crate::account::{self, Accounts, Event as AcctEvent, picker};
+use crate::account::{self, Accounts, Event as AcctEvent, devices, picker};
 use crate::keys::Key;
 use crate::player::{self, Player};
 use crate::task::run;
@@ -113,6 +114,8 @@ pub struct Page {
     pub home: Option<Box<home::Home>>,
     /// Library / collection / favourites pages.
     pub br: Option<Box<browse::Browse>>,
+    /// Detail pages.
+    pub det: Option<Box<crate::detail::Detail>>,
     /// Grid selection.
     pub sel: usize,
 }
@@ -142,8 +145,6 @@ enum Phase {
 enum AccountBack {
     /// The app (the screens were opened from Sources).
     Ready,
-    /// The welcome choice (first run).
-    Welcome,
 }
 
 pub struct App {
@@ -198,6 +199,17 @@ pub struct App {
     /// The token / account has admin rights (an `Admin` entry follows the libraries).
     admin: bool,
     admin_open: bool,
+    /// The Admin screen (when open); `admin_open` mirrors it for the header.
+    adm: Option<Box<crate::admin::Admin>>,
+    sp: crate::syncplay::SyncPlay,
+    /// Sources the SyncPlay targets were built for, and the writes switch it was last given.
+    sp_ids: Vec<SourceId>,
+    sp_writes: bool,
+    queue: crate::queue::AudioQueue,
+    queue_open: bool,
+    /// The next player opened restores the kept music queue.
+    restore_q: bool,
+    devices: Option<devices::Devices>,
     accounts: Option<Accounts>,
     hooks: Arc<SyncHooks>,
     settings: Settings,
@@ -218,8 +230,11 @@ pub struct App {
     my_tag: Option<String>,
     disk: Option<Arc<DiskCache>>,
     help_open: bool,
-    /// First run (no source yet): the welcome choice, until one is made.
-    welcome: Option<welcome::Welcome>,
+    /// The first-run walkthrough, and the screen it lent the window to (if any).
+    ob: Option<Box<crate::onboarding::Onboarding>>,
+    ob_away: Option<crate::onboarding::Return>,
+    /// This launch built its sources from the 0.2 files.
+    migrated: bool,
     /// Debug-only preview of the player loading overlay.
     preview: Option<preview::Preview>,
 }
@@ -287,6 +302,14 @@ impl App {
             note: None,
             admin: false,
             admin_open: false,
+            adm: None,
+            sp: crate::syncplay::SyncPlay::new(vec![], false),
+            sp_ids: vec![],
+            sp_writes: false,
+            queue: Default::default(),
+            queue_open: false,
+            restore_q: false,
+            devices: None,
             accounts: None,
             hooks: Arc::new(SyncHooks::new(None, false, false)),
             settings,
@@ -303,7 +326,9 @@ impl App {
             my_tag: None,
             disk: None,
             help_open: false,
-            welcome: None,
+            ob: None,
+            ob_away: None,
+            migrated: false,
             preview: preview::Preview::from_env(),
         };
         let size = window::oldest()
@@ -353,6 +378,7 @@ impl App {
         if let Some(p) = &self.player {
             subs.push(p.subscription().map(Message::Player));
         }
+        subs.push(self.sp.subscription().map(Message::SyncPlay));
         // A focused text field keeps Esc from the keyboard listener; the overlay still has to close.
         if self.search.is_some() {
             subs.push(event::listen_with(|e, status, _| match e {
@@ -376,9 +402,16 @@ impl App {
         self.preview
             .as_ref()
             .is_some_and(|p| p.animating(crate::motion::reduced()))
-            || matches!(self.phase, Phase::Connecting)
-            || (matches!(self.phase, Phase::Account)
-                && self.accounts.as_ref().is_some_and(|a| a.animating()))
+            || self.ob_visible()
+                && self
+                    .ob
+                    .as_ref()
+                    .is_some_and(|o| o.animating(Instant::now()))
+            // The breathing labels are steady with reduced motion: no frames needed for them.
+            || !crate::motion::reduced()
+                && (matches!(self.phase, Phase::Connecting)
+                    || (matches!(self.phase, Phase::Account)
+                        && self.accounts.as_ref().is_some_and(|a| a.animating())))
     }
 
     // ---- update ----
@@ -388,7 +421,9 @@ impl App {
             Message::Key(k) => self.on_key(k),
             Message::Tick(now) => {
                 self.now = now;
-                self.tick()
+                self.sync_detail();
+                self.sync_ob();
+                Task::batch([self.tick(), self.sync_extras()])
             }
             Message::Frame(now) => {
                 self.now = now;
@@ -468,8 +503,10 @@ impl App {
             }
             Message::Cell(at, act) => self.update_cell(at, act),
             Message::PlayItem(m) => self.play_item(m),
-            Message::Play(m, rest) => self.start_play(m, rest),
-            Message::PlayTarget(m, rest, r) => self.play_target(m, rest, r),
+            Message::Play(m, rest) => self.start_play(m, rest, None),
+            Message::PlayTarget(m, rest, src, r) => self.play_target(m, rest, src, r),
+            Message::Detail(pid, m) => self.detail_msg(pid, m),
+            Message::DetailWrote(pid, w, r) => self.detail_wrote(pid, w, r),
             Message::Player(m) => self.player_msg(m),
             Message::RefreshResume => self.refresh_resume(),
             Message::Toast(s) => {
@@ -583,10 +620,17 @@ impl App {
                 self.close_admin();
                 self.open_global(i)
             }
-            Message::OpenAdmin => {
-                self.open_admin();
+            Message::OpenAdmin => self.open_admin(),
+            Message::Admin(m) => self.admin_msg(m),
+            Message::SyncPlay(m) => self.sp_msg(m),
+            Message::Queue(m) => self.queue_msg(m),
+            Message::Devices(m) => {
+                if self.devices.as_mut().is_some_and(|d| d.update(m)) {
+                    self.devices = None;
+                }
                 Task::none()
             }
+            Message::GroupPlay(o, l, i, s, r) => self.group_play(o, l, i, s, r),
             Message::OpenSearch => self.open_search(),
             Message::ToggleMenu => {
                 self.menu = !self.menu;
@@ -630,10 +674,8 @@ impl App {
                 Task::none()
             }
             Message::PageRetry => self.retry_page(),
-            Message::Welcome(m) => match self.welcome.as_mut().and_then(|w| w.update(m)) {
-                Some(c) => self.first_run(c),
-                None => Task::none(),
-            },
+            Message::Onboarding(m) => self.ob_msg(m),
+            Message::RunSetup => self.run_setup_again(),
             Message::DiskReady(d) => {
                 self.disk = d;
                 self.apply_disk();
@@ -647,6 +689,9 @@ impl App {
     fn tick(&mut self) -> Task<Message> {
         if crate::platform::term_requested() {
             return self.quit();
+        }
+        if crate::single::take_activate() {
+            return crate::single::bring_forward();
         }
         self.drain_reverts();
         if self
@@ -822,6 +867,7 @@ impl App {
     /// Back to the account screens: drop everything tied to the login (the source itself stays
     /// until a new login replaces it or it is signed out).
     fn leave_session(&mut self) {
+        self.extras_shutdown();
         if let Some(id) = self.active {
             self.sessions.remove(&id);
         }
@@ -839,11 +885,6 @@ impl App {
     /// Esc on an account screen opened from inside the app (or from the first-run choice).
     fn leave_account(&mut self) -> Task<Message> {
         match self.account_back.take() {
-            Some(AccountBack::Welcome) => {
-                self.setup = None;
-                self.welcome = Some(welcome::Welcome::new());
-                Task::none()
-            }
             Some(AccountBack::Ready) => {
                 let load = self
                     .active
@@ -907,6 +948,13 @@ impl App {
             add("Authorize a device", AcctAct::Authorize);
             add("Watch together", AcctAct::Together);
             add("Your devices", AcctAct::Devices);
+            if !self.queue.is_empty() {
+                v.push((
+                    format!("Play music queue ({})", self.queue.items.len()),
+                    AcctAct::PlayQueue,
+                ));
+                v.push(("Clear music queue".to_string(), AcctAct::ClearQueue));
+            }
             for (i, a) in self.other_accounts.iter().enumerate() {
                 v.push((format!("Switch to {}", a.user_name), AcctAct::SwitchTo(i)));
             }
@@ -1159,9 +1207,12 @@ impl App {
                 self.dd = None;
                 self.set_off = 0.0;
             }
-            // TODO(4e/4c): devices overlay, Watch together, music queue.
-            AcctAct::Devices | AcctAct::Together | AcctAct::PlayQueue | AcctAct::ClearQueue => {
-                self.toast("Not ported yet.");
+            AcctAct::Devices => return self.open_devices(),
+            AcctAct::Together => return self.sp_msg(crate::syncplay::Msg::OpenScreen),
+            AcctAct::PlayQueue => self.queue_open = true,
+            AcctAct::ClearQueue => {
+                let m = self.queue.clear();
+                self.toast(m);
             }
             AcctAct::Authorize
             | AcctAct::Password
@@ -1239,7 +1290,10 @@ impl App {
             h.master.store(self.settings.allow_server_writes, Relaxed);
             h.sync.store(self.settings.sync_progress, Relaxed);
         }
-        // TODO(4e): push `can_write()` to the admin section; 4d: SyncPlay writes.
+        let on = self.settings.allow_server_writes && !self.dev;
+        if let Some(a) = self.adm.as_deref_mut() {
+            a.set_writes(on);
+        }
     }
 
     /// Load the current page again (after a failure or a reconnect).
@@ -1250,7 +1304,6 @@ impl App {
                 self.load_home(pid)
             }
             Some(p) if p.view == View::Grid => self.reload_browse(),
-            // TODO(4c): detail reloads.
             _ => Task::none(),
         }
     }
@@ -1283,6 +1336,7 @@ impl App {
             fan: Fanout::default(),
             home: None,
             br: None,
+            det: None,
             sel: 0,
         });
         pid
@@ -1299,17 +1353,14 @@ impl App {
         Task::none()
     }
 
-    fn open_admin(&mut self) {
-        if self.admin {
-            self.admin_open = true;
-        }
-    }
-
     /// Leave Admin (if open) before navigating elsewhere.
     fn close_admin(&mut self) {
         self.settings_open = false;
         self.menu = false;
         self.admin_open = false;
+        if let Some(mut a) = self.adm.take() {
+            a.close();
+        }
     }
 
     fn back(&mut self) {
@@ -1328,15 +1379,14 @@ impl App {
             return self.player_msg(player::Msg::Key(k));
         }
         let key = k.name.as_str();
-        // TODO(4e): SyncPlay screen takes the keys next.
+        if let Some(t) = self.extras_key(&k) {
+            return t;
+        }
+        if self.ob_visible() {
+            return self.ob_key(&k);
+        }
         if matches!(self.phase, Phase::Picker) {
             return self.picker_key(key);
-        }
-        if let Some(w) = self.welcome.as_mut() {
-            return match w.key(key) {
-                Some(c) => self.first_run(c),
-                None => Task::none(),
-            };
         }
         if key == "escape"
             && self.account_back.is_some()
@@ -1357,7 +1407,6 @@ impl App {
             }
             return Task::none();
         }
-        // TODO(4c): photo viewer, More menu and media info panel.
         if self.confirm.is_some() {
             if matches!(key, "escape" | "backspace") {
                 self.confirm = None;
@@ -1383,12 +1432,22 @@ impl App {
             return self.search_key(key);
         }
         let ready = matches!(self.phase, Phase::Ready);
+        // A detail overlay (viewer, dialog, menu) owns the keys: no global shortcuts under it.
+        if ready
+            && !self.admin_open
+            && self.detail_capturing()
+            && let Some(t) = self.detail_key(&k)
+        {
+            return t;
+        }
         if opens_account_menu(key, ready, self.admin_open, false) {
             self.menu = true;
             self.menu_sel = 0;
             return self.refresh_accounts();
         }
-        // TODO(4e): admin dialogs get typed text before the global shortcuts.
+        if self.admin_dialog() {
+            return self.admin_key(&k);
+        }
         if let Phase::Error(e) = self.phase {
             if matches!(key, "enter" | "r") && e != ConnectError::NotConfigured {
                 return self.connect();
@@ -1401,7 +1460,10 @@ impl App {
                 self.help_open = true;
                 return Task::none();
             }
-            // TODO(4d): `g` opens Watch together.
+            if key == "g" && k.plain() && self.sp.can_open() {
+                self.close_menus();
+                return self.sp_msg(crate::syncplay::Msg::OpenScreen);
+            }
             if (k.ctrl && key == "k") || (key == "/" && k.plain()) {
                 return self.open_search();
             }
@@ -1425,12 +1487,11 @@ impl App {
                 return t;
             }
         }
-        if self.admin_open {
-            // TODO(4e): the admin screen's own keys; until then Esc leaves it.
-            if matches!(key, "escape" | "backspace") {
-                self.close_admin();
-            }
-            return Task::none();
+        if self.adm.is_some() {
+            return self.admin_key(&k);
+        }
+        if let Some(t) = self.detail_key(&k) {
+            return t;
         }
         if matches!(key, "escape" | "backspace") {
             self.back();
@@ -1450,7 +1511,6 @@ impl App {
         match self.stack.last().map(|p| p.view) {
             Some(View::Grid) => self.browse_key(key, k.shift).unwrap_or_else(Task::none),
             Some(View::Home) => self.home_key(key),
-            // TODO(4c): detail page keys.
             _ => Task::none(),
         }
     }
@@ -1508,10 +1568,44 @@ impl App {
     // ---- view ----
 
     pub fn view(&self) -> Element<'_, Message> {
-        let body: Element<Message> = match &self.phase {
-            Phase::Account if self.welcome.is_some() => {
-                welcome::view(self.welcome.as_ref().expect("checked")).map(Message::Welcome)
+        if let Some(o) = self.ob.as_deref().filter(|_| self.ob_away.is_none()) {
+            let layer = |h: &Handle, op: f32| -> Element<Message> {
+                image(h.clone())
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .content_fit(ContentFit::Cover)
+                    .opacity(op)
+                    .into()
+            };
+            let mut layers: Vec<Element<Message>> = vec![
+                container(space())
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .style(crate::style::fill(t::FRAME))
+                    .into(),
+                layer(&self.glow, 1.0),
+                layer(&self.dots, 0.09),
+                o.view(Instant::now()).map(Message::Onboarding),
+                layer(&self.grain, 0.02),
+            ];
+            if let Some((n, _)) = &self.note {
+                layers.push(
+                    container(
+                        container(text(n.clone()).size(t::BODY).color(t::TEXT))
+                            .padding([t::S3, t::S4])
+                            .style(crate::style::raised_card),
+                    )
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Alignment::End)
+                    .align_y(Alignment::End)
+                    .padding(t::S6)
+                    .into(),
+                );
             }
+            return Stack::with_children(layers).into();
+        }
+        let body: Element<Message> = match &self.phase {
             Phase::Account => match &self.accounts {
                 Some(a) => a.view(self.now).map(Message::Account),
                 None => self.connecting(),
@@ -1550,6 +1644,10 @@ impl App {
             Phase::Ready if self.folders.is_some() => self.folders_page(),
             Phase::Ready if self.src_open => self.sources_page(),
             Phase::Ready if self.settings_open => self.settings_page(),
+            Phase::Ready if self.adm.is_some() => match self.adm.as_deref() {
+                Some(a) => a.view().map(Message::Admin),
+                None => space().into(),
+            },
             Phase::Ready => self.page_view(),
         };
         if let Some(p) = &self.player {
@@ -1592,7 +1690,7 @@ impl App {
             layer(&self.dots, 0.09),
             body,
         ];
-        let setting_up = self.folders.as_ref().is_some_and(|f| f.setup);
+        let setting_up = self.folders.as_ref().is_some_and(|f| f.setup) || self.ob_away.is_some();
         if ready && !setting_up {
             layers.push(self.header());
             if let Some(b) = self.source_banner() {
@@ -1604,7 +1702,14 @@ impl App {
             {
                 layers.push(c);
             }
+            if let Some(p) = self.stack.last()
+                && let Some(d) = self.detail_fullscreen()
+            {
+                let pid = p.pid;
+                layers.push(d.view().map(move |m| Message::Detail(pid, m)));
+            }
         }
+        self.extras_layers(&mut layers);
         if let Some(p) = &self.preview {
             layers.push(p.view(Instant::now(), crate::motion::reduced(), self.win));
         }
@@ -1647,30 +1752,19 @@ impl App {
         Stack::with_children(layers).into()
     }
 
-    /// The current page: Home and library pages are ported; detail pages arrive with step 4c.
+    /// The current page.
     fn page_view(&self) -> Element<'_, Message> {
         match self.stack.last().map(|p| p.view) {
             Some(View::Home) => self.home_page(),
             Some(View::Grid) => self.grid_page(),
-            _ => {
-                let title = self
-                    .stack
-                    .last()
-                    .and_then(|p| p.media.as_ref())
-                    .map_or(String::new(), |m| m.title.clone());
-                container(
-                    column![
-                        text(title).size(t::HEADING).font(t::BOLD),
-                        text("Not ported yet")
-                            .size(t::BODY)
-                            .color(t::TEXT_SECONDARY),
-                    ]
-                    .spacing(t::S2)
-                    .align_x(Alignment::Center),
-                )
-                .center(Length::Fill)
-                .into()
-            }
+            _ => match self
+                .stack
+                .last()
+                .and_then(|p| Some((p.pid, p.det.as_deref()?)))
+            {
+                Some((pid, d)) => d.view().map(move |m| Message::Detail(pid, m)),
+                None => space().into(),
+            },
         }
     }
 
@@ -1724,22 +1818,6 @@ impl App {
                 })
                 .into(),
         ])
-    }
-
-    /// A first-run choice: Local goes to the folders screen, Server to the server address flow, Both
-    /// to the server and then the folders.
-    fn first_run(&mut self, c: FirstRun) -> Task<Message> {
-        self.setup = Some(c);
-        match c.first() {
-            Step::Server => {
-                self.welcome = None;
-                // Esc on the address screen returns to the choice until a source exists.
-                self.account_back = Some(AccountBack::Welcome);
-                Task::none()
-            }
-            Step::Folders => self.open_folders_setup(),
-            Step::Done => Task::none(),
-        }
     }
 }
 

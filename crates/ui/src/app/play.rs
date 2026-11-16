@@ -54,24 +54,37 @@ impl PlayerHooks for LocalHooks {
 
 impl App {
     /// `Message::Play`: find out what to open, then open the page.
-    pub(super) fn start_play(&mut self, m: Media, rest: Vec<Media>) -> Task<Message> {
+    pub(super) fn start_play(
+        &mut self,
+        m: Media,
+        rest: Vec<Media>,
+        source_id: Option<String>,
+    ) -> Task<Message> {
         if self.player.is_some() {
             return Task::none();
+        }
+        if self.sp.in_group() {
+            // In a group the queue is everyone's: the server decides what plays.
+            let t = self.sp.play(m, rest).map(Message::SyncPlay);
+            return Task::batch([t, self.drain_sp()]);
         }
         let Some(b) = self.catalog.backend(m.origin).cloned() else {
             self.toast("That source isn't available right now.");
             return Task::none();
         };
         let m2 = m.clone();
-        run(async move { b.play_target(&m2).await }, move |r| {
-            Message::PlayTarget(m, rest, r)
-        })
+        let sid = source_id.clone();
+        run(
+            async move { b.play_target_for(&m2, sid.as_deref()).await },
+            move |r| Message::PlayTarget(m, rest, source_id, r),
+        )
     }
 
     pub(super) fn play_target(
         &mut self,
         m: Media,
         rest: Vec<Media>,
+        source_id: Option<String>,
         r: Result<PlayTarget, PlayError>,
     ) -> Task<Message> {
         let target = match r {
@@ -84,6 +97,24 @@ impl App {
         if self.player.is_some() || !matches!(self.phase, Phase::Ready) {
             return Task::none();
         }
+        let ctx = self.player_ctx(m, rest, source_id, target);
+        self.menu = false;
+        let (mut p, open) = Player::open(ctx);
+        if std::mem::take(&mut self.restore_q) {
+            p.restore_music(&self.queue);
+        }
+        self.player = Some(p);
+        open.map(Message::Player)
+    }
+
+    /// Everything the player page is opened with for `m` and the queue after it.
+    pub(super) fn player_ctx(
+        &self,
+        m: Media,
+        rest: Vec<Media>,
+        source_id: Option<String>,
+        target: PlayTarget,
+    ) -> PlayerCtx {
         let hooks: Option<Arc<dyn PlayerHooks>> = match self.catalog.backend(m.origin) {
             Some(Backend::Local(l)) => Some(Arc::new(LocalHooks {
                 backend: l.clone(),
@@ -95,11 +126,11 @@ impl App {
             }),
         };
         let queue = std::iter::once(m.clone()).chain(rest).collect();
-        let ctx = PlayerCtx {
+        PlayerCtx {
             media: m,
             queue,
             target,
-            source_id: None,
+            source_id,
             resume: None,
             backends: self
                 .catalog
@@ -109,11 +140,7 @@ impl App {
             hooks,
             prefs: self.settings.prefs(),
             buffering: self.settings.buffering(),
-        };
-        self.menu = false;
-        let (p, open) = Player::open(ctx);
-        self.player = Some(p);
-        open.map(Message::Player)
+        }
     }
 
     /// Route a player message (and keys) and leave the page when it says it is over.
@@ -130,12 +157,23 @@ impl App {
         if let Some(Outcome::Closed { failed }) =
             self.player.as_mut().and_then(|p| p.take_outcome())
         {
+            if let Some(q) = self.player.as_ref().and_then(|p| p.music_snapshot()) {
+                self.queue = q;
+            }
             self.player = None;
+            self.sp.player_closed();
             if failed {
                 self.toast("This couldn't be played.");
             }
             // The server has the final report shortly after; then Home's rows have moved.
             tasks.push(after(Duration::from_millis(900), Message::RefreshResume));
+            // The page under the player shows resume / watched state: read it again.
+            let pid = self.stack.last().map(|p| p.pid);
+            if let Some((pid, d)) =
+                pid.zip(self.stack.last_mut().and_then(|p| p.det.as_deref_mut()))
+            {
+                tasks.push(d.reload().map(move |m| Message::Detail(pid, m)));
+            }
         }
         Task::batch(tasks)
     }
@@ -164,6 +202,7 @@ impl App {
 
     /// Quit: stop playback first (reports, destroys the video surface), then the process.
     pub(super) fn quit(&mut self) -> Task<Message> {
+        self.sp.shutdown(self.player.as_mut());
         if let Some(p) = self.player.as_mut() {
             p.shutdown();
         }
