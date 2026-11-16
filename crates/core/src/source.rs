@@ -810,6 +810,29 @@ impl Source {
         pick_episode(&eps).cloned().ok_or(Failed)
     }
 
+    /// Provider ids of items by id (`GET Items?ids=`, batched), for matching series across servers.
+    pub async fn provider_ids(
+        &self,
+        ids: &[String],
+    ) -> Result<HashMap<String, ProviderIds>, Failed> {
+        let mut out = HashMap::new();
+        for chunk in ids.chunks(50) {
+            let q = jf::ItemsQuery {
+                ids: chunk.to_vec(),
+                ..Default::default()
+            };
+            let r = self
+                .client
+                .items(&self.user, &q)
+                .await
+                .map_err(|_| Failed)?;
+            for i in r.items {
+                out.insert(i.id.clone(), provider_ids(&i.x.provider_ids));
+            }
+        }
+        Ok(out)
+    }
+
     /// What the latest requests say about the connection.
     pub fn health(&self) -> jf::Health {
         self.client.health()
