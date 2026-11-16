@@ -148,6 +148,7 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   are many libraries (now scrolls sideways), `Message::Fan` is only used for libraries, a scan holds the local
   library's write lock (reads of that source wait; see the ponytail note in `core/folders.rs`).
 - [~] 4d player page (worktree, own module; root hook wired by master after M3)
-- [ ] 4b-4e screens
+- [~] 4b home, browse (virtualised + unified kinds), search, header for many sources, Sources polish (worktree)
+- [ ] 4c detail pages + version picker, playlists; 4e account page, admin per server, SyncPlay, music queue
 - [ ] 5 cut-over
 - [ ] 6 verification
