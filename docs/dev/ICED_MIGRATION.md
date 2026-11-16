@@ -46,6 +46,45 @@ Delete this file (fold the lasting parts into ARCHITECTURE.md / DECISIONS.md) wh
   minted only after their dialogs.
 - Async: responses carry page/epoch and are dropped when stale, as today.
 
+## UI crate architecture (`crates/ui`, decided; every worker follows it)
+
+- `main.rs`: `iced::application(App::boot, App::update, App::view)` + `.subscription`, `.title`, `.theme`, `.style`
+  (transparent app background), `.window(Settings { transparent: true, min_size 800x560, size 1280x800,
+  platform_specific.application_id = "nocturne" })`, `.default_font(Noto Sans)`, `.exit_on_close_request(false)`
+  (close drops the player first, then `window::close`). SIGTERM/SIGINT keep the `TERM` atomic, polled by the tick.
+- One root `App` (port of `Root`) in `app/mod.rs` with `Message` in `app/message.rs`. Screens that were their own
+  GPUI entities (Admin, Accounts, Picker, PlayerView) become plain structs with their own `Msg` enum,
+  `update(&mut self, msg, ..) -> Task<Msg>` (or an `Outcome` the root applies) and `view(&self) -> Element<Msg>`;
+  the root wraps them (`Message::Admin(admin::Msg)`) and maps with `.map(...)`. No global mutable state.
+- Files mirror the GPUI app so reviewers can diff behaviour: `app/{mod,message,header,home,browse,detail,search,
+  playlists,help,syncplay,settings}.rs`, `account/{mod,view,picker}.rs`, `admin/{mod,view}.rs`,
+  `player/{mod,view}.rs`, `widget/*.rs` (port of `ui.rs`: chips, buttons, tiles, poster cells, avatar, switch,
+  value chip, section band, tabs, progress, wordmark, video hole), `theme.rs`, `style.rs` (container/button style fns).
+- Theme: same tokens and hex as `crates/app/src/theme.rs` as `iced::Color` consts + the contrast test. Only
+  `theme.rs` holds raw colours. Type scale, spacing, radii and motion durations unchanged.
+- Async: all Jellyfin/network futures go through `nocturne_core::bridge::spawn` (one tokio runtime owns the reqwest
+  clients) wrapped in `Task::perform`. Iced is built with its `tokio` feature only for `time::every`. Responses carry
+  the page id / epoch and are dropped when stale, exactly as today.
+- Images: `iced::widget::image::Handle` (cheap clone) cached in the root by the same keys `Root` uses today;
+  blurhash placeholder first (`Handle::from_rgba`), then the disk/network bytes (`Handle::from_bytes`).
+- Input: `keyboard::listen()` subscription routed through one `on_key` that keeps today's precedence (overlays >
+  menus > search > page); text inputs use `widget::Id` + `focus` tasks. Mouse via `button` / `mouse_area`.
+- Motion: `iced::animation::Animation` for hover/fade/slide (durations from theme: HOVER 140 ms, BASE 220, SLOW
+  300, ease-out); subscribe to `window::frames()` only while something animates.
+- Video: player page leaves a transparent hole (custom `Hole` widget publishes its bounds -> `set_bounds`); Wayland
+  handles via `window::run`; X11 / failure / `NOCTURNE_VIDEO=external` -> external `Player`. libmpv missing ->
+  external mpv; mpv binary missing too -> actionable message with `nocturne_player::install_hint()`.
+- Temporary: until the cut-over, pages not yet ported render a plain "not ported yet" panel.
+
+## Running it for checks
+
+Demo library on a throwaway server: `scripts/make-demo-library.sh build` (prints connection info; password in
+`$DEMO/jf/demo-password`). Or `scripts/test-jellyfin.sh start` (`/tmp/nocturne-jf-test/test.env`). Run with
+`NOCTURNE_JF_URL=http://127.0.0.1:8097` plus throwaway `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`,
+`NOCTURNE_KEYRING_SERVICE=nocturne-test`. Never the real server, never the repo `.env`. Screenshot only the app window:
+`grim -g "$(hyprctl clients -j | jq -r '.[]|select(.class=="nocturne")|"\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')" out.png`
+(never a full-screen grab: it captures the user's desktop).
+
 ## Progress
 
 - [x] 1 libmpv / installer (dlopen FFI verified in-window via the spike; installer container tests pending: docker needs sudo)
