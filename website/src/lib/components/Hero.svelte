@@ -1,5 +1,5 @@
 <script>
-  import { RELEASED, REPO, RELEASES, UI, shot } from "#lib/site.js";
+  import { RELEASED, REPO, UI, shot } from "#lib/site.js";
   import Next from "./Next.svelte";
   const s = shot("playback");
 </script>
@@ -21,7 +21,7 @@
     <p class="m-0 max-w-[50ch] text-ink-2">A native media center for Linux. Local folders and Jellyfin servers in one cinematic library, read-only until you allow it. <Next /></p>
     <div class="flex flex-wrap gap-3">
       {#if RELEASED}
-        <a class="btn" href={RELEASES}>Download</a>
+        <a class="btn" href="/repo">Download</a>
         <a class="btn btn-ghost" href={REPO} rel="noopener">Source</a>
       {:else}
         <a class="btn" href="#tour">Watch the tour</a>

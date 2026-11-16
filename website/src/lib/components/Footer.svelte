@@ -1,5 +1,5 @@
 <script>
-  import { RELEASED, REPO, RELEASES, UI } from "#lib/site.js";
+  import { RELEASED, REPO, UI } from "#lib/site.js";
   // End credits: role on the left of the gutter, name on the right.
   const credits = [
     ["Media server", "Jellyfin", "https://jellyfin.org"],
@@ -29,7 +29,7 @@
 
     <nav class="mt-12 flex flex-wrap justify-center gap-x-8 gap-y-3 text-[0.72rem] font-medium tracking-[0.26em] uppercase" aria-label="Footer">
       {#if RELEASED}
-        <a class="text-ink-2 no-underline hover:text-white" href={RELEASES} rel="noopener">Download</a>
+        <a class="text-ink-2 no-underline hover:text-white" href="/repo">Download</a>
         <a class="text-ink-2 no-underline hover:text-white" href="/repo">Package repository</a>
         <a class="text-ink-2 no-underline hover:text-white" href={REPO} rel="noopener">Source</a>
         <a class="text-ink-2 no-underline hover:text-white" href="{REPO}/tree/main/docs" rel="noopener">Documentation</a>

@@ -1,5 +1,5 @@
 <script>
-  import { RELEASED, RELEASES } from "#lib/site.js";
+  import { RELEASED } from "#lib/site.js";
   const links = [["Scenes", "/#tour"], ["Behind the scenes", "/#how"], ["Read-only", "/#safety"], ["Install", "/#install"], ["FAQ", "/#faq"]];
 </script>
 
@@ -12,6 +12,6 @@
     <nav class="ml-auto hidden gap-7 lg:flex" aria-label="Primary">
       {#each links as [name, href]}<a class="text-ink-2 no-underline hover:text-white" {href}>{name}</a>{/each}
     </nav>
-    {#if RELEASED}<a class="ml-auto text-ink no-underline lg:ml-0" href={RELEASES}>Download</a>{:else}<span class="ml-auto text-ink-3 lg:ml-0">Coming soon</span>{/if}
+    {#if RELEASED}<a class="ml-auto text-ink no-underline lg:ml-0" href="/repo">Download</a>{:else}<span class="ml-auto text-ink-3 lg:ml-0">Coming soon</span>{/if}
   </div>
 </header>

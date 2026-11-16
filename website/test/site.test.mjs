@@ -57,7 +57,9 @@ test("package repository page: exact pacman steps, signing key, other formats pl
 
 test("RELEASED=true: download, repo and version", () => {
   const h = read(on, "index.html");
-  assert.ok(h.includes("https://github.com/ifsvivek/nocturne/releases/latest"));
+  assert.ok(h.includes("https://github.com/ifsvivek/nocturne/releases/latest"), "tarball link in Install");
+  assert.match(h, /href="\/repo"[^>]*>Download</, "Download opens the package repository page");
+  assert.doesNotMatch(h, /releases\/latest"[^>]*>Download</, "no Download button points at GitHub");
   assert.ok(h.includes('href="https://github.com/ifsvivek/nocturne"'));
   assert.ok(h.includes(JSON.parse(readFileSync(join(ROOT, "site.config.json"), "utf8")).VERSION), "version from site.config.json");
   assert.ok(h.includes("makepkg -si") && h.includes("install.sh") && h.includes("cargo build --release --locked"));
