@@ -4259,7 +4259,10 @@ dependencies = [
  "nocturne-jellyfin",
  "nocturne-jellyfin-admin",
  "nocturne-jellyfin-user",
+ "nocturne-player",
  "nocturne-session",
+ "png 0.18.1",
+ "serde_json",
  "tokio",
 ]
 

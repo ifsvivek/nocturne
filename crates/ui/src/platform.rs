@@ -1,7 +1,39 @@
 //! Everything OS-specific lives here (Linux only for now); the rest of the UI is OS-neutral.
-//! Later steps add raw window/display handle extraction and the MPRIS hookup to this module.
+//! MPRIS and the idle inhibit live in `nocturne_core::player_mpris`; the raw window handles the
+//! in-window video needs are read here.
 #![allow(unsafe_code)]
+use iced::Task;
+use iced::window::{
+    self,
+    raw_window_handle::{RawDisplayHandle, RawWindowHandle},
+};
 use std::sync::atomic::{AtomicBool, Ordering};
+
+/// What the window system gave the video surface to attach to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Handles {
+    /// Raw `wl_display*` / `wl_surface*` (as addresses, so the value is `Send`).
+    Wayland { display: usize, surface: usize },
+    /// X11 / XWayland / anything else: the in-window video cannot attach, use the external mpv.
+    Other,
+}
+
+/// Reads the raw handles of window `id`. The callback runs on the event-loop thread, which is
+/// also where `update` runs, so the embedded player may be created from the result directly.
+pub fn handles(id: window::Id) -> Task<Handles> {
+    window::run(id, |w| {
+        let win = w.window_handle().ok()?.as_raw();
+        let disp = w.display_handle().ok()?.as_raw();
+        Some(match (win, disp) {
+            (RawWindowHandle::Wayland(s), RawDisplayHandle::Wayland(d)) => Handles::Wayland {
+                display: d.display.as_ptr() as usize,
+                surface: s.surface.as_ptr() as usize,
+            },
+            _ => Handles::Other,
+        })
+    })
+    .map(|h| h.unwrap_or(Handles::Other))
+}
 
 /// Set by SIGTERM/SIGINT; the app tick turns it into a normal quit.
 static TERM: AtomicBool = AtomicBool::new(false);
@@ -34,6 +66,16 @@ pub fn remove_art_file() {
             std::path::Path::new(&d).join(format!("nocturne-art-{}.img", std::process::id())),
         );
     }
+}
+
+/// The poster for the desktop's media widgets: a file in the runtime dir (D-Bus clients cannot
+/// send our auth header). Returns its `file://` URL.
+#[cfg(target_os = "linux")]
+pub fn write_art(bytes: &[u8]) -> Option<String> {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")?;
+    let p = std::path::Path::new(&dir).join(format!("nocturne-art-{}.img", std::process::id()));
+    std::fs::write(&p, bytes).ok()?;
+    Some(format!("file://{}", p.display()))
 }
 
 /// Desktop "reduce animations" preference, probed on a thread started at launch so the (slow-ish)
