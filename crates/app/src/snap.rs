@@ -51,6 +51,32 @@ pub fn on_boot() -> Task<Message> {
     Task::none()
 }
 
+/// Capture on demand: `NOCTURNE_SNAP_WATCH=/tmp/req` makes every tick look for that file; when it exists its
+/// first line is the output path, the file is removed and a capture is written there.
+#[cfg(debug_assertions)]
+pub fn poll() -> Task<Message> {
+    use iced::window;
+    let Some(req) = std::env::var_os("NOCTURNE_SNAP_WATCH") else {
+        return Task::none();
+    };
+    let Ok(text) = std::fs::read_to_string(&req) else {
+        return Task::none();
+    };
+    let _ = std::fs::remove_file(&req);
+    *NEXT.lock().unwrap() = Some(text.trim().into());
+    window::oldest()
+        .and_then(window::screenshot)
+        .map(|s| Message::Snapped(s, usize::MAX))
+}
+
+#[cfg(not(debug_assertions))]
+pub fn poll() -> Task<Message> {
+    Task::none()
+}
+
+#[cfg(debug_assertions)]
+static NEXT: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
+
 #[cfg(debug_assertions)]
 pub fn delays() -> Vec<u64> {
     let v: Vec<u64> = std::env::var("NOCTURNE_SNAP_AFTER_MS")
@@ -79,10 +105,17 @@ fn target(base: &str, n: usize) -> std::path::PathBuf {
 
 #[cfg(debug_assertions)]
 pub fn save(shot: &iced::window::Screenshot, n: usize) {
-    let Some(base) = std::env::var_os("NOCTURNE_SNAP") else {
-        return;
+    let path = if n == usize::MAX {
+        let Some(p) = NEXT.lock().unwrap().take() else {
+            return;
+        };
+        p
+    } else {
+        let Some(base) = std::env::var_os("NOCTURNE_SNAP") else {
+            return;
+        };
+        target(&base.to_string_lossy(), n)
     };
-    let path = target(&base.to_string_lossy(), n);
     let r = image::save_buffer(
         &path,
         &shot.rgba,
