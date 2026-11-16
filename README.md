@@ -16,18 +16,18 @@ yet ([docs/PLATFORMS.md](docs/PLATFORMS.md)). See [docs/ROADMAP.md](docs/ROADMAP
 
 ## Screenshots
 
-Captured from 0.2.0 (the earlier interface) at 3840x2160 against a generated demo library, not personal media. They
-will be replaced with 0.3 captures; the layout and colours are the same.
+Captured from 0.3.0 at 3840x2160 against a generated demo library (two demo servers and a demo folder), not personal media.
 
 |                                                           |                                                               |
 | --------------------------------------------------------- | ------------------------------------------------------------- |
-| ![Who's watching](docs/screenshots/picker.webp)           | ![Home](docs/screenshots/home.webp)                           |
-| ![Library](docs/screenshots/library.webp)                 | ![Movie detail](docs/screenshots/detail.webp)                 |
-| ![Series](docs/screenshots/series.webp)                   | ![Season episodes](docs/screenshots/series-episodes.webp)     |
-| ![Search](docs/screenshots/search.webp)                   | ![Player](docs/screenshots/player.webp)                       |
+| ![Home: local and server items in one library](docs/screenshots/home.webp) | ![Library with the source filter](docs/screenshots/library.webp) |
+| ![Versions and sources picker](docs/screenshots/detail.webp) | ![Season episodes](docs/screenshots/series-episodes.webp)  |
+| ![Search across sources](docs/screenshots/search.webp)    | ![Player](docs/screenshots/player.webp)                       |
+| ![Video loading overlay](docs/screenshots/loading.webp)   | ![First-run setup](docs/screenshots/onboarding.webp)          |
+| ![Sources](docs/screenshots/sources.webp)                 | ![Local folders](docs/screenshots/local-folders.webp)         |
 | ![Settings](docs/screenshots/settings.webp)               | ![Settings drop-down](docs/screenshots/settings-dropdown.webp) |
-| ![Account menu](docs/screenshots/account-menu.webp)       | ![Admin dashboard](docs/screenshots/admin.webp)               |
-| ![Admin users](docs/screenshots/admin-users.webp)         | ![Admin scheduled tasks](docs/screenshots/admin-scheduled-tasks.webp) |
+| ![Who's watching](docs/screenshots/picker.webp)           | ![Account menu](docs/screenshots/account-menu.webp)           |
+| ![Admin dashboard](docs/screenshots/admin.webp)           |                                                               |
 
 ## What it does
 
