@@ -59,3 +59,16 @@ Paths are under `~/.cargo/registry/src/*/`. Check the source before using anythi
   `.is_animating(now)`, `.interpolate(a, b, now)`, `.value()`. Drive redraws with `window::frames()` only while
   something animates.
 - `Theme::custom(name, palette)`.
+
+## Added in M3
+
+- `widget::Id` has no `new`: `Id::from("name")` (a `&'static str`). `Task::run(stream, f)` takes any `Stream`, so a
+  blocking thread reports progress through `iced::futures::channel::mpsc::unbounded`. `gen` is a reserved word in
+  edition 2024 (name things `run_id`).
+- `keyboard::listen()` only yields **ignored** events: a focused `text_input` keeps its typed keys (and Esc once) away from the
+  root, so the global shortcuts need no "typing" flag.
+- `scrollable` with `Direction::Horizontal(Scrollbar::new().width(0).scroller_width(0))` is a link row that scrolls
+  with the wheel and shows no bar (header nav).
+- Folder chooser: `rfd` 0.17 with only `xdg-portal` (MIT; pulls `pollster`, `log`, `percent-encoding`; no GTK). It
+  `dlopen`s `libdbus-1` for the portal call and falls back to `zenity`; neither present returns `None` (the typed path
+  field still works). Add `libdbus-1` to the optional runtime list at the cut-over.

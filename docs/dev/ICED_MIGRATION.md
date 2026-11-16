@@ -101,9 +101,14 @@ root on the catalog (first run, Sources settings, startup screen) -> 4b-4e writt
 Demo library on a throwaway server: `scripts/make-demo-library.sh build` (prints connection info; password in
 `$DEMO/jf/demo-password`). Or `scripts/test-jellyfin.sh start` (`/tmp/nocturne-jf-test/test.env`). Run with
 `NOCTURNE_JF_URL=http://127.0.0.1:8097` plus throwaway `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`,
-`NOCTURNE_KEYRING_SERVICE=nocturne-test`. Never the real server, never the repo `.env`. Screenshot only the app window:
-`grim -g "$(hyprctl clients -j | jq -r '.[]|select(.class=="nocturne")|"\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')" out.png`
-(never a full-screen grab: it captures the user's desktop).
+`NOCTURNE_KEYRING_SERVICE=nocturne-test`. Never the real server, never the repo `.env`: `Config::load` takes the nearest
+`.env` of the current directory **or any ancestor**, so run the binary from a directory outside the repository (a worktree
+under the repo finds the real `.env`). Screenshots: debug builds only, `NOCTURNE_SNAP=/tmp/x.png`
+(+ `NOCTURNE_SNAP_AFTER_MS=1500,4000` for several) writes the app window's own pixels through `window::screenshot`; never grab
+the screen (`grim`) because it captures the desktop. Driving the window on Hyprland: `wtype` for keys, clicks with
+`ydotool mousemove --absolute` (arguments are half the pixel coordinates on a 2560x1440 output) plus `ydotool click 0xC0`,
+window origin from `hyprctl clients -j`. Keyring entries are shared by every throwaway profile that uses the same
+`NOCTURNE_KEYRING_SERVICE`, so removing a server in one profile signs it out in the others.
 
 ## Progress
 

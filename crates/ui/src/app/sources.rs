@@ -47,7 +47,8 @@ impl App {
             SrcAct::AddFolder => return self.open_folders(None),
             SrcAct::SignIn(id) => return self.sign_in_again(id),
             SrcAct::Use(id) => return self.load_session(id),
-            SrcAct::Rescan(id) => return self.rescan_now(id),
+            SrcAct::Rescan(id) if !self.scans.contains_key(&id) => return self.rescan_now(id),
+            SrcAct::Rescan(_) => {}
             SrcAct::Folders(id) => return self.open_folders(Some(id)),
             SrcAct::Toggle(id) => return self.toggle_source(id),
             SrcAct::Move(id, by) => {
