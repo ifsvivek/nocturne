@@ -119,6 +119,9 @@ A clean release build takes several minutes (fat LTO).
 
 - **X11.** In-window video needs Wayland. On other sessions NOCTURNE plays in an external mpv window, which closes
   with the app. `NOCTURNE_VIDEO=external` forces this on Wayland too.
+- **HDR.** Video inside the window is shown in SDR (HDR is tone-mapped): mpv's embedding API cannot output HDR yet.
+  A planned HDR mode (0.4) lets you choose, per video, between playing in the window in SDR and opening an HDR
+  pop-out window ([docs/HDR.md](docs/HDR.md)).
 - **Fonts.** The UI uses Noto Sans and JetBrainsMono Nerd Font if installed, and falls back to system fonts.
 
 ## Configuration and keyring

@@ -23,7 +23,15 @@ NOCTURNE can play it in mpv's own window instead of in the app window:
 - Windows (later): `gpu-next` on D3D11 with HDR swapchains;
 - macOS (later): `gpu-next` EDR output (verify the mpv version and context at port time).
 
-Setting: **HDR content: Tone-map in the window (default) / Play in HDR (separate fullscreen window) / Ask**. The app
+**The viewer decides, and the limitation is stated, not hidden.** When an HDR video starts, NOCTURNE asks:
+
+> This video is HDR. Video inside the NOCTURNE window is shown in SDR (a limitation of mpv's embedding API).
+> **Play here in SDR** (tone-mapped) · **Open in HDR pop-out window** · [ ] Remember my choice
+
+If the display path does not report HDR, the prompt says so and recommends Play here; the pop-out would also be SDR.
+The remembered choice becomes the setting **HDR video: Ask (default) / Play in the window in SDR / Open in HDR pop-out
+window**, changeable in Settings. SyncPlay groups never block on the prompt: they start in the window and the viewer
+can pop out from the player. The app
 keeps controlling playback over IPC (play, pause, seek, tracks, progress reporting, SyncPlay), so features stay;
 what changes is that the controls are mpv's own while the HDR window is up, and the app shows a "Playing in HDR"
 panel with the same transport controls. Dolby Vision profile 5 / 8 follow whatever `gpu-next` supports on the

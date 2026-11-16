@@ -44,8 +44,8 @@ group, resume positions, and testing with more than two members and with transco
 Chosen by the maintainer from the research backlog: dual subtitles; audio and subtitle language remembered per show
 across restarts (including original audio); a Latest row with new episodes and Play on a show card starting the next
 unwatched episode; truthful playback reports with visible errors and a retried final report; an optional extra HTTP
-header per server (reverse proxies); "Included in" collections on detail pages; **HDR playback mode** on Linux
-([HDR.md](HDR.md)). The compatibility items below are folded into the same release where they overlap.
+header per server (reverse proxies); "Included in" collections on detail pages; **HDR playback mode** on Linux: for HDR
+videos the viewer chooses between SDR in the window and an HDR pop-out window ([HDR.md](HDR.md)). The compatibility items below are folded into the same release where they overlap.
 
 ## Then: compatibility and correctness
 
