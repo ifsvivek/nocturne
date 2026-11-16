@@ -84,6 +84,8 @@ pub struct ExternalUrl {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "PascalCase", default)]
 pub struct MediaSource {
+    /// The id a playback request names to pick this version (`MediaSourceId`).
+    pub id: String,
     pub container: Option<String>,
     pub size: Option<u64>,
     pub bitrate: Option<u64>,

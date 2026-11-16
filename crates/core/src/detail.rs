@@ -18,6 +18,13 @@ pub struct StreamRow {
 /// One media source (file) with its streams.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InfoBlock {
+    /// Jellyfin media source id (empty when unknown).
+    pub id: String,
+    /// The version's own name (usually the file name); empty when the server gives none.
+    pub name: String,
+    /// "4K" / "1080p" of the first video stream, and its codec in capitals.
+    pub quality: String,
+    pub codec: String,
     pub container: String,
     pub size: String,
     pub bitrate: String,
@@ -113,7 +120,17 @@ impl Full {
 }
 
 fn info_block(s: &jf::MediaSource) -> InfoBlock {
+    let video = s.media_streams.iter().find(|v| v.kind == "Video");
     InfoBlock {
+        id: s.id.clone(),
+        name: s.name.clone().unwrap_or_default(),
+        quality: video
+            .and_then(|v| Some(resolution_label(v.width?, v.height?).to_string()))
+            .unwrap_or_default(),
+        codec: video
+            .and_then(|v| v.codec.clone())
+            .unwrap_or_default()
+            .to_uppercase(),
         container: s.container.clone().unwrap_or_default().to_uppercase(),
         size: s.size.map(fmt_size).unwrap_or_default(),
         bitrate: s.bitrate.map(fmt_bitrate).unwrap_or_default(),

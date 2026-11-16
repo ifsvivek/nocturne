@@ -149,6 +149,16 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   library's write lock (reads of that source wait; see the ponytail note in `core/folders.rs`).
 - [~] 4d player page (worktree, own module; root hook wired by master after M3)
 - [~] 4b home, browse (virtualised + unified kinds), search, header for many sources, Sources polish (worktree)
-- [ ] 4c detail pages + version picker, playlists; 4e account page, admin per server, SyncPlay, music queue
+- [~] 4c detail pages (worktree, own module `crates/ui/src/detail/`, root hook documented at the top of `detail/mod.rs`):
+  movie, series (season tabs, episode cards), season, episode, person, collection, playlist (own-playlist edit keys and
+  rename / delete / add dialogs), music album / artist, photo viewer; hero, facts, chips, about, cast, chapters, extras,
+  similar, media info, More menu, optimistic watched / favourite as `Outcome::Write` (the root performs and answers with
+  `Msg::Wrote`), writes-off dimming + tooltip, calm `PlayError` text for a missing local file. **Versions and sources
+  picker** (`core/versions.rs` + `detail/overlays.rs`): server `MediaSources` and other sources' copies in one list,
+  choice goes to `Outcome::Play { source_id }` (`Backend::play_target_for` adds `MediaSourceId`), "Always prefer this source"
+  goes to `Outcome::Prefer` (`versions::prefer`). Pages are laid out to fixed band heights (`detail/geom.rs`) so
+  keyboard focus scrolls into view without measuring. Debug preview: `NOCTURNE_PREVIEW=detail` (see `detail/preview.rs`).
+  Deferred: hero fade-in, source marks on strip cells, "New playlist" entry point (the Add dialog creates one by name),
+  a shared root image cache (the page keeps its own). 4e (account page, admin per server, SyncPlay, music queue) still open.
 - [ ] 5 cut-over
 - [ ] 6 verification

@@ -2,6 +2,7 @@
 #![allow(dead_code)] // the widget kit is consumed screen by screen over steps 4a-4e
 mod account;
 mod app;
+mod detail;
 mod keys;
 mod motion;
 mod platform;
@@ -30,6 +31,12 @@ fn main() -> iced::Result {
     #[cfg(debug_assertions)]
     if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("player") {
         return player::preview::run();
+    }
+    // Debug builds only: run the detail page alone on a throwaway server item or a local fixture
+    // (see detail/preview.rs).
+    #[cfg(debug_assertions)]
+    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("detail") {
+        return detail::preview::run();
     }
     // Config (and .env) is read once, before any other thread exists. (Not for the player preview:
     // it never touches the configured server.)
