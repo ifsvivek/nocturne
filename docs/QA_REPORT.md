@@ -215,3 +215,37 @@ and the screen on a real library.
 - Jellyfin reports a pending plugin change as status "Restart" and keeps offering "Disable" until the server restarts; renaming a library gives it a new item id once the server has refreshed it; the profile image endpoint wants a base64 body, not raw bytes (the raw upload returns 500).
 - Jellyfin lets any plugin endpoint "uninstall" a bundled plugin without error in one case we hit and refuses to disable it in another; NOCTURNE only offers these actions for removable plugins.
 - Stale `nocturne-mpv-*` directories from earlier crashed runs may exist in `$XDG_RUNTIME_DIR`; the player only removes its own.
+
+## 0.3 branch: clean-container install (2026-11-16)
+
+Script: `scripts/test-install.sh` (Docker, throwaway containers, no sudo, no CI). Tarball from `scripts/package.sh tarball`
+(`nocturne-0.2.0-x86_64-linux.tar.gz`, 11451356 B) built from the `iced-migration` head (GPUI `nocturne-app`).
+Final run: `arch`, `nompv`, `fedora`, `pkgbuild` all PASS; `debian` and `ubuntu` PASS for dependency resolution
+(binary does not run there, see below). Containers were `--rm`; pulled images were removed afterwards.
+
+| Case | Result | Evidence |
+|---|---|---|
+| `archlinux:latest`: `NOCTURNE_YES=1 ./install.sh` as root | PASS | exit 0; mpv, libglvnd, vulkan-icd-loader, wayland, libxkbcommon, libxkbcommon-x11, libxcb, dbus all installed by pacman; `libmpv.so.2` in ldconfig |
+| `ldd /usr/local/bin/nocturne` | PASS | no `not found` |
+| Headless start (no `DISPLAY`/`WAYLAND_DISPLAY`) | PASS | no loader error; `panicked at crates/app/src/main.rs:69:14: open window: neither DISPLAY nor WAYLAND_DISPLAY is set`, exit 101 (no `--version` flag exists) |
+| `./install.sh uninstall` | PASS | binary, desktop file and `share/licenses/nocturne` gone |
+| Arch without mpv (`--no-deps`, other libs installed, mpv absent) | PASS | binary has no libmpv in `ldd` (dlopen); same windowing panic, no dynamic-loader error |
+| `debian:stable`: installer dependency step | PASS | `apt-get update` + install of libmpv2, libegl1, libvulkan1, libwayland-client0, libwayland-egl1, libxkbcommon0, libxkbcommon-x11-0, libxcb1, libdbus-1-3, mpv all resolved; `dpkg -s` finds every one |
+| `ubuntu:latest`: installer dependency step | PASS | same package list resolved and installed |
+| Arch-built binary on Debian stable | does not run (expected) | `libm.so.6: version 'GLIBC_2.43' not found` and `'GLIBC_2.44' not found` |
+| Arch-built binary on Ubuntu latest | does not run (expected) | `libm.so.6: version 'GLIBC_2.44' not found` |
+| `fedora:latest`: dependency resolution | PASS | `dnf repoquery` finds mpv-libs, mpv, libglvnd-egl, vulkan-loader, libwayland-client, libwayland-egl, libxkbcommon(-x11), libxcb, dbus-libs in the default repos (no RPM Fusion needed in this image); `install.sh` exit 0 (384 packages). Binary execution on Fedora was not tested |
+| `archlinux:base-devel`: `makepkg -si --noconfirm --nocheck` of `packaging/PKGBUILD` as a non-root user, source = `git archive HEAD` of this tree (temporary PKGBUILD copy, `sha256sums=SKIP`) | PASS | package built and installed; `Depends On` includes `mpv`; ldd clean; headless start reaches the windowing panic |
+
+Findings:
+
+- The shipped binary needs glibc 2.44 (built on a current Arch/CachyOS toolchain), so the tarball only runs on distros
+  at least that new. Debian stable and Ubuntu cannot run it; building against an older glibc (or building from source on the
+  target) is the only fix. The migration plan limits 0.3 to Arch, so this is recorded, not a bug.
+- `install.sh` runs `pacman -S --needed` without `-y`/`-u` by design. On a stale system (the Docker `archlinux:latest`
+  image has no sync database and is older than the repos), `pacman -Sy` followed by `pacman -S` is a partial upgrade
+  and failed with file conflicts (openssl-3 `libcrypto.so.3` owned by `openssl`). The first harness run hit this and
+  was a test artifact, so the script now runs `pacman -Syu` first, as a real up-to-date Arch machine already is. No
+  change to `packaging/install.sh` was needed: every package name was proven right on Arch, Debian, Ubuntu and Fedora.
+- Not tested: the PKGBUILD `check()` step (skipped with `--nocheck` to save time), a real display or GPU in the
+  container (so only the "reaches windowing" stage), openSUSE, running the tarball binary on Fedora.

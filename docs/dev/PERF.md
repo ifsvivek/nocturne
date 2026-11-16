@@ -16,7 +16,7 @@ Iced debug window were running), so treat the numbers as roughly +/- 10 to 20 pe
 | Metric | GPUI (nocturne-app, iced-migration HEAD) |
 |---|---|
 | Binary | 26941688 B (25.69 MiB) |
-| Tarball | n/a here, see QA_REPORT.md |
+| Tarball (`scripts/package.sh`, separate remapped build) | 11451356 B (10.92 MiB) |
 | Installed (install.sh, DESTDIR) | 27833241 B (26.54 MiB) |
 | Start to window mapped, median of 5 (ms) | 606 |
 | Start to interactive, NOCTURNE_TIMING=1 (ms) | n/a (GPUI prints no timing line) |
@@ -24,8 +24,8 @@ Iced debug window were running), so treat the numbers as roughly +/- 10 to 20 pe
 | Idle loaded home (demo, dev token): RSS MiB / CPU % | 414.0 / 2.00 |
 | CPU during 60 s 1080p embedded playback | manual (not measured) |
 
-No `dist/` tarball existed when the script ran, so the tarball size is not in the table; the tarball built by
-`scripts/test-install.sh` is recorded in [QA_REPORT.md](../QA_REPORT.md) (section "0.3 branch: clean-container install").
+The tarball size was measured afterwards from the tarball `scripts/test-install.sh` built (no `dist/` tarball existed
+when the script ran; the script reports `n/a` in that case).
 
 ### Method
 
