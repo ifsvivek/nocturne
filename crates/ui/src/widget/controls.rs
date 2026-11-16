@@ -205,15 +205,50 @@ pub fn pill_button<'a, M: Clone + 'a>(
     focused: bool,
     on_press: M,
 ) -> Element<'a, M> {
+    pill(label, primary, focused, false, false, on_press)
+}
+
+/// [`pill_button`] as wide as its label (for rows of buttons) that can be dimmed (`off`: the
+/// action is not available, e.g. server changes are switched off) while still answering the press
+/// so the caller can say why.
+pub fn pill_button_dim<'a, M: Clone + 'a>(
+    label: &str,
+    primary: bool,
+    focused: bool,
+    off: bool,
+    on_press: M,
+) -> Element<'a, M> {
+    pill(label, primary, focused, off, true, on_press)
+}
+
+fn pill<'a, M: Clone + 'a>(
+    label: &str,
+    primary: bool,
+    focused: bool,
+    off: bool,
+    shrink: bool,
+    on_press: M,
+) -> Element<'a, M> {
     let mut r = row![].spacing(t::S2).align_y(Alignment::Center);
     if primary {
         r = r.push(text("\u{25B6}").font(t::MONO).size(t::CAPTION));
     }
-    r = r.push(text(label.to_string()).size(t::BODY).font(t::SEMIBOLD));
-    Press::new(container(r).center(Length::Fill))
-        .height(44)
-        .padding([0.0, t::S6])
-        .on_press(on_press)
+    r = r.push(
+        text(label.to_string())
+            .shaping(iced::widget::text::Shaping::Advanced)
+            .size(t::BODY)
+            .font(t::SEMIBOLD),
+    );
+    let body = if shrink {
+        container(r).center_y(Length::Fill)
+    } else {
+        container(r).center(Length::Fill)
+    };
+    let mut btn = Press::new(body).height(44).padding([0.0, t::S6]);
+    if shrink {
+        btn = btn.width(Length::Shrink);
+    }
+    btn.on_press(on_press)
         .style(move |s| {
             let shadow = if focused {
                 glow_shadow(0.7)
@@ -253,6 +288,14 @@ pub fn pill_button<'a, M: Clone + 'a>(
             if s == Status::Pressed {
                 x.background = x.background.map(|b| match b {
                     Background::Color(c) => Background::Color(Color { a: c.a * 0.85, ..c }),
+                    o => o,
+                });
+            }
+            if off {
+                x.text_color.a *= 0.4;
+                x.border.color.a *= 0.4;
+                x.background = x.background.map(|b| match b {
+                    Background::Color(c) => Background::Color(Color { a: c.a * 0.4, ..c }),
                     o => o,
                 });
             }

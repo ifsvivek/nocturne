@@ -72,3 +72,14 @@ Paths are under `~/.cargo/registry/src/*/`. Check the source before using anythi
 - Folder chooser: `rfd` 0.17 with only `xdg-portal` (MIT; pulls `pollster`, `log`, `percent-encoding`; no GTK). It
   `dlopen`s `libdbus-1` for the portal call and falls back to `zenity`; neither present returns `None` (the typed path
   field still works). Add `libdbus-1` to the optional runtime list at the cut-over.
+
+## Added in 4c
+
+- `Background::Gradient(Gradient::Linear(gradient::Linear::new(Degrees(a))))`: `a` is CSS-like (90 = to the right,
+  180 = down; `iced_core/src/angle.rs` subtracts 90 degrees).
+- A `Press` button is as wide as the parent allows unless `.width(Length::Shrink)` and the content is centred only
+  vertically (`pill_button_dim`): needed for rows of buttons.
+- `row(..).spacing(..).wrap().vertical_spacing(..)` wraps a button row; `Stack::with_children` layers backdrop, scrims and text.
+- Keeping a keyboard-focused row visible without widget bounds: every band has a fixed height and the page adds them up
+  (`detail/geom.rs`), then `operation::scroll_to(id, AbsoluteOffset)`; the scroll offset comes from `on_scroll`.
+- Large `Msg` payloads (`Full`, two `Media`) are boxed: clippy's `large_enum_variant` fires on the root's `Message` too.
