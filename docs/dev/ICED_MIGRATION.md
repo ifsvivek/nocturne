@@ -188,6 +188,11 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   (written for the post-cut-over state; merge WITH the cut-over). Before release verify its assumptions: 4b/4e merged
   and working, mpv 0.42 TLS check DONE (it moved it to 'carried forward'; move back once done), startup does not wait
   for the network (measure), reduce motion honoured everywhere.
+- [x] packaging prep merged: one app-package variable (package.sh/perf.sh/PKGBUILD `_pkg/_bin`), Iced runtime deps
+  re-derived from the binary (only libdbus-1 linked; rest dlopen'd; fontconfig/freetype dropped; libx11/libxcursor/libxi
+  added), cargo deny clean, data-driven gen-notices, `scripts/test-playback.sh` container gate passed for nocturne-ui.
+  Cut-over must: regenerate THIRD_PARTY_NOTICES, drop vendor/xattr + [patch] + naga shim, rerun test-playback.sh and
+  test-install.sh pkgbuild with defaults.
 - [~] single instance (worktree)
 - [~] onboarding flow module (worktree; wired by integration)
 - [~] integration (worktree; owns app/): mpv 0.42 TLS check (test playback against an HTTPS throwaway server with a self-signed cert using
