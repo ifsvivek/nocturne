@@ -5,7 +5,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.3.0] - UNRELEASED
+## [0.3.0] - 2026-11-16
 
 A new foundation: the interface is rebuilt on Iced, and NOCTURNE becomes a media center for local folders and several
 Jellyfin servers in one library.

@@ -3,7 +3,7 @@
 _pkg=${_pkg:-nocturne-app}
 _bin=${_bin:-nocturne}
 pkgname=nocturne
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc='Native Jellyfin desktop client with libmpv playback, Wayland first'
 arch=(x86_64)

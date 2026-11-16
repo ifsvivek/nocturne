@@ -2739,7 +2739,7 @@ dependencies = [
 
 [[package]]
 name = "nocturne-app"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "iced",
  "image",
@@ -2760,7 +2760,7 @@ dependencies = [
 
 [[package]]
 name = "nocturne-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "nocturne-jellyfin",
@@ -2779,7 +2779,7 @@ dependencies = [
 
 [[package]]
 name = "nocturne-jellyfin"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "reqwest",
  "serde",
@@ -2790,7 +2790,7 @@ dependencies = [
 
 [[package]]
 name = "nocturne-jellyfin-admin"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64 0.23.1",
  "nocturne-jellyfin",
@@ -2803,7 +2803,7 @@ dependencies = [
 
 [[package]]
 name = "nocturne-jellyfin-user"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
@@ -2819,7 +2819,7 @@ dependencies = [
 
 [[package]]
 name = "nocturne-local"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "regex",
  "serde",
@@ -2830,7 +2830,7 @@ dependencies = [
 
 [[package]]
 name = "nocturne-player"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libloading",
  "nocturne-jellyfin",
@@ -2845,7 +2845,7 @@ dependencies = [
 
 [[package]]
 name = "nocturne-session"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "keyring",
  "nocturne-jellyfin-user",
