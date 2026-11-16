@@ -8,16 +8,31 @@ use iced::Task;
 pub fn on_boot() -> Task<Message> {
     use iced::window;
     use std::time::Duration;
-    if std::env::var_os("NOCTURNE_SNAP").is_none() {
-        return Task::none();
-    }
-    Task::batch(delays().into_iter().enumerate().map(|(n, ms)| {
-        crate::task::after(Duration::from_millis(ms), n).then(|n| {
-            window::oldest()
-                .and_then(window::screenshot)
-                .map(move |s| Message::Snapped(s, n))
+    // `NOCTURNE_KEYS="enter@3000,escape@4000"`: named keys injected into the root (QA without a
+    // human; the app never reads it in release builds).
+    let keys = std::env::var("NOCTURNE_KEYS").unwrap_or_default();
+    let keys = keys.split(',').filter_map(|k| {
+        let (name, ms) = k.split_once('@')?;
+        let key = crate::keys::Key {
+            name: name.into(),
+            text: (name.chars().count() == 1).then(|| name.into()),
+            ..Default::default()
+        };
+        Some(crate::task::after(
+            Duration::from_millis(ms.parse().ok()?),
+            Message::Key(key),
+        ))
+    });
+    let snaps = std::env::var_os("NOCTURNE_SNAP").is_some().then(|| {
+        delays().into_iter().enumerate().map(|(n, ms)| {
+            crate::task::after(Duration::from_millis(ms), n).then(|n| {
+                window::oldest()
+                    .and_then(window::screenshot)
+                    .map(move |s| Message::Snapped(s, n))
+            })
         })
-    }))
+    });
+    Task::batch(keys.chain(snaps.into_iter().flatten()))
 }
 
 #[cfg(not(debug_assertions))]

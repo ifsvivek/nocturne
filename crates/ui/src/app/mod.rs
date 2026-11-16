@@ -5,6 +5,7 @@ mod actions;
 mod browse;
 mod catalog;
 mod cells;
+mod details;
 mod folders;
 mod header;
 mod help;
@@ -113,6 +114,8 @@ pub struct Page {
     pub home: Option<Box<home::Home>>,
     /// Library / collection / favourites pages.
     pub br: Option<Box<browse::Browse>>,
+    /// Detail pages.
+    pub det: Option<Box<crate::detail::Detail>>,
     /// Grid selection.
     pub sel: usize,
 }
@@ -388,6 +391,7 @@ impl App {
             Message::Key(k) => self.on_key(k),
             Message::Tick(now) => {
                 self.now = now;
+                self.sync_detail();
                 self.tick()
             }
             Message::Frame(now) => {
@@ -468,8 +472,10 @@ impl App {
             }
             Message::Cell(at, act) => self.update_cell(at, act),
             Message::PlayItem(m) => self.play_item(m),
-            Message::Play(m, rest) => self.start_play(m, rest),
-            Message::PlayTarget(m, rest, r) => self.play_target(m, rest, r),
+            Message::Play(m, rest) => self.start_play(m, rest, None),
+            Message::PlayTarget(m, rest, src, r) => self.play_target(m, rest, src, r),
+            Message::Detail(pid, m) => self.detail_msg(pid, m),
+            Message::DetailWrote(pid, w, r) => self.detail_wrote(pid, w, r),
             Message::Player(m) => self.player_msg(m),
             Message::RefreshResume => self.refresh_resume(),
             Message::Toast(s) => {
@@ -1250,7 +1256,6 @@ impl App {
                 self.load_home(pid)
             }
             Some(p) if p.view == View::Grid => self.reload_browse(),
-            // TODO(4c): detail reloads.
             _ => Task::none(),
         }
     }
@@ -1283,6 +1288,7 @@ impl App {
             fan: Fanout::default(),
             home: None,
             br: None,
+            det: None,
             sel: 0,
         });
         pid
@@ -1383,6 +1389,14 @@ impl App {
             return self.search_key(key);
         }
         let ready = matches!(self.phase, Phase::Ready);
+        // A detail overlay (viewer, dialog, menu) owns the keys: no global shortcuts under it.
+        if ready
+            && !self.admin_open
+            && self.detail_capturing()
+            && let Some(t) = self.detail_key(&k)
+        {
+            return t;
+        }
         if opens_account_menu(key, ready, self.admin_open, false) {
             self.menu = true;
             self.menu_sel = 0;
@@ -1432,6 +1446,9 @@ impl App {
             }
             return Task::none();
         }
+        if let Some(t) = self.detail_key(&k) {
+            return t;
+        }
         if matches!(key, "escape" | "backspace") {
             self.back();
             return self.page_wants();
@@ -1450,7 +1467,6 @@ impl App {
         match self.stack.last().map(|p| p.view) {
             Some(View::Grid) => self.browse_key(key, k.shift).unwrap_or_else(Task::none),
             Some(View::Home) => self.home_key(key),
-            // TODO(4c): detail page keys.
             _ => Task::none(),
         }
     }
@@ -1604,6 +1620,12 @@ impl App {
             {
                 layers.push(c);
             }
+            if let Some(p) = self.stack.last()
+                && let Some(d) = self.detail_fullscreen()
+            {
+                let pid = p.pid;
+                layers.push(d.view().map(move |m| Message::Detail(pid, m)));
+            }
         }
         if let Some(p) = &self.preview {
             layers.push(p.view(Instant::now(), crate::motion::reduced(), self.win));
@@ -1647,30 +1669,19 @@ impl App {
         Stack::with_children(layers).into()
     }
 
-    /// The current page: Home and library pages are ported; detail pages arrive with step 4c.
+    /// The current page.
     fn page_view(&self) -> Element<'_, Message> {
         match self.stack.last().map(|p| p.view) {
             Some(View::Home) => self.home_page(),
             Some(View::Grid) => self.grid_page(),
-            _ => {
-                let title = self
-                    .stack
-                    .last()
-                    .and_then(|p| p.media.as_ref())
-                    .map_or(String::new(), |m| m.title.clone());
-                container(
-                    column![
-                        text(title).size(t::HEADING).font(t::BOLD),
-                        text("Not ported yet")
-                            .size(t::BODY)
-                            .color(t::TEXT_SECONDARY),
-                    ]
-                    .spacing(t::S2)
-                    .align_x(Alignment::Center),
-                )
-                .center(Length::Fill)
-                .into()
-            }
+            _ => match self
+                .stack
+                .last()
+                .and_then(|p| Some((p.pid, p.det.as_deref()?)))
+            {
+                Some((pid, d)) => d.view().map(move |m| Message::Detail(pid, m)),
+                None => space().into(),
+            },
         }
     }
 

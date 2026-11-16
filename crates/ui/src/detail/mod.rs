@@ -327,6 +327,11 @@ impl Detail {
         self.want()
     }
 
+    /// Read everything again (after playback, which moves resume and watched state).
+    pub fn reload(&mut self) -> Task<Msg> {
+        self.load()
+    }
+
     pub fn set_win(&mut self, win: Size) {
         self.win = win;
     }

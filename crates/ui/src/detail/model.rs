@@ -157,7 +157,7 @@ pub fn spec(a: DAct, m: &Media) -> (&'static str, bool) {
         DAct::Play => ("Play", true),
         DAct::PlayAll => ("Play all", true),
         DAct::Shuffle => ("Shuffle", false),
-        DAct::Watched if m.played => ("Watched \u{2713}", false),
+        DAct::Watched if m.played => ("Watched", false),
         DAct::Watched => ("Mark watched", false),
         DAct::Fav if m.favorite => ("\u{2665} Favourite", false),
         DAct::Fav => ("\u{2661} Favourite", false),

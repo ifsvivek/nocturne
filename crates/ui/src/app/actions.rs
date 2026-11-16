@@ -3,7 +3,7 @@
 //! and its own login's hooks, the local library keeps its own state and needs neither. Optimistic
 //! patch everywhere the item is held, reverted when the write fails.
 use super::message::{At, CellAct, Message};
-use super::{App, Load, View};
+use super::{App, Load};
 use crate::task::run;
 use iced::Task;
 use nocturne_core::backend::Backend;
@@ -60,10 +60,6 @@ impl App {
         let origin = m.origin;
         match m.kind {
             Kind::Library => self.open_library(m),
-            Kind::Photo => {
-                self.toast("The photo viewer isn't ported yet.");
-                Task::none()
-            }
             Kind::Folder => self.open_browse(super::browse::scope_folder(&m), Some(origin), None),
             Kind::Genre => self.open_browse(
                 super::browse::scope_tag("genre", &m.title, &m.title),
@@ -75,7 +71,7 @@ impl App {
                 Some(origin),
                 None,
             ),
-            _ => self.push(View::Detail, Some(m)),
+            _ => self.open_detail(m),
         }
     }
 
@@ -83,10 +79,7 @@ impl App {
     pub(super) fn play_item(&mut self, m: Media) -> Task<Message> {
         match m.kind {
             Kind::Library | Kind::Season => Task::none(),
-            Kind::Photo => {
-                self.toast("The photo viewer isn't ported yet.");
-                Task::none()
-            }
+            Kind::Photo => self.open_detail(m),
             Kind::Book | Kind::Folder | Kind::Person | Kind::Other => {
                 self.toast("Not playable in NOCTURNE yet.");
                 Task::none()
@@ -244,6 +237,13 @@ impl App {
         };
         for p in &mut self.stack {
             p.media.iter_mut().for_each(&hit);
+            if let Some(d) = p.det.as_deref_mut() {
+                d.patch(id, |m| {
+                    if m.origin == origin {
+                        f(m)
+                    }
+                });
+            }
             if let Some(h) = p.home.as_deref_mut() {
                 h.resume.for_each_mut(&hit);
                 h.nextup.for_each_mut(&hit);

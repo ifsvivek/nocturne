@@ -54,7 +54,12 @@ impl PlayerHooks for LocalHooks {
 
 impl App {
     /// `Message::Play`: find out what to open, then open the page.
-    pub(super) fn start_play(&mut self, m: Media, rest: Vec<Media>) -> Task<Message> {
+    pub(super) fn start_play(
+        &mut self,
+        m: Media,
+        rest: Vec<Media>,
+        source_id: Option<String>,
+    ) -> Task<Message> {
         if self.player.is_some() {
             return Task::none();
         }
@@ -63,15 +68,18 @@ impl App {
             return Task::none();
         };
         let m2 = m.clone();
-        run(async move { b.play_target(&m2).await }, move |r| {
-            Message::PlayTarget(m, rest, r)
-        })
+        let sid = source_id.clone();
+        run(
+            async move { b.play_target_for(&m2, sid.as_deref()).await },
+            move |r| Message::PlayTarget(m, rest, source_id, r),
+        )
     }
 
     pub(super) fn play_target(
         &mut self,
         m: Media,
         rest: Vec<Media>,
+        source_id: Option<String>,
         r: Result<PlayTarget, PlayError>,
     ) -> Task<Message> {
         let target = match r {
@@ -99,7 +107,7 @@ impl App {
             media: m,
             queue,
             target,
-            source_id: None,
+            source_id,
             resume: None,
             backends: self
                 .catalog
@@ -136,6 +144,13 @@ impl App {
             }
             // The server has the final report shortly after; then Home's rows have moved.
             tasks.push(after(Duration::from_millis(900), Message::RefreshResume));
+            // The page under the player shows resume / watched state: read it again.
+            let pid = self.stack.last().map(|p| p.pid);
+            if let Some((pid, d)) =
+                pid.zip(self.stack.last_mut().and_then(|p| p.det.as_deref_mut()))
+            {
+                tasks.push(d.reload().map(move |m| Message::Detail(pid, m)));
+            }
         }
         Task::batch(tasks)
     }
