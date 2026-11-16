@@ -155,11 +155,15 @@ pub fn pretty_prefs(v: &serde_json::Value) -> String {
         }) {
             out.push(format!("{k}: {}", show(x)));
         }
+        // Sorted: serde_json's map order depends on whether some crate enables `preserve_order`.
+        out.sort();
+        let plain = out.len();
         for (k, x) in v["CustomPrefs"].as_object().into_iter().flatten() {
             if !x.is_null() {
                 out.push(format!("custom {k}: {}", show(x)));
             }
         }
+        out[plain..].sort();
     }
     if out.is_empty() {
         "No display preferences saved.".into()
@@ -431,7 +435,7 @@ mod tests {
             "Gone":null,"CustomPrefs":{"skipForwardLength":"30000","tvhome":null}});
         assert_eq!(
             pretty_prefs(&v),
-            "SortBy: SortName\nShowBackdrop: true\ncustom skipForwardLength: 30000"
+            "ShowBackdrop: true\nSortBy: SortName\ncustom skipForwardLength: 30000"
         );
         assert_eq!(
             pretty_prefs(&serde_json::json!({})),
