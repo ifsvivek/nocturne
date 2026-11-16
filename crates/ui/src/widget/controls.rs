@@ -23,6 +23,11 @@ pub fn icon<'a>(name: &str, size: f32, color: Color) -> svg::Svg<'a> {
         "folder" => include_bytes!("../../assets/icons/folder.svg"),
         "server" => include_bytes!("../../assets/icons/server.svg"),
         "layers" => include_bytes!("../../assets/icons/layers.svg"),
+        "lock" => include_bytes!("../../assets/icons/lock.svg"),
+        "files" => include_bytes!("../../assets/icons/files.svg"),
+        "check" => include_bytes!("../../assets/icons/check.svg"),
+        "arrow_right" => include_bytes!("../../assets/icons/arrow_right.svg"),
+        "play" => include_bytes!("../../assets/icons/play.svg"),
         _ => include_bytes!("../../assets/icons/stop.svg"),
     };
     svg(svg::Handle::from_memory(bytes))
