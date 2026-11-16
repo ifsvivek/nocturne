@@ -282,9 +282,8 @@ fn qc_panel<'a>(code: Option<String>, now: Instant) -> El<'a> {
             })
             .size(48),
     )
-    .width(Length::Fill)
-    .height(88)
-    .center(88)
+    .center_x(Length::Fill)
+    .center_y(88)
     .style(|_| iced::widget::container::Style {
         background: Some(t::ACCENT_TINT.into()),
         border: border(t::ACCENT, 1.0, 6.0),

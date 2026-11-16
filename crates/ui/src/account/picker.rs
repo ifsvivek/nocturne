@@ -21,27 +21,32 @@ pub fn view<'a, M: Clone + 'a>(
     let tile = |i: usize, label: String, face: Element<'a, M>| -> Element<'a, M> {
         let on_it = i == p.sel;
         let act = if i < n_acc { Act::Pick(i) } else { Act::Add };
-        let ring = Press::new(face).on_press(on(act)).style(move |s| Style {
-            background: None,
-            text_color: t::ACCENT_TEXT,
-            border: border(
-                if on_it {
-                    t::ACCENT
-                } else if matches!(s, Status::Hovered | Status::Pressed) {
-                    t::TEXT_TERTIARY
+        let ring = Press::new(face)
+            .width(PIC)
+            .height(PIC)
+            .padding(2)
+            .on_press(on(act))
+            .style(move |s| Style {
+                background: None,
+                text_color: t::ACCENT_TEXT,
+                border: border(
+                    if on_it {
+                        t::ACCENT
+                    } else if matches!(s, Status::Hovered | Status::Pressed) {
+                        t::TEXT_TERTIARY
+                    } else {
+                        t::EDGE
+                    },
+                    2.0,
+                    PIC / 2.0,
+                ),
+                shadow: if on_it {
+                    glow_shadow(t::GLOW.a)
                 } else {
-                    t::EDGE
+                    Shadow::default()
                 },
-                2.0,
-                PIC / 2.0,
-            ),
-            shadow: if on_it {
-                glow_shadow(t::GLOW.a)
-            } else {
-                Shadow::default()
-            },
-            snap: false,
-        });
+                snap: false,
+            });
         let name = text(label)
             .size(t::BODY_LG)
             .font(if on_it { t::SEMIBOLD } else { t::FONT })
