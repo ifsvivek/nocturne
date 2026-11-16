@@ -249,3 +249,30 @@ Findings:
   change to `packaging/install.sh` was needed: every package name was proven right on Arch, Debian, Ubuntu and Fedora.
 - Not tested: the PKGBUILD `check()` step (skipped with `--nocheck` to save time), a real display or GPU in the
   container (so only the "reaches windowing" stage), openSUSE, running the tarball binary on Fedora.
+
+## mpv 0.42 TLS verification (self-signed servers)
+
+Question: mpv 0.42 turns `tls-verify` on by default. Does that break playback from a self-signed server, and is a
+per-source "trust this certificate" option needed?
+
+Setup (all loopback, throwaway data): a small Python TLS reverse proxy (`https://127.0.0.1:8447` with a self-signed
+`CN=localhost` certificate, SAN `127.0.0.1`) in front of the throwaway demo Jellyfin on `127.0.0.1:8097`.
+
+Installed mpv: 0.41.0. `mpv --list-options` shows `--tls-verify  Flag (default: no)`, so 0.42's new default cannot be
+observed directly; the explicit flag reproduces it.
+
+| Check | Result |
+|---|---|
+| `mpv <https stream>` (0.41 default) | plays, exit 0 |
+| `mpv --tls-verify=yes <https stream>` (= the 0.42 default) | `tls: Peer certificate failed verification`, exit 2 |
+| `mpv --tls-verify=yes --tls-ca-file=<the self-signed cert>` | plays, exit 0 |
+| Embedded player (`NOCTURNE_PREVIEW=player`, libmpv, default options) on the https stream | plays (0:01 elapsed, controls and video up); the first launch needed a few seconds longer to open |
+| App's own client (`NOCTURNE_JF_URL=https://127.0.0.1:8447`) | "Can't reach your server": the Jellyfin API client (rustls, system roots) already refuses the self-signed certificate |
+| `crates/player`/`crates/ui` set `tls-*` options anywhere | no (`grep` finds none), so mpv's own default applies |
+
+Conclusion: no change needed. On mpv 0.42 a self-signed certificate would stop mpv, but such a server never gets as far
+as playback: the API client rejects it at connect time (and has always done so). A server whose certificate chains to a
+CA in the system store (a private CA installed with `update-ca-trust`, or a public one) verifies in both mpv (system CA
+bundle) and the API client, so playback keeps working. A per-source "trust this certificate" setting would have to
+cover the API client as well, not only mpv; it is a feature of its own, not a 0.42 fix. The external mpv player was not
+run separately through the app: it is the same mpv with the same defaults as the CLI rows above.
