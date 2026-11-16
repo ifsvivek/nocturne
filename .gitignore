@@ -23,3 +23,6 @@ secrets/
 
 # personal agent/workflow notes (not published)
 /CLAUDE.local.md
+
+# generated pacman repository (scripts/publish-repo.sh); binaries never in git
+/website/static/repo/
