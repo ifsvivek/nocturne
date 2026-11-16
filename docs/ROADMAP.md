@@ -45,7 +45,10 @@ Chosen by the maintainer from the research backlog: dual subtitles; audio and su
 across restarts (including original audio); a Latest row with new episodes and Play on a show card starting the next
 unwatched episode; truthful playback reports with visible errors and a retried final report; an optional extra HTTP
 header per server (reverse proxies); "Included in" collections on detail pages; **HDR playback mode** on Linux: for HDR
-videos the viewer chooses between SDR in the window and an HDR pop-out window ([HDR.md](HDR.md)). The compatibility items below are folded into the same release where they overlap.
+videos the viewer chooses between SDR in the window and an HDR pop-out window ([HDR.md](HDR.md)); **more packages and platforms**: .deb, .rpm and an AppImage (only if it can be honest about
+system libraries), then macOS (.dmg) and Windows (.msi/.exe) with bundled libmpv ([PLATFORMS.md](PLATFORMS.md));
+**online metadata for local media**, opt-in, with the user's own TMDB key, plus MusicBrainz / Cover Art Archive and
+TVmaze ([METADATA.md](METADATA.md)). The compatibility items below are folded into the same release where they overlap.
 
 ## Then: compatibility and correctness
 
@@ -108,11 +111,12 @@ critical problems in NOCTURNE. It did find a set of small fixes worth doing befo
   safely needs a lock-out guard that can be tested
 
 **Platform**
-- Packages are tested on Arch Linux only; .deb, .rpm and AppImage are planned, not started ([PLATFORMS.md](PLATFORMS.md))
+- Packages are tested on Arch Linux only; .deb, .rpm and AppImage are scheduled for 0.4 ([PLATFORMS.md](PLATFORMS.md))
 - Screen-reader support: re-evaluated on Iced once the migration ships (Iced's accessibility support is still limited)
-- HDR output depends on libmpv gaining a modern render API; until then HDR is tone-mapped to SDR
-- macOS (.dmg) and Windows (.msi/.exe): planned, not started; work begins only after the maintainer has tested the Arch
-  0.3 build and approved it; in-window video there needs its own investigation ([PLATFORMS.md](PLATFORMS.md))
+- HDR in the window depends on libmpv gaining a modern render API; until then it is tone-mapped to SDR, with an HDR
+  pop-out window in 0.4 ([HDR.md](HDR.md))
+- macOS (.dmg) and Windows (.msi/.exe): scheduled for 0.4, after 0.3 ships for Arch; in-window video there needs its
+  own investigation ([PLATFORMS.md](PLATFORMS.md))
 
 ## Dropped (will not be built)
 
