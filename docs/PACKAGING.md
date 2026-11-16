@@ -1,8 +1,14 @@
 # Packaging
 
-Everything here was tested on Arch Linux, x86_64, Wayland with Xwayland, mpv 0.41.0, Rust 1.99 (the 0.2.0 release;
-the link list below is that GPUI build's, re-check it for the Iced build). Other distributions and architectures are
-UNVERIFIED.
+Built and checked on Arch Linux, x86_64, Wayland (Hyprland), mpv 0.41.0, Rust 1.99. The dependency list below is the
+Iced build's (derived 2026-11-16 from `target/release/nocturne-iced`). Other distributions and architectures: package
+names were checked to exist in the default repos of Debian stable, Fedora and openSUSE Tumbleweed (containers), nothing
+more. Debian/Fedora/openSUSE builds are UNVERIFIED.
+
+**One variable names the app package.** `scripts/package.sh`, `scripts/perf.sh` and `packaging/PKGBUILD` default to
+package `nocturne-app` / binary `nocturne` (what `crates/ui` becomes at the cut-over). Before the cut-over build the
+Iced app with `PKG=nocturne-ui BIN=nocturne-iced scripts/package.sh tarball` (PKGBUILD: `_pkg=nocturne-ui _bin=nocturne-iced makepkg`;
+`scripts/gen-notices.py` and `scripts/test-playback.sh` take the same `PKG`/`BIN`). The installed name is always `nocturne`.
 
 Planned, not available yet: .deb, .rpm, AppImage, macOS and Windows packages. Per-platform libmpv handling and the footprint budget are in
 [PLATFORMS.md](PLATFORMS.md).
@@ -19,15 +25,25 @@ Planned, not available yet: .deb, .rpm, AppImage, macOS and Windows packages. Pe
 
 ## Runtime dependencies
 
-**Linked** (`readelf -d`): `libEGL.so.1`, `libdbus-1.so.3`, `libxcb.so.1`, `libxkbcommon.so.0`,
-`libxkbcommon-x11.so.0`, glibc, libgcc_s.
+How this was derived (all from the release binary, not from memory): `readelf -d` NEEDED shows only `libdbus-1.so.3`,
+`libgcc_s.so.1`, `libm.so.6`, `libc.so.6`. Everything else is opened with `dlopen` (invisible to `readelf`/namcap): the
+names are visible in the binary (`libEGL.so.1`, `libwayland-client.so.0`, `libwayland-egl.so.1`, `libX11.so.6`,
+`libX11-xcb.so.1`, `libXcursor.so.1`, `libXi.so.6`, `libxkbcommon.so.0`, `libxkbcommon-x11.so.0`) or are assembled from
+immediates by the compiler (`libvulkan.so.1` from `ash::Entry::load`, `libxcb.so.1` from x11rb's `dl-libxcb`; found as
+the `libvulka`+`kan.so.1` / `libxcb.s`+`so.1` byte pairs) and confirmed in the crate sources under `~/.cargo/registry`
+(`ash-0.38 entry.rs`, `x11-dl`, `xkbcommon-dl`, `wayland-sys`, winit `wayland-dlopen`). libmpv: `crates/player/src/mpv_ffi.rs`
+(`SONAME = "libmpv.so.2"`, `libloading`), verified at run time in the container (`scripts/test-playback.sh`).
 
-**Loaded at run time with `dlopen`** (invisible to `readelf`/namcap, so they are listed explicitly in the PKGBUILD
-and in `install.sh`): `libmpv.so.2` (in-window video, `crates/player/src/mpv_ffi.rs`), `libvulkan.so.1` (the UI
-renderer), `libwayland-client.so.0`, `libwayland-egl.so.1`. A Vulkan driver (Mesa or NVIDIA) is also required;
-it depends on the GPU, so the installer does not pick one. libmpv pulls in about 200 more libraries (ffmpeg, libass,
-...) that the distribution's mpv package resolves. A Secret Service provider (gnome-keyring, KWallet, KeePassXC)
-stores the login.
+**Dropped with GPUI** (not in NEEDED, no string in the binary): `libfontconfig`, `libfreetype` (the Iced text stack,
+cosmic-text/fontdb, parses `fonts.conf` in pure Rust; `fontconfig-parser`), `libxcb` as a linked library (now dlopen,
+X11 sessions only). **Added:** `libX11`, `libX11-xcb`, `libXcursor`, `libXi` (winit's X11 backend, dlopen). The folder picker
+(`rfd`, `xdg-portal` feature, pure-Rust zbus) needs no GTK; it talks to `xdg-desktop-portal` at run time (optional).
+`libwayland-cursor` is not used (client-side decorations are drawn by sctk-adwaita).
+
+A Vulkan driver (Mesa `vulkan-*` or NVIDIA) is also required (wgpu; `libEGL` is the GL fallback and the video path); it
+depends on the GPU, so the installer does not pick one. libmpv pulls in about 200 more libraries (ffmpeg, libass, ...)
+that the distribution's mpv package resolves. A Secret Service provider (gnome-keyring, KWallet, KeePassXC) stores the
+login. The UI font is "Noto Sans" by name (not bundled; any sans is the fallback).
 
 Because libmpv is not linked, a missing `libmpv.so.2` does not stop the app from starting.
 `nocturne_player::libmpv_available()` reports it, and the app can fall back to the external `mpv` child-process
@@ -36,10 +52,10 @@ from `/etc/os-release`. libmpv is not needed at build time, so `mpv` is not a ma
 
 | Distribution | Packages (all needed at run time) | Status |
 |---|---|---|
-| Arch / CachyOS / Manjaro | `mpv libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon-x11 libxcb dbus` + `vulkan-driver`, `gcc-libs glibc`, `fontconfig freetype2` (PKGBUILD) | VERIFIED names (`pacman -Qo`); package built, binary launched |
-| Debian / Ubuntu | `libmpv2 mpv libegl1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3` + `mesa-vulkan-drivers` | names UNVERIFIED in a container |
-| Fedora | `mpv-libs mpv libglvnd-egl vulkan-loader libwayland-client libwayland-egl libxkbcommon libxkbcommon-x11 libxcb dbus-libs` + `mesa-vulkan-drivers` | UNVERIFIED (mpv comes from RPM Fusion) |
-| openSUSE | `libmpv2 mpv libEGL1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3` + `libvulkan_intel`/`libvulkan_radeon` | UNVERIFIED |
+| Arch / CachyOS / Manjaro | `mpv libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon-x11 libxcb libx11 libxcursor libxi dbus gcc-libs glibc` + `vulkan-driver`; optional `xdg-desktop-portal noto-fonts gnome-keyring` (PKGBUILD) | VERIFIED names (`pacman -Qo` on every soname); package built and launched in a clean container |
+| Debian / Ubuntu | `libmpv2 mpv libegl1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3 libx11-6 libx11-xcb1 libxcursor1 libxi6` + `mesa-vulkan-drivers`; optional `xdg-desktop-portal fonts-noto-core` | names exist in debian:stable (apt-cache); install not run end to end |
+| Fedora | `mpv-libs mpv libglvnd-egl vulkan-loader libwayland-client libwayland-egl libxkbcommon libxkbcommon-x11 libxcb dbus-libs libX11 libX11-xcb libXcursor libXi` + `mesa-vulkan-drivers`; optional `xdg-desktop-portal google-noto-sans-fonts` | names exist in fedora:latest (dnf repoquery); mpv itself comes from RPM Fusion |
+| openSUSE | `libmpv2 mpv libglvnd libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3 libX11-6 libX11-xcb1 libXcursor1 libXi6` + `libvulkan_intel`/`libvulkan_radeon`; optional `xdg-desktop-portal google-noto-sans-fonts` | names exist in Tumbleweed (zypper info); `libEGL.so.1` is provided by `libglvnd` (the old `libEGL1` name does not exist) |
 
 How each artifact handles them:
 
@@ -57,7 +73,8 @@ The tarball binary is built on a rolling distribution and is not an "any Linux" 
 ## Build
 
 ```sh
-# Release tarball -> dist/nocturne-<version>-x86_64-linux.tar.gz (+ .sha256)
+# Release tarball -> dist/nocturne-<version>-x86_64-linux.tar.gz (+ .sha256); before the cut-over:
+# PKG=nocturne-ui BIN=nocturne-iced scripts/package.sh tarball
 scripts/package.sh tarball
 
 # Install from the extracted tarball (PREFIX default /usr/local, DESTDIR optional)
@@ -81,7 +98,7 @@ package, which take libmpv from the system.
 
 ## Vendored xattr
 
-Only the legacy GPUI crate needs this; it goes away with GPUI at the cut-over.
+Only the legacy GPUI crate needs this; it goes away with GPUI at the cut-over (`vendor/xattr` and the `[patch]` entry).
 
 `vendor/xattr` is the crates.io `xattr` 0.2.3 with one line changed (`ENOATTR` is defined as `ENODATA`).
 GPUI pulls it in through `zed-async-tar`, which requires the 0.2 series, and 0.2.3 is the last 0.2 release. It
@@ -91,6 +108,8 @@ Remove the patch and the directory once GPUI or `zed-async-tar` moves to a fixed
 
 ## Checks
 
-`scripts/ci-checks.sh` runs fmt, clippy `-D warnings`, tests, `cargo deny` (`deny.toml`, if installed) and a secret
+`scripts/test-playback.sh` is the clean-container release gate (package build, install, run on the host Wayland session
+with software rendering, headless libmpv clip); what it does and does not prove is in its header and in
+[QA_REPORT.md](QA_REPORT.md). `scripts/ci-checks.sh` runs fmt, clippy `-D warnings`, tests, `cargo deny` (`deny.toml`, if installed) and a secret
 scan of tracked files and history. `scripts/gen-notices.py > THIRD_PARTY_NOTICES.md` regenerates the notices after
 a dependency change. Replace the `SKIP` checksum in the PKGBUILD before a release.
