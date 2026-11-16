@@ -163,7 +163,14 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   keyboard focus scrolls into view without measuring. Debug preview: `NOCTURNE_PREVIEW=detail` (see `detail/preview.rs`).
   Deferred: hero fade-in, source marks on strip cells, "New playlist" entry point (the Add dialog creates one by name),
   a shared root image cache (the page keeps its own).
-- [ ] 4e account page, admin per server, SyncPlay, music queue
+- [x] 4e (worktree, modules with root hooks documented at the top of each): `crates/ui/src/admin/` (all 20 sections,
+  confirmation dialog, `on_confirm` the only `Confirmed` mint, directory-scanning test; source picker over the sources
+  where the account is an administrator, `admin/pick.rs`), `syncplay/` (screen, pill, 50 ms socket drain as a
+  subscription, group-aware player glue, server = source of the played item or a picker), `queue.rs` (session music
+  queue + overlay + `Player::music_snapshot/restore_music`), `account/devices.rs` (own sessions overlay),
+  `widget/overlay.rs`. Debug previews: `NOCTURNE_PREVIEW=admin|syncplay`. Two real SyncPlay clients verified
+  (create, join, start for the group, queue, player opened) on a throwaway server. Admin writes were not run against a
+  server (guard needs :8097); the dialog flow to the minting point is unit-tested with a dead-port client.
 - [ ] integration: wire the detail hook (and later 4e hooks) into app/mod.rs after 4b merges
 - [ ] 5 cut-over
 - [ ] 6 verification

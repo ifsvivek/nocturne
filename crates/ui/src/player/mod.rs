@@ -234,7 +234,7 @@ pub struct Player {
     pub queue_open: bool,
     pub queue_sel: usize,
     pub shuffle: bool,
-    unshuffled: Vec<Media>,
+    pub(crate) unshuffled: Vec<Media>,
     pub ctx_menu: Option<Point>,
     pub mini: bool,
     restore_size: Option<Size>,
@@ -249,7 +249,7 @@ pub struct Player {
     /// commands are applied through the `group_*` methods.
     pub group: bool,
     pub outbox: Vec<GroupReq>,
-    ready_due: Option<f64>,
+    pub(crate) ready_due: Option<f64>,
     eof_sent: bool,
     pub group_diff: Option<f64>,
 }

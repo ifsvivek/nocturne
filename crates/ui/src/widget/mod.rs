@@ -2,6 +2,7 @@
 //! the caller. Colours come from `theme`, shapes from `style`.
 pub mod controls;
 pub mod layout;
+pub mod overlay;
 pub mod popover;
 pub mod press;
 pub mod source;
