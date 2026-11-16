@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Footprint measurements for a NOCTURNE binary (see docs/PLATFORMS.md, docs/dev/PERF.md). Linux only.
 # usage: scripts/perf.sh [BINARY] [LABEL]     (default target/release/$BIN)
-#   env: BIN  app binary name (default nocturne; nocturne-iced before the Iced cut-over)
+#   env: BIN  app binary name (default nocturne)
 #   env: PERF_DEMO_ENV  test.env of the throwaway demo server (default /tmp/nocturne-demo/jf/test.env); when it
 #                       exists, the "loaded home" row runs in dev-token mode against it, otherwise it prints n/a.
 #        PERF_RUNS (5)  PERF_IDLE_WAIT (10 s)  PERF_CPU_SECS (30)

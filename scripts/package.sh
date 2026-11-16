@@ -4,8 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 [ "${1:-}" = tarball ] || { echo "usage: $0 tarball" >&2; exit 2; }
-# The one place that names the app package. At the Iced cut-over crates/ui becomes `nocturne-app` / `nocturne`;
-# before it: PKG=nocturne-ui BIN=nocturne-iced scripts/package.sh tarball. The installed name is always `nocturne`.
+# The one place that names the app package (crates/app, binary `nocturne`; installed name is always `nocturne`).
 PKG="${PKG:-nocturne-app}"; BIN="${BIN:-nocturne}"
 ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 name="nocturne-$ver-$(uname -m)-linux"

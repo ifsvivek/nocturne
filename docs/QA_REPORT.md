@@ -268,7 +268,7 @@ observed directly; the explicit flag reproduces it.
 | `mpv --tls-verify=yes --tls-ca-file=<the self-signed cert>` | plays, exit 0 |
 | Embedded player (`NOCTURNE_PREVIEW=player`, libmpv, default options) on the https stream | plays (0:01 elapsed, controls and video up); the first launch needed a few seconds longer to open |
 | App's own client (`NOCTURNE_JF_URL=https://127.0.0.1:8447`) | "Can't reach your server": the Jellyfin API client (rustls, system roots) already refuses the self-signed certificate |
-| `crates/player`/`crates/ui` set `tls-*` options anywhere | no (`grep` finds none), so mpv's own default applies |
+| `crates/player`/`crates/app` set `tls-*` options anywhere | no (`grep` finds none), so mpv's own default applies |
 
 Conclusion: no change needed. On mpv 0.42 a self-signed certificate would stop mpv, but such a server never gets as far
 as playback: the API client rejects it at connect time (and has always done so). A server whose certificate chains to a
@@ -279,7 +279,7 @@ run separately through the app: it is the same mpv with the same defaults as the
 
 ## Clean-container playback gate, Iced app (2026-11-16)
 
-`PKG=nocturne-ui BIN=nocturne-iced scripts/test-playback.sh` (pre-cut-over Iced app; package built from `git archive HEAD`
+`PKG=nocturne-ui BIN=nocturne-iced scripts/test-playback.sh` (names as they were before the cut-over; now `nocturne-app` / `nocturne`; package built from `git archive HEAD`
 in a fresh `archlinux:base-devel`, `makepkg -si --nocheck`, non-root user with the host uid, host Wayland socket
 bind-mounted, no `/dev/dri`, mesa `vulkan-swrast` (lavapipe), `WGPU_BACKEND=vulkan`, throwaway XDG dirs,
 `NOCTURNE_KEYRING_SERVICE=nocturne-test`, no Jellyfin URL/token). Result: 0 failures. Container, work dir and the pulled image were removed.
@@ -299,4 +299,4 @@ distro's libmpv decodes video. Does not prove: in-window video (libmpv render AP
 contents (release builds have no screenshot path), input, hardware rendering or decoding, a real library or server, other
 distributions. Those stay host-verified. Also checked 2026-11-16: package names exist in debian:stable, fedora:latest and
 openSUSE Tumbleweed (see PACKAGING.md; `libEGL1` does not exist on openSUSE, `libglvnd` provides `libEGL.so.1`);
-`cargo deny check licenses bans sources` passes on the workspace including `nocturne-ui`.
+`cargo deny check licenses bans sources` passes on the workspace including the Iced app.

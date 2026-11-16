@@ -1,5 +1,5 @@
 //! Debug-only launcher for the walkthrough, so every step can be looked at and captured without a
-//! catalog. Launch through `scripts/run-isolated.sh target/debug/nocturne-iced` (never from inside
+//! catalog. Launch through `scripts/run-isolated.sh target/debug/nocturne` (never from inside
 //! the repo).
 //!
 //! `NOCTURNE_PREVIEW=onboarding` plus any of:

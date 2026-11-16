@@ -5,7 +5,8 @@ Verification detail per feature is in [QA_REPORT.md](QA_REPORT.md); remaining wo
 Which features change data on your server is in [WRITES.md](WRITES.md).
 
 ## Sources: local folders and several servers
-- [x] First-run choice: Local library, Connect to a server, or Both
+- [x] First-run setup flow (5 steps fresh, 2 for upgraders): Local library, Connect to a server, or Both; Settings > Run setup again
+- [x] Single instance: a second launch raises the running window
 - [x] Several Jellyfin servers at once, each with its own account; a source that is signed out or offline never blocks the others (quiet banner, retry with backoff)
 - [x] Settings > Sources: status, sign in again, rescan, enable / disable, priority order, remove (says what is deleted)
 - [x] One unified library: Home, browse and search merge sources; a header filter narrows to one source; small source marks on cells and detail pages
@@ -44,7 +45,7 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 ## Playback
 - [x] In-window GPU video through libmpv with hardware decoding (Wayland); external mpv window on X11 and as a fallback
 - [x] libmpv is loaded at run time: without it the app still starts and falls back to the `mpv` program or shows what to install
-- [x] Loading splash (Stremio-style: backdrop, logo filling with the buffer) when a stream opens, a lighter version on stalls
+- [x] Player loading overlay (Stremio-style: backdrop, logo filling with the buffer) when a stream opens, a lighter version on stalls
 - [~] HDR video is tone-mapped to SDR in the window; an HDR pop-out window is planned for 0.4 ([HDR.md](HDR.md))
 - [x] Seek bar with chapters and trickplay hover thumbnails, volume, fullscreen, mini player
 - [x] Audio and subtitle menus, subtitle styling and delay, audio delay, speed, aspect and picture controls

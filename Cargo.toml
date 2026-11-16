@@ -16,10 +16,6 @@ authors = ["ifsvivek"]
 # MSRV is the highest declared by a dependency (uuid 1.89). `cargo check --workspace --locked` passes on 1.89.0; clippy and tests run on current stable only.
 rust-version = "1.89"
 
-# gpui -> zed-async-tar -> xattr 0.2.3 no longer builds with current libc (ENOATTR removed).
-[patch.crates-io]
-xattr = { path = "vendor/xattr" }
-
 [profile.release]
 # Measured clean builds, 16 cores: thin/16 cgu 135 s, 31 MB; fat/1 cgu 267 s, 24 MB.
 lto = "fat"

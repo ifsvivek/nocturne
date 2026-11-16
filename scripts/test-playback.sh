@@ -2,7 +2,7 @@
 # Clean-container release gate: build the Arch package from `git archive HEAD` in a throwaway archlinux:base-devel
 # container, install it, then RUN the installed `nocturne` inside the container on the host's Wayland session
 # (socket bind-mounted, software rendering only: mesa lavapipe, no /dev/dri). No GitHub Actions, no sudo (docker group).
-#   usage: [PKG=nocturne-ui BIN=nocturne-iced] scripts/test-playback.sh
+#   usage: [PKG=nocturne-app BIN=nocturne] scripts/test-playback.sh
 #   (defaults nocturne-app / nocturne; the PKGBUILD's _pkg/_bin; the installed name is always `nocturne`)
 #   env: HOLD (10)  seconds the window must stay up;  KEEP_IMAGES=1 keeps an image this script pulled.
 # Commit first: the package is built from HEAD, not from the working tree.

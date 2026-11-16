@@ -1,6 +1,6 @@
 [package]
-name = "nocturne-ui"
-description = "Iced front end of NOCTURNE (replaces the GPUI app at the cut-over)"
+name = "nocturne-app"
+description = "Iced front end of NOCTURNE"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,7 +13,7 @@ authors.workspace = true
 rust-version.workspace = true
 
 [[bin]]
-name = "nocturne-iced"
+name = "nocturne"
 path = "src/main.rs"
 
 [dependencies]
@@ -30,11 +30,6 @@ png = "0.18"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time"] }
 libc = "0.2"
 image = { version = "0.25.1", default-features = false, features = ["png", "jpeg", "webp"] }
-
-# Only while GPUI shares the workspace: gpui's wgpu fork (naga 25) turns on codespan-reporting's
-# `termcolor`, which breaks naga 27 (iced's wgpu) unless naga 27 enables its own `termcolor` too.
-# Delete with the GPUI app at the cut-over.
-naga = { version = "27", default-features = false, features = ["termcolor"] }
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
 
 [dev-dependencies]

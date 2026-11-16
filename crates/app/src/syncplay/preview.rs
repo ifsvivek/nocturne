@@ -1,7 +1,7 @@
 //! Debug-only launcher for Watch together (`NOCTURNE_PREVIEW=syncplay`): one signed-in client of a
 //! throwaway server, with a player page that follows the group. Start two instances (two users,
 //! different `NOCTURNE_DEVICE_ID`) to try a real group. Launch through
-//! `scripts/run-isolated.sh target/debug/nocturne-iced` (never from inside the repo).
+//! `scripts/run-isolated.sh target/debug/nocturne` (never from inside the repo).
 //!
 //! - `NOCTURNE_PREVIEW_SERVER=http://127.0.0.1:8100 NOCTURNE_PREVIEW_TOKEN_FILE=<test.env>
 //!   NOCTURNE_PREVIEW_USER=alice`: signs that user in (password from `NOCTURNE_JF_TEST_<USER>_PW` in

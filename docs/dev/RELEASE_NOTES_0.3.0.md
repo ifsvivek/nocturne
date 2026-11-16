@@ -5,13 +5,14 @@ Draft for the GitHub release. The maintainer fills in the checksums and publishe
 ## Highlights
 
 - **One library from local folders and Jellyfin servers.** Use NOCTURNE with only local media, with one or several
-  Jellyfin servers (each with its own account), or both. A first-run screen asks which; Settings > Sources manages them.
+  Jellyfin servers (each with its own account), or both. A short first-run setup flow asks which; Settings > Sources manages them.
 - **Duplicates become versions and sources.** A title found in several places shows once; one "Versions and sources" picker on
   its page lists a server's own versions (4K, 1080p) and the copies elsewhere. Matching uses provider ids, never the title alone.
 - **Local library.** Folders are scanned from file names, `.nfo` files and sidecar art (plus `ffprobe` details if installed),
   with progress, unmatched items you can match by hand, and resume and watched state kept locally. Your files are never modified.
-- **A new interface on Iced**, replacing GPUI: the same design and keys, with a Stremio-style loading splash when a video
+- **A new interface on Iced**, replacing GPUI: the same design and keys, with a Stremio-style loading overlay in the player when a video
   opens, a reduce-motion setting that follows your desktop, and a startup that does not wait for the network.
+- **Guided first run and one window.** A short setup flow (Local library, a server, or both; rerun from Settings) and a second launch raises the running window.
 - **libmpv is optional at start.** If it is missing the app still opens and browses, falls back to the `mpv` program, or tells you
   what to install. The tarball installer installs missing runtime libraries for you.
 - Video still plays inside the window with hardware decoding on Wayland, and in an external mpv window on X11.

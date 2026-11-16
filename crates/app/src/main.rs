@@ -1,4 +1,4 @@
-//! NOCTURNE, Iced front end (temporary binary `nocturne-iced`; becomes `nocturne` at the cut-over).
+//! NOCTURNE, Iced front end.
 #![allow(dead_code)] // the widget kit is consumed screen by screen over steps 4a-4e
 mod account;
 mod admin;

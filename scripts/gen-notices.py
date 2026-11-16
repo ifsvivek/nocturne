@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate THIRD_PARTY_NOTICES.md body from `cargo tree` + `cargo metadata`.
 
-Usage: [PKG=nocturne-ui] scripts/gen-notices.py > THIRD_PARTY_NOTICES.md   (run from the repo root)
+Usage: [PKG=nocturne-app] scripts/gen-notices.py > THIRD_PARTY_NOTICES.md   (run from the repo root)
 PKG is the shipped app package (default nocturne-app; same variable as scripts/package.sh). Statements that only
 hold for some dependency sets (GPUI, vendored xattr, self_cell, option-ext) are emitted only when that crate is
 in the shipped tree, so the cut-over needs no edit here.

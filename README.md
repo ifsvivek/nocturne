@@ -36,8 +36,9 @@ The full checklist is [docs/FEATURES.md](docs/FEATURES.md); verification notes a
 
 - **One library from many sources**: use local media folders only, one or several Jellyfin servers (each with its own
   account), or both. The same title found in several places appears once, with the other copies offered as versions and
-  sources on its detail page. A first-run screen asks which of the three you want; **Settings > Sources** manages
+  sources on its detail page. A short first-run setup asks which of the three you want (repeat it from Settings); **Settings > Sources** manages
   servers and folders afterwards.
+- **Guided setup, one window**: the first-run flow can be repeated from Settings, and launching NOCTURNE again raises the running window.
 - **Local library**: add folders, NOCTURNE scans them (names, `.nfo` files and sidecar artwork; `ffprobe` adds stream
   details if installed), shows scan progress, lists what it could not match and lets you match it by hand. Your files are
   never modified, moved or deleted.

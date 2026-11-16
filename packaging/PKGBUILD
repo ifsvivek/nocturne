@@ -1,6 +1,5 @@
 # Maintainer: ifsvivek
-# The one place that names the app package. At the Iced cut-over crates/ui becomes `nocturne-app` / `nocturne`;
-# before it, build with `_pkg=nocturne-ui _bin=nocturne-iced`. The installed name is always `nocturne`.
+# The one place that names the app package (crates/app, binary `nocturne`; installed name is always `nocturne`).
 _pkg=${_pkg:-nocturne-app}
 _bin=${_bin:-nocturne}
 pkgname=nocturne

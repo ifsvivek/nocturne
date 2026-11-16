@@ -1,14 +1,12 @@
 # Packaging
 
 Built and checked on Arch Linux, x86_64, Wayland (Hyprland), mpv 0.41.0, Rust 1.99. The dependency list below is the
-Iced build's (derived 2026-11-16 from `target/release/nocturne-iced`). Other distributions and architectures: package
+Iced build's (derived 2026-11-16 from `target/release/nocturne`). Other distributions and architectures: package
 names were checked to exist in the default repos of Debian stable, Fedora and openSUSE Tumbleweed (containers), nothing
 more. Debian/Fedora/openSUSE builds are UNVERIFIED.
 
 **One variable names the app package.** `scripts/package.sh`, `scripts/perf.sh` and `packaging/PKGBUILD` default to
-package `nocturne-app` / binary `nocturne` (what `crates/ui` becomes at the cut-over). Before the cut-over build the
-Iced app with `PKG=nocturne-ui BIN=nocturne-iced scripts/package.sh tarball` (PKGBUILD: `_pkg=nocturne-ui _bin=nocturne-iced makepkg`;
-`scripts/gen-notices.py` and `scripts/test-playback.sh` take the same `PKG`/`BIN`). The installed name is always `nocturne`.
+package `nocturne-app` (`crates/app`) / binary `nocturne`; `scripts/gen-notices.py` and `scripts/test-playback.sh` take the same `PKG`/`BIN`). The installed name is always `nocturne`.
 
 Planned, not available yet: .deb, .rpm, AppImage, macOS and Windows packages. Per-platform libmpv handling and the footprint budget are in
 [PLATFORMS.md](PLATFORMS.md).
@@ -73,8 +71,7 @@ The tarball binary is built on a rolling distribution and is not an "any Linux" 
 ## Build
 
 ```sh
-# Release tarball -> dist/nocturne-<version>-x86_64-linux.tar.gz (+ .sha256); before the cut-over:
-# PKG=nocturne-ui BIN=nocturne-iced scripts/package.sh tarball
+# Release tarball -> dist/nocturne-<version>-x86_64-linux.tar.gz (+ .sha256)
 scripts/package.sh tarball
 
 # Install from the extracted tarball (PREFIX default /usr/local, DESTDIR optional)
@@ -95,16 +92,6 @@ AppImage: not provided yet (planned, to be evaluated: [PLATFORMS.md](PLATFORMS.m
 codecs, the GPU stack (libEGL/libvulkan and driver ICDs) must come from the host and cannot be bundled, and a
 binary built on a rolling glibc would not be self-contained on older systems. Use the tarball or the distribution
 package, which take libmpv from the system.
-
-## Vendored xattr
-
-Only the legacy GPUI crate needs this; it goes away with GPUI at the cut-over (`vendor/xattr` and the `[patch]` entry).
-
-`vendor/xattr` is the crates.io `xattr` 0.2.3 with one line changed (`ENOATTR` is defined as `ENODATA`).
-GPUI pulls it in through `zed-async-tar`, which requires the 0.2 series, and 0.2.3 is the last 0.2 release. It
-uses `libc::ENOATTR`, which current `libc` (0.2.190 and later) no longer exports for Linux, so the unpatched crate does
-not compile (checked in a clean copy without the `[patch.crates-io]` entry: `error[E0425]: cannot find value ENOATTR`).
-Remove the patch and the directory once GPUI or `zed-async-tar` moves to a fixed `xattr`.
 
 ## Checks
 

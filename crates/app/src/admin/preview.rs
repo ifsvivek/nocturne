@@ -1,5 +1,5 @@
 //! Debug-only launcher for the admin screen (`NOCTURNE_PREVIEW=admin`). Launch through
-//! `scripts/run-isolated.sh target/debug/nocturne-iced` (never from inside the repo).
+//! `scripts/run-isolated.sh target/debug/nocturne` (never from inside the repo).
 //!
 //! - `NOCTURNE_PREVIEW_SERVER=http://127.0.0.1:8100 NOCTURNE_PREVIEW_TOKEN_FILE=<test.env>`: the
 //!   admin API key of a throwaway server (loopback only). `NOCTURNE_PREVIEW_SERVER2` /

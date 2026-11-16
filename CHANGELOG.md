@@ -23,8 +23,9 @@ Jellyfin servers in one library.
 - **Duplicates as versions and sources.** The same title found in several places appears once (matched on provider ids, never on
   title alone). The detail page has one "Versions and sources" picker listing a server's own versions (for example 4K and
   1080p) and copies on other servers or in local folders, with "Always prefer this source".
-- **First run.** A welcome screen offers Local library, Connect to a server, or Both.
-- **Loading splash.** Opening a stream shows a Stremio-style splash (the item's backdrop, its logo filling with the buffer
+- **First-run setup.** A short onboarding flow (five steps for a fresh install, two for an upgrader) offers Local library, Connect to a server, or Both; Settings > Run setup again repeats it.
+- **Single instance.** Launching NOCTURNE again raises the running window instead of opening a second one.
+- **Player loading overlay.** Opening a stream shows a Stremio-style splash (the item's backdrop, its logo filling with the buffer
   and a status line); a lighter version appears on stalls during playback.
 - **Reduce motion** setting (follows the desktop preference by default).
 - **Watch together (SyncPlay):** press `g` or use the account menu to list, create, join and leave groups on your server. In a

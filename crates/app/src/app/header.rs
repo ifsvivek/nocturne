@@ -1,4 +1,4 @@
-//! Chrome: header, breadcrumbs, avatar and the account menu (port of the GPUI `Root::header`,
+//! Chrome: header, breadcrumbs, avatar and the account menu (port of the old `Root::header`,
 //! `crumbs`, `avatar`, `account_menu`).
 use super::home::HRow;
 use super::message::{AcctAct, Message};

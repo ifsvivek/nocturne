@@ -1,5 +1,5 @@
 //! Debug-only launcher for the detail page, so it can be run and screenshotted without the catalog.
-//! Launch through `scripts/run-isolated.sh target/debug/nocturne-iced` (never from inside the repo:
+//! Launch through `scripts/run-isolated.sh target/debug/nocturne` (never from inside the repo:
 //! debug builds read the repo's `.env`).
 //!
 //! `NOCTURNE_PREVIEW=detail` plus one of:
