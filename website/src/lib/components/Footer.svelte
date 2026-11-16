@@ -30,6 +30,7 @@
     <nav class="mt-12 flex flex-wrap justify-center gap-x-8 gap-y-3 text-[0.72rem] font-medium tracking-[0.26em] uppercase" aria-label="Footer">
       {#if RELEASED}
         <a class="text-ink-2 no-underline hover:text-white" href={RELEASES} rel="noopener">Download</a>
+        <a class="text-ink-2 no-underline hover:text-white" href="/repo">Package repository</a>
         <a class="text-ink-2 no-underline hover:text-white" href={REPO} rel="noopener">Source</a>
         <a class="text-ink-2 no-underline hover:text-white" href="{REPO}/tree/main/docs" rel="noopener">Documentation</a>
       {/if}

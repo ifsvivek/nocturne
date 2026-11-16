@@ -11,3 +11,34 @@
 /_app/immutable/*
   ! Cache-Control
   Cache-Control: public, max-age=31536000, immutable
+
+# Package repository (static/repo/, generated at deploy). Rules run in file order, so each detaches the global
+# Cache-Control above and sets its own; no-transform stays so nothing re-encodes signed files. CSP and the other
+# global headers are harmless on downloads.
+/repo/ARCH-GPG-KEY
+  ! Cache-Control
+  Cache-Control: no-cache, no-transform
+
+/repo/*.db
+  ! Cache-Control
+  Cache-Control: no-cache, no-transform
+
+/repo/*.db.sig
+  ! Cache-Control
+  Cache-Control: no-cache, no-transform
+
+/repo/*.files
+  ! Cache-Control
+  Cache-Control: no-cache, no-transform
+
+/repo/*.files.sig
+  ! Cache-Control
+  Cache-Control: no-cache, no-transform
+
+/repo/*.pkg.tar.zst
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable, no-transform
+
+/repo/*.pkg.tar.zst.sig
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable, no-transform

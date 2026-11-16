@@ -26,7 +26,7 @@ let off, on, prev;
 before(() => { off = build(false); on = build(true); prev = build(true, "0.2.0"); });
 
 test("RELEASED=false: no repo or release links, coming soon", () => {
-  for (const f of ["index.html", "privacy.html", "404.html"]) {
+  for (const f of ["index.html", "privacy.html", "404.html", "repo.html"]) {
     const h = read(off, f);
     assert.doesNotMatch(h, /github\.com\/ifsvivek/i, f);
     assert.doesNotMatch(h, /releases/i, f);
@@ -36,6 +36,23 @@ test("RELEASED=false: no repo or release links, coming soon", () => {
   const h = read(off, "index.html");
   for (const s of ["Scene 1", "Behind the scenes", "Your files are never touched. Nothing on a server changes until you allow it.", "One library", "alternate sources", "Do I need a Jellyfin server?", "Coming soon to Linux", "Technical specifications", "Questions", "srcset=", "Scene 4", "Who's watching?", "Use as default profile", "Default profile", "Scene 6"]) assert.ok(h.includes(s), s);
   assert.doesNotMatch(h, /makepkg|install\.sh|cargo build/);
+  assert.doesNotMatch(read(off, "repo.html"), /pacman-key|pacman -S|5204/, "repository steps only once released");
+});
+
+test("package repository page: exact pacman steps, signing key, other formats planned", () => {
+  const h = read(on, "repo.html").replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  for (const s of [
+    "curl -fsSL https://nocturne.ifsvivek.in/repo/ARCH-GPG-KEY | sudo pacman-key --add -",
+    "sudo pacman-key --lsign-key 5204B42AF768DE210D4979E397FA02EFCF1A4E3B",
+    "sudo tee -a /etc/pacman.conf << 'EOF'\n\n[nocturne]\nSigLevel = Required TrustedOnly\nServer = https://nocturne.ifsvivek.in/repo/arch/$arch\nEOF",
+    "sudo pacman -Sy", "sudo pacman -S nocturne", "sudo pacman -Syu",
+    "5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B", "ed25519, valid until 2029-11-15",
+    "CachyOS, EndeavourOS and Manjaro", "Planned with 0.4", 'rel="canonical" href="https://nocturne.ifsvivek.in/repo"',
+  ]) assert.ok(h.includes(s), s);
+  assert.equal((h.match(/Planned with 0\.4/g) || []).length, 2, ".deb and .rpm, no instructions");
+  assert.doesNotMatch(h, /apt |dnf |\/etc\/apt|\.repo\b/);
+  assert.ok(read(on, "index.html").includes('href="/repo"'), "Install and footer link the page");
+  assert.ok(read(on, "sitemap.xml").includes("https://nocturne.ifsvivek.in/repo"));
 });
 
 test("RELEASED=true: download, repo and version", () => {
@@ -95,7 +112,8 @@ test("no external origins except upstream credit links", () => {
 
 test("no personal data patterns", () => {
   const bad = /\/home\/|\/Users\/|[\w.+-]+@[\w-]+\.[a-z]{2,}|(?:api[_-]?key|secret|token|password)\s*[=:]\s*\S{8,}|\b[a-f0-9]{32,}\b|account_id/i;
-  for (const f of files(on).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) assert.doesNotMatch(readFileSync(f, "utf8"), bad, f);
+  // The repository signing key id is public by design.
+  for (const f of files(on).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) assert.doesNotMatch(readFileSync(f, "utf8").replaceAll("5204B42AF768DE210D4979E397FA02EFCF1A4E3B", ""), bad, f);
 });
 
 test("_headers carries the strict CSP and no-transform", () => {
@@ -104,6 +122,11 @@ test("_headers carries the strict CSP and no-transform", () => {
   assert.match(h, /frame-ancestors 'none'/);
   assert.doesNotMatch(h, /unsafe-eval|unsafe-inline/);
   for (const k of ["Strict-Transport-Security", "Referrer-Policy: no-referrer", "X-Content-Type-Options: nosniff", "Permissions-Policy", "no-transform"]) assert.ok(h.includes(k), k);
+  // Repository files: each rule comes after the global block, detaches its Cache-Control and sets one value.
+  const rule = (path) => h.match(new RegExp(`^${path.replace(/[.*]/g, (c) => "\\" + c)}\\n  ! Cache-Control\\n  Cache-Control: ([^\\n]+)`, "m"))?.[1];
+  for (const p of ["/repo/ARCH-GPG-KEY", "/repo/*.db", "/repo/*.db.sig", "/repo/*.files", "/repo/*.files.sig"]) assert.equal(rule(p), "no-cache, no-transform", p);
+  for (const p of ["/repo/*.pkg.tar.zst", "/repo/*.pkg.tar.zst.sig"]) assert.equal(rule(p), "public, max-age=31536000, immutable, no-transform", p);
+  assert.ok(h.indexOf("/repo/") > h.indexOf("/*\n"), "repo rules follow the global rule");
 });
 
 test("size budget", () => {

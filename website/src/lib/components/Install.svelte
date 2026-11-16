@@ -1,7 +1,6 @@
 <script>
   import { RELEASED, REPO, RELEASES, VERSION } from "#lib/site.js";
   import Next from "./Next.svelte";
-  const pre = "m-0 mt-5 overflow-x-auto rounded-sm bg-surface px-4 py-3.5 text-[0.8rem] leading-[1.75] text-ink ring-1 ring-line ring-inset";
   // [needs, detail, status, version that ships the detail (marked until VERSION reaches it)]
   const specs = [
     ["Platform", "Linux, x86_64, with packages for Arch Linux only. .deb and .rpm packages are planned; an AppImage is under evaluation. macOS and Windows are planned, not available.", "Linux only today"],
@@ -26,15 +25,21 @@
     <div class="stagger mt-[clamp(56px,7vw,96px)] grid gap-y-10 *:min-w-0 lg:grid-cols-3 lg:divide-x lg:divide-line">
       <div class="lg:pr-10">
         <h3 class="role text-ink">Arch Linux</h3>
-        <p class="m-0 mt-3 text-ink-2">The PKGBUILD from the v{VERSION} release builds from that tag's source archive and pulls in mpv for playback.</p>
-        {#if RELEASED}<pre class={pre}><code>git clone --branch v{VERSION} --depth 1 {REPO}.git
+        {#if RELEASED}
+          <p class="m-0 mt-3 text-ink-2">A signed pacman repository: add it once, and NOCTURNE updates with the rest of your system. <a href="/repo">Set up the repository</a>.</p>
+          <pre class="code"><code>sudo pacman -S nocturne</code></pre>
+          <p class="m-0 mt-6 text-sm text-ink-2">Or build the PKGBUILD from the v{VERSION} release, which pulls in mpv for playback:</p>
+          <pre class="code"><code>git clone --branch v{VERSION} --depth 1 {REPO}.git
 cd nocturne/packaging
-makepkg -si</code></pre>{/if}
+makepkg -si</code></pre>
+        {:else}
+          <p class="m-0 mt-3 text-ink-2">A signed pacman repository and a PKGBUILD that builds from the release tag's source archive and pulls in mpv for playback.</p>
+        {/if}
       </div>
       <div class="lg:px-10">
         <h3 class="role text-ink">Tarball</h3>
         <p class="m-0 mt-3 text-ink-2">A generic x86_64 build with an install script. Installs to <code>/usr/local</code>, and the same script uninstalls. It also installs the runtime packages, mpv included. <Next /></p>
-        {#if RELEASED}<pre class={pre}><code>tar xf nocturne-{VERSION}-x86_64-linux.tar.gz
+        {#if RELEASED}<pre class="code"><code>tar xf nocturne-{VERSION}-x86_64-linux.tar.gz
 cd nocturne-{VERSION}-x86_64-linux
 sudo ./install.sh</code></pre>
           <p class="mt-4 text-sm text-ink-2">Get it from <a href={RELEASES} rel="noopener">the latest release</a>.</p>{/if}
@@ -42,7 +47,7 @@ sudo ./install.sh</code></pre>
       <div class="lg:pl-10">
         <h3 class="role text-ink">From source</h3>
         <p class="m-0 mt-3 text-ink-2">Stable Rust 1.89 or newer, and mpv installed to play video. A clean build takes several minutes.</p>
-        {#if RELEASED}<pre class={pre}><code>git clone --branch v{VERSION} --depth 1 {REPO}.git
+        {#if RELEASED}<pre class="code"><code>git clone --branch v{VERSION} --depth 1 {REPO}.git
 cd nocturne
 cargo build --release --locked
 ./target/release/nocturne</code></pre>{/if}

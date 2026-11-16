@@ -67,6 +67,14 @@
   /* "Coming in 0.3": marks copy for a version that is not the one you can download yet (Next.svelte). */
   .soon { @apply ml-[0.6em] inline-block rounded-[3px] px-2 py-0.5 align-[0.12em] text-[0.62rem] leading-normal font-medium tracking-[0.22em] whitespace-nowrap text-ink-2 uppercase ring-1 ring-line-strong ring-inset; }
 
+  /* A command block: selectable, scrolls sideways inside itself on narrow screens. */
+  .code { @apply m-0 mt-5 overflow-x-auto rounded-sm bg-surface px-4 py-3.5 text-[0.8rem] leading-[1.75] text-ink ring-1 ring-line ring-inset; }
+
+  /* Numbered steps (the repository page): a thin numeral, a hairline, then the step. */
+  .steps { @apply m-0 grid list-none gap-0 p-0; counter-reset: step; }
+  .steps > li { @apply relative min-w-0 border-l border-line-strong py-6 pl-[clamp(48px,6vw,72px)]; counter-increment: step; }
+  .steps > li::before { content: counter(step); @apply absolute top-5 left-[clamp(14px,2vw,24px)] text-[1.6rem] leading-none font-light text-ink-3 tabular-nums; }
+
   .tick { @apply m-0 grid list-none gap-3 p-0 text-ink-2; }
   .tick li { @apply relative pl-6; }
   .tick li::before { content: ""; @apply absolute left-0 top-[0.8em] h-px w-3 bg-ink-3; }
