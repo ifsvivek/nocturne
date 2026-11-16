@@ -4,7 +4,7 @@ Everything NOCTURNE does not do yet, in the order it is likely to be built, plus
 What already works is in [FEATURES.md](FEATURES.md); verification status is in [QA_REPORT.md](QA_REPORT.md).
 No dates are promised. Priorities can change with user feedback and with what upstream Jellyfin changes.
 
-## 0.2.x (current release; GPUI interface)
+## 0.2.x (earlier release; GPUI interface)
 
 Shipped: browsing, search, details, in-window GPU playback with a full player, accounts (password, Quick Connect,
 switching), playlists and a music queue, an admin dashboard inside the same app, settings, packaging for Arch Linux.
@@ -23,23 +23,24 @@ stop and next, clock sync, drift correction and the Ready / Buffering handshake,
 Still to do: show what a group is playing (the API does not say), group repeat and shuffle modes, queue editing from the
 group, resume positions, and testing with more than two members and with transcoded members.
 
-## Next: 0.3, a new foundation (in development)
+## Shipped in 0.3: a new foundation
 
-- **Iced UI.** The interface moves from GPUI to Iced 0.14 with the same design and features; GPUI is removed.
-  In-window video keeps working on Wayland ([DECISIONS.md](DECISIONS.md)).
+- **Iced UI.** The interface moved from GPUI to Iced 0.14 with the same design and features; GPUI is removed. In-window
+  video keeps working on Wayland ([DECISIONS.md](DECISIONS.md)). A reduce-motion setting follows the desktop.
 - **libmpv no longer required to start.** It is loaded at run time; without it playback falls back to the `mpv`
   binary or explains what to install. The release installer installs runtime packages itself.
 - **Local library, several servers, one catalog** ([SOURCES.md](SOURCES.md)): use NOCTURNE with local folders only,
   with several Jellyfin servers and accounts, or both; duplicates across sources shown once with alternate sources;
-  a first-run choice between the three modes; a Sources section in Settings.
-- **Startup screen** with original artwork and real progress.
+  a first-run choice between the three modes; a Sources section in Settings; local folders with scan progress and
+  manual matching.
+- **Loading splash** (Stremio-style) when a stream opens.
 - **Version picker**: movies and episodes with several versions, and copies of the same title on other servers or
   in local folders, are offered in one "Versions and sources" choice on the detail page.
-- **mpv 0.42 check**: mpv now verifies HTTPS certificates by default; playback against servers with private or
-  self-signed certificates is tested, and a per-server trust option is added only if needed.
 - **Footprint baselines** (size, start time, idle memory and CPU) tracked per release ([PLATFORMS.md](PLATFORMS.md)).
 
-## Then: 0.4, right after 0.3 is approved
+Not finished in 0.3 and carried forward: the mpv 0.42 certificate check (below), screen-reader support (limited by Iced).
+
+## Then: 0.4, right after 0.3
 
 Chosen by the maintainer from the research backlog: dual subtitles; audio and subtitle language remembered per show
 across restarts (including original audio); a Latest row with new episodes and Play on a show card starting the next
@@ -55,8 +56,8 @@ TVmaze ([METADATA.md](METADATA.md)). The compatibility items below are folded in
 A review of the Jellyfin ecosystem (server, web and other official clients: issues, pull requests, API changes) found no
 critical problems in NOCTURNE. It did find a set of small fixes worth doing before new features.
 
-- Check playback with mpv 0.42, which now verifies HTTPS certificates by default, and decide whether a certificate
-  option is needed
+- Check playback with mpv 0.42, which now verifies HTTPS certificates by default (private or self-signed certificates), and
+  decide whether a per-server certificate option is needed
 - Playback reports that describe the stream truthfully (direct play or transcode, media source, play session), so the
   server can stop a transcode when you stop watching; visible, non-modal errors when a report fails, and one retry of
   the final "stopped" report
@@ -71,7 +72,6 @@ critical problems in NOCTURNE. It did find a set of small fixes worth doing befo
 ## Then: playback depth (0.5)
 
 - Two subtitle tracks at once (mpv supports it; Jellyfin Web already has it)
-- A version picker for movies and episodes that have several versions (Jellyfin 12 added them for episodes)
 - Audio and subtitle language choices remembered per show across restarts, including "original audio" where the
   server provides it; stored locally, never on the server
 - Intro and credits prompts that stay visible for the whole segment and cope with overlapping segments from two

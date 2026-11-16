@@ -7,12 +7,10 @@ NOCTURNE is a native desktop media center written in Rust: one cinematic, search
 folders and any number of Jellyfin servers, playing video inside the app window through libmpv. Jellyfin is a
 first-class source but never required. GPL-3.0-or-later. Not affiliated with the Jellyfin project.
 
-## Direction (in progress on branch `iced-migration`; see `docs/dev/ICED_MIGRATION.md`)
+## Direction
 
-- **UI framework: Iced 0.14** (wgpu, winit), replacing GPUI. The new UI is `crates/ui`; the GPUI crate `crates/app`
-  is the legacy reference and is deleted at the cut-over (then `crates/ui` becomes `crates/app`, binary `nocturne`).
-  Do not add features to the GPUI crate. Iced APIs: [docs/dev/ICED_NOTES.md](docs/dev/ICED_NOTES.md) (verified
-  against 0.14 sources; never use older Iced APIs from memory).
+- **UI framework: Iced 0.14** (wgpu, winit). The GPUI UI of 0.2.0 is gone. Iced APIs:
+  [docs/dev/ICED_NOTES.md](docs/dev/ICED_NOTES.md) (verified against 0.14 sources; never use older Iced APIs from memory).
 - **Sources**: local library + several Jellyfin servers aggregated into one catalog
   ([docs/SOURCES.md](docs/SOURCES.md)).
 - **Platforms**: Linux (Arch first) is primary and the only one built today; other Linux formats, macOS and Windows
@@ -29,19 +27,17 @@ first-class source but never required. GPL-3.0-or-later. Not affiliated with the
 | `crates/session` | Tokens in the system keyring (Secret Service, no file fallback); server URLs and accounts in TOML. |
 | `crates/player` | `EmbeddedPlayer` (libmpv in a Wayland subsurface) and `Player` (mpv child process over JSON IPC). libmpv is **loaded at run time** (`mpv_ffi.rs`); `deps.rs` probes libmpv / the mpv binary and gives per-distro install hints. No UI/Jellyfin deps. |
 | `crates/core` (`nocturne-core`) | UI-framework-free app logic: settings, navigation, media model (`source.rs`), caches, sync/reporting rules, player logic, admin/account state. Unit-tested without a window. |
-| `crates/local` (`nocturne-local`) | Local library: scanner, naming rules, index, metadata from `.nfo`/sidecars, overrides, local resume state. Never writes to media folders. (milestone 1, in progress) |
-| `crates/ui` (`nocturne-ui`, bin `nocturne-iced`) | The Iced UI (in progress). Only crate with Iced code. |
-| `crates/app` (`nocturne-app`, bin `nocturne`) | Legacy GPUI UI, removed at the cut-over. |
+| `crates/local` (`nocturne-local`) | Local library: scanner, naming rules, index, metadata from `.nfo`/sidecars, overrides, local resume state. Never writes to media folders. |
+| `crates/app` (`nocturne-app`, bin `nocturne`) | The Iced UI. Only crate with UI code. |
 
 Other directories: `docs/` (see below), `packaging/` (PKGBUILD, desktop/AppStream files, `install.sh`), `scripts/`,
-`website/` (SvelteKit static site, own README), `spikes/` (throwaway experiments, not workspace members),
-`vendor/xattr` (patched crate needed only by GPUI; removed with it).
+`website/` (SvelteKit static site, own README).
 
 ## Build, run, test
 
 ```sh
 cargo build                          # stable Rust 1.89+; libmpv only needed at run time (dlopen)
-cargo run -p nocturne-ui             # the Iced UI; `-p nocturne-app` runs the legacy GPUI UI
+cargo run -p nocturne-app            # the app (reads `.env` in debug builds only; for test runs use scripts/run-isolated.sh)
 cargo fmt --all
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked      # offline tests only; live tests are #[ignore]
@@ -65,11 +61,12 @@ NOCTURNE_JF_TEST_ENV=/tmp/nocturne-jf-test/test.env cargo test -p nocturne-jelly
 scripts/test-jellyfin.sh stop        # `reset` deletes everything
 ```
 
-To run the app for testing, ALWAYS use `scripts/run-isolated.sh target/debug/nocturne-iced` (add
+To run the app for testing, ALWAYS use `scripts/run-isolated.sh target/debug/nocturne` (add
 `NOCTURNE_JF_URL=http://127.0.0.1:8097` for the throwaway server). It runs from a directory outside the repo with
 blank server variables, throwaway XDG dirs and a test keyring service. Never launch a debug build from inside the repo
 tree: debug builds read `.env` from the current directory or any ancestor, and the maintainer's `.env` points at a
-real server. Screenshots: capture the app window only, never the whole screen.
+real server. Screenshots: capture the app window only, never the whole screen; debug builds have `NOCTURNE_SNAP=/tmp/x.png`
+(`NOCTURNE_SNAP_AFTER_MS=1500,4000` for several) and `NOCTURNE_PREVIEW=<screen>` for layout work.
 
 ## Safety rules (apply to humans and agents)
 
@@ -162,5 +159,5 @@ real server. Screenshots: capture the app window only, never the whole screen.
 are) | [SOURCES](docs/SOURCES.md) (local + multi-server catalog) | [PLATFORMS](docs/PLATFORMS.md) (targets, packaging,
 footprint) | [WRITES](docs/WRITES.md) | [video-embedding](docs/video-embedding.md) | [buffering](docs/buffering.md) |
 [DESIGN](docs/DESIGN.md) | [FEATURES](docs/FEATURES.md) | [ROADMAP](docs/ROADMAP.md) | [QA_REPORT](docs/QA_REPORT.md) |
-[PACKAGING](docs/PACKAGING.md) | [dev/STATUS](docs/dev/STATUS.md) | [dev/ICED_MIGRATION](docs/dev/ICED_MIGRATION.md) |
+[PACKAGING](docs/PACKAGING.md) | [dev/STATUS](docs/dev/STATUS.md) |
 [SECURITY](SECURITY.md).

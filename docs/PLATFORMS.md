@@ -40,7 +40,7 @@ is reported per target as built / installed / run / not tested.
 Track per release in `docs/dev/PERF.md` (script: `scripts/perf.sh`, to be added): release binary size, tarball and
 package size, installed size, cold start to first frame, idle RSS and idle CPU on the sign-in screen and on a
 loaded home page (demo library), RSS after browsing 500 items, CPU during 1080p playback (embedded, hwdec on).
-Baseline = 0.2.0 (GPUI) measured before the cut-over; the Iced build must not regress without a written reason.
+Baseline = 0.2.0 (the earlier GPUI interface) measured before the cut-over; the Iced build must not regress without a written reason.
 
 Rules: no polling where an event exists (frames subscription only while animating; timers only while a page needs
 them); one image cache (memory LRU over the disk LRU, decoded handles reused); lazy creation of clients, player and
