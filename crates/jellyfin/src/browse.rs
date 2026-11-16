@@ -37,6 +37,8 @@ pub struct ItemExtra {
     pub media_sources: Vec<MediaSource>,
     pub production_locations: Vec<String>,
     pub tags: Vec<String>,
+    /// "Imdb" / "Tmdb" / "Tvdb" -> id (key case varies by server version).
+    pub provider_ids: HashMap<String, Option<String>>,
     /// Series: the show's own art (used for episodes).
     pub series_primary_image_tag: Option<String>,
     /// Seasons/episodes borrow the show's logo and backdrop.
@@ -147,7 +149,8 @@ pub struct BrowseQuery {
 }
 
 /// Extra fields a list page needs beyond the server defaults.
-const LIST_FIELDS: &str = "DateCreated,ChildCount,Genres,PrimaryImageAspectRatio,CanDelete";
+const LIST_FIELDS: &str =
+    "DateCreated,ChildCount,Genres,PrimaryImageAspectRatio,CanDelete,ProviderIds";
 
 impl BrowseQuery {
     pub fn pairs(&self, user_id: &str) -> Vec<(&'static str, String)> {
@@ -313,6 +316,7 @@ impl Client {
             &[
                 ("userId", user_id.to_string()),
                 ("limit", limit.to_string()),
+                ("fields", "ProviderIds".into()),
             ],
         )
         .await
@@ -337,7 +341,10 @@ impl Client {
     pub async fn playlist_items(&self, user_id: &str, id: &str) -> Result<Items> {
         self.get(
             &["Playlists", id, "Items"],
-            &[("userId", user_id.to_string())],
+            &[
+                ("userId", user_id.to_string()),
+                ("fields", "ProviderIds".into()),
+            ],
         )
         .await
     }

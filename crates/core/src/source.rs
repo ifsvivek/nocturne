@@ -3,9 +3,38 @@
 use crate::detail::Full;
 use crate::imgcache::DiskCache;
 use nocturne_jellyfin as jf;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Semaphore;
+
+pub use nocturne_local::ProviderIds;
+
+/// Which source (profile) an item came from. Assigned once when a profile is created and never reused.
+/// `(origin, id)` is an item's identity everywhere: navigation, caches, image keys, playback, writes.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct SourceId(pub u32);
+
+/// Provider ids out of Jellyfin's `ProviderIds` object (key case varies; blank values dropped).
+pub fn provider_ids(m: &HashMap<String, Option<String>>) -> ProviderIds {
+    let get = |k: &str| {
+        m.iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(k))
+            .and_then(|(_, v)| v.as_deref())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(String::from)
+    };
+    ProviderIds {
+        imdb: get("imdb"),
+        tmdb: get("tmdb"),
+        tvdb: get("tvdb"),
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -44,6 +73,8 @@ pub enum Art {
 /// UI-facing media record. Never printed or logged (it holds personal titles).
 #[derive(Clone, Debug)]
 pub struct Media {
+    /// The source this item belongs to; `id` is only meaningful inside it.
+    pub origin: SourceId,
     pub id: String,
     pub title: String,
     pub kind: Kind,
@@ -81,10 +112,17 @@ pub struct Media {
     pub logo: Option<(String, String)>,
     /// Item that owns the backdrop when it is the show's (seasons, episodes).
     pub backdrop_id: Option<String>,
+    /// Provider ids, for matching the same title across sources.
+    pub ids: ProviderIds,
 }
 
 impl Media {
+    /// Origin 0: placeholders and single-server call sites. `Source` stamps its own origin.
     pub fn from_item(i: &jf::Item) -> Self {
+        Self::from_item_in(SourceId::default(), i)
+    }
+
+    pub fn from_item_in(origin: SourceId, i: &jf::Item) -> Self {
         let kind = match i.kind.as_str() {
             "Movie" => Kind::Movie,
             "Series" => Kind::Series,
@@ -109,6 +147,8 @@ impl Media {
             tag.and_then(|t| i.x.image_blur_hashes.get(ty)?.get(t).cloned())
         };
         Self {
+            origin,
+            ids: provider_ids(&i.x.provider_ids),
             id: i.id.clone(),
             title: i.name.clone(),
             kind,
@@ -173,15 +213,22 @@ impl Media {
 
     /// A search hit (a thin record: enough to show and open).
     pub fn from_hint(h: &jf::SearchHint) -> Self {
-        let mut m = Self::from_item(&jf::Item {
-            id: h.item_id().to_string(),
-            name: h.name.clone(),
-            kind: h.kind.clone(),
-            production_year: h.production_year,
-            run_time_ticks: h.run_time_ticks,
-            series_name: h.series.clone(),
-            ..Default::default()
-        });
+        Self::from_hint_in(SourceId::default(), h)
+    }
+
+    pub fn from_hint_in(origin: SourceId, h: &jf::SearchHint) -> Self {
+        let mut m = Self::from_item_in(
+            origin,
+            &jf::Item {
+                id: h.item_id().to_string(),
+                name: h.name.clone(),
+                kind: h.kind.clone(),
+                production_year: h.production_year,
+                run_time_ticks: h.run_time_ticks,
+                series_name: h.series.clone(),
+                ..Default::default()
+            },
+        );
         m.poster_tag = h.primary_image_tag.clone();
         m.sub = h
             .series
@@ -406,6 +453,7 @@ pub struct Source {
     disk: Option<Arc<DiskCache>>,
     /// Server identity for cache keys (the base URL; hashed, never written as-is).
     scope: Arc<str>,
+    origin: SourceId,
 }
 
 /// Backoff before retry `n` (1-based) of a failed image download.
@@ -424,6 +472,7 @@ impl Source {
             gate: Arc::new(Semaphore::new(6)),
             disk: None,
             scope,
+            origin: SourceId::default(),
         })
     }
 
@@ -439,7 +488,18 @@ impl Source {
             gate: Arc::new(Semaphore::new(6)),
             disk: None,
             scope,
+            origin: SourceId::default(),
         })
+    }
+
+    /// Every `Media` this source returns carries `origin`.
+    pub fn with_origin(mut self, origin: SourceId) -> Self {
+        self.origin = origin;
+        self
+    }
+
+    pub fn origin(&self) -> SourceId {
+        self.origin
     }
 
     /// Images are then kept on disk (bounded LRU) between runs.
@@ -448,9 +508,14 @@ impl Source {
         self
     }
 
-    fn media(r: jf::Result<jf::Items>) -> Result<Vec<Media>, Failed> {
-        r.map(|i| i.items.iter().map(Media::from_item).collect())
-            .map_err(|_| Failed)
+    fn media(&self, r: jf::Result<jf::Items>) -> Result<Vec<Media>, Failed> {
+        r.map(|i| {
+            i.items
+                .iter()
+                .map(|x| Media::from_item_in(self.origin, x))
+                .collect()
+        })
+        .map_err(|_| Failed)
     }
 
     /// The user's libraries for the top nav. Collections and Playlists are views of their own
@@ -461,11 +526,11 @@ impl Source {
             i.items
                 .retain(|x| !is_global_view(x.collection_type.as_deref(), &x.name));
         }
-        Self::media(r)
+        self.media(r)
     }
 
     pub async fn latest(&self, parent: &Media) -> Result<Vec<Media>, Failed> {
-        Self::media(
+        self.media(
             self.client
                 .items(&self.user, &latest_query(parent, 16))
                 .await,
@@ -473,11 +538,11 @@ impl Source {
     }
 
     pub async fn seasons(&self, series: &str) -> Result<Vec<Media>, Failed> {
-        Self::media(self.client.seasons(&self.user, series).await)
+        self.media(self.client.seasons(&self.user, series).await)
     }
 
     pub async fn episodes(&self, series: &str, season: &str) -> Result<Vec<Media>, Failed> {
-        Self::media(self.client.episodes(&self.user, series, Some(season)).await)
+        self.media(self.client.episodes(&self.user, series, Some(season)).await)
     }
 
     /// Image bytes (GET only). Disk cache first; a failed download is retried with backoff
@@ -579,7 +644,10 @@ impl Source {
             .await
             .map_err(|_| Failed)?;
         Ok((
-            r.items.iter().map(Media::from_item).collect(),
+            r.items
+                .iter()
+                .map(|x| Media::from_item_in(self.origin, x))
+                .collect(),
             r.total_record_count as usize,
         ))
     }
@@ -608,11 +676,15 @@ impl Source {
     /// The full record: the item itself plus cast, chapters, streams and the rest.
     pub async fn full(&self, id: &str) -> Result<(Media, Full), Failed> {
         let i = self.client.item(&self.user, id).await.map_err(|_| Failed)?;
-        Ok((Media::from_item(&i), Full::from_item(&i)))
+        let mut full = Full::from_item(&i);
+        for p in full.people.iter_mut().chain(&mut full.chapters) {
+            p.origin = self.origin;
+        }
+        Ok((Media::from_item_in(self.origin, &i), full))
     }
 
     pub async fn similar(&self, id: &str) -> Result<Vec<Media>, Failed> {
-        Self::media(self.client.similar(&self.user, id, 16).await)
+        self.media(self.client.similar(&self.user, id, 16).await)
     }
 
     /// Local trailers and special features.
@@ -622,7 +694,9 @@ impl Source {
             .extras(&self.user, id)
             .await
             .map_err(|_| Failed)?;
-        Ok(v.iter().map(Media::from_item).collect())
+        Ok(v.iter()
+            .map(|x| Media::from_item_in(self.origin, x))
+            .collect())
     }
 
     /// The playlists this user owns and may edit, by name: `(id, name)`.
@@ -643,7 +717,7 @@ impl Source {
     }
 
     pub async fn playlist_items(&self, id: &str) -> Result<Vec<Media>, Failed> {
-        Self::media(self.client.playlist_items(&self.user, id).await)
+        self.media(self.client.playlist_items(&self.user, id).await)
     }
 
     /// Direct children in their natural order (album tracks, collection members, folders).
@@ -692,7 +766,9 @@ impl Source {
             .search_hints(&self.user, term, 60)
             .await
             .map_err(|_| Failed)?;
-        Ok(h.iter().map(Media::from_hint).collect())
+        Ok(h.iter()
+            .map(|x| Media::from_hint_in(self.origin, x))
+            .collect())
     }
 
     /// Episodes before and after `ep` in its series.
@@ -711,21 +787,21 @@ impl Source {
 
     /// Items with a saved position, most recently watched first.
     pub async fn resume(&self) -> Result<Vec<Media>, Failed> {
-        Self::media(self.client.resume(&self.user, 12).await)
+        self.media(self.client.resume(&self.user, 12).await)
     }
 
     /// Next unwatched episode of each followed series.
     pub async fn next_up(&self) -> Result<Vec<Media>, Failed> {
-        Self::media(self.client.next_up(&self.user, 12).await)
+        self.media(self.client.next_up(&self.user, 12).await)
     }
 
     /// The episode to watch next in one series, if any.
     pub async fn series_next_up(&self, series: &str) -> Result<Vec<Media>, Failed> {
-        Self::media(self.client.series_next_up(&self.user, series).await)
+        self.media(self.client.series_next_up(&self.user, series).await)
     }
 
     async fn all_episodes(&self, series: &str) -> Result<Vec<Media>, Failed> {
-        Self::media(self.client.episodes(&self.user, series, None).await)
+        self.media(self.client.episodes(&self.user, series, None).await)
     }
 
     /// The episode "Play" should start for a series.
@@ -755,8 +831,8 @@ impl Source {
 /// record brings the tags.
 pub fn image_key(m: &Media, art: Art, width: u32, extra: u32) -> String {
     format!(
-        "{}:{:?}:{width}:{extra}:{:?}{:?}{:?}{:?}",
-        m.id, art, m.poster_tag, m.backdrop_tag, m.backdrop_id, m.logo
+        "{}:{}:{:?}:{width}:{extra}:{:?}{:?}{:?}{:?}",
+        m.origin.0, m.id, art, m.poster_tag, m.backdrop_tag, m.backdrop_id, m.logo
     )
 }
 
@@ -942,6 +1018,40 @@ mod tests {
         let m = Media::from_hint(&h);
         assert_eq!((m.id.as_str(), m.kind), ("old", Kind::Episode));
         assert_eq!(m.sub.as_deref(), Some("Show"));
+    }
+
+    #[test]
+    fn origin_and_provider_ids_come_from_the_item() {
+        let i: jf::Item = serde_json::from_str(
+            r#"{"Id":"1","Type":"Movie","ProviderIds":{"Imdb":"tt01","tmdb":"7","Tvdb":null,"Zap2It":"z"}}"#,
+        )
+        .unwrap();
+        let m = Media::from_item_in(SourceId(4), &i);
+        assert_eq!(m.origin, SourceId(4));
+        assert_eq!(
+            (m.ids.imdb.as_deref(), m.ids.tmdb.as_deref(), m.ids.tvdb),
+            (Some("tt01"), Some("7"), None)
+        );
+        assert_eq!(Media::from_item(&i).origin, SourceId(0));
+    }
+
+    #[test]
+    fn image_key_includes_the_origin() {
+        let a = Media::from_item_in(
+            SourceId(1),
+            &jf::Item {
+                id: "same".into(),
+                ..Default::default()
+            },
+        );
+        let b = Media {
+            origin: SourceId(2),
+            ..a.clone()
+        };
+        assert_ne!(
+            image_key(&a, Art::Poster, 300, 0),
+            image_key(&b, Art::Poster, 300, 0)
+        );
     }
 
     #[test]

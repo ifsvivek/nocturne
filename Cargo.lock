@@ -4157,6 +4157,7 @@ dependencies = [
  "nocturne-jellyfin",
  "nocturne-jellyfin-admin",
  "nocturne-jellyfin-user",
+ "nocturne-local",
  "nocturne-player",
  "nocturne-session",
  "serde",
