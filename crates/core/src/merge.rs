@@ -147,7 +147,8 @@ pub fn merge(
                 .flat_map(|m| identity_keys(m, series))
                 .find_map(|k| prefs.map.get(&k).copied())
                 .and_then(|o| g.iter().position(|m| m.origin == o))
-                .unwrap_or(0);
+                // No explicit choice: the best-ranked copy that can actually be played.
+                .unwrap_or_else(|| g.iter().position(|m| m.available).unwrap_or(0));
             let primary = g.remove(pick);
             Entry {
                 primary,
@@ -340,6 +341,30 @@ mod tests {
             !possible_duplicate(&x, &y),
             "that is a real duplicate, not a possible one"
         );
+    }
+
+    #[test]
+    fn an_unavailable_copy_is_demoted_but_an_explicit_choice_still_wins() {
+        let p = ids(Some("tt5"), None);
+        let gone = Media {
+            available: false,
+            ..movie(A, "a", "X", p.clone())
+        };
+        let ok = movie(B, "b", "X", p);
+        let e = run(vec![(A, vec![gone.clone()]), (B, vec![ok.clone()])], &[A, B]);
+        assert_eq!((e[0].primary.origin, e[0].alternates[0].origin), (B, A));
+        // Nothing playable anywhere: the priority order decides.
+        let e = run(vec![(A, vec![gone.clone()]), (B, vec![gone.clone()])], &[A, B]);
+        assert_eq!(e[0].primary.origin, A);
+        let mut prefs = Preferred::default();
+        prefs.choose(&gone, &SeriesIds::default());
+        let e = merge(
+            vec![(A, vec![gone]), (B, vec![ok])],
+            &[A, B],
+            &prefs,
+            &SeriesIds::default(),
+        );
+        assert_eq!(e[0].primary.origin, A, "the user's pick is kept");
     }
 
     #[test]

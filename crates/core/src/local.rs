@@ -276,6 +276,7 @@ fn blank(origin: SourceId, id: String, title: String, kind: Kind) -> Media {
         logo: None,
         backdrop_id: None,
         ids: nl::ProviderIds::default(),
+        available: true,
     }
 }
 
@@ -301,6 +302,7 @@ fn view_media(lib: &Library, origin: SourceId, v: &nl::View) -> Media {
     m.rating = v.rating;
     m.genres = v.genres.clone();
     m.ids = v.ids.clone();
+    m.available = v.status == nl::Status::Available;
     m.played = st.played;
     m.resume_s = (st.resume_secs > 0 && !st.played).then_some(st.resume_secs as f64);
     m.added = Some(iso(v.added));

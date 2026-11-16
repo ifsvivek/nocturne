@@ -114,6 +114,10 @@ pub struct Media {
     pub backdrop_id: Option<String>,
     /// Provider ids, for matching the same title across sources.
     pub ids: ProviderIds,
+    /// False for a local item whose folder is unmounted or whose file is gone: it is demoted when
+    /// duplicates are merged and marked in the UI. Server items are always available here (a server
+    /// that is down is a source status, not an item flag).
+    pub available: bool,
 }
 
 impl Media {
@@ -149,6 +153,7 @@ impl Media {
         Self {
             origin,
             ids: provider_ids(&i.x.provider_ids),
+            available: true,
             id: i.id.clone(),
             title: i.name.clone(),
             kind,
