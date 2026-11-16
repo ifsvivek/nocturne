@@ -10,6 +10,12 @@ Delete this file (fold the lasting parts into ARCHITECTURE.md / DECISIONS.md) wh
   `wl_subsurface` below the transparent Iced window); external `mpv` child process on X11 / failure.
 - libmpv is loaded at runtime (`dlopen`), so a missing library degrades playback instead of killing the process.
 
+## Release scope (user, 2026-11-16)
+
+Arch Linux only for now (no .deb/.rpm/AppImage/macOS/Windows work). Deliverable: an installable Arch build for the user
+to test. No release and no other platforms until the user has used it and approved. A docs audit worker runs when a
+slot frees, and again after the cut-over (GPUI -> Iced references).
+
 ## Scope change 2026-11-16
 
 Multi-source (local library + several Jellyfin servers, unified catalog) is now core: design and milestones in
