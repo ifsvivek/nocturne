@@ -297,6 +297,10 @@ impl App {
         r: Option<(String, nocturne_jellyfin_user::Session)>,
     ) {
         let Some((url, s)) = r else { return };
+        // Admin and Watch together reach every signed-in server, not only the one the menu is on.
+        self.sessions
+            .entry(id)
+            .or_insert_with(|| (url.clone(), s.clone()));
         self.hooks_by.insert(
             id,
             Arc::new(SyncHooks::new(

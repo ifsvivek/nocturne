@@ -1,11 +1,11 @@
 //! Root: connection state, navigation stack, keyboard and the screens. Port of the GPUI `Root`
-//! (`crates/app/src/app.rs`); step 4a covers connect / accounts / header / settings, the other
-//! pages render a "Not ported yet" panel.
+//! (`crates/app/src/app.rs`).
 mod actions;
 mod browse;
 mod catalog;
 mod cells;
 mod details;
+mod extras;
 mod folders;
 mod header;
 mod help;
@@ -19,7 +19,7 @@ mod settings;
 mod sources;
 mod welcome;
 
-use crate::account::{self, Accounts, Event as AcctEvent, picker};
+use crate::account::{self, Accounts, Event as AcctEvent, devices, picker};
 use crate::keys::Key;
 use crate::player::{self, Player};
 use crate::task::run;
@@ -201,6 +201,17 @@ pub struct App {
     /// The token / account has admin rights (an `Admin` entry follows the libraries).
     admin: bool,
     admin_open: bool,
+    /// The Admin screen (when open); `admin_open` mirrors it for the header.
+    adm: Option<Box<crate::admin::Admin>>,
+    sp: crate::syncplay::SyncPlay,
+    /// Sources the SyncPlay targets were built for, and the writes switch it was last given.
+    sp_ids: Vec<SourceId>,
+    sp_writes: bool,
+    queue: crate::queue::AudioQueue,
+    queue_open: bool,
+    /// The next player opened restores the kept music queue.
+    restore_q: bool,
+    devices: Option<devices::Devices>,
     accounts: Option<Accounts>,
     hooks: Arc<SyncHooks>,
     settings: Settings,
@@ -290,6 +301,14 @@ impl App {
             note: None,
             admin: false,
             admin_open: false,
+            adm: None,
+            sp: crate::syncplay::SyncPlay::new(vec![], false),
+            sp_ids: vec![],
+            sp_writes: false,
+            queue: Default::default(),
+            queue_open: false,
+            restore_q: false,
+            devices: None,
             accounts: None,
             hooks: Arc::new(SyncHooks::new(None, false, false)),
             settings,
@@ -356,6 +375,7 @@ impl App {
         if let Some(p) = &self.player {
             subs.push(p.subscription().map(Message::Player));
         }
+        subs.push(self.sp.subscription().map(Message::SyncPlay));
         // A focused text field keeps Esc from the keyboard listener; the overlay still has to close.
         if self.search.is_some() {
             subs.push(event::listen_with(|e, status, _| match e {
@@ -392,7 +412,7 @@ impl App {
             Message::Tick(now) => {
                 self.now = now;
                 self.sync_detail();
-                self.tick()
+                Task::batch([self.tick(), self.sync_extras()])
             }
             Message::Frame(now) => {
                 self.now = now;
@@ -589,10 +609,17 @@ impl App {
                 self.close_admin();
                 self.open_global(i)
             }
-            Message::OpenAdmin => {
-                self.open_admin();
+            Message::OpenAdmin => self.open_admin(),
+            Message::Admin(m) => self.admin_msg(m),
+            Message::SyncPlay(m) => self.sp_msg(m),
+            Message::Queue(m) => self.queue_msg(m),
+            Message::Devices(m) => {
+                if self.devices.as_mut().is_some_and(|d| d.update(m)) {
+                    self.devices = None;
+                }
                 Task::none()
             }
+            Message::GroupPlay(o, l, i, s, r) => self.group_play(o, l, i, s, r),
             Message::OpenSearch => self.open_search(),
             Message::ToggleMenu => {
                 self.menu = !self.menu;
@@ -828,6 +855,7 @@ impl App {
     /// Back to the account screens: drop everything tied to the login (the source itself stays
     /// until a new login replaces it or it is signed out).
     fn leave_session(&mut self) {
+        self.extras_shutdown();
         if let Some(id) = self.active {
             self.sessions.remove(&id);
         }
@@ -913,6 +941,13 @@ impl App {
             add("Authorize a device", AcctAct::Authorize);
             add("Watch together", AcctAct::Together);
             add("Your devices", AcctAct::Devices);
+            if !self.queue.is_empty() {
+                v.push((
+                    format!("Play music queue ({})", self.queue.items.len()),
+                    AcctAct::PlayQueue,
+                ));
+                v.push(("Clear music queue".to_string(), AcctAct::ClearQueue));
+            }
             for (i, a) in self.other_accounts.iter().enumerate() {
                 v.push((format!("Switch to {}", a.user_name), AcctAct::SwitchTo(i)));
             }
@@ -1165,9 +1200,12 @@ impl App {
                 self.dd = None;
                 self.set_off = 0.0;
             }
-            // TODO(4e/4c): devices overlay, Watch together, music queue.
-            AcctAct::Devices | AcctAct::Together | AcctAct::PlayQueue | AcctAct::ClearQueue => {
-                self.toast("Not ported yet.");
+            AcctAct::Devices => return self.open_devices(),
+            AcctAct::Together => return self.sp_msg(crate::syncplay::Msg::OpenScreen),
+            AcctAct::PlayQueue => self.queue_open = true,
+            AcctAct::ClearQueue => {
+                let m = self.queue.clear();
+                self.toast(m);
             }
             AcctAct::Authorize
             | AcctAct::Password
@@ -1245,7 +1283,10 @@ impl App {
             h.master.store(self.settings.allow_server_writes, Relaxed);
             h.sync.store(self.settings.sync_progress, Relaxed);
         }
-        // TODO(4e): push `can_write()` to the admin section; 4d: SyncPlay writes.
+        let on = self.settings.allow_server_writes && !self.dev;
+        if let Some(a) = self.adm.as_deref_mut() {
+            a.set_writes(on);
+        }
     }
 
     /// Load the current page again (after a failure or a reconnect).
@@ -1305,17 +1346,14 @@ impl App {
         Task::none()
     }
 
-    fn open_admin(&mut self) {
-        if self.admin {
-            self.admin_open = true;
-        }
-    }
-
     /// Leave Admin (if open) before navigating elsewhere.
     fn close_admin(&mut self) {
         self.settings_open = false;
         self.menu = false;
         self.admin_open = false;
+        if let Some(mut a) = self.adm.take() {
+            a.close();
+        }
     }
 
     fn back(&mut self) {
@@ -1334,7 +1372,9 @@ impl App {
             return self.player_msg(player::Msg::Key(k));
         }
         let key = k.name.as_str();
-        // TODO(4e): SyncPlay screen takes the keys next.
+        if let Some(t) = self.extras_key(&k) {
+            return t;
+        }
         if matches!(self.phase, Phase::Picker) {
             return self.picker_key(key);
         }
@@ -1363,7 +1403,6 @@ impl App {
             }
             return Task::none();
         }
-        // TODO(4c): photo viewer, More menu and media info panel.
         if self.confirm.is_some() {
             if matches!(key, "escape" | "backspace") {
                 self.confirm = None;
@@ -1402,7 +1441,9 @@ impl App {
             self.menu_sel = 0;
             return self.refresh_accounts();
         }
-        // TODO(4e): admin dialogs get typed text before the global shortcuts.
+        if self.admin_dialog() {
+            return self.admin_key(&k);
+        }
         if let Phase::Error(e) = self.phase {
             if matches!(key, "enter" | "r") && e != ConnectError::NotConfigured {
                 return self.connect();
@@ -1415,7 +1456,10 @@ impl App {
                 self.help_open = true;
                 return Task::none();
             }
-            // TODO(4d): `g` opens Watch together.
+            if key == "g" && k.plain() && self.sp.can_open() {
+                self.close_menus();
+                return self.sp_msg(crate::syncplay::Msg::OpenScreen);
+            }
             if (k.ctrl && key == "k") || (key == "/" && k.plain()) {
                 return self.open_search();
             }
@@ -1439,12 +1483,8 @@ impl App {
                 return t;
             }
         }
-        if self.admin_open {
-            // TODO(4e): the admin screen's own keys; until then Esc leaves it.
-            if matches!(key, "escape" | "backspace") {
-                self.close_admin();
-            }
-            return Task::none();
+        if self.adm.is_some() {
+            return self.admin_key(&k);
         }
         if let Some(t) = self.detail_key(&k) {
             return t;
@@ -1566,6 +1606,10 @@ impl App {
             Phase::Ready if self.folders.is_some() => self.folders_page(),
             Phase::Ready if self.src_open => self.sources_page(),
             Phase::Ready if self.settings_open => self.settings_page(),
+            Phase::Ready if self.adm.is_some() => match self.adm.as_deref() {
+                Some(a) => a.view().map(Message::Admin),
+                None => space().into(),
+            },
             Phase::Ready => self.page_view(),
         };
         if let Some(p) = &self.player {
@@ -1627,6 +1671,7 @@ impl App {
                 layers.push(d.view().map(move |m| Message::Detail(pid, m)));
             }
         }
+        self.extras_layers(&mut layers);
         if let Some(p) = &self.preview {
             layers.push(p.view(Instant::now(), crate::motion::reduced(), self.win));
         }

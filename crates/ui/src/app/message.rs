@@ -142,6 +142,18 @@ pub enum Message {
         Result<nocturne_core::backend::PlayTarget, nocturne_core::backend::PlayError>,
     ),
     Player(crate::player::Msg),
+    Admin(crate::admin::Msg),
+    SyncPlay(crate::syncplay::Msg),
+    Queue(crate::queue::Msg),
+    Devices(crate::account::devices::Msg),
+    /// A SyncPlay group wants its item played: (source, list, index, start seconds, target).
+    GroupPlay(
+        SourceId,
+        Vec<Media>,
+        usize,
+        f64,
+        Result<nocturne_core::backend::PlayTarget, nocturne_core::backend::PlayError>,
+    ),
     /// A message of detail page `pid`.
     Detail(u64, crate::detail::Msg),
     /// A write the detail page asked for finished.

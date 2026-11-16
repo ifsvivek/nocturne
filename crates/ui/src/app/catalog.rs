@@ -407,7 +407,7 @@ impl App {
     }
 
     /// The server refused this source's token: it is signed out, nothing else changes.
-    fn slot_rejected(&mut self, id: SourceId) -> Task<Message> {
+    pub(super) fn slot_rejected(&mut self, id: SourceId) -> Task<Message> {
         let Some(slot) = self.catalog.slot_mut(id) else {
             return Task::none();
         };

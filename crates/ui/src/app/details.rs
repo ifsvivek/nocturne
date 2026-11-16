@@ -184,13 +184,11 @@ impl App {
                 });
                 Task::none()
             }
-            // TODO(4e): the session music queue; until it lands the tracks play as a queue.
-            Outcome::Queue { mut tracks, .. } => {
-                if tracks.is_empty() {
-                    return Task::none();
+            Outcome::Queue { tracks, next } => {
+                match self.queue.insert(tracks, next) {
+                    Ok(m) | Err(m) => self.toast(m),
                 }
-                let first = tracks.remove(0);
-                self.start_play(first, tracks, None)
+                Task::none()
             }
             Outcome::OpenUrl(u) => {
                 if u.starts_with("http://") || u.starts_with("https://") {
