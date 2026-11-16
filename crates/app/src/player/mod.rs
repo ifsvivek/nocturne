@@ -1742,6 +1742,16 @@ impl Player {
     fn overlay_tick(&mut self) {
         let now = self.now;
         let cache_wait = self.flag("paused-for-cache");
+        // Debug builds only: `NOCTURNE_HOLD_SPLASH=0.55` pins the loading overlay at that fill (screenshots).
+        #[cfg(debug_assertions)]
+        if self.splash
+            && let Some(f) = std::env::var("NOCTURNE_HOLD_SPLASH")
+                .ok()
+                .and_then(|v| v.parse::<f32>().ok())
+        {
+            self.prog.set(f, now);
+            return;
+        }
         if self.splash {
             if self.leaving.is_none() {
                 let buffered = self.state.as_ref().map_or(0.0, |s| s.buffered);
