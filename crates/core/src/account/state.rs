@@ -44,7 +44,7 @@ impl Form {
         self.fields.get(i).map_or("", |f| f.value.trim())
     }
 
-    /// `key` as GPUI names it, `ch` the typed text (None for control keys or ctrl-chords).
+    /// `key` as the UI names it, `ch` the typed text (None for control keys or ctrl-chords).
     pub fn key(&mut self, key: &str, ch: Option<&str>) -> Ev {
         let n = self.slots().max(1);
         match key {

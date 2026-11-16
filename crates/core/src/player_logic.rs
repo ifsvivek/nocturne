@@ -1,4 +1,4 @@
-//! Pure player logic (no GPUI, no I/O): skip segments, next-episode countdown, trickplay math,
+//! Pure player logic (no UI framework, no I/O): skip segments, next-episode countdown, trickplay math,
 //! quality and play method, track selection, resume rule, subtitle styles, MPRIS mapping.
 use crate::video::{PlayerPrefs, SubMode, Track, TrackKind, language};
 use nocturne_jellyfin as jf;

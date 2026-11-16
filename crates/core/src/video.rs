@@ -1,5 +1,5 @@
 //! Playback seam (embedded libmpv vs child-process mpv) and the pure logic of the player page:
-//! backend choice, control auto-hide, key map. No GPUI, so it is unit-tested without a window.
+//! backend choice, control auto-hide, key map. No UI framework, so it is unit-tested without a window.
 use nocturne_player::{EmbeddedPlayer, Event, Player, Result, State};
 use serde_json::Value;
 use std::sync::mpsc::Receiver;
@@ -106,7 +106,7 @@ pub enum Key {
     Favorite,
 }
 
-/// Player-page key map. `k` is GPUI's key name; `shift`/`ctrl` are the held modifiers.
+/// Player-page key map. `k` is the UI's key name; `shift`/`ctrl` are the held modifiers.
 pub fn key(k: &str, shift: bool, ctrl: bool) -> Option<Key> {
     Some(match (k, ctrl) {
         ("s", true) => Key::Screenshot,
