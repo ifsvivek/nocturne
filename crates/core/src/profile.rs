@@ -154,15 +154,121 @@ impl Sources {
     pub fn ids(&self) -> Vec<SourceId> {
         self.profiles.iter().map(|p| p.id).collect()
     }
+
+    pub fn set_enabled(&mut self, id: SourceId, on: bool) {
+        if let Some(p) = self.profiles.iter_mut().find(|p| p.id == id) {
+            p.enabled = on;
+        }
+    }
+
+    /// Move one place up (`-1`) or down (`1`) in priority; stops at the ends. True if it moved.
+    pub fn shift(&mut self, id: SourceId, by: i32) -> bool {
+        let Some(i) = self.profiles.iter().position(|p| p.id == id) else {
+            return false;
+        };
+        let j =
+            (i as i64 + i64::from(by.signum())).clamp(0, self.profiles.len() as i64 - 1) as usize;
+        self.profiles.swap(i, j);
+        i != j
+    }
+
+    /// The profile of the server at `url` (one profile per server address, whatever the user).
+    pub fn server_for(&self, url: &str) -> Option<&Profile> {
+        let u = url.trim_end_matches('/');
+        self.profiles.iter().find(|p| {
+            matches!(&p.kind, ProfileKind::Jellyfin { url, .. } if url.trim_end_matches('/') == u)
+        })
+    }
+
+    /// A login on `url`: a known server only changes its user (the account switch), a new one is
+    /// appended. Returns the profile id.
+    pub fn upsert_server(&mut self, url: &str, user_id: &str, user_name: &str) -> SourceId {
+        let url = url.trim_end_matches('/');
+        let kind = ProfileKind::Jellyfin {
+            url: url.into(),
+            user_id: user_id.into(),
+            user_name: user_name.into(),
+        };
+        match self.server_for(url).map(|p| p.id) {
+            Some(id) => {
+                if let Some(p) = self.profiles.iter_mut().find(|p| p.id == id) {
+                    p.kind = kind;
+                }
+                id
+            }
+            None => self.add(label_for(url), kind),
+        }
+    }
+
+    /// The local library profile (all folders live in one), if any.
+    pub fn local(&self) -> Option<&Profile> {
+        self.profiles
+            .iter()
+            .find(|p| matches!(p.kind, ProfileKind::Local { .. }))
+    }
+
+    /// The local profile, created (lowest priority, no folders yet) if there is none.
+    pub fn ensure_local(&mut self) -> SourceId {
+        match self.local().map(|p| p.id) {
+            Some(id) => id,
+            None => self.add("Local library", ProfileKind::Local { roots: vec![] }),
+        }
+    }
+
+    /// Add a folder to the local library; false if it is already there.
+    pub fn add_root(&mut self, root: PathBuf) -> bool {
+        let id = self.ensure_local();
+        match self
+            .profiles
+            .iter_mut()
+            .find(|p| p.id == id)
+            .map(|p| &mut p.kind)
+        {
+            Some(ProfileKind::Local { roots }) if !roots.contains(&root) => {
+                roots.push(root);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn remove_root(&mut self, root: &Path) -> bool {
+        match self.profiles.iter_mut().find_map(|p| match &mut p.kind {
+            ProfileKind::Local { roots } => Some(roots),
+            _ => None,
+        }) {
+            Some(roots) => {
+                let n = roots.len();
+                roots.retain(|r| r != root);
+                roots.len() != n
+            }
+            None => false,
+        }
+    }
+
+    /// First run: nothing is set up at all (removing every source brings the welcome back).
+    pub fn needs_welcome(&self) -> bool {
+        self.profiles.is_empty()
+    }
+}
+
+/// Forget the token of `user_id` on `url` (keyring and `accounts.toml`), plus the active-login
+/// entry when it is that user. Other users of the server are untouched.
+pub fn forget_login(url: &str, user_id: &str) {
+    nocturne_session::forget_account(url, user_id);
+    if nocturne_session::load(url)
+        .ok()
+        .flatten()
+        .is_some_and(|s| s.user_id == user_id)
+    {
+        let _ = nocturne_session::delete(url);
+    }
 }
 
 /// An existing `sources.toml` wins. Without one, every old login becomes a profile (the last used
 /// server first, so it keeps the highest priority) and is saved; with none, the list is empty and
 /// nothing is written (first run).
-pub fn load_or_migrate(
-    path: &Path,
-    legacy: impl FnOnce() -> Vec<Legacy>,
-) -> io::Result<Sources> {
+pub fn load_or_migrate(path: &Path, legacy: impl FnOnce() -> Vec<Legacy>) -> io::Result<Sources> {
     if let Some(s) = Sources::load_from(path)? {
         return Ok(s);
     }
@@ -345,7 +451,8 @@ mod tests {
         assert_eq!(s.profiles[0].label, "old.test");
         assert!(!std::fs::read_to_string(&np).unwrap().contains("SECRET"));
         // second run: the saved file wins, legacy is not consulted again.
-        let again = load_or_migrate(&np, || -> Vec<Legacy> { panic!("must not migrate twice") }).unwrap();
+        let again =
+            load_or_migrate(&np, || -> Vec<Legacy> { panic!("must not migrate twice") }).unwrap();
         assert_eq!(again, s);
         assert_eq!(
             before,
@@ -423,5 +530,36 @@ mod tests {
         let s = load_or_migrate(&np, || l.clone()).unwrap();
         assert_eq!(s.profiles.len(), 4);
         assert_eq!(s.profiles[0].label, "b.test");
+    }
+
+    #[test]
+    fn list_ops_follow_the_sources_screen() {
+        let mut s = Sources::default();
+        let a = s.upsert_server("http://a.test/", "u1", "Ann");
+        let b = s.upsert_server("http://b.test", "u2", "Bo");
+        // Same server again: the profile keeps its id and priority, only the user changes.
+        assert_eq!(s.upsert_server("http://a.test", "u7", "Al"), a);
+        assert_eq!(s.profiles.len(), 2);
+        assert!(matches!(&s.get(a).unwrap().kind,
+            ProfileKind::Jellyfin { user_id, .. } if user_id == "u7"));
+        assert!(s.needs_welcome() == false);
+        assert!(s.add_root("/m/films".into()));
+        assert!(!s.add_root("/m/films".into()), "no duplicate folder");
+        assert!(s.add_root("/m/shows".into()));
+        let local = s.local().unwrap().id;
+        assert_eq!(s.ids(), [a, b, local]);
+        assert!(s.shift(local, -1) && s.shift(local, -1));
+        assert_eq!(s.ids(), [local, a, b]);
+        assert!(!s.shift(local, -1), "stops at the top");
+        assert!(!s.shift(b, 1), "stops at the bottom");
+        s.set_enabled(a, false);
+        assert!(!s.get(a).unwrap().enabled);
+        assert!(s.remove_root(Path::new("/m/films")) && !s.remove_root(Path::new("/m/films")));
+        assert!(matches!(&s.local().unwrap().kind,
+            ProfileKind::Local { roots } if roots == &[PathBuf::from("/m/shows")]));
+        for id in s.ids() {
+            s.remove(id);
+        }
+        assert!(s.needs_welcome(), "all sources removed: welcome again");
     }
 }

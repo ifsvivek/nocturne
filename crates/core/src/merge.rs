@@ -351,10 +351,16 @@ mod tests {
             ..movie(A, "a", "X", p.clone())
         };
         let ok = movie(B, "b", "X", p);
-        let e = run(vec![(A, vec![gone.clone()]), (B, vec![ok.clone()])], &[A, B]);
+        let e = run(
+            vec![(A, vec![gone.clone()]), (B, vec![ok.clone()])],
+            &[A, B],
+        );
         assert_eq!((e[0].primary.origin, e[0].alternates[0].origin), (B, A));
         // Nothing playable anywhere: the priority order decides.
-        let e = run(vec![(A, vec![gone.clone()]), (B, vec![gone.clone()])], &[A, B]);
+        let e = run(
+            vec![(A, vec![gone.clone()]), (B, vec![gone.clone()])],
+            &[A, B],
+        );
         assert_eq!(e[0].primary.origin, A);
         let mut prefs = Preferred::default();
         prefs.choose(&gone, &SeriesIds::default());
