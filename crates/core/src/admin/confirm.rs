@@ -123,7 +123,7 @@ impl Dialog {
         }
     }
 
-    /// Key press (`key` as GPUI names it, `ch` the typed character, if any).
+    /// Key press (`key` as the UI names it, `ch` the typed character, if any).
     pub fn key(&mut self, key: &str, ch: Option<&str>) -> Out {
         let n = self.fields.len() + 2;
         match key {

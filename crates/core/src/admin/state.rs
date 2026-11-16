@@ -1,5 +1,5 @@
 //! Pure admin state: section/selection, loaded data, stale-response guard and poll scheduling.
-//! No GPUI here, so it is unit-tested without a window.
+//! No UI framework here, so it is unit-tested without a window.
 use crate::nav::{self, Dir};
 use nocturne_jellyfin_admin::*;
 

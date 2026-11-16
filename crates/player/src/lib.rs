@@ -7,7 +7,7 @@
 //!
 //! libmpv is loaded at runtime (see [`libmpv_available`]); a missing library is an error, not a startup crash.
 //!
-//! No GPUI or Jellyfin dependencies.
+//! No UI-framework or Jellyfin dependencies.
 //!
 //! Env override: `NOCTURNE_VO` picks the windowed video output (default `gpu-next`).
 

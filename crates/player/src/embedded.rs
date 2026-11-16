@@ -1,8 +1,8 @@
-//! `EmbeddedPlayer`: libmpv (OpenGL render API, EGL) drawing into a `wl_subsurface` placed BELOW a
-//! GPUI window's `wl_surface`. GPUI stays a normal transparent window and draws controls on top.
+//! `EmbeddedPlayer`: libmpv (OpenGL render API, EGL) drawing into a `wl_subsurface` placed BELOW the UI
+//! window's `wl_surface`. The window stays a normal transparent window and the UI draws controls on top.
 //! Same method names / `State` / `Event` as the child-process [`crate::Player`].
 //!
-//! Threading: the main (GPUI) thread owns the Wayland proxies and calls `set_bounds`; one render
+//! Threading: the UI (main) thread owns the Wayland proxies and calls `set_bounds`; one render
 //! thread owns the EGL context + mpv render context; one event thread feeds `State`/`Event`.
 //! Teardown order (see `Drop`) is load-bearing; see docs/video-embedding.md.
 
@@ -137,8 +137,8 @@ unsafe extern "C" fn gpa(_: *mut c_void, name: *const c_char) -> *mut c_void {
 }
 
 impl EmbeddedPlayer {
-    /// `display`/`parent`: raw `wl_display*` / `wl_surface*` from GPUI's `HasDisplayHandle` /
-    /// `HasWindowHandle`. Must be called on the GPUI main thread. Errors mean "embedding is not
+    /// `display`/`parent`: raw `wl_display*` / `wl_surface*` from the UI window's `HasDisplayHandle` /
+    /// `HasWindowHandle`. Must be called on the UI (main) thread. Errors mean "embedding is not
     /// available here" (no viewporter/subcompositor, EGL failure, ...) and callers fall back to
     /// [`crate::Player`].
     pub fn new(display: *mut c_void, parent: *mut c_void) -> Result<Self> {
@@ -154,7 +154,7 @@ impl EmbeddedPlayer {
         // Before touching Wayland: without libmpv there is nothing to embed.
         crate::mpv_ffi::available().map_err(Error::Mpv)?;
         unsafe {
-            // Wrap GPUI's connection (foreign display: we never own/close it) with our own queue.
+            // Wrap the UI toolkit's connection (foreign display: we never own/close it) with our own queue.
             let backend = Backend::from_foreign_display(display as *mut _);
             let conn = Connection::from_backend(backend);
             let (globals, queue) = registry_queue_init::<St>(&conn).map_err(e)?;
@@ -169,8 +169,8 @@ impl EmbeddedPlayer {
             let surface = compositor.create_surface(&qh, ());
             let sub = subcomp.get_subsurface(&surface, &parent_surface, &qh, ());
             sub.place_below(&parent_surface);
-            sub.set_desync(); // video updates must not wait for GPUI commits
-            // Clicks fall through to GPUI: empty input region.
+            sub.set_desync(); // video updates must not wait for the UI's commits
+            // Clicks fall through to the UI: empty input region.
             let empty = compositor.create_region(&qh, ());
             surface.set_input_region(Some(&empty));
             empty.destroy();
@@ -191,7 +191,7 @@ impl EmbeddedPlayer {
 
             // RULE: in-process mpv may ONLY use the OpenGL render API (`vo=libmpv`). Never
             // `gpu`/`gpu-next` (Vulkan context) and never `hwdec=vulkan` here: a second VkInstance
-            // next to GPUI's Vulkan renderer SIGSEGVs on NVIDIA at stop/quit. See docs/video-embedding.md.
+            // next to the UI's Vulkan renderer SIGSEGVs on NVIDIA at stop/quit. See docs/video-embedding.md.
             let mut opts: Vec<(&str, String)> = vec![
                 ("vo", "libmpv".into()),
                 ("hwdec", "auto-safe".into()),
@@ -269,8 +269,8 @@ impl EmbeddedPlayer {
         }
     }
 
-    /// Logical position/size inside the parent window (GPUI Pixels as f32) plus scale factor.
-    /// Position applies at the parent's next commit, so ask GPUI for a redraw after calling.
+    /// Logical position/size inside the parent window (logical pixels as f32) plus scale factor.
+    /// Position applies at the parent's next commit, so ask the UI for a redraw after calling.
     pub fn set_bounds(&mut self, x: f32, y: f32, w: f32, h: f32, scale: f32) {
         let g = geometry(x, y, w, h, scale);
         self.sub.set_position(g.x, g.y);

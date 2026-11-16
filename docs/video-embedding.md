@@ -1,5 +1,11 @@
 # In-window GPU video for NOCTURNE: feasibility report
 
+> Written against the GPUI-based 0.2.0 and kept as the record of why the video path looks like this. The mechanism
+> (Wayland subsurface below a transparent window, libmpv OpenGL render API through EGL, never an in-process mpv Vulkan
+> context) carries over to the Iced UI unchanged (spike `spikes/iced-embed`, [DECISIONS.md](DECISIONS.md)); the GPUI-specific
+> details below (raw handles from `gpui::Window`, the paint callback, the version pin) describe the legacy `crates/app`.
+> Modules mentioned as `crates/app/src/...` that moved are noted inline.
+
 Prototype (historical): `crates/video-proto`, removed once integrated; its code lives on as `crates/player/src/embedded.rs` (see "Integrated" below).
 Test environment (a single hybrid-graphics machine; other hardware is untested): Arch Linux, a Wayland compositor,
 NVIDIA discrete GPU (proprietary driver) plus AMD iGPU, high-refresh monitor at scale 1.0, mpv/libmpv 0.41
@@ -164,7 +170,7 @@ Do not use `hwdec=vulkan` in-process either (it needs a Vulkan device).
   types as the child-process `Player`), plus `set_bounds(x, y, w, h, scale)` for the video rect. State comes from mpv
   property observers on an event thread. The auth header goes through `change-list http-header-fields append`
   (never URL or argv). The creation site carries the rule "OpenGL render API only, never gpu/gpu-next Vulkan in-process".
-- `Playback` (`crates/app/src/video.rs`): a two-variant enum (`Embedded`, `External(Player)`) with the shared method
+- `Playback` (`crates/core/src/video.rs`): a two-variant enum (`Embedded`, `External(Player)`) with the shared method
   names. The backend is chosen at the first play: `NOCTURNE_VIDEO=external|embedded` overrides, otherwise embed when
   `WAYLAND_DISPLAY` is set. If creating the embedded player fails (no wayland handles, no viewporter/subcompositor,
   EGL/mpv init), one calm line (no URLs) is logged and the app uses the child-process `Player` for the rest of the session.
@@ -199,8 +205,8 @@ repaint (see Resize); AMD/Intel-only and fractional-scale machines are untested;
 
 ## Stage 2 player (feature-rich)
 
-The player page is its own entity (`crates/app/src/player_view.rs` state, `player_ui.rs` rendering, `player_logic.rs`
-pure rules, `player_mpris.rs` D-Bus). The owner (`Root`) creates it with a `PlayerCtx { client, user, hooks, prefs }`
+The player page is its own entity (legacy GPUI: `crates/app/src/player_view.rs` state and `player_ui.rs` rendering; shared:
+`crates/core/src/player_logic.rs` pure rules and `player_mpris.rs` D-Bus). The owner (`Root`) creates it with a `PlayerCtx { client, user, hooks, prefs }`
 and drops it on `PlayerEvent::Closed`. `PlayerHooks` has five methods but the page only calls `set_favorite` /
 `is_favorite`; started/progress/stopped reporting belongs to the app tick.
 

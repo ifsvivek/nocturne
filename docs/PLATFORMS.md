@@ -1,7 +1,8 @@
 # Platforms, packaging and footprint
 
 Status: plan accepted 2026-11-16. **Arch Linux first**; other Linux formats next; macOS and Windows after the Iced
-migration and the multi-source work ship on Linux. Nothing here may degrade playback quality, stability or security.
+migration and the multi-source work ship on Linux. Today only Arch is built and tested; no work on the other targets
+starts until the maintainer has tested an Arch build and approves it. Nothing here may degrade playback quality, stability or security.
 
 ## Platform seams (keep everything platform-specific behind these; `#[cfg(target_os = ...)]` only inside them)
 

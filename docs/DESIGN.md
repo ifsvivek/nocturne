@@ -1,7 +1,7 @@
 # Design
 
-The source of truth is `crates/app/src/theme.rs`; raw hex values live there and nowhere else. This page describes
-what it implements. Dark only.
+The source of truth is the UI crate's `theme.rs` (`crates/ui/src/theme.rs`; the legacy GPUI crate has `crates/app/src/theme.rs`);
+raw hex values live there and nowhere else. This page describes what it implements. Dark only.
 
 Principle: near-black base, hairline structure, one electric-blue accent, monochrome chrome. Library artwork is the
 only rich colour.
@@ -27,7 +27,7 @@ Danger and warn are never decoration.
 
 ## Contrast
 
-WCAG 2.x, enforced by `theme::tests` (`cargo test -p nocturne-app theme`). Every text token must reach 4.5:1 on every
+WCAG 2.x, enforced by `theme::tests` (`cargo test -p nocturne-ui theme`; legacy: `cargo test -p nocturne-app theme`). Every text token must reach 4.5:1 on every
 surface it can sit on: frame, surface and raised, bare and under the glass (hover), accent tint (selected) and danger
 tint, plus the control fills. Control outlines (`edge`), the accent focus ring and danger outlines must reach 3:1 on the
 same set. Semi-transparent fills are composited over the real surface before measuring. Disabled controls are exempt
@@ -42,7 +42,7 @@ and are dimmed (opacity 0.55) rather than recoloured. Hairlines are decoration, 
 | edge (new; hairline strong was 1.5 - 1.6) | - | 3.4 - 4.7 |
 | on-accent on accent | 6.2 | 6.2 |
 
-Run `cargo test -p nocturne-app theme -- --nocapture` to print the current ranges.
+Run `cargo test -p nocturne-ui theme -- --nocapture` to print the current ranges.
 
 Do not hard-code text colours outside `theme.rs`; new text colours must be added to the audit list in the test.
 
@@ -85,4 +85,4 @@ blurhash placeholders and skeletons rather than spinners where content shape is 
 
 Keyboard-first navigation (Ctrl+K / `/` search, Esc / Backspace back, player shortcuts with an in-player help
 overlay), minimum 12 px text outside mono micro labels, and visible focus. Screen-reader labels are limited by what
-GPUI exposes.
+the UI framework exposes (GPUI in 0.2.0; Iced's accessibility support is still limited).
