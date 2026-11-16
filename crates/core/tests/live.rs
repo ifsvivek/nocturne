@@ -32,8 +32,7 @@ async fn profile(id: u32, url: &str, token: &str) -> Profile {
     };
     let user = nocturne_core::source::Source::connect(Some(cfg))
         .await
-        .ok()
-        .expect("throwaway server answers")
+        .unwrap_or_else(|e| panic!("throwaway server answers: {e:?}"))
         .client()
         .1;
     Profile {
