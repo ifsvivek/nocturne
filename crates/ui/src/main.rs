@@ -10,6 +10,7 @@ mod onboarding;
 mod platform;
 mod player;
 mod queue;
+mod single;
 mod snap;
 mod style;
 mod syncplay;
@@ -23,6 +24,10 @@ use app::App;
 use iced::{Color, Size, window};
 
 fn main() -> iced::Result {
+    // Before anything costly: a second launch just wakes the first and leaves.
+    let Some(_single) = single::acquire() else {
+        return Ok(());
+    };
     platform::mark_start();
     platform::probe_motion_pref();
     // Loading ~1000 system fonts takes a few hundred ms and would otherwise run after the window
