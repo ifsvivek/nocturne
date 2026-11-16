@@ -27,7 +27,7 @@
         <h3 class="role text-ink">Arch Linux</h3>
         {#if RELEASED}
           <p class="m-0 mt-3 text-ink-2">A signed pacman repository: add it once, and NOCTURNE updates with the rest of your system. <a href="/repo">Set up the repository</a>.</p>
-          <pre class="code"><code>sudo pacman -S nocturne</code></pre>
+          <pre class="code"><code>sudo pacman -Syu nocturne</code></pre>
           <p class="m-0 mt-6 text-sm text-ink-2">Or build the PKGBUILD from the v{VERSION} release, which pulls in mpv for playback:</p>
           <pre class="code"><code>git clone --branch v{VERSION} --depth 1 {REPO}.git
 cd nocturne/packaging

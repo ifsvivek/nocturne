@@ -8,8 +8,7 @@
   const steps = [
     ["Import the signing key", `curl -fsSL ${KEY_URL} | sudo pacman-key --add -\nsudo pacman-key --lsign-key ${KEY_ID}`],
     ["Add the repository to /etc/pacman.conf", `sudo tee -a /etc/pacman.conf << 'EOF'\n\n[nocturne]\nSigLevel = Required TrustedOnly\nServer = ${SITE}/repo/arch/$arch\nEOF`],
-    ["Refresh the package databases", "sudo pacman -Sy"],
-    ["Install NOCTURNE", "sudo pacman -S nocturne"],
+    ["Install NOCTURNE (also refreshes the package databases)", "sudo pacman -Syu nocturne"],
   ];
   const later = [["Debian and Ubuntu", ".deb"], ["Fedora", ".rpm"]];
 </script>
