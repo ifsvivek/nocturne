@@ -163,7 +163,8 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   keyboard focus scrolls into view without measuring. Debug preview: `NOCTURNE_PREVIEW=detail` (see `detail/preview.rs`).
   Deferred: hero fade-in, source marks on strip cells, "New playlist" entry point (the Add dialog creates one by name),
   a shared root image cache (the page keeps its own).
-- [ ] 4e account page, admin per server, SyncPlay, music queue
+- [~] 4e account page + devices, admin per server (confirm choke point), SyncPlay, music queue (worktree, modules + hooks)
+- polish backlog: version sizes < 1 MB show "0 MB"; splash logo clipping check; one snapshot hook
 - [ ] integration: wire the detail hook (and later 4e hooks) into app/mod.rs after 4b merges
 - [ ] 5 cut-over
 - [ ] 6 verification
