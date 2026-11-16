@@ -37,6 +37,9 @@ impl ImageType {
     }
 }
 
+/// Extra field every list read asks for so items can be matched across servers (GET parameter only).
+const ID_FIELDS: &str = "ProviderIds";
+
 /// Parameters for `GET /Items`.
 #[derive(Debug, Clone, Default)]
 pub struct ItemsQuery {
@@ -86,6 +89,7 @@ impl ItemsQuery {
         if !self.ids.is_empty() {
             p.push(("ids", self.ids.join(",")));
         }
+        p.push(("fields", ID_FIELDS.into()));
         p
     }
 }
@@ -206,7 +210,10 @@ impl Client {
     pub async fn seasons(&self, user_id: &str, series_id: &str) -> Result<Items> {
         self.get(
             &["Shows", series_id, "Seasons"],
-            &[("userId", user_id.to_string())],
+            &[
+                ("userId", user_id.to_string()),
+                ("fields", ID_FIELDS.into()),
+            ],
         )
         .await
     }
@@ -220,7 +227,10 @@ impl Client {
     ) -> Result<Items> {
         let mut p = vec![
             ("userId", user_id.to_string()),
-            ("fields", "Overview,PrimaryImageAspectRatio".into()),
+            (
+                "fields",
+                "Overview,PrimaryImageAspectRatio,ProviderIds".into(),
+            ),
         ];
         if let Some(s) = season_id {
             p.push(("seasonId", s.to_string()));
@@ -236,6 +246,7 @@ impl Client {
                 ("userId", user_id.to_string()),
                 ("limit", limit.to_string()),
                 ("mediaTypes", "Video".into()),
+                ("fields", ID_FIELDS.into()),
             ],
         )
         .await
@@ -449,8 +460,12 @@ impl Client {
 }
 
 // Strip the URL from errors so nothing URL-borne (ids, api_key) lands in logs.
-fn next_up_pairs(user_id: &str, limit: u32) -> [(&'static str, String); 2] {
-    [("userId", user_id.into()), ("limit", limit.to_string())]
+fn next_up_pairs(user_id: &str, limit: u32) -> [(&'static str, String); 3] {
+    [
+        ("userId", user_id.into()),
+        ("limit", limit.to_string()),
+        ("fields", ID_FIELDS.into()),
+    ]
 }
 
 fn http_err(e: reqwest::Error) -> Error {
@@ -671,10 +686,11 @@ mod tests {
                 "startIndex=20",
                 "limit=10",
                 "recursive=true",
-                "ids=a,b"
+                "ids=a,b",
+                "fields=ProviderIds"
             ]
         );
-        assert_eq!(ItemsQuery::default().pairs("u").len(), 1);
+        assert_eq!(ItemsQuery::default().pairs("u").len(), 2);
     }
 
     #[test]
@@ -713,7 +729,7 @@ mod tests {
     fn next_up_request_and_fixture() {
         assert_eq!(
             next_up_pairs("u1", 12).map(|(k, v)| format!("{k}={v}")),
-            ["userId=u1", "limit=12"]
+            ["userId=u1", "limit=12", "fields=ProviderIds"]
         );
         let j = r#"{"Items":[{"Id":"e9","Name":"Pilot","Type":"Episode","SeriesName":"Invented Show",
             "ParentIndexNumber":2,"IndexNumber":9,"ImageTags":{"Primary":"t"},"New":1}],"TotalRecordCount":1}"#;
