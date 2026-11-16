@@ -423,7 +423,7 @@ impl App {
                 self.now = now;
                 self.sync_detail();
                 self.sync_ob();
-                Task::batch([self.tick(), self.sync_extras()])
+                Task::batch([self.tick(), self.sync_extras(), crate::snap::poll()])
             }
             Message::Frame(now) => {
                 self.now = now;
@@ -446,10 +446,12 @@ impl App {
             }
             Message::CloseRequested(_) => self.quit(),
             Message::Back => {
+                self.src_open = false;
                 self.back();
                 self.page_wants()
             }
             Message::Forward => {
+                self.src_open = false;
                 self.forward();
                 self.page_wants()
             }
@@ -939,6 +941,10 @@ impl App {
             ("Settings".to_string(), AcctAct::Settings),
             ("Sources".to_string(), AcctAct::Sources),
         ];
+        // The header's Admin link can sit past the edge of a narrow window; the menu always shows it.
+        if self.admin && !self.dev {
+            v.push(("Admin".to_string(), AcctAct::Admin));
+        }
         if !self.dev && self.active.is_some() {
             let mut add = |l: &str, a| v.push((l.to_string(), a));
             add("Change password", AcctAct::Password);
@@ -1267,6 +1273,7 @@ impl App {
             AcctAct::Switch => self.switch_server(),
             AcctAct::SignOut => return self.sign_out(),
             AcctAct::Sources => return self.open_sources(),
+            AcctAct::Admin => return self.open_admin(),
         }
         Task::none()
     }
@@ -1356,6 +1363,7 @@ impl App {
     /// Leave Admin (if open) before navigating elsewhere.
     fn close_admin(&mut self) {
         self.settings_open = false;
+        self.src_open = false;
         self.menu = false;
         self.admin_open = false;
         if let Some(mut a) = self.adm.take() {

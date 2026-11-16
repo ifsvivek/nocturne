@@ -58,6 +58,7 @@ pub enum AcctAct {
     RemoveImage,
     Language,
     Sources,
+    Admin,
 }
 
 /// What the Sources page can ask for.
