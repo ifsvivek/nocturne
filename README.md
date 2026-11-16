@@ -9,7 +9,7 @@ A native media center for Linux: local folders and Jellyfin servers in one cinem
 Built with Rust, [Iced](https://iced.rs/), libmpv, Tokio and the Jellyfin REST API. Video plays inside the app window
 through libmpv with hardware decoding on Wayland; on X11 it plays in an external mpv window.
 
-[Website](https://nocturne.ifsvivek.in) · [Download](https://github.com/ifsvivek/nocturne/releases/latest) · [Features](docs/FEATURES.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
+[Website](https://nocturne.ifsvivek.in) · [Install](#install) · [Package repository](https://nocturne.ifsvivek.in/repo) · [Releases](https://github.com/ifsvivek/nocturne/releases/latest) · [Features](docs/FEATURES.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
 
 Status: version 0.3, early software, Linux x86_64 (tested on Arch only); macOS and Windows are planned, not available
 yet ([docs/PLATFORMS.md](docs/PLATFORMS.md)). See [docs/ROADMAP.md](docs/ROADMAP.md) for what is coming and what is missing.
@@ -65,53 +65,81 @@ files, and a few admin settings (HTTPS and proxy editing, access schedules). Win
 
 ## Install
 
-NOCTURNE plays video with mpv's library, libmpv (package `mpv` on Arch, `libmpv2` on Debian/Ubuntu, `mpv-libs` on
-Fedora), and needs a Vulkan driver, an OpenGL/EGL stack and a Secret Service provider (gnome-keyring, KWallet or
-KeePassXC) to remember logins. libmpv is loaded when needed, so the app starts and browses even without it. Packages are
-tested on Arch Linux only; see [docs/PACKAGING.md](docs/PACKAGING.md) for the full dependency list.
+### Arch Linux and derivatives (CachyOS, EndeavourOS, Manjaro): package repository, recommended
 
-**Package repository (Arch, recommended)**: signed, updates with `pacman -Syu`. pacman pulls in `mpv` and the other
-runtime libraries:
+Signed packages; NOCTURNE then updates with the rest of your system. pacman installs `mpv` and every other runtime
+library. Step-by-step page: [nocturne.ifsvivek.in/repo](https://nocturne.ifsvivek.in/repo).
 
 ```sh
+# 1. Trust the NOCTURNE signing key
 curl -fsSL https://nocturne.ifsvivek.in/repo/ARCH-GPG-KEY | sudo pacman-key --add -
 sudo pacman-key --lsign-key 5204B42AF768DE210D4979E397FA02EFCF1A4E3B
-printf '\n[nocturne]\nSigLevel = Required TrustedOnly\nServer = https://nocturne.ifsvivek.in/repo/arch/$arch\n' | sudo tee -a /etc/pacman.conf
+
+# 2. Add the repository
+sudo tee -a /etc/pacman.conf << 'EOF'
+
+[nocturne]
+SigLevel = Required TrustedOnly
+Server = https://nocturne.ifsvivek.in/repo/arch/$arch
+EOF
+
+# 3. Install
 sudo pacman -Syu nocturne
 ```
 
-Signing key fingerprint: `5204B42AF768DE210D4979E397FA02EFCF1A4E3B` (compare it with the output of the second command).
+Check that the key fingerprint is `5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B` (ed25519, valid until
+2029-11-15). Then:
 
-**Arch Linux, from source** (builds from the source archive of the release tag; the `PKGBUILD` is attached to the release and lives in
-`packaging/`). pacman pulls in `mpv` and the other runtime libraries:
+- **Update**: `sudo pacman -Syu` (new NOCTURNE versions come with your normal system updates).
+- **Uninstall**: `sudo pacman -Rns nocturne`, and delete the `[nocturne]` lines from `/etc/pacman.conf` if you want.
+- **Coming from a 0.2 tarball install?** Remove it first so only one copy exists:
+  `sudo /path/to/nocturne-0.2.0-x86_64-linux/install.sh uninstall` (or delete `/usr/local/bin/nocturne`). Your
+  settings, sign-ins and server list carry over; your server login becomes a source automatically.
+
+### Arch Linux: build the package yourself
+
+Builds the release from source with the `PKGBUILD` in `packaging/` (also attached to every release):
 
 ```sh
 git clone https://github.com/ifsvivek/nocturne && cd nocturne/packaging && makepkg -si
 ```
 
-**Release tarball** (from the [latest release](https://github.com/ifsvivek/nocturne/releases/latest)):
+### Other distributions: release tarball
 
 ```sh
-sha256sum -c nocturne-VERSION-x86_64-linux.tar.gz.sha256
-tar xf nocturne-VERSION-x86_64-linux.tar.gz && cd nocturne-VERSION-x86_64-linux
-sudo ./install.sh              # PREFIX=/usr/local by default; `sudo ./install.sh uninstall` removes it
+curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.3.0/nocturne-0.3.0-x86_64-linux.tar.gz
+curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.3.0/nocturne-0.3.0-x86_64-linux.tar.gz.sha256
+sha256sum -c nocturne-0.3.0-x86_64-linux.tar.gz.sha256
+tar xf nocturne-0.3.0-x86_64-linux.tar.gz && cd nocturne-0.3.0-x86_64-linux
+sudo ./install.sh              # installs to /usr/local; `sudo ./install.sh uninstall` removes it
 ```
 
-The installer checks every runtime library and installs the missing ones with your distribution's package manager
-(it prints the command first; `--no-deps` skips this). The binary is built on Arch and needs a current glibc, so on
-other distributions it may refuse to start: build from source there.
+The installer checks every runtime library and installs missing ones with your package manager (pacman, apt, dnf or
+zypper; it prints the command first, `--no-deps` skips this). The binary is built on current Arch and needs a recent
+glibc, so on older distributions it may refuse to start: build from source there. Native .deb and .rpm packages are
+planned for 0.4.
 
-**From source** (no libmpv development files needed; libmpv is loaded at run time):
+### From source
+
+No libmpv development files are needed: libmpv is loaded at run time.
 
 ```sh
-# Arch: sudo pacman -S rust pkgconf libxkbcommon-x11 vulkan-icd-loader mpv
-# Debian/Ubuntu (names may differ): pkg-config libxkbcommon-x11-dev libvulkan1 libwayland-dev libdbus-1-dev
+# Arch: sudo pacman -S rust pkgconf mpv vulkan-icd-loader libxkbcommon-x11
+# Debian/Ubuntu (names may differ): pkg-config libvulkan1 libxkbcommon-x11-0 libwayland-client0 libdbus-1-dev libmpv2
 git clone https://github.com/ifsvivek/nocturne && cd nocturne
-cargo build --release --locked      # needs stable Rust 1.89+
+cargo build --release --locked      # stable Rust 1.89+; a clean release build takes several minutes (fat LTO)
 ./target/release/nocturne
 ```
 
-A clean release build takes several minutes (fat LTO).
+### Requirements
+
+- **libmpv** for playback (`mpv` on Arch, `libmpv2` on Debian/Ubuntu, `mpv-libs` on Fedora). It is loaded when needed:
+  without it the app still starts and browses, plays through the `mpv` program if that is installed, or tells you what
+  to install.
+- A **Vulkan** driver (Mesa or NVIDIA) and **EGL**, as provided by your graphics stack.
+- A **Secret Service** provider (gnome-keyring, KWallet or KeePassXC) to remember sign-ins; without one you sign in
+  each time. Tokens are never written to a file.
+- Packages are tested on Arch Linux only. Full dependency list: [docs/PACKAGING.md](docs/PACKAGING.md).
 
 ## Supported environments
 
