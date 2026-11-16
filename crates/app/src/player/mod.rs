@@ -1820,6 +1820,11 @@ impl Player {
 
     /// Progress reports: started once, every 10 s, and on pause/resume/seek.
     fn report_tick(&mut self) {
+        // Nothing is reported until the resume question is answered: a "started at 0:00" report
+        // would overwrite the saved position before the viewer chose to resume it.
+        if self.resume_prompt.is_some() {
+            return;
+        }
         let Some(pos) = self.state.as_ref().and_then(|s| s.position) else {
             return;
         };
