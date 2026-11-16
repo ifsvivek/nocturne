@@ -52,6 +52,72 @@ pub fn decode(bytes: &[u8], max_w: u32) -> Option<Handle> {
     ))
 }
 
+/// Shrink `bytes` to `max_w` and decode; also the small JPEG / PNG to keep for next time.
+fn shrink(bytes: &[u8], max_w: u32) -> Option<(Handle, Vec<u8>)> {
+    let mut img = image::load_from_memory(bytes).ok()?;
+    if img.width() > max_w && max_w > 0 {
+        let h = (u64::from(img.height()) * u64::from(max_w) / u64::from(img.width())).max(1);
+        img = img.resize_exact(max_w, h as u32, image::imageops::FilterType::Triangle);
+    }
+    let mut small = vec![];
+    let (fmt, rgb) = if img.color().has_alpha() {
+        (image::ImageFormat::Png, false)
+    } else {
+        (image::ImageFormat::Jpeg, true)
+    };
+    let enc = if rgb {
+        image::DynamicImage::ImageRgb8(img.to_rgb8())
+    } else {
+        img.clone()
+    };
+    enc.write_to(&mut std::io::Cursor::new(&mut small), fmt)
+        .ok()?;
+    let rgba = img.into_rgba8();
+    let h = Handle::from_rgba(rgba.width(), rgba.height(), rgba.into_raw());
+    Some((h, small))
+}
+
+/// Local art is read in full from the user's folder, often far larger than a cell: keep a shrunken
+/// copy in the disk cache (keyed by the file's path, size and mtime) so a later scroll decodes
+/// only that.
+async fn fetch_local(
+    b: Backend,
+    m: Media,
+    art: Art,
+    req_w: u32,
+    disk: Option<std::sync::Arc<nocturne_core::imgcache::DiskCache>>,
+) -> Option<Handle> {
+    let (Backend::Local(l), Some(d)) = (&b, disk) else {
+        return fetch(b, m, art, req_w).await;
+    };
+    let key = format!("local|{}|{req_w}", l.image_sig(&m, art).await?);
+    let _permit = DECODE.acquire().await.ok()?;
+    let (l, d2) = (l.clone(), d.clone());
+    if let Some(small) = tokio::task::spawn_blocking({
+        let (d, key) = (d.clone(), key.clone());
+        move || d.get(&key)
+    })
+    .await
+    .ok()
+    .flatten()
+        && let Some(h) = tokio::task::spawn_blocking(move || decode(&small, req_w))
+            .await
+            .ok()
+            .flatten()
+    {
+        return Some(h);
+    }
+    let bytes = l.image(&m, art).await?;
+    tokio::task::spawn_blocking(move || {
+        let (h, small) = shrink(&bytes, req_w)?;
+        d2.put(&key, &small);
+        Some(h)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
 async fn fetch(b: Backend, m: Media, art: Art, req_w: u32) -> Option<Handle> {
     let bytes = b.image(&m, art, req_w).await?;
     let _permit = DECODE.acquire().await.ok()?;
@@ -115,7 +181,8 @@ impl App {
             };
             cache.insert(key.clone(), Img::Loading);
             let m = m.clone();
-            tasks.push(run(fetch(b, m, art, req_w), move |h| {
+            let disk = self.disk.clone();
+            tasks.push(run(fetch_local(b, m, art, req_w, disk), move |h| {
                 Message::Image(key, big, h)
             }));
         }
