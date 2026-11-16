@@ -51,3 +51,23 @@ when the script ran; the script reports `n/a` in that case).
   or start time is expected, and none was measured separately.
 - A first pass with other builds running showed a 9 % home idle CPU outlier (the table is the second, quieter pass);
   repeat on a quiet machine for release numbers.
+
+## 0.3.0 (Iced) vs 0.2.0 (GPUI), 2026-11-16
+
+Same machine and method (`scripts/perf.sh`, release builds, throwaway XDG dirs, demo server in dev-token mode for the
+loaded-home row). Machine quiet apart from the desktop session.
+
+| Metric | 0.2.0 GPUI (baseline) | 0.3.0 Iced | Change |
+|---|---|---|---|
+| Binary | 25.69 MiB | 30.13 MiB | +4.4 MiB |
+| Tarball | 10.92 MiB | 12.48 MiB | +1.6 MiB |
+| Installed (install.sh) | 26.54 MiB | 30.92 MiB | +4.4 MiB |
+| Start to window mapped (median of 5) | 606 ms | 387 ms | -36 % |
+| Idle sign-in RSS / CPU | 342.9 MiB / 1.57 % | 286.7 MiB / 1.43 % | -16 % RSS |
+| Idle loaded home RSS / CPU | 414.0 MiB / 2.00 % | 297.7 MiB / 1.70 % | -28 % RSS |
+| CPU during 60 s 1080p embedded playback | manual | manual | hwdec = nvdec, 0 dropped frames (QA) |
+
+The larger binary is wgpu (Vulkan + GL backends), Iced's tiny-skia software fallback and the multi-source/local
+library code. Accepted for 0.3: startup and memory improved, and the software renderer keeps the app usable on
+machines without a working Vulkan driver. ponytail: if size matters later, measure dropping tiny-skia or the GL
+backend first.
