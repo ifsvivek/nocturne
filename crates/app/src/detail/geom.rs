@@ -124,9 +124,7 @@ pub fn about_h(m: &Media, f: &Full, width: f32) -> f32 {
     let chars = m
         .overview
         .as_deref()
-        .map_or("No description from the server.".len(), |s| {
-            s.chars().count()
-        });
+        .map_or("No description available.".len(), |s| s.chars().count());
     let lines = chars.div_ceil(per_line).clamp(1, 14) as f32;
     let tag = if f.tagline.is_some() {
         30.0 + t::S3

@@ -429,7 +429,7 @@ impl Detail {
         let overview = m
             .overview
             .clone()
-            .unwrap_or_else(|| "No description from the server.".into());
+            .unwrap_or_else(|| "No description available.".into());
         left = left.push(
             container(
                 g(overview)
