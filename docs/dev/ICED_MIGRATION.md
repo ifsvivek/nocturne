@@ -194,7 +194,7 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   Cut-over must: regenerate THIRD_PARTY_NOTICES, drop vendor/xattr + [patch] + naga shim, rerun test-playback.sh and
   test-install.sh pkgbuild with defaults.
 - [~] single instance (worktree)
-- [~] onboarding flow module (worktree; wired by integration)
+- [x] onboarding module merged (`crates/ui/src/onboarding/`, 5-step fresh + 2-step upgrader path; wiring: integration)
 - [~] integration (worktree; owns app/): mpv 0.42 TLS check (test playback against an HTTPS throwaway server with a self-signed cert using
   mpv 0.42 if available, else document; add per-server trust only if needed); wire the detail hook (and later 4e hooks) into app/mod.rs after 4b merges
 - [ ] 5 cut-over
