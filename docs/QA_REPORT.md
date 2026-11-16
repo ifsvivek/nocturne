@@ -276,3 +276,27 @@ CA in the system store (a private CA installed with `update-ca-trust`, or a publ
 bundle) and the API client, so playback keeps working. A per-source "trust this certificate" setting would have to
 cover the API client as well, not only mpv; it is a feature of its own, not a 0.42 fix. The external mpv player was not
 run separately through the app: it is the same mpv with the same defaults as the CLI rows above.
+
+## Clean-container playback gate, Iced app (2026-11-16)
+
+`PKG=nocturne-ui BIN=nocturne-iced scripts/test-playback.sh` (pre-cut-over Iced app; package built from `git archive HEAD`
+in a fresh `archlinux:base-devel`, `makepkg -si --nocheck`, non-root user with the host uid, host Wayland socket
+bind-mounted, no `/dev/dri`, mesa `vulkan-swrast` (lavapipe), `WGPU_BACKEND=vulkan`, throwaway XDG dirs,
+`NOCTURNE_KEYRING_SERVICE=nocturne-test`, no Jellyfin URL/token). Result: 0 failures. Container, work dir and the pulled image were removed.
+
+| Check | Result | Detail |
+|---|---|---|
+| `makepkg -si` | PASS | `Depends On`: dbus gcc-libs glibc libglvnd libx11 libxcb libxcursor libxi libxkbcommon libxkbcommon-x11 mpv vulkan-icd-loader vulkan-driver wayland |
+| `ldd /usr/bin/nocturne` | PASS | no `not found` |
+| `libmpv.so.2` in ldconfig | PASS | from the `mpv` dependency |
+| Headless start (no display) | PASS | winit "neither WAYLAND_DISPLAY nor WAYLAND_SOCKET nor DISPLAY is set"; no loader error |
+| `mpv --vo=null --ao=null --hwdec=no --frames=60 clip.mp4` (generated h264/aac, 640x360) | PASS | installed libmpv decodes |
+| Installed `nocturne` on the host compositor | PASS | `hyprctl clients -j` shows a mapped `class=nocturne` window whose pid is in the container (`docker top`); still mapped and running after 10 s; no panic in the log (the log was empty) |
+
+Proves: the package builds from a clean image with only the declared dependencies, every linked and dlopen'd library the
+start-up path touches resolves, the binary opens a Wayland window and survives 10 s on the software Vulkan path, and the
+distro's libmpv decodes video. Does not prove: in-window video (libmpv render API into the Wayland subsurface), UI
+contents (release builds have no screenshot path), input, hardware rendering or decoding, a real library or server, other
+distributions. Those stay host-verified. Also checked 2026-11-16: package names exist in debian:stable, fedora:latest and
+openSUSE Tumbleweed (see PACKAGING.md; `libEGL1` does not exist on openSUSE, `libglvnd` provides `libEGL.so.1`);
+`cargo deny check licenses bans sources` passes on the workspace including `nocturne-ui`.

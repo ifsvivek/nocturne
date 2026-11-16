@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 
 /// 2: server writes became opt-in (`allow_server_writes`); the old sync default is reset.
 pub const VERSION: u32 = 2;
+/// Revision of the first-run walkthrough. `Settings::onboarding` below this means it is due.
+pub const ONBOARDING: u32 = 1;
 
 fn zero() -> u32 {
     0
@@ -111,6 +113,8 @@ pub struct Settings {
     pub allow_server_writes: bool,
     /// Report playback progress to the server (only counts while `allow_server_writes` is on).
     pub sync_progress: bool,
+    /// Last first-run walkthrough the user finished or skipped (0 = never). Internal state, no Settings row.
+    pub onboarding: u32,
     pub audio_lang: Option<String>,
     pub sub_lang: Option<String>,
     pub sub_mode: SubPref,
@@ -141,6 +145,7 @@ impl Default for Settings {
             version: VERSION,
             allow_server_writes: false,
             sync_progress: false,
+            onboarding: 0,
             audio_lang: None,
             sub_lang: None,
             sub_mode: SubPref::Off,
@@ -589,6 +594,21 @@ mod tests {
         assert!(!s.allow_server_writes && !s.sync_progress);
         assert!(s.autoplay_next && !s.auto_skip_intro);
         assert_eq!(s.rows().len(), ROWS);
+    }
+
+    #[test]
+    fn onboarding_defaults_to_never_and_persists() {
+        let d = dir("onb");
+        let p = d.join("nocturne").join("settings.toml");
+        assert_eq!(Settings::default().onboarding, 0);
+        let s = Settings {
+            onboarding: ONBOARDING,
+            ..Settings::default()
+        };
+        s.save_to(&p).unwrap();
+        assert_eq!(Settings::load_from(&p).onboarding, ONBOARDING);
+        std::fs::write(&p, "version = 2\n").unwrap();
+        assert_eq!(Settings::load_from(&p).onboarding, 0, "old files: never");
     }
 
     #[test]

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Footprint measurements for a NOCTURNE binary (see docs/PLATFORMS.md, docs/dev/PERF.md). Linux only.
-# usage: scripts/perf.sh [BINARY] [LABEL]     (default target/release/nocturne)
+# usage: scripts/perf.sh [BINARY] [LABEL]     (default target/release/$BIN)
+#   env: BIN  app binary name (default nocturne; nocturne-iced before the Iced cut-over)
 #   env: PERF_DEMO_ENV  test.env of the throwaway demo server (default /tmp/nocturne-demo/jf/test.env); when it
 #                       exists, the "loaded home" row runs in dev-token mode against it, otherwise it prints n/a.
 #        PERF_RUNS (5)  PERF_IDLE_WAIT (10 s)  PERF_CPU_SECS (30)
@@ -9,7 +10,8 @@
 # repo .env is ever read). Never point it at a real server. Output: a markdown table on stdout.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN="$(readlink -f "${1:-$HERE/target/release/nocturne}")"
+APP_BIN="${BIN:-nocturne}"
+BIN="$(readlink -f "${1:-$HERE/target/release/$APP_BIN}")"
 LABEL="${2:-$(basename "$BIN")}"
 RUNS="${PERF_RUNS:-5}"; WAIT="${PERF_IDLE_WAIT:-10}"; CPUS="${PERF_CPU_SECS:-30}"
 DEMO_ENV="${PERF_DEMO_ENV:-/tmp/nocturne-demo/jf/test.env}"
