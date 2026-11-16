@@ -6,6 +6,7 @@ mod app;
 mod detail;
 mod keys;
 mod motion;
+mod onboarding;
 mod platform;
 mod player;
 mod queue;
@@ -51,6 +52,11 @@ fn main() -> iced::Result {
     #[cfg(debug_assertions)]
     if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("syncplay") {
         return syncplay::preview::run();
+    }
+    // Debug builds only: the first-run walkthrough alone (see onboarding/preview.rs).
+    #[cfg(debug_assertions)]
+    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("onboarding") {
+        return onboarding::preview::run();
     }
     // Config (and .env) is read once, before any other thread exists. (Not for the player preview:
     // it never touches the configured server.)
