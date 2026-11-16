@@ -2,7 +2,7 @@
 //! health (one source failing never blocks another), the progressive libraries request and the
 //! local scans. Everything slow runs in tasks; nothing here is on the path to the first frame.
 use super::message::{Message, ScanMsg};
-use super::{App, Load, Phase, View, folders};
+use super::{App, Phase, View, folders};
 use crate::account::{Accounts, picker};
 use crate::task::{Handoff, run};
 use iced::Task;
@@ -192,8 +192,40 @@ impl App {
                 }));
             }
         }
+        // Servers still labelled by their address are asked for their name, once; the login the
+        // write hooks need is read for every server that is not the active one.
+        for s in &self.catalog.slots {
+            let Some(Backend::Jellyfin(j)) = &s.backend else {
+                continue;
+            };
+            if s.id == DEV {
+                continue;
+            }
+            if let ProfileKind::Jellyfin { url, .. } = &s.profile.kind
+                && s.profile.label == nocturne_core::profile::label_for(url)
+            {
+                let (j, id) = (j.clone(), s.id);
+                tasks.push(run(async move { j.server_name().await }, move |n| {
+                    Message::ServerName(id, n)
+                }));
+            }
+            if Some(s.id) != self.active && !self.hooks_by.contains_key(&s.id) {
+                tasks.push(self.load_hooks(s.id));
+            }
+        }
         self.launch_scan = true;
         Task::batch(tasks)
+    }
+
+    /// A server announced its name: it becomes the label unless the user chose one.
+    pub(super) fn server_named(&mut self, id: SourceId, name: Option<String>) {
+        let Some(name) = name else { return };
+        if self.sources.name_server(id, &name) {
+            self.save_sources();
+            if let Some(s) = self.catalog.slot_mut(id) {
+                s.profile.label = name.trim().to_string();
+            }
+        }
     }
 
     /// Read the stored login of a server's profile (keyring) and make it the account in use.
@@ -273,7 +305,12 @@ impl App {
     // ---- fan-out ----
 
     /// One request per online source, answers arrive as `Message::Fan` for page `pid`.
-    pub(super) fn fan<F, Fut>(&mut self, pid: u64, ask: F) -> (Fanout, Task<Message>)
+    pub(super) fn fan<F, Fut>(
+        &mut self,
+        pid: u64,
+        kind: super::message::FanKind,
+        ask: F,
+    ) -> (Fanout, Task<Message>)
     where
         F: Fn(Backend) -> Fut,
         Fut: Future<Output = Result<Vec<Media>, Failed>> + Send + 'static,
@@ -290,32 +327,10 @@ impl App {
         let tasks = slots.into_iter().map(|(id, b)| {
             let fut = ask(b);
             run(async move { fut.await.ok() }, move |r| {
-                Message::Fan(pid, epoch, id, r)
+                Message::Fan(pid, kind, epoch, id, r)
             })
         });
         (fan, Task::batch(tasks))
-    }
-
-    pub(super) fn fan_answer(
-        &mut self,
-        pid: u64,
-        epoch: u64,
-        origin: SourceId,
-        r: Option<Vec<Media>>,
-    ) {
-        let prio = self.catalog.priority();
-        let Some(p) = self.page_mut(pid) else { return };
-        if !p.fan.accept(epoch, origin, r) {
-            return; // an older request, or a page that is gone
-        }
-        p.libs = if p.fan.contributors() > 0 || p.fan.pending() == 0 && p.fan.failed().is_empty() {
-            Load::Ready(p.fan.flat(&prio))
-        } else if p.fan.pending() == 0 {
-            Load::Failed
-        } else {
-            Load::Loading
-        };
-        crate::timing::shell_ready();
     }
 
     // ---- health ----

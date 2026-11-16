@@ -1,5 +1,6 @@
 //! Component kit: ports of the GPUI `ui.rs` helpers. Each returns a plain element; state stays in
 //! the caller. Colours come from `theme`, shapes from `style`.
+pub mod cell;
 pub mod controls;
 pub mod layout;
 pub mod popover;

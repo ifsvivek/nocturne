@@ -24,7 +24,9 @@ where
 
 /// `msg` after `d` (timers live on the same runtime).
 pub fn after<M: Send + 'static>(d: Duration, msg: M) -> Task<M> {
-    run(tokio::time::sleep(d), move |_| msg)
+    // On Iced's own executor (not the bridge's): the timer dies with the app instead of being
+    // left sleeping on a runtime that is being torn down at exit.
+    Task::perform(tokio::time::sleep(d), move |_| msg)
 }
 
 /// Hands a value that is not `Clone` (a built `Slot`, the loaded catalog) through a `Message`:

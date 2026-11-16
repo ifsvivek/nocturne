@@ -11,6 +11,32 @@ use nocturne_core::source::{ConnectError, Media, Source, SourceId};
 use nocturne_jellyfin_user::Session;
 use std::time::Instant;
 
+/// Which fan-out on the Home page an answer belongs to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FanKind {
+    Libs,
+    Resume,
+    NextUp,
+}
+
+/// A cell of the page in view (Home strip position, grid index, search hit).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum At {
+    Hero,
+    /// Layout row, column.
+    Home(usize, usize),
+    Grid(usize),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CellAct {
+    Open,
+    Play,
+    Hover,
+    Fav,
+    Played,
+}
+
 /// Account menu entries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AcctAct {
@@ -94,8 +120,42 @@ pub enum Message {
     },
     /// The saved sources and the catalog built from them (keyring and index reads, off the UI thread).
     Loaded(Handoff<super::catalog::Loaded>),
-    /// One source's libraries for the Home page `pid`, answering request `epoch` (nav links).
-    Fan(u64, u64, SourceId, Option<Vec<Media>>),
+    /// One source's answer for Home page `pid` (libraries, continue watching, next up), to request `epoch`.
+    Fan(u64, FanKind, u64, SourceId, Option<Vec<Media>>),
+    /// One library's latest items on Home page `pid`: (pid, request epoch, source, library id, items).
+    Latest(u64, u64, SourceId, String, Option<Vec<Media>>),
+    /// Provider ids of the series behind some episodes (for matching episodes across sources).
+    SeriesIds(SourceId, Vec<(String, nocturne_core::source::ProviderIds)>),
+    /// A decoded image for cache `key` (`bool`: the hero cache).
+    Image(String, bool, Option<Handle>),
+    Scale(f32),
+    /// Something done to a cell of the page in view.
+    Cell(At, CellAct),
+    /// Play this item (a series resolves to its next episode first).
+    PlayItem(Media),
+    /// Start playback of an item with the queue that follows it. THE hook for the player page.
+    Play(Media, Vec<Media>),
+    PlayTarget(
+        Media,
+        Vec<Media>,
+        Result<nocturne_core::backend::PlayTarget, nocturne_core::backend::PlayError>,
+    ),
+    Player(crate::player::Msg),
+    HomeScroll(f32, f32),
+    HomeStrip(usize, f32),
+    Browse(u64, super::browse::BMsg),
+    Search(super::search::SMsg),
+    /// The stored login of a server, to build its write hooks (played / favourite).
+    HooksLoaded(SourceId, Option<(String, Session)>),
+    /// A server's public name (`/System/Info/Public`).
+    ServerName(SourceId, Option<String>),
+    ToggleLibMenu,
+    RefreshResume,
+    Toast(String),
+    /// A local played-state write finished: (source, item, new value, ok).
+    LocalWrite(SourceId, String, bool, bool),
+    SearchScrolled(f32),
+    OpenKind(nocturne_core::unified::UKind),
     /// Reachability of a server: its id and whether it answered.
     Pinged(SourceId, bool),
     /// A source slot rebuilt off the UI thread (enabled again, re-signed in).

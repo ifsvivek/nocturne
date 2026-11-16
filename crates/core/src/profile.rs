@@ -155,6 +155,23 @@ impl Sources {
         self.profiles.iter().map(|p| p.id).collect()
     }
 
+    /// Label a server by the name it announces, unless the user (or an earlier call) already chose
+    /// one: only a label that is still the default host label is replaced. True if it changed.
+    pub fn name_server(&mut self, id: SourceId, name: &str) -> bool {
+        let name = name.trim();
+        let Some(p) = self.profiles.iter_mut().find(|p| p.id == id) else {
+            return false;
+        };
+        let ProfileKind::Jellyfin { url, .. } = &p.kind else {
+            return false;
+        };
+        if name.is_empty() || p.label != label_for(url) || p.label == name {
+            return false;
+        }
+        p.label = name.to_string();
+        true
+    }
+
     pub fn set_enabled(&mut self, id: SourceId, on: bool) {
         if let Some(p) = self.profiles.iter_mut().find(|p| p.id == id) {
             p.enabled = on;
@@ -349,6 +366,24 @@ pub fn keyring_token(url: &str, user_id: &str) -> Option<String> {
         .flatten()
         .filter(|s| s.user_id == user_id)
         .map(|s| s.access_token)
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::*;
+
+    #[test]
+    fn a_server_is_named_once_and_user_edits_stay() {
+        let mut s = Sources::default();
+        let id = s.upsert_server("http://home.test:8096", "u", "n");
+        assert!(s.name_server(id, "  Basement  "));
+        assert_eq!(s.get(id).unwrap().label, "Basement");
+        // Already named (or edited by the user): not replaced again.
+        assert!(!s.name_server(id, "Other"));
+        assert!(!s.name_server(id, ""));
+        let local = s.ensure_local();
+        assert!(!s.name_server(local, "x"), "only servers are named");
+    }
 }
 
 #[cfg(test)]

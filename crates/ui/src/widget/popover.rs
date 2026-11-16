@@ -12,6 +12,7 @@ pub struct Popover<'a, M> {
     popup: Option<Element<'a, M>>,
     on_dismiss: Option<M>,
     gap: f32,
+    left: bool,
     empty: Element<'a, M>,
 }
 
@@ -26,8 +27,15 @@ impl<'a, M: Clone + 'a> Popover<'a, M> {
             popup,
             on_dismiss: Some(on_dismiss),
             gap: 4.0,
+            left: false,
             empty: space().into(),
         }
+    }
+
+    /// Align the menu's left edge with the anchor's (default: right edges).
+    pub fn left(mut self) -> Self {
+        self.left = true;
+        self
     }
 }
 
@@ -159,6 +167,7 @@ impl<'a, M: Clone + 'a> Widget<M, iced::Theme, iced::Renderer> for Popover<'a, M
                 tree: &mut popup_tree[0],
                 on_dismiss: self.on_dismiss.clone(),
                 gap: self.gap,
+                left: self.left,
             }))
         });
         if base.is_none() && popup.is_none() {
@@ -174,6 +183,7 @@ struct Menu<'a, 'b, M> {
     tree: &'b mut Tree,
     on_dismiss: Option<M>,
     gap: f32,
+    left: bool,
 }
 
 impl<M: Clone> overlay::Overlay<M, iced::Theme, iced::Renderer> for Menu<'_, '_, M> {
@@ -191,7 +201,12 @@ impl<M: Clone> overlay::Overlay<M, iced::Theme, iced::Renderer> for Menu<'_, '_,
         } else {
             below
         };
-        let x = (self.anchor.x + self.anchor.width - s.width).max(0.0);
+        let x = if self.left {
+            self.anchor.x.min(bounds.width - s.width)
+        } else {
+            self.anchor.x + self.anchor.width - s.width
+        }
+        .max(0.0);
         node.move_to(Point::new(x, y))
     }
 

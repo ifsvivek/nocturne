@@ -148,7 +148,18 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   are many libraries (now scrolls sideways), `Message::Fan` is only used for libraries, a scan holds the local
   library's write lock (reads of that source wait; see the ponytail note in `core/folders.rs`).
 - [~] 4d player page (worktree, own module; root hook wired by master after M3)
-- [~] 4b home, browse (virtualised + unified kinds), search, header for many sources, Sources polish (worktree)
+- [x] 4b home, browse, search, header for many sources, Sources polish (`app/{home,browse,search,images,actions,play,cells}.rs`,
+  `widget/cell.rs`, `virt.rs`, core `unified.rs`). Home: hero + Continue watching / Next up (merged across sources,
+  interleaved by recency) + Latest per library, rows arrive per source. Browse: one source = lazily paged grid, several
+  = every source loads fully in the background and is merged and sorted client-side (`unified::Merged`, cap 20,000
+  items per source); both build only the rows in the scroll viewport (`virt.rs`) between two spacers. Unified Movies /
+  Shows / Music / Photos + Collections / Playlists / Favourites span all sources; the header shows unified kinds and a
+  Libraries menu when several sources contributed, the GPUI link row with one. Search merges all sources. Images: blurhash
+  stand-in, then bytes decoded off the UI thread to RGBA at the drawn size (bounded `Cache`, separate 6-entry hero cache).
+  Played / favourite route to the item's own source (`write_slot` / local state) with optimistic patch + revert.
+  `Message::Play(Media, Vec<Media>)` opens the player page (`app/play.rs`, 4d is wired). Strips scroll sideways with
+  horizontal wheel / Shift+wheel / keyboard (a plain wheel scrolls the page: Iced hands a vertical wheel to the page unless the
+  strip is the only scroller). Deferred: detail pages and the photo viewer (4c), shimmer / fade-in on images.
 - [ ] 4c detail pages + version picker, playlists; 4e account page, admin per server, SyncPlay, music queue
 - [ ] 5 cut-over
 - [ ] 6 verification

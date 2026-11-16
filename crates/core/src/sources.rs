@@ -160,6 +160,39 @@ impl Fanout {
         merge(self.answers.clone(), priority, prefs, series)
     }
 
+    /// Like [`entries`](Self::entries) for lists that are "most recent first" in every source
+    /// (continue watching): the first of each source come first, then the seconds, and so on.
+    pub fn interleaved(
+        &self,
+        priority: &[SourceId],
+        prefs: &Preferred,
+        series: &SeriesIds,
+    ) -> Vec<Entry> {
+        let mut v = self.entries(priority, prefs, series);
+        let pos = |m: &Media| {
+            self.answers
+                .iter()
+                .find(|(o, _)| *o == m.origin)
+                .and_then(|(_, l)| l.iter().position(|x| x.id == m.id))
+                .unwrap_or(usize::MAX)
+        };
+        v.sort_by_cached_key(|e| e.all().map(pos).min().unwrap_or(usize::MAX));
+        v
+    }
+
+    /// Every answer so far, with its source (for ordering by position within a source).
+    pub fn answers(&self) -> &[(SourceId, Vec<Media>)] {
+        &self.answers
+    }
+
+    /// Optimistic edits (played / favourite) reach the answers too, so a rebuild keeps them.
+    pub fn for_each_mut(&mut self, mut f: impl FnMut(&mut Media)) {
+        self.answers
+            .iter_mut()
+            .flat_map(|(_, v)| v.iter_mut())
+            .for_each(&mut f);
+    }
+
     /// How many distinct sources contributed.
     pub fn contributors(&self) -> usize {
         self.answers.iter().filter(|(_, v)| !v.is_empty()).count()
@@ -270,6 +303,19 @@ mod tests {
                 .len(),
             3
         );
+    }
+
+    #[test]
+    fn recent_lists_interleave_across_sources() {
+        let mut f = Fanout::new(1, vec![A, B]);
+        f.accept(1, A, Some(vec![lib(A, "a1"), lib(A, "a2")]));
+        f.accept(1, B, Some(vec![lib(B, "b1"), lib(B, "b2")]));
+        let ids: Vec<_> = f
+            .interleaved(&[A, B], &Preferred::default(), &SeriesIds::default())
+            .iter()
+            .map(|e| e.primary.id.clone())
+            .collect();
+        assert_eq!(ids, ["a1", "b1", "a2", "b2"]);
     }
 
     #[test]

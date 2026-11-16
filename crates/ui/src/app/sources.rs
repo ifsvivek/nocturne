@@ -20,6 +20,9 @@ use std::time::Instant;
 
 type El<'a> = Element<'a, Message>;
 
+/// Width of the buttons column of a source row (sign in again, folders, rescan, disable, up, down, remove).
+const ACTS_W: f32 = 560.0;
+
 fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
@@ -245,6 +248,8 @@ impl App {
                 ))
                 .push(btn("Remove", true, false, SrcAct::AskRemove(id)));
         }
+        // Fixed-width columns: the status of every row lines up whatever buttons a row has.
+        let acts = container(acts).width(ACTS_W).align_x(Alignment::End);
         row![badge, who, status, acts]
             .spacing(t::S4)
             .align_y(Alignment::Center)

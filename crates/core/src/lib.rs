@@ -25,4 +25,5 @@ pub mod source;
 pub mod sources;
 pub mod sync;
 pub mod syncplay;
+pub mod unified;
 pub mod video;
