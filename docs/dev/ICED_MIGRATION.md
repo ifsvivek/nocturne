@@ -30,7 +30,9 @@ Delete this file (fold the lasting parts into ARCHITECTURE.md / DECISIONS.md) wh
    e. account page, admin (all sections, confirm dialog, `on_confirm` minting), SyncPlay screen.
 5. **Cut-over**: delete `crates/app` (GPUI), rename `crates/ui` -> `crates/app` (package `nocturne-app`,
    bin `nocturne`), drop `vendor/xattr` + `[patch]` (only gpui needed it; verify), prune dependencies, regenerate
-   THIRD_PARTY_NOTICES, update docs/CI/packaging, grep the repo for GPUI.
+   THIRD_PARTY_NOTICES, update docs/CI/packaging, grep the repo for GPUI. Re-derive the runtime soname list in
+   `packaging/install.sh` / PKGBUILD / PACKAGING.md for winit+wgpu (winit dlopens libX11, libXcursor, libXrandr,
+   libXi, libX11-xcb, libwayland-*, libxkbcommon); delete `spikes/`.
 6. **Verification + release prep**: fmt/clippy/tests, run on Wayland and X11 (XWayland), clean-container install
    of the tarball and PKGBUILD, playback after install, CHANGELOG + version 0.3.0. No release without the user.
 
@@ -46,8 +48,8 @@ Delete this file (fold the lasting parts into ARCHITECTURE.md / DECISIONS.md) wh
 
 ## Progress
 
-- [ ] 1 libmpv / installer
-- [ ] 2 spike
+- [x] 1 libmpv / installer (dlopen FFI verified in-window via the spike; installer container tests pending: docker needs sudo)
+- [x] 2 spike: GO (notes in ICED_NOTES.md)
 - [ ] 3 core extraction
 - [ ] 4a-4e screens
 - [ ] 5 cut-over
