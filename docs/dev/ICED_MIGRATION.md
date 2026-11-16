@@ -13,7 +13,8 @@ Delete this file (fold the lasting parts into ARCHITECTURE.md / DECISIONS.md) wh
 ## Release scope (user, 2026-11-16, updated)
 
 Arch Linux only (no .deb/.rpm/AppImage/macOS/Windows work). 0.3: push to GitHub and create the GitHub release once the
-master's own testing passes (ask the user about redeploying the website). Then 0.4 on a LOCAL-ONLY branch `v0.4-local`
+master's own testing passes and redeploy the website (user approved; after the
+screenshot recapture and `VERSION` 0.3.0 in `website/site.config.json`). Then 0.4 on a LOCAL-ONLY branch `v0.4-local`
 (never pushed, no release). A docs audit worker runs when a
 slot frees, and again after the cut-over (GPUI -> Iced references).
 
