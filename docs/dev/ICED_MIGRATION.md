@@ -165,6 +165,11 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   a shared root image cache (the page keeps its own).
 - [~] 4e account page + devices, admin per server (confirm choke point), SyncPlay, music queue (worktree, modules + hooks)
 - polish backlog: version sizes < 1 MB show "0 MB"; splash logo clipping check; one snapshot hook
-- [ ] integration: wire the detail hook (and later 4e hooks) into app/mod.rs after 4b merges
+- [x] docs pass 2 + CHANGELOG [0.3.0] + docs/dev/RELEASE_NOTES_0.3.0.md drafted on local branch `docs-0.3-pending`
+  (written for the post-cut-over state; merge WITH the cut-over). Before release verify its assumptions: 4b/4e merged
+  and working, mpv 0.42 TLS check DONE (it moved it to 'carried forward'; move back once done), startup does not wait
+  for the network (measure), reduce motion honoured everywhere.
+- [ ] integration: mpv 0.42 TLS check (test playback against an HTTPS throwaway server with a self-signed cert using
+  mpv 0.42 if available, else document; add per-server trust only if needed); wire the detail hook (and later 4e hooks) into app/mod.rs after 4b merges
 - [ ] 5 cut-over
 - [ ] 6 verification
