@@ -3,7 +3,7 @@
 Prototype (historical): `crates/video-proto`, removed once integrated; its code lives on as `crates/player/src/embedded.rs` (see "Integrated" below).
 Test environment (a single hybrid-graphics machine; other hardware is untested): Arch Linux, a Wayland compositor,
 NVIDIA discrete GPU (proprietary driver) plus AMD iGPU, high-refresh monitor at scale 1.0, mpv/libmpv 0.41
-(client API 2.5), GPUI 0.2.2, `libmpv2` 7.0.1.
+(client API 2.5), GPUI 0.2.2, `libmpv2` 7.0.1 (since replaced by the runtime loader in `crates/player/src/mpv_ffi.rs`).
 
 ## Recommendation: GO (with caveats)
 
@@ -72,7 +72,7 @@ Gotchas found:
    `eglMakeCurrent(none)`, destroy `EGLSurface`, drop `wl_egl_window`, destroy `EGLContext`.
    `eglTerminate` is intentionally not called (process-wide display, shared with other EGL users).
 2. then destroy `wp_viewport`, `wl_subsurface`, `wl_surface`; flush. GPUI's parent surface is never touched.
-3. `Arc<Mpv>` is dropped last (`mpv_terminate_destroy`). The render context borrows `&Mpv`, so this is enforced by the types.
+3. `Arc<Mpv>` is dropped last (`mpv_destroy`). The render context borrows `&Mpv`, so this is enforced by the types.
 
 ## Compositing correctness
 - GPUI alpha on the tested stack: blade picks `PRE_MULTIPLIED` (or `POST_MULTIPLIED`) composite alpha when the window is

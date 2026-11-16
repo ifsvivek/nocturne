@@ -5,11 +5,16 @@
 //! - [`Player`]: mpv as a CHILD PROCESS (own window, own GPU context) driven over its JSON IPC on a
 //!   private unix socket, so a driver crash or hang in mpv can never take the app down. Fallback.
 //!
+//! libmpv is loaded at runtime (see [`libmpv_available`]); a missing library is an error, not a startup crash.
+//!
 //! No GPUI or Jellyfin dependencies.
 //!
 //! Env override: `NOCTURNE_VO` picks the windowed video output (default `gpu-next`).
 
+mod deps;
 mod embedded;
+mod mpv_ffi;
+pub use deps::{install_hint, install_hint_for, libmpv_available, mpv_binary_available};
 pub use embedded::{EmbeddedPlayer, Geometry, geometry};
 
 use serde_json::{Value, json};
