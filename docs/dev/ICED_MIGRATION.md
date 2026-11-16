@@ -34,7 +34,9 @@ root on the catalog (first run, Sources settings, startup screen) -> 4b-4e writt
    d. player page (embedded/external backend, controls, popovers, trickplay, skip/next, queue, MPRIS) and the
       `Root::tick` sync reporting;
    e. account page, admin (all sections, confirm dialog, `on_confirm` minting), SyncPlay screen.
-5. **Cut-over**: delete `crates/app` (GPUI), rename `crates/ui` -> `crates/app` (package `nocturne-app`,
+5. **Before the cut-over**: measure the GPUI 0.2.0 baseline (release binary size, tarball size, cold start, idle RSS/CPU on
+   sign-in and on a loaded home page, CPU during 1080p embedded playback) with `scripts/perf.sh` into `docs/dev/PERF.md`.
+   **Cut-over**: delete `crates/app` (GPUI), rename `crates/ui` -> `crates/app` (package `nocturne-app`,
    bin `nocturne`), drop `vendor/xattr` + `[patch]` (only gpui needed it; verify), prune dependencies, regenerate
    THIRD_PARTY_NOTICES, update docs/CI/packaging, grep the repo for GPUI. Re-derive the runtime soname list in
    `packaging/install.sh` / PKGBUILD / PACKAGING.md for winit+wgpu (winit dlopens libX11, libXcursor, libXrandr,
