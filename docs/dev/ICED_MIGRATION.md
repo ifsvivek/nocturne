@@ -124,7 +124,19 @@ Demo library on a throwaway server: `scripts/make-demo-library.sh build` (prints
   source, availability flag on Media so unplugged local copies are demoted in merges.
 - [~] first-run welcome, glyph/button fixes, FAST launch (measured), player buffering overlay widget (worktree; the
   cinematic launch screen was dropped: the user meant video buffering)
-- [ ] M3 Iced root on the catalog (Sources settings, local folders screen, source filter/marks, local playback)
+- [x] M3 Iced root on the catalog (worktree, `crates/ui/src/app/{catalog,sources,folders}.rs` + `crates/core/src/{sources,folders}.rs`):
+  `App` holds `Sources` + `Catalog` + `Preferred` + `SeriesIds`; sources load in a task after the first frame (keyring
+  reads, index opening); per-server health on the 200 ms tick (401 -> that slot SignedOut with a quiet banner, no
+  answer -> Offline with backoff, other sources unaffected); developer token = transient read-only slot id 0;
+  `Settings > Sources` page (own page, reached from Settings and the account menu) with status, sign in again,
+  rescan, enable/disable, priority up/down, remove (confirmation, says what is deleted); local folders screen (portal
+  chooser via `rfd` or typed path, availability, live scan progress on a thread, cancel, counts, Unmatched with manual
+  match -> overrides); first-run routing (`FirstRun`/`Step` in core); `source_mark` widget, `SourceFilter` (header
+  chip), `fan()` helper (one request per online slot, answers merge as they arrive, stale epochs dropped).
+  Debug-only `NOCTURNE_SNAP=/tmp/x.png` (+ `NOCTURNE_SNAP_AFTER_MS=1500[,3000,...]`) captures the app window through
+  `window::screenshot`; use it instead of any screen grab. Carry into 4b: header nav needs a "More" menu once there
+  are many libraries (now scrolls sideways), `Message::Fan` is only used for libraries, a scan holds the local
+  library's write lock (reads of that source wait; see the ponytail note in `core/folders.rs`).
 - [ ] 4b-4e screens
 - [ ] 5 cut-over
 - [ ] 6 verification

@@ -9,7 +9,7 @@ use crate::widget::{
     avatar, menu_row, mono, nav_link, rule, source_mark, tip, value_chip, wordmark,
 };
 use iced::widget::button::{Status, Style};
-use iced::widget::{column, container, mouse_area, opaque, row, space, text};
+use iced::widget::{column, container, mouse_area, opaque, row, scrollable, space, text};
 use iced::{Alignment, Element, Length, Padding, Task};
 use nocturne_core::nav;
 use nocturne_core::sync::NEED_WRITES;
@@ -106,9 +106,16 @@ impl App {
             ]
             .spacing(t::S1)
             .align_y(Alignment::Center),
-            nav_row,
+            // Many sources make a long link row: it scrolls sideways (wheel) instead of pushing the
+            // search and avatar out of the window.
+            scrollable(nav_row)
+                .direction(scrollable::Direction::Horizontal(
+                    scrollable::Scrollbar::new().width(0).scroller_width(0),
+                ))
+                .width(Length::Fill),
         ]
         .spacing(t::S8)
+        .width(Length::Fill)
         .align_y(Alignment::Center);
         let search = tip(
             Press::new(
@@ -154,7 +161,7 @@ impl App {
         }
         let right = right.push(search).push(self.avatar());
         let right = row![right].spacing(t::S4).align_y(Alignment::Center);
-        let bar = row![left, space().width(Length::Fill), right]
+        let bar = row![left, right]
             .align_y(Alignment::Center)
             .height(t::HEADER_H - 1.0);
         let head = container(column![container(bar).padding([0.0, t::PAGE_PAD]), rule(),])
@@ -169,7 +176,11 @@ impl App {
 
     /// Initial in a hairline circle; opens the account menu.
     fn avatar(&self) -> El<'_> {
-        let name = self.session().map_or("dev", |(_, s)| s.user_name.as_str());
+        let name = self
+            .session()
+            .map_or(if self.dev { "dev" } else { "NOCTURNE" }, |(_, s)| {
+                s.user_name.as_str()
+            });
         let open = self.menu;
         Press::new(avatar(
             32.0,
@@ -267,11 +278,17 @@ impl App {
 
     /// Dropdown under the avatar: who and where, then the account actions.
     pub(super) fn account_menu(&self) -> El<'_> {
+        let none = if self.dev {
+            ("Developer token".to_string(), "read-only".to_string())
+        } else {
+            (
+                "NOCTURNE".to_string(),
+                format!("{} sources", self.sources.profiles.len()),
+            )
+        };
         let (name, server) = self
             .session()
-            .map_or(("Developer token".into(), "read-only".into()), |(u, s)| {
-                (s.user_name.clone(), u.clone())
-            });
+            .map_or(none, |(u, s)| (s.user_name.clone(), u.clone()));
         let who = row![
             avatar(
                 40.0,

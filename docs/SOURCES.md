@@ -92,7 +92,7 @@ Catalog (core)                      one per process, owned by the UI root
 2. Core catalog: `SourceId` + `origin` on `Media`, `Profile` + `sources.toml` + migration from the single-server
    files, `Backend` enum with fan-out and per-slot status, provider ids from Jellyfin, duplicate grouping and
    preferred-source choice; tests with fixtures and two throwaway servers (ports 8097 and 8098).
-3. Iced root on the catalog: first-run choice, Sources settings, source filter and marks, local playback + local
+3. (done, 2026-11-16; local playback and the cinematic startup screen are not part of it) Iced root on the catalog: first-run choice, Sources settings, source filter and marks, local playback + local
    resume state, cinematic startup screen driven by real init steps.
 4. Remaining screens ported directly on the catalog model (home, browse, search, detail incl. alternate sources,
    player, account, admin per server, SyncPlay per server).
