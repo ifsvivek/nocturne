@@ -21,9 +21,9 @@ function build(released, version) {
 }
 const files = (d) => readdirSync(d).flatMap((f) => (statSync(join(d, f)).isDirectory() ? files(join(d, f)) : [join(d, f)]));
 const read = (dir, f) => readFileSync(join(dir, f), "utf8");
-let off, on, next;
-// next: the same site once VERSION reaches 0.3.0, when every "Coming in 0.3" mark must be gone.
-before(() => { off = build(false); on = build(true); next = build(true, "0.3.0"); });
+let off, on, prev;
+// prev: the same site while VERSION was 0.2.0, when every new-in-0.3 claim must carry its "Coming in 0.3" mark.
+before(() => { off = build(false); on = build(true); prev = build(true, "0.2.0"); });
 
 test("RELEASED=false: no repo or release links, coming soon", () => {
   for (const f of ["index.html", "privacy.html", "404.html"]) {
@@ -49,18 +49,18 @@ test("RELEASED=true: download, repo and version", () => {
 });
 
 test("0.3 copy is marked while VERSION is older, and unmarked once it ships", () => {
-  const h = read(on, "index.html"), n = read(next, "index.html");
+  const h = read(prev, "index.html"), n = read(on, "index.html");
   // Each new-in-0.3 claim carries its mark: hero, scene, details, playback items, safety facts, specs, FAQ.
   assert.ok((h.match(/Coming in 0\.3/g) || []).length >= 12, "marks in the 0.2.0 build");
   assert.ok(h.includes("GPUI") && !h.includes(">Iced<"), "credits name the toolkit of the downloadable version");
   assert.doesNotMatch(n, /Coming in 0\.3|GPUI/);
   assert.ok(n.includes(">Iced<") && n.includes("Version 0.3.0"));
-  assert.doesNotMatch(read(next, "privacy.html"), /Coming in/);
-  assert.match(read(on, "privacy.html"), /Coming in 0\.3/);
+  assert.doesNotMatch(read(on, "privacy.html"), /Coming in/);
+  assert.match(read(prev, "privacy.html"), /Coming in 0\.3/);
 });
 
 test("content hygiene: no em dashes, no GPU model or compositor advice, every img has alt and size", () => {
-  for (const d of [off, on, next]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
+  for (const d of [off, on, prev]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
     const h = readFileSync(f, "utf8");
     assert.doesNotMatch(h, /\u2014|\u2013/, f);
     assert.doesNotMatch(h, /nvidia|nvdec|hyprland|geforce|radeon|\bRTX\b/i, f);
@@ -76,7 +76,7 @@ test("required copy, no JS, no inline style", () => {
   const h = read(off, "index.html");
   for (const s of ["YOUR MEDIA. YOUR NIGHT.", "not affiliated with or endorsed by Jellyfin", "GPL-3.0-or-later", "Copyright (C) 2026 ifsvivek", 'rel="canonical" href="https://nocturne.ifsvivek.in/"', "og:image", "og.jpg", "twitter:card"])
     assert.ok(h.includes(s), s);
-  for (const d of [off, on, next]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
+  for (const d of [off, on, prev]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
     assert.doesNotMatch(readFileSync(f, "utf8"), /<script\b|<style\b|\sstyle=/i, f);
   }
   // Other platforms may only be named as planned, never as available.
@@ -88,7 +88,7 @@ test("required copy, no JS, no inline style", () => {
 });
 
 test("no external origins except upstream credit links", () => {
-  for (const d of [off, on, next]) for (const f of files(d).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) {
+  for (const d of [off, on, prev]) for (const f of files(d).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) {
     for (const m of readFileSync(f, "utf8").replace(/\/\*![\s\S]*?\*\//g, "").matchAll(/https?:\/\/([^\s"'<>)\\/]+)/g)) assert.ok(ALLOWED.has(m[1]), `${f}: ${m[1]}`);
   }
 });
@@ -142,5 +142,5 @@ test("images: every srcset file exists, 16:9 stills at high resolution, no upsca
   // Full-bleed stills and the opening get 3840; the opening is the one fetchpriority=high image.
   assert.equal(imgs.filter((i) => /fetchpriority="high"/.test(i)).length, 1);
   assert.equal(imgs.filter((i) => /loading="lazy"/.test(i)).length, imgs.length - 1);
-  for (const f of ["picker-crop", "settings-dropdown", "account-menu"]) assert.ok(imgs.some((i) => new RegExp(`${f}-\\d+\\.`).test(i)), f);
+  for (const f of ["picker-crop", "settings-dropdown", "account-menu", "first-run", "sources", "local-folders", "loading", "alternates-crop"]) assert.ok(imgs.some((i) => new RegExp(`${f}-\\d+\\.`).test(i)), f);
 });

@@ -37,31 +37,25 @@ for (const [path, url] of Object.entries(shots)) {
   (bySize[key] ??= []).push({ url, width, height });
 }
 const ALT = {
-  home: "NOCTURNE home screen: a hero banner and a Continue watching row",
-  library: "A movie library grid with sort, filters and an A-Z rail",
-  "movie-detail": "A movie detail page with cast, chapters and media info",
+  home: "NOCTURNE home screen: a hero banner, the All sources filter, and Continue watching with a source mark on every card",
+  library: "A movie library grid with sort, filters, an A-Z rail and a source mark on every poster: Local, Living room or 2 sources",
   "series-episodes": "A series page with season tabs and an episode card grid",
-  search: "Global search results",
   playback: "In-window playback with the player controls drawn over the video",
-  settings: "Settings: the switch that allows changes to the server, then playback options as drop-downs and switches",
+  loading: "The loading overlay: the film's backdrop, its title half filled with light and a thin line showing the buffer",
+  settings: "Settings: Sources, Run setup again, the switch that allows changes to the server (off), then playback options",
   "settings-dropdown": "Settings with the audio language drop-down open, the current choice ticked",
-  "picker-crop": "The Who's watching? profile picker: three round profile tiles, an Add profile tile and a Use as default profile box",
-  "account-menu": "The account menu with Settings, Switch to other accounts, Switch profile, Add another account and Sign out",
-  "admin-dashboard": "The administrator dashboard inside the same app",
-  "search-crop": "The search palette listing matching movies, shows and episodes",
-  "settings-crop": "The setting Allow NOCTURNE to change data on the server, described as off by default",
+  "picker-crop": "The Who's watching? profile picker: two round profile tiles, an Add profile tile and a Use as default profile box",
+  "account-menu": "The account menu with Settings, Sources, Admin, Watch together, Add another account, Switch server and Sign out",
+  "admin-dashboard": "The administrator dashboard of one server, view-only while changes are off",
+  "search-crop": "The search palette: the same film listed once per source, Local, Living room and Study",
+  "settings-crop": "The setting Allow NOCTURNE to change data on the server, switched off and described as off by default",
   "video-crop": "The video picture on its own, without the player controls",
   "controls-crop": "The player control bar: seek, play, chapters, audio, subtitles and volume",
-  // 0.3 captures (phase B recapture). Shown only once the files exist, see has().
-  "first-run": "The first-run screen offering three choices: Local library, Connect to a server, or Both",
-  sources: "Settings, Sources: one local folder and two Jellyfin servers, each with its status",
-  "local-folders": "The local folders screen with indexing progress and an Unmatched list",
-  startup: "The startup screen: a midnight-blue city canyon, a thin vertical slit of moonlight and a progress line",
-  "alternates-crop": "A detail page's Alternate sources list: the same film on a local folder and a second server, with quality and availability",
-  "filter-crop": "The source filter in the library toolbar: All, Local and each server",
+  "alternates-crop": "Versions and sources: one film on three sources, Living room, Local and Study, with quality, and Always prefer this source",
+  "first-run": "Setup, step 2 of 5: Where is your media? Local folders, A Jellyfin server, or Both",
+  sources: "Settings, Sources: This computer with one folder, and the servers Living room and Study, all online",
+  "local-folders": "Local folders: one indexed folder, counts of movies, shows and episodes, and one unmatched file to place by hand",
 };
-// True once a capture for this key has been made (scripts/make-assets.py), so new scenes can wait for real stills.
-export const has = (key) => key in bySize;
 // Image props for one screenshot: src (largest), srcset, intrinsic size and alt, so layout never shifts.
 export function shot(key) {
   const v = (bySize[key] ?? []).sort((a, b) => a.width - b.width);

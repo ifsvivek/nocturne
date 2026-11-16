@@ -4,13 +4,13 @@
   const pre = "m-0 mt-5 overflow-x-auto rounded-sm bg-surface px-4 py-3.5 text-[0.8rem] leading-[1.75] text-ink ring-1 ring-line ring-inset";
   // [needs, detail, status, version that ships the detail (marked until VERSION reaches it)]
   const specs = [
-    ["Platform", "Linux, x86_64. Arch Linux is packaged first; .deb and .rpm packages are planned next. macOS and Windows are planned, not available.", "Linux only today"],
-    ["libmpv", "Comes with the package: the Arch package depends on mpv, and the tarball installer installs it with your distribution's package manager. NOCTURNE also starts without it and tells you what to install.", "mpv 0.41 tested", "0.3.0"],
+    ["Platform", "Linux, x86_64, with packages for Arch Linux only. .deb and .rpm packages are planned; an AppImage is under evaluation. macOS and Windows are planned, not available.", "Linux only today"],
+    ["libmpv", "Comes with the package: the Arch package depends on mpv, and the tarball installer installs it with your distribution's package manager. NOCTURNE also starts without it and tells you what to install.", "mpv 0.41 tested; 0.42's certificate check needs no change", "0.3.0"],
     ["Display", "Wayland for in-window video. On X11 the UI runs and video plays in an external mpv window (NOCTURNE_VIDEO=external forces that anywhere).", "Wayland and X11 fallback verified"],
     ["Graphics", "A Vulkan driver for the UI, OpenGL/EGL for video.", "Other GPU setups not yet tested"],
     ["Media", "Local folders you can read, a Jellyfin server, several servers, or any mix. None of them is required on its own.", "Jellyfin developed against 12.x", "0.3.0"],
     ["Keyring", "A Secret Service provider (gnome-keyring, KWallet or KeePassXC) to remember server sign-ins.", "Required to stay signed in to a server"],
-    ["Distribution", "Packages are tested on Arch Linux only. The tarball binary is built on a rolling distribution, so it needs a glibc at least as new.", "Debian, Ubuntu, Fedora, openSUSE untested"],
+    ["Distribution", "Packages are tested on Arch Linux only. The tarball binary is built on current Arch, so it needs a current glibc.", "Debian, Ubuntu, Fedora, openSUSE untested"],
   ];
   const docs = [["Features", "FEATURES"], ["Architecture", "ARCHITECTURE"], ["Writes", "WRITES"], ["Packaging", "PACKAGING"], ["QA report", "QA_REPORT"], ["Roadmap", "ROADMAP"]];
 </script>
@@ -26,8 +26,8 @@
     <div class="stagger mt-[clamp(56px,7vw,96px)] grid gap-y-10 *:min-w-0 lg:grid-cols-3 lg:divide-x lg:divide-line">
       <div class="lg:pr-10">
         <h3 class="role text-ink">Arch Linux</h3>
-        <p class="m-0 mt-3 text-ink-2">A PKGBUILD that builds from the source archive of the release tag and pulls in mpv for playback.</p>
-        {#if RELEASED}<pre class={pre}><code>git clone {REPO}.git
+        <p class="m-0 mt-3 text-ink-2">The PKGBUILD from the v{VERSION} release builds from that tag's source archive and pulls in mpv for playback.</p>
+        {#if RELEASED}<pre class={pre}><code>git clone --branch v{VERSION} --depth 1 {REPO}.git
 cd nocturne/packaging
 makepkg -si</code></pre>{/if}
       </div>
@@ -42,7 +42,7 @@ sudo ./install.sh</code></pre>
       <div class="lg:pl-10">
         <h3 class="role text-ink">From source</h3>
         <p class="m-0 mt-3 text-ink-2">Stable Rust 1.89 or newer, and mpv installed to play video. A clean build takes several minutes.</p>
-        {#if RELEASED}<pre class={pre}><code>git clone {REPO}.git
+        {#if RELEASED}<pre class={pre}><code>git clone --branch v{VERSION} --depth 1 {REPO}.git
 cd nocturne
 cargo build --release --locked
 ./target/release/nocturne</code></pre>{/if}

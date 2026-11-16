@@ -2,18 +2,19 @@
   import { VERSION, shipped } from "#lib/site.js";
   // From docs/ROADMAP.md: what 0.3 does not do, and where it is still rough. Revisit at every release.
   const missing = [
-    "macOS and Windows, planned after the Linux release",
-    ".deb, .rpm and AppImage packages, planned next",
+    "macOS and Windows: planned, not available",
+    ".deb and .rpm packages (planned) and an AppImage (under evaluation)",
     "Servers other than Jellyfin",
     "Book reading and audiobook playback",
-    "Two subtitle tracks at once, and a version picker",
+    "Two subtitle tracks at once",
     "Admin: HTTPS and proxy editing, access schedules",
     "Live TV, DVR, DLNA, casting and gapless music, not planned",
   ];
   const rough = [
     "Copies without an IMDb, TMDB or TVDB id are not merged, so the same film can show twice rather than one being hidden by mistake.",
     "The local index is held in memory, which is fine for tens of thousands of files. Larger libraries are untested.",
-    "Screen readers get little from the interface yet, and HDR is tone-mapped to SDR.",
+    "Video in the window is SDR: HDR is tone-mapped. A choice to play HDR in a pop-out window is planned for 0.4.",
+    "Screen readers get little from the interface yet.",
     "The photo viewer and music have only been tried on a generated demo library.",
   ];
 </script>

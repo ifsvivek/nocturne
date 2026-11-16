@@ -9,6 +9,7 @@
     ["A transparent window", "The window is transparent and paints nothing where the video sits, so the picture underneath shows through."],
     ["Video, by libmpv", "libmpv decodes and renders through OpenGL and EGL into a Wayland subsurface below the window. On X11, video plays in an external mpv window instead."],
     ["Loaded at run time", "NOCTURNE starts without libmpv. If it is missing, video plays in the external mpv player, or the app tells you which package to install.", true],
+    ["One window", "Opening NOCTURNE again brings the window that is already open to the front instead of starting a second copy."],
   ];
 </script>
 

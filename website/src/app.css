@@ -113,8 +113,8 @@ body::after {
 .s-80 { stop-opacity: 0.8; }
 .s-0 { stop-opacity: 0; }
 
-/* Read-only: a focus ring on the words "Off by default." in the settings-crop capture (4.3% / 83.5% of it). */
-.reticle { position: absolute; z-index: 2; pointer-events: none; left: 4.3%; top: 83.5%; width: 5.8%; height: 11%; transform: translate(-50%, -50%); @apply rounded-sm ring-2 ring-accent; }
+/* Read-only: a focus ring on the OFF switch in the settings-crop capture (centre 95.5% / 78.3% of it). */
+.reticle { position: absolute; z-index: 2; pointer-events: none; left: 95.5%; top: 78.3%; width: 6.4%; height: 25%; transform: translate(-50%, -50%); @apply rounded-sm ring-2 ring-accent; }
 @media (max-width: 639px) { .reticle { display: none; } }
 
 @keyframes open { from { clip-path: inset(50% 0 50% 0); } to { clip-path: inset(0 0 0 0); } }

@@ -39,7 +39,7 @@
       <Shot name="settings-crop" sizes="(min-width: 1040px) 1000px, 100vw">
         <span class="reticle" aria-hidden="true"></span>
       </Shot>
-      <p class="mt-5 text-center text-sm text-ink-3">The browsing and playback crate only sends GET requests, and a test in the repository fails if a write call appears. The capture is from a demo library with the switch turned on; a fresh install has it off.</p>
+      <p class="mt-5 text-center text-sm text-ink-3">The browsing and playback crate only sends GET requests, and a test in the repository fails if a write call appears. The capture shows a fresh install's default: off. Setup shows the same switch, with what it allows in plain words, before you start.</p>
     </div>
   </div>
 </section>

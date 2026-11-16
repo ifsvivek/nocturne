@@ -1,9 +1,8 @@
 <script>
   import Shot from "./Shot.svelte";
   import Next from "./Next.svelte";
-  import { has } from "#lib/site.js";
   const sources = [
-    "First run asks: a local library, a server, or both",
+    "A guided setup: local folders, a server, or both, then the promises and the real read-only switch",
     "Several Jellyfin servers, each with its own account",
     "A source filter, and a small mark on every card",
     "Copies merged only on IMDb, TMDB or TVDB ids, never on a title alone",
@@ -25,6 +24,7 @@
   const left = "(min-width: 1240px) 701px, (min-width: 768px) calc((100vw - 72px) * 0.6), calc(100vw - 40px)";
   const right = "(min-width: 1240px) 467px, (min-width: 768px) calc((100vw - 72px) * 0.4), calc(100vw - 40px)";
   const two = "(min-width: 1560px) 748px, (min-width: 768px) calc(50vw - 32px), calc(100vw - 40px)";
+  const framed = "(min-width: 1360px) 1320px, calc(100vw - 40px)";
 </script>
 
 <!-- Seven scenes. The first is the story (many sources, one library); the others are large stills from the app with
@@ -57,12 +57,11 @@
       <figcaption class="sr-only">Local folders, a Jellyfin server and another server flow into one library.</figcaption>
     </figure>
     <p class="subtitle">Point NOCTURNE at folders on your disk, at one or several Jellyfin servers, or at both. Everything lands in one catalog you browse and search in one place, and the same film on two sources shows once, with the other copy listed as an alternate.</p>
-    {#if has("first-run") && has("sources")}
-      <div class="stagger mx-auto mt-[clamp(56px,7vw,96px)] grid w-[min(1520px,100%-40px)] gap-6 md:grid-cols-2">
-        <Shot name="first-run" sizes={two} />
-        <Shot name="sources" sizes={two} />
-      </div>
-    {/if}
+    <div class="reveal mx-auto mt-[clamp(56px,7vw,96px)] w-[min(1320px,100%-40px)]"><Shot name="first-run" sizes={framed} /></div>
+    <div class="stagger mx-auto mt-6 grid w-[min(1520px,100%-40px)] gap-6 md:grid-cols-2">
+      <figure class="m-0"><Shot name="sources" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Settings, Sources: the order is the priority when a title is in more than one place.</figcaption></figure>
+      <figure class="m-0"><Shot name="local-folders" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Local folders: indexed in place, with anything it cannot place left for you to match.</figcaption></figure>
+    </div>
     <div class="wrap mt-14">
       <ul class="tick stagger gap-x-12 sm:grid-cols-2 lg:grid-cols-3">{#each sources as p}<li>{p}</li>{/each}</ul>
     </div>
@@ -81,16 +80,18 @@
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s2">
     <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 3</span><h2 id="s2" class="scene-title">Details</h2></header>
     <div class="stagger mx-auto grid w-[min(1520px,100%-40px)] gap-6 md:grid-cols-2">
-      <Shot name="movie-detail" sizes={two} />
+      <Shot name="alternates-crop" sizes={two} />
       <Shot name="series-episodes" sizes={two} />
     </div>
-    <p class="subtitle">Movies, series, seasons and episodes get full pages with cast, chapters, similar items, extras and media info. Season tabs lead into an episode grid and autoplay into the next one. When a title lives on more than one source, the page lists the other copies as alternate sources, with quality and availability. <Next /></p>
+    <p class="subtitle">Movies, series, seasons and episodes get full pages with cast, chapters, similar items, extras and media info. Season tabs lead into an episode grid and autoplay into the next one. When a title lives on more than one source, Versions and sources lists every copy with its quality, and Play uses the one you prefer. <Next /></p>
   </section>
 
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s3">
     <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 4</span><h2 id="s3" class="scene-title">Playback</h2></header>
     <Shot name="playback" bleed sizes={bleed} class="letterbox" />
     <p class="subtitle">The film plays inside the window, whether it streams from a server or sits on your disk. libmpv renders with hardware decoding into a Wayland subsurface, and the controls are drawn over the picture.</p>
+    <div class="reveal mx-auto mt-[clamp(56px,7vw,96px)] w-[min(1320px,100%-40px)]"><Shot name="loading" sizes={framed} /></div>
+    <p class="subtitle">While it loads, the film's backdrop fills the screen and its title fills with light as the buffer grows.</p>
     <div class="wrap mt-14">
       <ul class="tick stagger gap-x-12 sm:grid-cols-2 lg:grid-cols-3">{#each player as p}<li>{#if Array.isArray(p)}{p[0]} <Next v={p[1]} />{:else}{p}{/if}</li>{/each}</ul>
     </div>
@@ -116,7 +117,7 @@
 
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s6">
     <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 7</span><h2 id="s6" class="scene-title">Admin</h2></header>
-    <div class="reveal mx-auto w-[min(1320px,100%-40px)]"><Shot name="admin-dashboard" sizes="(min-width: 1360px) 1320px, calc(100vw - 40px)" /></div>
-    <p class="subtitle">Administrators get each server's dashboard in the same app: activity, sessions, devices, tasks, libraries, users, plugins, API keys and logs. Every change asks first.</p>
+    <div class="reveal mx-auto w-[min(1320px,100%-40px)]"><Shot name="admin-dashboard" sizes={framed} /></div>
+    <p class="subtitle">Administrators get each server's dashboard in the same app: activity, sessions, devices, tasks, libraries, users, plugins, API keys and logs. It stays view-only until changes are allowed, and every change asks first.</p>
   </section>
 </div>
