@@ -10,10 +10,11 @@ Delete this file (fold the lasting parts into ARCHITECTURE.md / DECISIONS.md) wh
   `wl_subsurface` below the transparent Iced window); external `mpv` child process on X11 / failure.
 - libmpv is loaded at runtime (`dlopen`), so a missing library degrades playback instead of killing the process.
 
-## Release scope (user, 2026-11-16)
+## Release scope (user, 2026-11-16, updated)
 
-Arch Linux only for now (no .deb/.rpm/AppImage/macOS/Windows work). Deliverable: an installable Arch build for the user
-to test. No release and no other platforms until the user has used it and approved. A docs audit worker runs when a
+Arch Linux only (no .deb/.rpm/AppImage/macOS/Windows work). 0.3: push to GitHub and create the GitHub release once the
+master's own testing passes (ask the user about redeploying the website). Then 0.4 on a LOCAL-ONLY branch `v0.4-local`
+(never pushed, no release). A docs audit worker runs when a
 slot frees, and again after the cut-over (GPUI -> Iced references).
 
 ## Scope change 2026-11-16
