@@ -5,8 +5,8 @@
 //! `NOCTURNE_PREVIEW_SECOND` adds a second queue entry (a file) for the queue panel.
 //! `NOCTURNE_PREVIEW_PROMPT=1` offers a resume prompt, `NOCTURNE_PREVIEW_QUIT_AFTER_MS` closes
 //! the page after a delay (the exit path, for open/close cycling).
-//! `NOCTURNE_SNAP=/tmp/x.png` writes one screenshot of the app window (the video subsurface is
-//! not part of it) after `NOCTURNE_SNAP_AFTER_MS` (default 2500) and quits.
+//! `NOCTURNE_SNAP=/tmp/x.png` (+ `NOCTURNE_SNAP_AFTER_MS`, see snap.rs) writes screenshots of the app
+//! window (the video subsurface is not part of them) and quits after the last.
 //! `NOCTURNE_PREVIEW_KEYS="key@ms,key@ms"` injects named keys (`space@1000,i@2000`).
 use super::{Msg, Outcome, Player, PlayerCtx};
 use crate::{keys, theme};
@@ -20,8 +20,8 @@ use std::time::Duration;
 #[derive(Clone)]
 enum M {
     P(Msg),
-    Snap,
-    Shot(window::Screenshot),
+    Snap(usize),
+    Shot(window::Screenshot, usize),
     Inject(String),
     Probe,
     Quit,
@@ -141,11 +141,11 @@ fn boot() -> (Preview, Task<M>) {
         Player::open(ctx().expect("NOCTURNE_PREVIEW_FILE or NOCTURNE_PREVIEW_URL"));
     let env = |k: &str| std::env::var(k).ok();
     let mut tasks = vec![open.map(M::P)];
+    // The one snapshot hook (snap.rs): same variables and file naming as the app.
     if env("NOCTURNE_SNAP").is_some() {
-        let ms = env("NOCTURNE_SNAP_AFTER_MS")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(2500);
-        tasks.push(crate::task::after(Duration::from_millis(ms), M::Snap));
+        for (n, ms) in crate::snap::delays().into_iter().enumerate() {
+            tasks.push(crate::task::after(Duration::from_millis(ms), M::Snap(n)));
+        }
     }
     if let Some(ms) = env("NOCTURNE_PREVIEW_QUIT_AFTER_MS").and_then(|v| v.parse().ok()) {
         tasks.push(crate::task::after(Duration::from_millis(ms), M::Quit));
@@ -217,13 +217,16 @@ impl Preview {
                 let t = self.player.update(msg);
                 self.after(t)
             }
-            M::Snap => match self.win {
-                Some(id) => window::screenshot(id).map(M::Shot),
+            M::Snap(n) => match self.win {
+                Some(id) => window::screenshot(id).map(move |s| M::Shot(s, n)),
                 None => Task::none(),
             },
-            M::Shot(s) => {
-                save_png(&s);
-                self.quit()
+            M::Shot(s, n) => {
+                crate::snap::save(&s, n);
+                if n + 1 == crate::snap::delays().len() {
+                    return self.quit();
+                }
+                Task::none()
             }
             M::Quit => {
                 let t = self.player.stop();
@@ -316,22 +319,6 @@ impl Preview {
     fn view(&self) -> Element<'_, M> {
         self.player.view().map(M::P)
     }
-}
-
-fn save_png(s: &window::Screenshot) {
-    let Some(path) = std::env::var_os("NOCTURNE_SNAP") else {
-        return;
-    };
-    let Ok(f) = std::fs::File::create(&path) else {
-        return;
-    };
-    let mut enc = png::Encoder::new(std::io::BufWriter::new(f), s.size.width, s.size.height);
-    enc.set_color(png::ColorType::Rgba);
-    enc.set_depth(png::BitDepth::Eight);
-    if let Ok(mut w) = enc.write_header() {
-        let _ = w.write_image_data(&s.rgba);
-    }
-    eprintln!("SNAP written");
 }
 
 pub fn run() -> iced::Result {

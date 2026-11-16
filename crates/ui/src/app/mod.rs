@@ -1,18 +1,26 @@
 //! Root: connection state, navigation stack, keyboard and the screens. Port of the GPUI `Root`
 //! (`crates/app/src/app.rs`); step 4a covers connect / accounts / header / settings, the other
 //! pages render a "Not ported yet" panel.
+mod actions;
+mod browse;
 mod catalog;
+mod cells;
 mod folders;
 mod header;
 mod help;
+mod home;
+mod images;
 pub mod message;
+mod play;
 mod preview;
+mod search;
 mod settings;
 mod sources;
 mod welcome;
 
 use crate::account::{self, Accounts, Event as AcctEvent, picker};
 use crate::keys::Key;
+use crate::player::{self, Player};
 use crate::task::run;
 use crate::theme as t;
 use crate::widget::{self, label, pulse, tex, wordmark};
@@ -35,6 +43,7 @@ use nocturne_core::source::SourceId;
 use nocturne_core::source::{ConnectError, Media, Source, sniff, user_image_key};
 use nocturne_core::sources::{Fanout, FirstRun, SourceFilter, Step};
 use nocturne_core::sync::SyncHooks;
+use nocturne_core::unified::Link;
 use nocturne_jellyfin_admin::AdminClient;
 use nocturne_jellyfin_user::{Session, UserClient};
 use std::collections::{HashMap, HashSet};
@@ -100,9 +109,16 @@ pub struct Page {
     /// Home only: the libraries (header nav links), merged from every source as answers arrive.
     pub libs: Load<Vec<Media>>,
     pub fan: Fanout,
+    /// Home only.
+    pub home: Option<Box<home::Home>>,
+    /// Library / collection / favourites pages.
+    pub br: Option<Box<browse::Browse>>,
+    /// Grid selection.
+    pub sel: usize,
 }
 
 /// Library-like destinations that are not libraries (header links after the libraries).
+/// `(page key, label)`.
 pub const GLOBALS: [(&str, &str); 3] = [
     ("collections", "Collections"),
     ("playlists", "Playlists"),
@@ -163,6 +179,14 @@ pub struct App {
     fwd: Vec<Page>,
     next_pid: u64,
     images: Cache<String, Img>,
+    /// Big backdrops, kept apart so they cannot push posters out of `images`.
+    heroes: Cache<String, Img>,
+    scale: f32,
+    /// Write hooks of the servers that are not the active login.
+    hooks_by: HashMap<SourceId, Arc<SyncHooks>>,
+    player: Option<Player>,
+    search: Option<Box<search::SearchUi>>,
+    lib_menu: bool,
     grain: Handle,
     dots: Handle,
     glow: Handle,
@@ -249,6 +273,12 @@ impl App {
             fwd: vec![],
             next_pid: 0,
             images: Cache::new(600),
+            heroes: Cache::new(6),
+            scale: 1.0,
+            hooks_by: HashMap::new(),
+            player: None,
+            search: None,
+            lib_menu: false,
             grain: tex::grain(),
             dots: tex::dots(),
             glow: tex::glow(),
@@ -279,8 +309,17 @@ impl App {
         let size = window::oldest()
             .and_then(window::size)
             .map(Message::Resized);
+        let scale = window::oldest()
+            .and_then(window::scale_factor)
+            .map(Message::Scale);
         // Keyring reads, index loading and connections all follow in tasks, after the first frame.
-        let task = Task::batch([size, me.load_sources(), open_disk, crate::snap::on_boot()]);
+        let task = Task::batch([
+            size,
+            scale,
+            me.load_sources(),
+            open_disk,
+            crate::snap::on_boot(),
+        ]);
         crate::timing::mark("boot done");
         (me, task)
     }
@@ -311,6 +350,21 @@ impl App {
                 _ => None,
             }),
         ];
+        if let Some(p) = &self.player {
+            subs.push(p.subscription().map(Message::Player));
+        }
+        // A focused text field keeps Esc from the keyboard listener; the overlay still has to close.
+        if self.search.is_some() {
+            subs.push(event::listen_with(|e, status, _| match e {
+                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key: iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape),
+                    ..
+                }) if status == iced::event::Status::Captured => {
+                    Some(Message::Search(search::SMsg::Close))
+                }
+                _ => None,
+            }));
+        }
         // Frames only while something pulses (and once, to time the first painted frame).
         if self.animating() || crate::timing::first_frame_pending() {
             subs.push(window::frames().map(Message::Frame));
@@ -344,26 +398,25 @@ impl App {
                 }
                 Task::none()
             }
+            Message::Scale(f) => {
+                self.scale = f;
+                Task::none()
+            }
             Message::Resized(s) => {
                 self.win = s;
                 if let Some(p) = &mut self.picker {
                     p.cols = picker::columns(s.width);
                 }
-                Task::none()
+                Task::batch([self.home_wants(), self.browse_visible()])
             }
-            Message::CloseRequested(_) => {
-                // Settings are saved on every change; one last save covers anything pending.
-                self.settings.save();
-                crate::platform::remove_art_file();
-                iced::exit()
-            }
+            Message::CloseRequested(_) => self.quit(),
             Message::Back => {
                 self.back();
-                Task::none()
+                self.page_wants()
             }
             Message::Forward => {
                 self.forward();
-                Task::none()
+                self.page_wants()
             }
             Message::Connected(r) => self.connected(r),
             Message::AdminProbed(yes) => {
@@ -402,9 +455,65 @@ impl App {
                 Some(l) => self.on_loaded(l),
                 None => Task::none(),
             },
-            Message::Fan(pid, epoch, origin, r) => {
-                self.fan_answer(pid, epoch, origin, r);
+            Message::Fan(pid, kind, epoch, origin, r) => {
+                self.fan_answer(pid, kind, epoch, origin, r)
+            }
+            Message::Latest(pid, epoch, origin, lib, r) => {
+                self.latest_answer(pid, epoch, origin, lib, r)
+            }
+            Message::SeriesIds(origin, v) => self.series_arrived(origin, v),
+            Message::Image(key, big, h) => {
+                self.image_arrived(key, big, h);
                 Task::none()
+            }
+            Message::Cell(at, act) => self.update_cell(at, act),
+            Message::PlayItem(m) => self.play_item(m),
+            Message::Play(m, rest) => self.start_play(m, rest),
+            Message::PlayTarget(m, rest, r) => self.play_target(m, rest, r),
+            Message::Player(m) => self.player_msg(m),
+            Message::RefreshResume => self.refresh_resume(),
+            Message::Toast(s) => {
+                self.toast(s);
+                Task::none()
+            }
+            Message::LocalWrite(origin, id, v, ok) => {
+                self.local_write(origin, id, v, ok);
+                Task::none()
+            }
+            Message::HomeScroll(off, vh) => {
+                crate::timing::scroll_event();
+                if let Some(h) = self.stack.first_mut().and_then(|p| p.home.as_deref_mut()) {
+                    (h.off, h.vh) = (off, vh);
+                }
+                self.home_wants()
+            }
+            Message::HomeStrip(row, x) => {
+                if let Some(h) = self.stack.first_mut().and_then(|p| p.home.as_deref_mut()) {
+                    h.strips.insert(row, x);
+                }
+                self.home_wants()
+            }
+            Message::Browse(pid, m) => self.browse_msg(pid, m),
+            Message::Search(m) => self.search_msg(m),
+            Message::SearchScrolled(off) => {
+                self.search_scrolled(off);
+                Task::none()
+            }
+            Message::HooksLoaded(id, r) => {
+                self.hooks_loaded(id, r);
+                Task::none()
+            }
+            Message::ServerName(id, name) => {
+                self.server_named(id, name);
+                Task::none()
+            }
+            Message::ToggleLibMenu => {
+                self.lib_menu = !self.lib_menu;
+                Task::none()
+            }
+            Message::OpenKind(k) => {
+                self.lib_menu = false;
+                self.open_kind(k)
             }
             Message::Pinged(id, ok) => self.pinged(id, ok),
             Message::SlotReady(h) => match h.take() {
@@ -417,6 +526,7 @@ impl App {
             Message::Folder(m) => self.folder_msg(m),
             Message::CycleFilter => {
                 self.filter = self.filter.next(&self.catalog.priority());
+                self.stack.truncate(1);
                 self.retry_page()
             }
             Message::OpenSources => self.open_sources(),
@@ -447,8 +557,15 @@ impl App {
             }
             Message::GoHome => {
                 self.close_admin();
+                self.lib_menu = false;
                 self.stack.truncate(1);
-                Task::none()
+                if let Some(p) = self.stack.first_mut().and_then(|p| p.home.as_deref_mut()) {
+                    // Reached with the mouse: focus must not stay on a header link.
+                    if p.row == 0 {
+                        (p.row, p.col) = (1, 0);
+                    }
+                }
+                self.home_wants()
             }
             Message::OpenLibrary(i) => {
                 let lib = self
@@ -456,15 +573,15 @@ impl App {
                     .first()
                     .and_then(|h| h.libs.items().get(i).cloned());
                 self.close_admin();
-                if let Some(m) = lib {
-                    self.open_library(m);
+                self.lib_menu = false;
+                match lib {
+                    Some(m) => self.open_library(m),
+                    None => Task::none(),
                 }
-                Task::none()
             }
             Message::OpenGlobal(i) => {
                 self.close_admin();
-                self.open_global(i);
-                Task::none()
+                self.open_global(i)
             }
             Message::OpenAdmin => {
                 self.open_admin();
@@ -485,7 +602,7 @@ impl App {
                 while self.stack.len() > i + 1 {
                     self.back();
                 }
-                Task::none()
+                self.home_wants()
             }
             Message::SetRow(i) => {
                 self.settings_sel = i;
@@ -529,10 +646,9 @@ impl App {
     /// 5 times a second: quit request, toast expiry, connection watch.
     fn tick(&mut self) -> Task<Message> {
         if crate::platform::term_requested() {
-            self.settings.save();
-            crate::platform::remove_art_file();
-            return iced::exit();
+            return self.quit();
         }
+        self.drain_reverts();
         if self
             .note
             .as_ref()
@@ -1119,14 +1235,31 @@ impl App {
             .master
             .store(self.settings.allow_server_writes, Relaxed);
         self.hooks.sync.store(self.settings.sync_progress, Relaxed);
+        for h in self.hooks_by.values() {
+            h.master.store(self.settings.allow_server_writes, Relaxed);
+            h.sync.store(self.settings.sync_progress, Relaxed);
+        }
         // TODO(4e): push `can_write()` to the admin section; 4d: SyncPlay writes.
     }
 
     /// Load the current page again (after a failure or a reconnect).
     fn retry_page(&mut self) -> Task<Message> {
         match self.stack.last() {
-            Some(p) if p.view == View::Home => self.load_home(p.pid),
-            // TODO(4b/4c): grid and detail reloads.
+            Some(p) if p.view == View::Home => {
+                let pid = p.pid;
+                self.load_home(pid)
+            }
+            Some(p) if p.view == View::Grid => self.reload_browse(),
+            // TODO(4c): detail reloads.
+            _ => Task::none(),
+        }
+    }
+
+    /// Images (and pages) the page in view needs, after navigating back or forward.
+    fn page_wants(&mut self) -> Task<Message> {
+        match self.stack.last().map(|p| p.view) {
+            Some(View::Home) => self.home_wants(),
+            Some(View::Grid) => self.browse_visible(),
             _ => Task::none(),
         }
     }
@@ -1148,6 +1281,9 @@ impl App {
             media,
             libs: Load::Loading,
             fan: Fanout::default(),
+            home: None,
+            br: None,
+            sel: 0,
         });
         pid
     }
@@ -1163,43 +1299,6 @@ impl App {
         Task::none()
     }
 
-    /// Home 4a: only the libraries (header links), asked of every online source at once; each
-    /// answer shows as it arrives. Rows, hero and resume arrive with step 4b.
-    fn load_home(&mut self, pid: u64) -> Task<Message> {
-        let (fan, task) = self.fan(pid, |b| async move { b.libraries().await });
-        if let Some(p) = self.page_mut(pid) {
-            p.libs = if fan.is_empty() {
-                Load::Ready(vec![])
-            } else {
-                Load::Loading
-            };
-            p.fan = fan;
-        }
-        task
-    }
-
-    /// Library tabs always replace whatever is above Home.
-    fn open_library(&mut self, m: Media) {
-        self.stack.truncate(1);
-        self.push_page(View::Grid, Some(m));
-    }
-
-    fn open_global(&mut self, i: usize) {
-        use nocturne_core::source::Kind;
-        let Some((key, title)) = GLOBALS.get(i) else {
-            return;
-        };
-        self.stack.truncate(1);
-        self.fwd.clear();
-        let media = Media {
-            id: (*key).into(),
-            title: (*title).into(),
-            kind: Kind::Library,
-            ..Media::from_item(&nocturne_jellyfin::Item::default())
-        };
-        self.push_page(View::Grid, Some(media));
-    }
-
     fn open_admin(&mut self) {
         if self.admin {
             self.admin_open = true;
@@ -1213,12 +1312,6 @@ impl App {
         self.admin_open = false;
     }
 
-    fn open_search(&mut self) -> Task<Message> {
-        // TODO(4b): search overlay.
-        self.toast("Not ported yet.");
-        Task::none()
-    }
-
     fn back(&mut self) {
         nav::back(&mut self.stack, &mut self.fwd);
     }
@@ -1230,8 +1323,12 @@ impl App {
     // ---- keyboard ----
 
     fn on_key(&mut self, k: Key) -> Task<Message> {
+        // The player page takes every key first.
+        if self.player.is_some() {
+            return self.player_msg(player::Msg::Key(k));
+        }
         let key = k.name.as_str();
-        // TODO(4d/4e): SyncPlay screen and player page take the keys first.
+        // TODO(4e): SyncPlay screen takes the keys next.
         if matches!(self.phase, Phase::Picker) {
             return self.picker_key(key);
         }
@@ -1282,6 +1379,9 @@ impl App {
         if self.menu {
             return self.menu_key(key);
         }
+        if self.search.is_some() {
+            return self.search_key(key);
+        }
         let ready = matches!(self.phase, Phase::Ready);
         if opens_account_menu(key, ready, self.admin_open, false) {
             self.menu = true;
@@ -1296,7 +1396,6 @@ impl App {
             return Task::none();
         }
         if ready {
-            // TODO(4b): search overlay takes the keys while open.
             if k.text.as_deref() == Some("?") {
                 self.close_menus();
                 self.help_open = true;
@@ -1304,7 +1403,6 @@ impl App {
             }
             // TODO(4d): `g` opens Watch together.
             if (k.ctrl && key == "k") || (key == "/" && k.plain()) {
-                self.close_admin();
                 return self.open_search();
             }
             if k.alt && matches!(key, "left" | "right") {
@@ -1315,7 +1413,17 @@ impl App {
                 }
                 return Task::none();
             }
-            // TODO(4b): open browse menus take keys here.
+            if self.lib_menu && matches!(key, "escape" | "backspace") {
+                self.lib_menu = false;
+                return Task::none();
+            }
+            if self.stack.last().is_some_and(|p| {
+                p.br.as_deref()
+                    .is_some_and(|b| b.menu != browse::Menu::None)
+            }) && let Some(t) = self.browse_key(key, k.shift)
+            {
+                return t;
+            }
         }
         if self.admin_open {
             // TODO(4e): the admin screen's own keys; until then Esc leaves it.
@@ -1326,10 +1434,75 @@ impl App {
         }
         if matches!(key, "escape" | "backspace") {
             self.back();
-            return Task::none();
+            return self.page_wants();
         }
-        // TODO(4b/4c): `w` / `f` toggles and the Home / grid / detail page keys.
-        Task::none()
+        if matches!(key, "w" | "f")
+            && ready
+            && k.plain()
+            && let Some(m) = self.focus_media()
+        {
+            return if key == "w" {
+                self.toggle_played(&m)
+            } else {
+                self.toggle_fav(&m)
+            };
+        }
+        match self.stack.last().map(|p| p.view) {
+            Some(View::Grid) => self.browse_key(key, k.shift).unwrap_or_else(Task::none),
+            Some(View::Home) => self.home_key(key),
+            // TODO(4c): detail page keys.
+            _ => Task::none(),
+        }
+    }
+
+    /// The item under the focus ring / selection on the page in view.
+    fn focus_media(&self) -> Option<Media> {
+        let p = self.stack.last()?;
+        match p.view {
+            View::Home => {
+                let h = p.home.as_deref()?;
+                match h.layout().get(h.row).copied()? {
+                    home::HRow::Hero => h.hero().cloned(),
+                    home::HRow::Nav => None,
+                    k => h.items(k).get(h.col).map(|(m, _)| (*m).clone()),
+                }
+            }
+            View::Grid => p.br.as_deref()?.item(p.sel).map(|(m, _)| m.clone()),
+            View::Detail => p.media.clone(),
+        }
+    }
+
+    /// Enter on a header link (Home focus on the Nav row).
+    fn activate_link(&mut self, l: Option<Link>) -> Task<Message> {
+        match l {
+            Some(Link::Home) => self.update(Message::GoHome),
+            Some(Link::Kind(k)) => self.update(Message::OpenKind(k)),
+            Some(Link::Lib(i)) => self.update(Message::OpenLibrary(i)),
+            Some(Link::Libraries) => self.update(Message::ToggleLibMenu),
+            Some(Link::Global(i)) => self.update(Message::OpenGlobal(i)),
+            Some(Link::Admin) => self.update(Message::OpenAdmin),
+            None => Task::none(),
+        }
+    }
+
+    /// A calm panel for a page whose load failed, with a way to try again.
+    fn failed_view(&self, msg: &str) -> Element<'_, Message> {
+        container(
+            column![
+                text(msg.to_string()).size(t::BODY).color(t::TEXT_SECONDARY),
+                container(widget::pill_button(
+                    "Try again",
+                    false,
+                    false,
+                    Message::PageRetry
+                ))
+                .width(160),
+            ]
+            .spacing(t::S4)
+            .align_x(Alignment::Center),
+        )
+        .center(Length::Fill)
+        .into()
     }
 
     // ---- view ----
@@ -1379,6 +1552,27 @@ impl App {
             Phase::Ready if self.settings_open => self.settings_page(),
             Phase::Ready => self.page_view(),
         };
+        if let Some(p) = &self.player {
+            // The player page is the whole window (it paints its own backdrop and leaves the
+            // video hole transparent).
+            let mut layers = vec![p.view().map(Message::Player)];
+            if let Some((n, _)) = &self.note {
+                layers.push(
+                    container(
+                        container(text(n.clone()).size(t::BODY).color(t::TEXT))
+                            .padding([t::S3, t::S4])
+                            .style(crate::style::raised_card),
+                    )
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Alignment::End)
+                    .align_y(Alignment::End)
+                    .padding(t::S6)
+                    .into(),
+                );
+            }
+            return Stack::with_children(layers).into();
+        }
         let ready = matches!(self.phase, Phase::Ready);
         let layer = |h: &Handle, o: f32| -> Element<Message> {
             image(h.clone())
@@ -1418,6 +1612,9 @@ impl App {
         if self.menu && ready {
             layers.push(self.account_menu());
         }
+        if self.search.is_some() && ready {
+            layers.push(self.search_overlay());
+        }
         if self.help_open {
             layers.push(self.help_overlay());
         }
@@ -1450,26 +1647,31 @@ impl App {
         Stack::with_children(layers).into()
     }
 
-    /// The current page: Home / library / detail are not ported yet.
+    /// The current page: Home and library pages are ported; detail pages arrive with step 4c.
     fn page_view(&self) -> Element<'_, Message> {
-        let title = self
-            .stack
-            .last()
-            .filter(|p| p.view != View::Home)
-            .and_then(|p| p.media.as_ref())
-            .map_or("Home".to_string(), |m| m.title.clone());
-        container(
-            column![
-                text(title).size(t::HEADING).font(t::BOLD),
-                text("Not ported yet")
-                    .size(t::BODY)
-                    .color(t::TEXT_SECONDARY),
-            ]
-            .spacing(t::S2)
-            .align_x(Alignment::Center),
-        )
-        .center(Length::Fill)
-        .into()
+        match self.stack.last().map(|p| p.view) {
+            Some(View::Home) => self.home_page(),
+            Some(View::Grid) => self.grid_page(),
+            _ => {
+                let title = self
+                    .stack
+                    .last()
+                    .and_then(|p| p.media.as_ref())
+                    .map_or(String::new(), |m| m.title.clone());
+                container(
+                    column![
+                        text(title).size(t::HEADING).font(t::BOLD),
+                        text("Not ported yet")
+                            .size(t::BODY)
+                            .color(t::TEXT_SECONDARY),
+                    ]
+                    .spacing(t::S2)
+                    .align_x(Alignment::Center),
+                )
+                .center(Length::Fill)
+                .into()
+            }
+        }
     }
 
     fn centered<'a>(&self, items: Vec<Element<'a, Message>>) -> Element<'a, Message> {

@@ -843,6 +843,16 @@ impl Source {
         self.client.health()
     }
 
+    /// The name the server announces (`GET /System/Info/Public`).
+    pub async fn server_name(&self) -> Option<String> {
+        self.client
+            .public_info()
+            .await
+            .ok()
+            .map(|i| i.server_name)
+            .filter(|n| !n.trim().is_empty())
+    }
+
     /// A cheap unauthenticated read, used to notice the server coming back.
     pub async fn ping(&self) -> bool {
         self.client.public_info().await.is_ok()

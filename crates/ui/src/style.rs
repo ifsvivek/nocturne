@@ -116,3 +116,22 @@ pub fn input(_: &iced::Theme, status: text_input::Status) -> text_input::Style {
         selection: t::ACCENT_TINT,
     }
 }
+
+/// Linear gradient fill; `deg` as in CSS (90 = left to right, 180 = top to bottom).
+pub fn gradient(deg: f32, stops: &[(f32, Color)]) -> Background {
+    let mut g = iced::gradient::Linear::new(iced::Radians(deg.to_radians()));
+    for (at, c) in stops {
+        g = g.add_stop(*at, *c);
+    }
+    Background::Gradient(iced::Gradient::Linear(g))
+}
+
+/// Like [`scroll`], but the thumb only shows while the pointer is over the strip (poster rows).
+pub fn scroll_quiet(theme: &iced::Theme, status: scrollable::Status) -> scrollable::Style {
+    let mut s = scroll(theme, status);
+    if matches!(status, scrollable::Status::Active { .. }) {
+        s.horizontal_rail.scroller.background = Background::Color(t::NONE);
+        s.vertical_rail.scroller.background = Background::Color(t::NONE);
+    }
+    s
+}

@@ -1,9 +1,11 @@
 //! Chrome: header, breadcrumbs, avatar and the account menu (port of the GPUI `Root::header`,
 //! `crumbs`, `avatar`, `account_menu`).
+use super::home::HRow;
 use super::message::{AcctAct, Message};
 use super::{App, GLOBALS, View};
 use crate::style::{self, border};
 use crate::theme as t;
+use crate::widget::popover::Popover;
 use crate::widget::press::Press;
 use crate::widget::{
     avatar, menu_row, mono, nav_link, rule, source_mark, tip, value_chip, wordmark,
@@ -13,6 +15,7 @@ use iced::widget::{column, container, mouse_area, opaque, row, scrollable, space
 use iced::{Alignment, Element, Length, Padding, Task};
 use nocturne_core::nav;
 use nocturne_core::sync::NEED_WRITES;
+use nocturne_core::unified::{Link, links};
 
 type El<'a> = Element<'a, Message>;
 
@@ -51,41 +54,45 @@ impl App {
             .map(|m| (m.origin, m.id.as_str()));
         let at_home = self.stack.len() <= 1;
         let blur = self.admin_open;
-        let mut nav_row = row![nav_link("Home", at_home && !blur, false, Message::GoHome)]
-            .spacing(t::S1)
-            .align_y(Alignment::Center);
-        // With several sources the libraries come grouped, each group led by its source mark.
-        let grouped = home.is_some_and(|h| h.fan.contributors() > 1);
-        let mut group = None;
-        for (i, l) in libs.iter().enumerate() {
-            if grouped && group != Some(l.origin) {
-                group = Some(l.origin);
-                if let Some(slot) = self.catalog.slot(l.origin) {
-                    nav_row = nav_row.push(source_mark(slot, true));
-                }
-            }
-            nav_row = nav_row.push(nav_link(
-                &l.title,
-                Some((l.origin, l.id.as_str())) == cur && !at_home && !blur,
-                false,
-                Message::OpenLibrary(i),
-            ));
-        }
-        for (gi, (key, label)) in GLOBALS.iter().enumerate() {
-            nav_row = nav_row.push(nav_link(
-                label,
-                cur.is_some_and(|c| c.1 == *key) && !at_home && !blur,
-                false,
-                Message::OpenGlobal(gi),
-            ));
-        }
-        if self.admin {
-            nav_row = nav_row.push(nav_link(
-                "Admin",
-                self.admin_open,
-                false,
-                Message::OpenAdmin,
-            ));
+        let nav_focus = self
+            .stack
+            .last()
+            .filter(|_| at_home)
+            .and_then(|p| p.home.as_deref())
+            .filter(|h| h.layout().get(h.row) == Some(&HRow::Nav))
+            .map(|h| h.col);
+        let mut nav_row = row![].spacing(t::S1).align_y(Alignment::Center);
+        for (n, link) in self.nav_links().into_iter().enumerate() {
+            let focused = nav_focus == Some(n);
+            nav_row = nav_row.push(match link {
+                Link::Home => nav_link("Home", at_home && !blur, focused, Message::GoHome),
+                Link::Kind(k) => nav_link(
+                    k.label(),
+                    cur.is_some_and(|c| c.1 == k.scope().key) && !at_home && !blur,
+                    focused,
+                    Message::OpenKind(k),
+                ),
+                Link::Lib(i) => nav_link(
+                    &libs[i].title,
+                    Some((libs[i].origin, libs[i].id.as_str())) == cur && !at_home && !blur,
+                    focused,
+                    Message::OpenLibrary(i),
+                ),
+                Link::Libraries => self.libraries_menu(
+                    libs,
+                    cur.is_some_and(|c| libs.iter().any(|l| (l.origin, l.id.as_str()) == c))
+                        && !at_home
+                        && !blur,
+                    focused,
+                ),
+                Link::Global(gi) => nav_link(
+                    GLOBALS[gi].1,
+                    cur.is_some_and(|c| c.1 == GLOBALS[gi].0) && !at_home && !blur,
+                    focused,
+                    Message::OpenGlobal(gi),
+                ),
+                Link::Admin => nav_link("Admin", self.admin_open, focused, Message::OpenAdmin),
+            });
         }
         let left = row![
             row![
@@ -390,6 +397,68 @@ impl App {
 }
 
 impl App {
+    /// The header's links for the libraries known now (see `unified::links`).
+    pub(super) fn nav_links(&self) -> Vec<Link> {
+        let home = self.stack.first();
+        let libs = home.map_or(&[][..], |h| h.libs.items());
+        let several = home.is_some_and(|h| h.fan.contributors() > 1);
+        links(
+            libs,
+            several,
+            |o| {
+                self.catalog
+                    .slot(o)
+                    .is_some_and(|s| s.backend.as_ref().is_some_and(|b| b.is_local()))
+            },
+            GLOBALS.len(),
+            self.admin,
+        )
+    }
+
+    /// "Libraries": every source's libraries grouped under its source mark.
+    fn libraries_menu<'a>(
+        &'a self,
+        libs: &'a [nocturne_core::source::Media],
+        active: bool,
+        focused: bool,
+    ) -> El<'a> {
+        let link = nav_link(
+            "Libraries \u{25BE}",
+            active || self.lib_menu,
+            focused,
+            Message::ToggleLibMenu,
+        );
+        let popup = self.lib_menu.then(|| {
+            let mut items: Vec<El> = vec![];
+            for (origin, idxs) in nocturne_core::unified::group_libraries(libs) {
+                if let Some(slot) = self.catalog.slot(origin) {
+                    items.push(
+                        container(source_mark(slot, true))
+                            .padding([t::S2, t::S3])
+                            .into(),
+                    );
+                }
+                for i in idxs {
+                    items.push(menu_row(
+                        text(libs[i].title.clone()).size(t::BODY),
+                        false,
+                        false,
+                        Message::OpenLibrary(i),
+                    ));
+                }
+            }
+            container(scrollable(column(items).spacing(2)).style(style::scroll))
+                .width(260)
+                .max_height(420)
+                .padding(t::S2)
+                .style(style::panel)
+                .into()
+        });
+        Popover::new(link, popup, Message::ToggleLibMenu)
+            .left()
+            .into()
+    }
+
     /// The source filter's chip text: All sources, or the one source's label.
     fn filter_label(&self) -> String {
         match self.filter {

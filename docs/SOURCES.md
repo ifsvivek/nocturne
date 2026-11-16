@@ -82,6 +82,9 @@ Catalog (core)                      one per process, owned by the UI root
 - Home and browse show the unified catalog by default; a source filter (All / each source) lives in the toolbar,
   and each server's or local folder's libraries are reachable on their own. A small source mark on cells and the
   detail page tells local from remote and shows availability; nothing else server-specific clutters browsing.
+  With several sources the header lists the unified kinds (Movies, Shows, Music, Photos as available) and one
+  **Libraries** menu grouping each source's libraries under its mark; with one source it lists that source's
+  libraries inline. Unified lists merge duplicates into one cell marked "2 SOURCES".
 - Settings gains **Sources**: list of profiles with status, add / edit / remove / enable / reorder, sign in again,
   and the local folders screen (add / remove roots, rescan, indexing progress, unmatched items with manual edit).
 

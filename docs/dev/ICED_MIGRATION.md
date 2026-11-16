@@ -151,7 +151,18 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   Stremio-style splash wired, MPRIS, SyncPlay hooks kept. hwdec-current = nvdec for H.264 1080p and HEVC 10-bit (0
   dropped). 25 open/close cycles: no leak (debug RSS ~555 MiB; re-measure in release). Root wiring: 4b worker.
   Follow-ups: music-queue overlay (4e), check splash logo clipping with a real logo, one snapshot hook.
-- [~] 4b home, browse (virtualised + unified kinds), search, header for many sources, Sources polish (worktree)
+- [x] 4b home, browse, search, header for many sources, Sources polish (`app/{home,browse,search,images,actions,play,cells}.rs`,
+  `widget/cell.rs`, `virt.rs`, core `unified.rs`). Home: hero + Continue watching / Next up (merged across sources,
+  interleaved by recency) + Latest per library, rows arrive per source. Browse: one source = lazily paged grid, several
+  = every source loads fully in the background and is merged and sorted client-side (`unified::Merged`, cap 20,000
+  items per source); both build only the rows in the scroll viewport (`virt.rs`) between two spacers. Unified Movies /
+  Shows / Music / Photos + Collections / Playlists / Favourites span all sources; the header shows unified kinds and a
+  Libraries menu when several sources contributed, the GPUI link row with one. Search merges all sources. Images: blurhash
+  stand-in, then bytes decoded off the UI thread to RGBA at the drawn size (bounded `Cache`, separate 6-entry hero cache).
+  Played / favourite route to the item's own source (`write_slot` / local state) with optimistic patch + revert.
+  `Message::Play(Media, Vec<Media>)` opens the player page (`app/play.rs`, 4d is wired). Strips scroll sideways with
+  horizontal wheel / Shift+wheel / keyboard (a plain wheel scrolls the page: Iced hands a vertical wheel to the page unless the
+  strip is the only scroller). Deferred: detail pages and the photo viewer (4c), shimmer / fade-in on images.
 - [x] 4c detail pages merged ( own module `crates/ui/src/detail/`, root hook documented at the top of `detail/mod.rs`):
   movie, series (season tabs, episode cards), season, episode, person, collection, playlist (own-playlist edit keys and
   rename / delete / add dialogs), music album / artist, photo viewer; hero, facts, chips, about, cast, chapters, extras,
@@ -164,7 +175,7 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   Deferred: hero fade-in, source marks on strip cells, "New playlist" entry point (the Add dialog creates one by name),
   a shared root image cache (the page keeps its own).
 - [~] 4e account page + devices, admin per server (confirm choke point), SyncPlay, music queue (worktree, modules + hooks)
-- polish backlog: version sizes < 1 MB show "0 MB"; splash logo clipping check; one snapshot hook
+- polish backlog: disk-cached shrunken local posters (first scroll of a 5k local library decodes full-size art at ~92% CPU); several-source browse eagerly loads every page (cap 20k/source; revisit for huge servers); version sizes < 1 MB show "0 MB"; splash logo clipping check; one snapshot hook
 - [x] docs pass 2 + CHANGELOG [0.3.0] + docs/dev/RELEASE_NOTES_0.3.0.md drafted on local branch `docs-0.3-pending`
   (written for the post-cut-over state; merge WITH the cut-over). Before release verify its assumptions: 4b/4e merged
   and working, mpv 0.42 TLS check DONE (it moved it to 'carried forward'; move back once done), startup does not wait

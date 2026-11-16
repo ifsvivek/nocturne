@@ -12,6 +12,7 @@ mod style;
 mod task;
 mod theme;
 mod timing;
+mod virt;
 mod widget;
 
 use app::App;

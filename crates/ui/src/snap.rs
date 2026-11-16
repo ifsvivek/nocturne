@@ -26,7 +26,7 @@ pub fn on_boot() -> Task<Message> {
 }
 
 #[cfg(debug_assertions)]
-fn delays() -> Vec<u64> {
+pub fn delays() -> Vec<u64> {
     let v: Vec<u64> = std::env::var("NOCTURNE_SNAP_AFTER_MS")
         .unwrap_or_default()
         .split(',')
