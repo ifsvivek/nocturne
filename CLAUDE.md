@@ -147,7 +147,7 @@ real server. Screenshots: capture the app window only, never the whole screen; d
 
 - **Master agent: Claude Opus.** Owns architecture and technical decisions, planning, delegation, integration, code
   review and final verification. It does not routinely implement features.
-- **Workers: Claude Sonnet**, at most three active (maintainer raised the cap from two on 2026-11-16; temporarily five until 0.3 ships). Each gets a bounded task with explicit file
+- **Workers: Claude Sonnet**, at most three active (maintainer raised the cap from two on 2026-11-16). Each gets a bounded task with explicit file
   ownership (no overlapping files; parallel workers use separate git worktrees), implements and tests it, and reports
   results. Workers do not change the architecture; they report architectural problems to the master.
 - The master reviews and validates every worker change before it is committed to the shared branch. Keep usage
