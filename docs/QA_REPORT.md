@@ -300,3 +300,65 @@ contents (release builds have no screenshot path), input, hardware rendering or 
 distributions. Those stay host-verified. Also checked 2026-11-16: package names exist in debian:stable, fedora:latest and
 openSUSE Tumbleweed (see PACKAGING.md; `libEGL1` does not exist on openSUSE, `libglvnd` provides `libEGL.so.1`);
 `cargo deny check licenses bans sources` passes on the workspace including the Iced app.
+
+## 0.3.0 release walkthrough (2026-11-16)
+
+Debug build for driving (wtype / ydotool on Hyprland, `NOCTURNE_SNAP_WATCH` captures), release build for the sanity
+launch. Two throwaway demo servers (127.0.0.1:8097 and :8098, `/tmp/nocturne-demo*`), a generated local fixture
+(ffmpeg clips, procedural posters, an `.nfo` giving "Ember Tide" the same IMDb id as the demo copies, one two-season
+series, one unmatched file) and a 2,000-file bulk folder (hard links of one clip). Every profile ran under
+`scripts/run-isolated.sh` with a test keyring service. No personal media or server was touched; the only server writes
+were on 8097.
+
+| # | Check | Result | Evidence |
+|---|---|---|---|
+| 1 | Fresh install: onboarding (Both), add local folder and the 8097 server, behaviour step, Home | PASS | Fresh config, "Where is your media?" -> Both -> typed folder path, scan ran -> typed server URL, signed in as `demo` -> behaviour step with the server-changes switch OFF -> Home showed local and server items together. `sources.toml` has the local and server profiles; `settings.toml` has `allow_server_writes = false`. |
+| 2 | Upgrader: 0.2 `servers.toml` + `accounts.toml` + keyring login | PASS | "What's new in 0.3" screen, then Home; `sources.toml` was created with the server as source 1; the old files were left in place. |
+| 3 | Second server (8098, user `alice`) in Settings > Sources; unified header; source filter; duplicates; Versions and sources; "Always prefer" persists | PASS | Header shows Movies / Shows / Music / Photos / Collections / Playlists / Favourites and a Libraries menu grouped by source; the filter chip cycles All / each source. "Ember Tide" shows "3 SOURCES" (local + both servers); the picker lists all three copies with source marks; "Always prefer" wrote `movie:imdb:tt9000001` to `preferred.json` and the choice survived a restart. |
+| 4 | Offline source: other sources usable, recovery | PASS | A TCP forwarder (:8099 -> :8098) was registered as a source, then stopped: status "Offline" in Sources, banner "Can't reach ... Retrying in Ns" with Retry now, Home and the other sources kept working. Restarting the forwarder: "back online" toast and the source returned to Online. The real 8098 server was never stopped. |
+| 5 | Browse: grid / thumb / list, sort, filter, A-Z, virtualised scroll, search | PASS | Poster / Thumb / List switch, Sort menu, Filters, A-Z strip all work on the merged 27-title Movies page. The 2,000-file local folder scanned in well under a minute; its list scrolled smoothly (about 380 MiB RSS, idle ~0% CPU in debug). Search (`/`) returned local and both servers' results grouped by type; duplicates collapse into one row. |
+| 6 | Detail pages; watched / favourite with writes off and on | PASS | Movie, series with season tabs and episode cards, episode, person, collection render. With writes OFF `w`/`f` show the "turn on server changes" toast and nothing changes. With writes ON (8097 only): `w` set Played true, `f` set favourite true, both reverted, each confirmed with a read-back of the server (all back to the starting values). |
+| 7 | Embedded playback (Wayland): local file and server episode, splash, seek, pause, tracks, subtitles, volume, next, resume, close, local resume | PASS (1 bug fixed) | Local and server items play inside the window; the loading overlay (backdrop + logo wiping with the buffer) shows and fades once playback runs. Space, seek keys, `v` (volume), `n` (next) work; the Ember Tide sidecar `.srt` shows in mpv's track list as an external track. Local resume saved in `state.json` (`resume_secs` written on close). `NOCTURNE_TIMING=1`: `hwdec-current nvdec`. Closing returns to the page. Bug fixed: the resume prompt was overwritten (see below). Not driven by hand: the audio/subtitle popover menus and a UI check of the picked subtitle line. |
+| 8 | X11 (`WAYLAND_DISPLAY=`, XWayland) | PASS | Window class `nocturne`, `xwayland: true`; browsing works; playing opens an external `mpv` window (`video: no Wayland window handle, using the external player`, `hwdec-current vulkan`); SIGTERM to the app removed both windows and left no `mpv` process. |
+| 9 | libmpv missing (`NOCTURNE_LIBMPV=/nonexistent`); both missing | PASS | With libmpv missing the log says `libmpv unavailable (...), using the external player` and an `mpv` window opens. With a `PATH` without `mpv` as well, the player page shows "Cannot play right now. Playback needs mpv, which was not found. Install it with: sudo pacman -S mpv" and a Back button; Back returns to the (working) detail page. |
+| 10 | Admin on 8097; one write + revert; SyncPlay with two instances | PASS | Admin opened for the demo (administrator) account; sections render; the Dashboard showed live sessions. One write behind the confirmation dialog: Branding > login message set to "QA note" (read back from the server) and cleared again (back to empty). SyncPlay: `bob` created the group "QAgroup", `alice` (second instance, different kept config dir and keyring) saw it, joined; both showed the group pill; starting an item opened the player in both; `leave` from each ended the group. (Playback in step was not timed by eye.) |
+| 11 | Single instance | PASS | Second launch with the same kept dir exited in 12 ms with status 0, still one process. The first window is told to activate (`gain_focus` + attention request); Hyprland's own focus-steal policy kept focus on the terminal (the window shows as `focusHistoryID 1`), so "comes forward" depends on the compositor. |
+| 12 | Settings rows, drop-downs, Reduce motion, Run setup again | PASS (partly by eye) | Every row reached by keyboard; language / buffering drop-downs open and scroll; the switch rows toggle; Reduce motion cycles System / On / Off and persists. "Run setup again" restarts the walkthrough. Not checked frame by frame: that no animation plays with Reduce motion On (the code paths honour `motion::reduced()`; confirmed only that the splash and `pulse()` consult it). |
+| 13 | Release build sanity | PASS | `cargo build --release -p nocturne-app` (3m28s, fat LTO), 30.1 MiB binary, launched with the developer token source: first frame **364 ms**, shell ready **397 ms**, boot 3 ms, fonts 19 ms; ~300 MiB RSS and 8% CPU right after the first load, reaching Home. Debug build: first frame 355 ms, shell ready 560 ms. |
+
+### Bugs fixed (each a commit on `iced-migration`)
+
+- **Resume position overwritten (medium).** Opening an item with a saved position reported "started at 0:00" before the
+  viewer answered the resume prompt, so declining or even ignoring the prompt left no saved position (observed
+  `resume_secs` 70 -> 0 for a local item). `report_tick` now waits until the prompt is answered.
+- **Sources page stayed on top of navigation (low).** Header links and back/forward did not close Settings > Sources.
+  `close_admin` and the Back/Forward messages now close it.
+- **Admin unreachable in a narrow window (low).** The header's Admin link scrolls off the edge in a narrow window; the
+  account menu now has an "Admin" entry for administrator accounts.
+- **Wording (trivial).** Empty descriptions said "No description from the server." for local items too; now "No
+  description available."
+- **Demo logos (trivial, demo data only).** The generated two-line logo was cropped to one line; fixed in
+  `scripts/demo_assets.py` (regenerated for the throwaway servers).
+
+### Open
+
+- **Header Admin link off-screen at narrow widths (low).** The link row scrolls sideways by design; there is no visual
+  hint that more links exist. Worked around by the account-menu entry.
+- **Manual subtitle verification (low, not a defect).** The sidecar `.srt` is present as a track; its rendering in the
+  window was not inspected because `window::screenshot` cannot see the video subsurface.
+- **Single-instance focus depends on the compositor (info).** See row 11.
+
+### Debug aids added
+
+`NOCTURNE_SNAP_WATCH=/tmp/req` (write a target path into that file to get an on-demand window capture) and
+`NOCTURNE_HOLD_SPLASH=0.55` (pin the loading overlay at 55 %), both debug-build only, in `crates/app/src/snap.rs` and
+`player/mod.rs`.
+
+### Website screenshots
+
+3840x2160 captures in `/tmp/shots-0.3/`, taken on a virtual 4K output at scale 2 (`hyprctl output create headless`, fullscreen
+window, `window::screenshot`; the output was removed afterwards): 01-home, 02-library, 03-movie-detail, 04-series-episodes,
+05-search, 06-playback, 07-settings, 08-admin-dashboard, 09-first-run, 10-sources, 11-local-folders, 12-loading,
+picker, account-menu, settings-dropdown. 06-playback is the only `grim` capture (that headless output only, window
+fullscreen, player showing, nothing else on it). Servers are labelled "Living room" / "Study" and the local source "This
+computer"; the demo library and a generated local fixture only; server changes OFF.
