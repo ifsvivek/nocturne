@@ -50,7 +50,7 @@ Delete this file (fold the lasting parts into ARCHITECTURE.md / DECISIONS.md) wh
 
 - [x] 1 libmpv / installer (dlopen FFI verified in-window via the spike; installer container tests pending: docker needs sudo)
 - [x] 2 spike: GO (notes in ICED_NOTES.md)
-- [ ] 3 core extraction
+- [x] 3 core extraction (crates/core; 270 tests pass)
 - [ ] 4a-4e screens
 - [ ] 5 cut-over
 - [ ] 6 verification
