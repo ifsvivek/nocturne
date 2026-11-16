@@ -179,6 +179,7 @@ struct Walk {
     dirs: Vec<Dir>,
     /// root index -> readable
     root_ok: Vec<bool>,
+    root_dev: Vec<Option<u64>>,
 }
 
 fn walk(
@@ -191,6 +192,7 @@ fn walk(
         found: vec![],
         dirs: vec![],
         root_ok: vec![false; roots.len()],
+        root_dev: vec![None; roots.len()],
     };
     let mut visited: HashSet<(u64, u64)> = HashSet::new();
     for (ri, root) in roots.iter().enumerate() {
@@ -202,6 +204,7 @@ fn walk(
             }
         };
         w.root_ok[ri] = true;
+        w.root_dev[ri] = Some(rm.dev());
         visited.insert((rm.dev(), rm.ino()));
         let mut stack = vec![root.clone()];
         while let Some(dir) = stack.pop() {
@@ -362,6 +365,24 @@ fn show_infos(items: &[Item], scanned: &[PathBuf], warnings: &mut Vec<String>) -
     out
 }
 
+/// Is a readable root really the library it used to be? `recorded` is the root's st_dev at the last good scan.
+/// Unmounted if (a) the device changed and none of the files found were indexed under this root before (a replugged
+/// drive often gets a new device number but still holds the same files, so overlap clears the doubt), or
+/// (b) nothing was found although the index holds files for it (an empty mountpoint).
+pub(crate) fn root_looks_unmounted(
+    dev: Option<u64>,
+    recorded: Option<u64>,
+    found: usize,
+    overlap: usize,
+    indexed: usize,
+) -> bool {
+    if indexed == 0 {
+        return false;
+    }
+    let changed = matches!((dev, recorded), (Some(d), Some(r)) if d != r);
+    found == 0 || (changed && overlap == 0)
+}
+
 /// Incremental scan. Mutates `index` in place; on cancel the changes made so far stay valid but nothing is marked
 /// missing (we have not seen everything).
 pub(crate) fn scan(
@@ -372,19 +393,44 @@ pub(crate) fn scan(
     progress: &mut dyn FnMut(Progress),
 ) -> ScanReport {
     let mut rep = ScanReport::default();
-    let w = walk(roots, cancel, progress, &mut rep.warnings);
+    let mut w = walk(roots, cancel, progress, &mut rep.warnings);
     if cancel.load(Ordering::Relaxed) {
         rep.cancelled = true;
         return rep;
     }
-    index.roots = roots
+    let by_path: HashMap<PathBuf, usize> = index
+        .items
         .iter()
-        .zip(&w.root_ok)
-        .map(|(p, ok)| Root {
-            path: p.clone(),
-            available: *ok,
-        })
+        .enumerate()
+        .map(|(i, it)| (it.path.clone(), i))
         .collect();
+    // A readable root can still be an unplugged drive's empty mountpoint: judge it before trusting the walk.
+    let old_roots = std::mem::take(&mut index.roots);
+    for (ri, p) in roots.iter().enumerate() {
+        let indexed = index.items.iter().filter(|i| i.root == *p).count();
+        let (mut found, mut overlap) = (0, 0);
+        for f in w.found.iter().filter(|f| f.root == ri) {
+            found += 1;
+            overlap += by_path
+                .get(&f.path)
+                .is_some_and(|&i| index.items[i].root == *p) as usize;
+        }
+        let recorded = old_roots.iter().find(|r| r.path == *p).and_then(|r| r.dev);
+        let ok = w.root_ok[ri]
+            && !root_looks_unmounted(w.root_dev[ri], recorded, found, overlap, indexed);
+        if w.root_ok[ri] && !ok {
+            rep.warnings
+                .push(format!("root looks unmounted or replaced: {}", p.display()));
+        }
+        w.root_ok[ri] = ok;
+        index.roots.push(Root {
+            path: p.clone(),
+            available: ok,
+            // keep the last known device while the root is away
+            dev: if ok { w.root_dev[ri] } else { recorded },
+        });
+    }
+    w.found.retain(|f| w.root_ok[f.root]);
     let scanned: Vec<PathBuf> = index
         .roots
         .iter()
@@ -398,12 +444,6 @@ pub(crate) fn scan(
         .map(|r| r.path.clone())
         .collect();
 
-    let by_path: HashMap<PathBuf, usize> = index
-        .items
-        .iter()
-        .enumerate()
-        .map(|(i, it)| (it.path.clone(), i))
-        .collect();
     let total = w.found.len();
     let mut seen: HashSet<usize> = HashSet::new();
     let mut new: Vec<&Found> = Vec::new();
@@ -502,4 +542,24 @@ pub(crate) fn scan(
     );
     progress(Progress { done: total, total });
     rep
+}
+
+#[cfg(test)]
+mod tests {
+    use super::root_looks_unmounted as f;
+
+    #[test]
+    fn unmounted_decision() {
+        // empty root with indexed files: unavailable, whatever the device
+        assert!(f(Some(1), Some(1), 0, 0, 5));
+        assert!(f(Some(2), None, 0, 0, 5));
+        // device changed and nothing we knew: a different disk is mounted there
+        assert!(f(Some(2), Some(1), 3, 0, 5));
+        // device changed but the same files are there: replugged drive
+        assert!(!f(Some(2), Some(1), 5, 5, 5));
+        // same device with files; never-indexed roots
+        assert!(!f(Some(1), Some(1), 3, 3, 5));
+        assert!(!f(Some(1), None, 3, 0, 0));
+        assert!(!f(Some(1), Some(1), 0, 0, 0));
+    }
 }

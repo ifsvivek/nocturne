@@ -163,6 +163,9 @@ impl Item {
 pub struct Root {
     pub path: PathBuf,
     pub available: bool,
+    /// st_dev of the root at the last good scan.
+    #[serde(default)]
+    pub dev: Option<u64>,
 }
 
 /// Series-level sidecar data (`tvshow.nfo`, show and season art), keyed by the series folder.
@@ -389,7 +392,7 @@ impl Library {
             .index
             .items
             .iter()
-            .filter(|i| i.missing_since.is_some_and(&old))
+            .filter(|i| i.missing_since.is_some_and(&old) && !self.root_away(i))
             .map(|i| i.id)
             .collect();
         if gone.is_empty() {
@@ -403,6 +406,16 @@ impl Library {
         self.save_overrides()?;
         self.save_state()?;
         Ok(gone.len())
+    }
+
+    /// Items of an unavailable root are never purged.
+    fn root_away(&self, it: &Item) -> bool {
+        it.unavailable
+            || self
+                .index
+                .roots
+                .iter()
+                .any(|r| r.path == it.root && !r.available)
     }
 
     fn save_index(&self) -> Result<(), Error> {

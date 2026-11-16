@@ -347,6 +347,42 @@ fn unmounted_root_is_unavailable_not_missing() {
 }
 
 #[test]
+fn empty_mountpoint_is_unavailable_and_never_purged() {
+    let f = fx();
+    put(&f.media, "A (2000).mkv");
+    let gone = put(&f.media, "B (2001).mkv");
+    let mut lib = Library::open(&f.data).unwrap();
+    scan(&mut lib, &[&f.media]);
+    let (a, b) = (id_of(&lib, "A"), id_of(&lib, "B"));
+    lib.set_progress(a, 42).unwrap();
+    fs::remove_file(&gone).unwrap();
+    scan(&mut lib, &[&f.media]); // B is genuinely missing now
+    assert_eq!(lib.view(b).unwrap().status, Status::Missing);
+
+    // drive unplugged: the mountpoint dir exists but is empty
+    fs::remove_file(f.media.join("A (2000).mkv")).unwrap();
+    let rep = scan(&mut lib, &[&f.media]);
+    assert_eq!(rep.missing, 0);
+    assert_eq!(rep.unavailable_roots, std::slice::from_ref(&f.media));
+    assert_eq!(lib.view(a).unwrap().status, Status::Unavailable);
+    assert_eq!(lib.resolve_path(a), Err(ResolveError::Unavailable));
+    assert!(!lib.libraries()[0].available);
+    assert_eq!(
+        lib.purge_missing().unwrap(),
+        0,
+        "unavailable roots are never purged"
+    );
+    assert_eq!(lib.state(a).resume_secs, 42);
+
+    // plugged back in
+    put(&f.media, "A (2000).mkv");
+    let rep = scan(&mut lib, &[&f.media]);
+    assert!(rep.unavailable_roots.is_empty());
+    assert_eq!(lib.view(a).unwrap().status, Status::Available);
+    assert_eq!(lib.state(a).resume_secs, 42);
+}
+
+#[test]
 fn overrides_survive_rescan_and_apply() {
     let f = fx();
     put(&f.media, "random clip.mp4");
