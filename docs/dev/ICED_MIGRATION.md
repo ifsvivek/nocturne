@@ -130,6 +130,7 @@ Demo library on a throwaway server: `scripts/make-demo-library.sh build` (prints
   glibc 2.44: fine for Arch; 0.4 .deb/.rpm must be built inside their distro containers; docs pass 2 must say the
   tarball targets current Arch.
 - [~] M3 Iced root on the catalog (Sources settings, local folders screen, source filter/marks, local playback)
+- [~] 4d player page (worktree, own module; root hook wired by master after M3)
 - [ ] 4b-4e screens
 - [ ] 5 cut-over
 - [ ] 6 verification
