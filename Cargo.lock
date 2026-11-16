@@ -3523,6 +3523,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nocturne-local"
+version = "0.2.0"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "nocturne-player"
 version = "0.2.0"
 dependencies = [
