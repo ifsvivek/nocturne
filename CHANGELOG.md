@@ -5,8 +5,29 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - UNRELEASED
+
+A new foundation: the interface is rebuilt on Iced, and NOCTURNE becomes a media center for local folders and several
+Jellyfin servers in one library.
+
 ### Added
-- Watch together (SyncPlay): press `g` or use the account menu to list, create, join and leave groups on your server. In a
+- **Local library.** Add folders in Settings > Sources (portal chooser or typed path). NOCTURNE scans them (video, audio
+  and image files; names such as `Title (Year)` and `Show/Season 01/... S01E02 ...`; `.nfo` files and sidecar artwork;
+  stream details from `ffprobe` when installed), with live progress, cancel, incremental rescans and availability for
+  unplugged drives. Files that cannot be matched are listed under Unmatched and can be matched by hand. Resume position and
+  watched state for local items are kept in NOCTURNE's own data directory. Local files are never modified, moved or deleted.
+- **Several servers, one library.** Any number of Jellyfin servers, each with its own account, plus local folders, behind
+  one catalog. Home, browse and search merge them; a header filter narrows to one source and small source marks show where an
+  item lives. A server that is signed out or offline shows a quiet banner and retries with backoff without affecting the
+  others. Settings > Sources shows status and offers sign in again, rescan, enable / disable, priority order and remove.
+- **Duplicates as versions and sources.** The same title found in several places appears once (matched on provider ids, never on
+  title alone). The detail page has one "Versions and sources" picker listing a server's own versions (for example 4K and
+  1080p) and copies on other servers or in local folders, with "Always prefer this source".
+- **First run.** A welcome screen offers Local library, Connect to a server, or Both.
+- **Loading splash.** Opening a stream shows a Stremio-style splash (the item's backdrop, its logo filling with the buffer
+  and a status line); a lighter version appears on stalls during playback.
+- **Reduce motion** setting (follows the desktop preference by default).
+- **Watch together (SyncPlay):** press `g` or use the account menu to list, create, join and leave groups on your server. In a
   group, choosing something to play starts it for everyone, and play, pause, seek, stop and next-item stay in step across
   members' players (clock sync against the server, command scheduling, small drift corrected by nudging mpv's speed and large
   drift by seeking, and the Ready / Buffering handshake so the group waits for the slowest member). A pill in the header and
@@ -15,17 +36,27 @@ and the project uses [Semantic Versioning](https://semver.org/).
   the server keys sessions by.
 
 ### Changed
-- libmpv is loaded at run time instead of linked, so a missing `libmpv.so.2` is an error the app can handle (the player
-  crate exposes `libmpv_available()` and a per-distro install hint) rather than a loader failure before startup. The
-  tarball `install.sh` now checks and installs the runtime libraries through the distro package manager (`--no-deps`
-  skips it).
-- Documentation: the direction for 0.3 is written down (Iced interface in place of GPUI, local folders plus several
-  Jellyfin servers in one library, Arch first with other platforms planned): `docs/DECISIONS.md`, `docs/SOURCES.md`,
-  `docs/PLATFORMS.md`. The "Linux only" statements became "Linux first; macOS and Windows planned, not available".
+- **The interface is built on Iced 0.14; GPUI is removed.** Same design, layouts and keys. Video still plays inside the
+  window on Wayland (libmpv's OpenGL render API in a subsurface below the transparent window) and in an external mpv window on
+  X11. The pinned `gpui` and the patched `vendor/xattr` crate are gone.
+- **libmpv is loaded at run time** instead of linked, so a missing `libmpv.so.2` is an error the app can handle: browsing keeps
+  working, playback falls back to the `mpv` program, and otherwise the app shows a per-distribution install hint. The tarball
+  `install.sh` now checks the runtime libraries and installs missing ones through the distribution's package manager
+  (`--no-deps` skips it). The Arch package declares `mpv` explicitly.
+- **Release builds no longer read `.env`.** Only debug builds look for one, so a stray file in a parent directory cannot point an
+  installed app at a server. `NOCTURNE_JF_URL` / `NOCTURNE_JF_TOKEN` from the environment still add a transient read-only source.
+- Server changes go only to the server an item came from; the single `allow_server_writes` switch still gates all of them.
+- Upgrading from 0.2: your server login becomes a source automatically (`sources.toml`); settings are kept; the old
+  `servers.toml` and `accounts.toml` are left in place. Nothing is changed on any server.
+- Documentation rewritten for the new architecture (`docs/ARCHITECTURE.md`, `docs/SOURCES.md`, `docs/DECISIONS.md`,
+  `docs/PLATFORMS.md`, `docs/HDR.md`, `docs/METADATA.md`). The "Linux only" statements became "Linux first; macOS and Windows
+  planned, not available".
 
 ### Fixed
 - Clicking Home with the mouse could leave the header highlighting a library (for example Movies) instead of Home, because
   the Home page kept the keyboard focus on a header entry.
+- Wide-tracked uppercase labels dropped or clipped glyphs; letter-spaced text now renders every character.
+- Buttons in dialogs and the Sources screens are normal-sized again after the port.
 
 ## [0.2.0] - 2026-11-15
 
@@ -97,5 +128,6 @@ First release. Linux only.
 ### Known limitations
 See [docs/ROADMAP.md](docs/ROADMAP.md).
 
+[0.3.0]: https://github.com/ifsvivek/nocturne/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ifsvivek/nocturne/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ifsvivek/nocturne/releases/tag/v0.1.0
