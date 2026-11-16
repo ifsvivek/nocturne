@@ -24,7 +24,7 @@ optdepends=('gnome-keyring: Secret Service provider for storing the login token 
 options=(!lto) # aws-lc-sys C objects built with -flto cannot be linked by rustc
 makedepends=(cargo pkgconf) # libmpv is no longer linked at build time
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('3c01fbc914dfddcdcde5fff8e3b6a5614a69aaa3e53835aa559d5b8f844ebb33')
+sha256sums=('6f8b7d821b586e038f0db543ba718e2b40c264e270a3e377e4f167c05f9d1cb5')
 
 prepare() {
   cd "$pkgname-$pkgver"
