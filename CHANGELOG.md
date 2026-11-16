@@ -14,6 +14,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
   switched on (leaving never does) and a user whose policy allows SyncPlay. `NOCTURNE_DEVICE_ID` overrides the device id
   the server keys sessions by.
 
+### Changed
+- libmpv is loaded at run time instead of linked, so a missing `libmpv.so.2` is an error the app can handle (the player
+  crate exposes `libmpv_available()` and a per-distro install hint) rather than a loader failure before startup. The
+  tarball `install.sh` now checks and installs the runtime libraries through the distro package manager (`--no-deps`
+  skips it).
+
 ### Fixed
 - Clicking Home with the mouse could leave the header highlighting a library (for example Movies) instead of Home, because
   the Home page kept the keyboard focus on a header entry.

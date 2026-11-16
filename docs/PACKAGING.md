@@ -15,15 +15,38 @@ Other distributions and architectures are UNVERIFIED.
 
 ## Runtime dependencies
 
-The binary links `libmpv.so.2`, `libEGL.so.1`, `libdbus-1.so.3`, `libxcb.so.1`, `libxkbcommon.so.0`,
-`libxkbcommon-x11.so.0`, glibc and libgcc_s directly (`readelf -d`); libmpv pulls in about 200 more libraries
-(ffmpeg, libass, ...). Wayland, Vulkan (GPUI renders through it, so a Vulkan driver is required), fontconfig and
-freetype are needed at run time too. A Secret Service provider (gnome-keyring, KWallet, KeePassXC) stores the login.
+**Linked** (`readelf -d`): `libEGL.so.1`, `libdbus-1.so.3`, `libxcb.so.1`, `libxkbcommon.so.0`,
+`libxkbcommon-x11.so.0`, glibc, libgcc_s.
 
-| Distribution | Packages | Status |
+**Loaded at run time with `dlopen`** (invisible to `readelf`/namcap, so they are listed explicitly in the PKGBUILD
+and in `install.sh`): `libmpv.so.2` (in-window video, `crates/player/src/mpv_ffi.rs`), `libvulkan.so.1` (GPUI
+renderer), `libwayland-client.so.0`, `libwayland-egl.so.1`. A Vulkan driver (Mesa or NVIDIA) is also required;
+it depends on the GPU, so the installer does not pick one. libmpv pulls in about 200 more libraries (ffmpeg, libass,
+...) that the distribution's mpv package resolves. A Secret Service provider (gnome-keyring, KWallet, KeePassXC)
+stores the login.
+
+Because libmpv is not linked, a missing `libmpv.so.2` does not stop the app from starting.
+`nocturne_player::libmpv_available()` reports it, and the app can fall back to the external `mpv` child-process
+player (needs the `mpv` binary, see `mpv_binary_available()`) or show `install_hint()`, a distro-specific command
+from `/etc/os-release`. libmpv is not needed at build time, so `mpv` is not a makedepend.
+
+| Distribution | Packages (all needed at run time) | Status |
 |---|---|---|
-| Arch / CachyOS | `mpv dbus fontconfig freetype2 gcc-libs glibc libglvnd libxcb libxkbcommon libxkbcommon-x11 vulkan-icd-loader vulkan-driver wayland` | VERIFIED (package built, `pacman -T` satisfied, binary launched) |
-| Debian / Ubuntu / Fedora / openSUSE | `libmpv`, Vulkan loader + driver, xkbcommon(-x11), wayland, dbus, fontconfig under the distribution's names | UNVERIFIED (the prebuilt binary also needs a glibc at least as new as the build host's) |
+| Arch / CachyOS / Manjaro | `mpv libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon-x11 libxcb dbus` + `vulkan-driver`, `gcc-libs glibc`, `fontconfig freetype2` (PKGBUILD) | VERIFIED names (`pacman -Qo`); package built, binary launched |
+| Debian / Ubuntu | `libmpv2 mpv libegl1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3` + `mesa-vulkan-drivers` | names UNVERIFIED in a container |
+| Fedora | `mpv-libs mpv libglvnd-egl vulkan-loader libwayland-client libwayland-egl libxkbcommon libxkbcommon-x11 libxcb dbus-libs` + `mesa-vulkan-drivers` | UNVERIFIED (mpv comes from RPM Fusion) |
+| openSUSE | `libmpv2 mpv libEGL1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3` + `libvulkan_intel`/`libvulkan_radeon` | UNVERIFIED |
+
+How each artifact handles them:
+
+- **Arch package (PKGBUILD)**: `depends` lists all of the above, including `mpv` for the dlopen'd libmpv.
+- **Tarball `install.sh`**: on `install` it checks each soname with `ldconfig -p` and the `mpv` binary, installs the
+  missing packages with the distro's package manager (via `sudo` unless root; the exact command is printed first),
+  then runs `ldd` on the installed binary and warns about anything "not found". The soname-to-package table is the
+  `pkg_for` function at the top of the script, the single place to edit. `--no-deps` skips this; `NOCTURNE_YES=1`
+  makes the package manager non-interactive; an unrecognised distribution fails with the list of what is missing;
+  `DESTDIR` (staging) skips dependency handling.
+- **AppImage**: not provided (see below).
 
 The tarball binary is built on a rolling distribution and is not an "any Linux" artifact.
 
@@ -34,7 +57,7 @@ The tarball binary is built on a rolling distribution and is not an "any Linux" 
 scripts/package.sh tarball
 
 # Install from the extracted tarball (PREFIX default /usr/local, DESTDIR optional)
-sudo ./install.sh            # or: DESTDIR=/tmp/root PREFIX=/usr ./install.sh
+sudo ./install.sh            # installs missing runtime libraries first (--no-deps to skip); or: DESTDIR=/tmp/root PREFIX=/usr ./install.sh
 sudo ./install.sh uninstall
 
 # Arch package (set the real sha256 first; builds from the GitHub source archive of the v<version> tag)
