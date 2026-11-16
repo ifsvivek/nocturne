@@ -4162,6 +4162,7 @@ dependencies = [
  "nocturne-session",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "toml 1.2.1+spec-1.1.0",
  "zbus 5.19.0",

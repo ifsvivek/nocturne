@@ -13,6 +13,7 @@ pub mod libview;
 pub mod nav;
 pub mod player_logic;
 pub mod player_mpris;
+pub mod profile;
 pub mod search;
 pub mod settings;
 pub mod source;
