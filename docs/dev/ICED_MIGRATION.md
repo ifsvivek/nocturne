@@ -147,8 +147,12 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   `window::screenshot`; use it instead of any screen grab. Carry into 4b: header nav needs a "More" menu once there
   are many libraries (now scrolls sideways), `Message::Fan` is only used for libraries, a scan holds the local
   library's write lock (reads of that source wait; see the ponytail note in `core/folders.rs`).
-- [~] 4d player page (worktree, own module; root hook wired by master after M3)
+- [x] 4d player page merged (`crates/ui/src/player/`): embedded + external + libmpv/mpv-missing paths, full controls,
+  Stremio-style splash wired, MPRIS, SyncPlay hooks kept. hwdec-current = nvdec for H.264 1080p and HEVC 10-bit (0
+  dropped). 25 open/close cycles: no leak (debug RSS ~555 MiB; re-measure in release). Root wiring: 4b worker.
+  Follow-ups: music-queue overlay (4e), check splash logo clipping with a real logo, one snapshot hook.
 - [~] 4b home, browse (virtualised + unified kinds), search, header for many sources, Sources polish (worktree)
-- [ ] 4c detail pages + version picker, playlists; 4e account page, admin per server, SyncPlay, music queue
+- [~] 4c detail pages + versions/sources picker + playlists (worktree, own module + documented hook)
+- [ ] 4e account page, admin per server, SyncPlay, music queue
 - [ ] 5 cut-over
 - [ ] 6 verification
