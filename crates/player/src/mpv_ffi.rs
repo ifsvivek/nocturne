@@ -71,7 +71,7 @@ struct Lib {
     free: unsafe extern "C" fn(*mut c_void),
     create: unsafe extern "C" fn() -> Handle,
     initialize: unsafe extern "C" fn(Handle) -> c_int,
-    destroy: unsafe extern "C" fn(Handle),
+    terminate_destroy: unsafe extern "C" fn(Handle),
     set_option_string: unsafe extern "C" fn(Handle, *const c_char, *const c_char) -> c_int,
     command: unsafe extern "C" fn(Handle, *mut *const c_char) -> c_int,
     set_property: unsafe extern "C" fn(Handle, *const c_char, c_int, *mut c_void) -> c_int,
@@ -104,7 +104,7 @@ fn load(name: &str) -> Result<Lib, String> {
             free: sym!("mpv_free"),
             create: sym!("mpv_create"),
             initialize: sym!("mpv_initialize"),
-            destroy: sym!("mpv_destroy"),
+            terminate_destroy: sym!("mpv_terminate_destroy"),
             set_option_string: sym!("mpv_set_option_string"),
             command: sym!("mpv_command"),
             set_property: sym!("mpv_set_property"),
@@ -290,7 +290,8 @@ impl Mpv {
 
 impl Drop for Mpv {
     fn drop(&mut self) {
-        unsafe { (self.l.destroy)(self.h) }
+        // Quit the core and wait for it, as the old libmpv2 binding did (teardown order in embedded.rs relies on it).
+        unsafe { (self.l.terminate_destroy)(self.h) }
     }
 }
 
