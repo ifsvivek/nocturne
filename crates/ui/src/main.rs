@@ -3,16 +3,26 @@
 mod account;
 mod app;
 mod keys;
+mod motion;
 mod platform;
 mod style;
 mod task;
 mod theme;
+mod timing;
 mod widget;
 
 use app::App;
 use iced::{Color, Size, window};
 
 fn main() -> iced::Result {
+    platform::mark_start();
+    platform::probe_motion_pref();
+    // Loading ~1000 system fonts takes a few hundred ms and would otherwise run after the window
+    // and GPU are up; do it on a thread alongside them.
+    std::thread::spawn(|| {
+        drop(iced::advanced::graphics::text::font_system().read());
+        timing::mark("fonts loaded");
+    });
     // Config (and .env) is read once, before any other thread exists.
     let cfg = nocturne_jellyfin::Config::load().ok();
     platform::install_term_handlers();

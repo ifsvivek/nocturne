@@ -34,7 +34,7 @@ impl Default for State {
             pressed: false,
             hot: Animation::new(false)
                 .easing(Easing::EaseOut)
-                .duration(t::HOVER),
+                .duration(crate::motion::dur(t::HOVER)),
         }
     }
 }
@@ -237,6 +237,8 @@ impl<'a, M: Clone + 'a> Widget<M, iced::Theme, iced::Renderer> for Press<'a, M> 
             self.status = Some(now_status);
             let hot = matches!(now_status, Status::Hovered | Status::Pressed);
             if state.hot.value() != hot {
+                // Re-read the motion preference so a Settings change applies to live buttons.
+                state.hot = state.hot.clone().duration(crate::motion::dur(t::HOVER));
                 state.hot.go_mut(hot, *now);
             }
             if state.hot.is_animating(*now) {
