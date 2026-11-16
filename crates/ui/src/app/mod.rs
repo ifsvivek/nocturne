@@ -1,34 +1,44 @@
 //! Root: connection state, navigation stack, keyboard and the screens. Port of the GPUI `Root`
 //! (`crates/app/src/app.rs`); step 4a covers connect / accounts / header / settings, the other
 //! pages render a "Not ported yet" panel.
+mod catalog;
+mod folders;
 mod header;
 mod help;
 pub mod message;
 mod preview;
 mod settings;
+mod sources;
 mod welcome;
 
 use crate::account::{self, Accounts, Event as AcctEvent, picker};
 use crate::keys::Key;
 use crate::task::run;
 use crate::theme as t;
-use crate::widget::{self, action_button, label, pulse, tex, wordmark};
+use crate::widget::{self, label, pulse, tex, wordmark};
 use iced::widget::image::Handle;
-use iced::widget::{Stack, column, container, image, row, space, text};
+use iced::widget::{Stack, column, container, image, space, text};
 use iced::{
-    Alignment, ContentFit, Element, Length, Padding, Size, Subscription, Task, event, mouse, window,
+    Alignment, ContentFit, Element, Length, Size, Subscription, Task, event, mouse, window,
 };
 use message::{AcctAct, Message, SwitchFail};
-use nocturne_core::account::picker::{DefaultChange, Picker, Start};
+use nocturne_core::account::picker::{DefaultChange, Picker};
 use nocturne_core::cache::Cache;
+use nocturne_core::catalog::{Catalog, Status};
 use nocturne_core::dropdown::Dropdown;
 use nocturne_core::imgcache::DiskCache;
+use nocturne_core::merge::{Preferred, SeriesIds};
 use nocturne_core::nav;
+use nocturne_core::profile::Sources;
 use nocturne_core::settings::Settings;
+use nocturne_core::source::SourceId;
 use nocturne_core::source::{ConnectError, Media, Source, sniff, user_image_key};
-use nocturne_core::sync::{SyncHooks, backoff_secs};
+use nocturne_core::sources::{Fanout, FirstRun, SourceFilter, Step};
+use nocturne_core::sync::SyncHooks;
 use nocturne_jellyfin_admin::AdminClient;
 use nocturne_jellyfin_user::{Session, UserClient};
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -87,8 +97,9 @@ pub struct Page {
     pub pid: u64,
     pub view: View,
     pub media: Option<Media>,
-    /// Home only: the libraries (header nav links).
+    /// Home only: the libraries (header nav links), merged from every source as answers arrive.
     pub libs: Load<Vec<Media>>,
+    pub fan: Fanout,
 }
 
 /// Library-like destinations that are not libraries (header links after the libraries).
@@ -105,19 +116,47 @@ enum Phase {
     Picker,
     Connecting,
     Error(ConnectError),
+    /// The saved sources could not be read (never overwritten); the reason is shown.
+    Fatal(String),
     Ready,
 }
 
-/// Reconnect state while the server is unreachable.
-struct Offline {
-    tries: u32,
-    next: Instant,
-    probing: bool,
+/// Where Esc on an account screen leads back to.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AccountBack {
+    /// The app (the screens were opened from Sources).
+    Ready,
+    /// The welcome choice (first run).
+    Welcome,
 }
 
 pub struct App {
     cfg: Option<nocturne_jellyfin::Config>,
-    source: Option<Source>,
+    /// `$XDG_DATA_HOME/nocturne`: each local source keeps its index under `local/<id>`.
+    data: PathBuf,
+    /// The saved profiles (priority order) and the catalog built from them.
+    sources: Sources,
+    catalog: Catalog,
+    prefs: Preferred,
+    series_ids: SeriesIds,
+    /// The server the account menu, hooks and Admin act on.
+    active: Option<SourceId>,
+    sessions: HashMap<SourceId, (String, Session)>,
+    filter: SourceFilter,
+    /// Request counter for fan-outs (answers carry theirs; stale ones are dropped).
+    epoch: u64,
+    probing: HashSet<SourceId>,
+    scans: HashMap<SourceId, catalog::Scan>,
+    scan_gen: u64,
+    /// Scans to start again as soon as the running (cancelled) one ends.
+    rescan: HashSet<SourceId>,
+    launch_scan: bool,
+    src_open: bool,
+    /// Source whose removal waits for the confirmation dialog.
+    confirm: Option<SourceId>,
+    folders: Option<folders::Folders>,
+    setup: Option<FirstRun>,
+    account_back: Option<AccountBack>,
     phase: Phase,
     stack: Vec<Page>,
     /// Pages left by Back, restored by Forward (cleared by any new navigation).
@@ -136,7 +175,6 @@ pub struct App {
     admin: bool,
     admin_open: bool,
     accounts: Option<Accounts>,
-    session: Option<(String, Session)>,
     hooks: Arc<SyncHooks>,
     settings: Settings,
     settings_open: bool,
@@ -155,7 +193,6 @@ pub struct App {
     /// `PrimaryImageTag` of the signed-in user (None: no profile picture, or not known yet).
     my_tag: Option<String>,
     disk: Option<Arc<DiskCache>>,
-    offline: Option<Offline>,
     help_open: bool,
     /// First run (no source yet): the welcome choice, until one is made.
     welcome: Option<welcome::Welcome>,
@@ -185,13 +222,28 @@ impl App {
             },
             Message::DiskReady,
         );
-        let welcome = (cfg.is_none()
-            && nocturne_session::Servers::load().is_ok_and(|s| s.servers.is_empty()))
-        .then(welcome::Welcome::new);
-        let mut me = Self {
+        let me = Self {
             dev: cfg.is_some(),
             cfg,
-            source: None,
+            data: catalog::app_data_dir(),
+            sources: Sources::default(),
+            catalog: Catalog::default(),
+            prefs: Preferred::default(),
+            series_ids: SeriesIds::default(),
+            active: None,
+            sessions: HashMap::new(),
+            filter: SourceFilter::All,
+            epoch: 0,
+            probing: HashSet::new(),
+            scans: HashMap::new(),
+            scan_gen: 0,
+            rescan: HashSet::new(),
+            launch_scan: false,
+            src_open: false,
+            confirm: None,
+            folders: None,
+            setup: None,
+            account_back: None,
             phase: Phase::Connecting,
             stack: vec![],
             fwd: vec![],
@@ -206,7 +258,6 @@ impl App {
             admin: false,
             admin_open: false,
             accounts: None,
-            session: None,
             hooks: Arc::new(SyncHooks::new(None, false, false)),
             settings,
             settings_open: false,
@@ -221,47 +272,17 @@ impl App {
             anon_src: None,
             my_tag: None,
             disk: None,
-            offline: None,
             help_open: false,
-            welcome,
+            welcome: None,
             preview: preview::Preview::from_env(),
         };
         let size = window::oldest()
             .and_then(window::size)
             .map(Message::Resized);
-        let task = if me.dev {
-            me.connect()
-        } else {
-            me.phase = Phase::Account;
-            // Several remembered accounts on the last used server: ask who is watching (or open
-            // the default profile) instead of restoring the last token.
-            let last = nocturne_session::Servers::load()
-                .ok()
-                .and_then(|s| s.last_used);
-            let list = last
-                .as_deref()
-                .map(|u| {
-                    picker::accounts_of(&nocturne_session::Accounts::load().unwrap_or_default(), u)
-                })
-                .unwrap_or_default();
-            let start = picker::decide(false, &list);
-            let (acct, t0) = Accounts::new(matches!(start, Start::Restore));
-            me.accounts = Some(acct);
-            let mut tasks = vec![t0.map(Message::Account)];
-            if let (Some(server), true) = (last, !matches!(start, Start::Restore)) {
-                me.picker = Some(Picker::new(&server, list.clone(), None, 1));
-                match start {
-                    Start::Direct(i) => {
-                        me.phase = Phase::Connecting;
-                        tasks.push(me.switch_account(list[i].clone(), true, DefaultChange::Keep));
-                    }
-                    _ => tasks.push(me.show_picker()),
-                }
-            }
-            Task::batch(tasks)
-        };
+        // Keyring reads, index loading and connections all follow in tasks, after the first frame.
+        let task = Task::batch([size, me.load_sources(), open_disk, crate::snap::on_boot()]);
         crate::timing::mark("boot done");
-        (me, Task::batch([size, task, open_disk]))
+        (me, task)
     }
 
     pub fn theme(&self) -> iced::Theme {
@@ -352,8 +373,14 @@ impl App {
             }
             Message::Retry => self.connect(),
             Message::RetryNow => {
-                if let Some(o) = self.offline.as_mut() {
-                    o.next = Instant::now();
+                let now = Instant::now();
+                for s in &mut self.catalog.slots {
+                    if let Status::Offline { tries, .. } = s.status {
+                        s.status = Status::Offline {
+                            tries,
+                            retry_at: now,
+                        };
+                    }
                 }
                 Task::none()
             }
@@ -371,19 +398,38 @@ impl App {
                 default,
                 r,
             } => self.switched(acct, via_picker, default, r),
-            Message::Libraries(pid, r) => {
-                if let Some(p) = self.page_mut(pid) {
-                    p.libs = r.map_or(Load::Failed, Load::Ready);
-                    crate::timing::shell_ready();
-                }
+            Message::Loaded(h) => match h.take() {
+                Some(l) => self.on_loaded(l),
+                None => Task::none(),
+            },
+            Message::Fan(pid, epoch, origin, r) => {
+                self.fan_answer(pid, epoch, origin, r);
+                Task::none()
+            }
+            Message::Pinged(id, ok) => self.pinged(id, ok),
+            Message::SlotReady(h) => match h.take() {
+                Some(slot) => self.slot_ready(slot),
+                None => Task::none(),
+            },
+            Message::SessionLoaded(id, r) => self.session_loaded(id, r),
+            Message::Scan(id, run_id, m) => self.scan_msg(id, run_id, m),
+            Message::Src(a) => self.src_act(a),
+            Message::Folder(m) => self.folder_msg(m),
+            Message::CycleFilter => {
+                self.filter = self.filter.next(&self.catalog.priority());
+                self.retry_page()
+            }
+            Message::OpenSources => self.open_sources(),
+            Message::Snapped(shot, n) => {
+                crate::snap::save(&shot, n);
                 Task::none()
             }
             Message::Profile(uid, p) => {
-                let same = self.session.as_ref().is_some_and(|(_, s)| s.user_id == uid);
+                let same = self.session().is_some_and(|(_, s)| s.user_id == uid);
                 // Switched away meanwhile, or the server did not answer: keep what is shown.
                 if let (true, Some(tag)) = (same, p) {
                     self.my_tag = tag;
-                    if let Some((url, _)) = &self.session {
+                    if let Some((url, _)) = self.session() {
                         nocturne_session::remember_image_tag(url, &uid, self.my_tag.clone());
                     }
                     let tag = self.my_tag.clone();
@@ -397,15 +443,6 @@ impl App {
                     None => Img::Failed(Instant::now()),
                 };
                 self.images.insert(key, state);
-                Task::none()
-            }
-            Message::Pinged => {
-                if let Some(o) = self.offline.as_mut() {
-                    o.probing = false;
-                    o.tries += 1;
-                    o.next = Instant::now() + Duration::from_secs(backoff_secs(o.tries));
-                }
-                // Success shows up as Health::Ok on the next tick.
                 Task::none()
             }
             Message::GoHome => {
@@ -476,17 +513,13 @@ impl App {
                 Task::none()
             }
             Message::PageRetry => self.retry_page(),
-            Message::Welcome(m) => {
-                if let Some(c) = self.welcome.as_mut().and_then(|w| w.update(m)) {
-                    self.first_run(c);
-                }
-                Task::none()
-            }
+            Message::Welcome(m) => match self.welcome.as_mut().and_then(|w| w.update(m)) {
+                Some(c) => self.first_run(c),
+                None => Task::none(),
+            },
             Message::DiskReady(d) => {
                 self.disk = d;
-                if let (Some(d), Some(s)) = (self.disk.clone(), self.source.take()) {
-                    self.source = Some(s.with_disk(d));
-                }
+                self.apply_disk();
                 Task::none()
             }
             Message::Noop => Task::none(),
@@ -524,12 +557,8 @@ impl App {
     fn connected(&mut self, r: Result<Source, ConnectError>) -> Task<Message> {
         match r {
             Ok(s) => {
-                self.source = Some(match self.disk.clone() {
-                    Some(d) => s.with_disk(d),
-                    None => s,
-                });
-                self.phase = Phase::Ready;
-                let push = self.push(View::Home, None);
+                self.dev_source(s);
+                let ready = self.ready();
                 let cfg = self.cfg.clone();
                 let probe = run(
                     async move {
@@ -539,7 +568,7 @@ impl App {
                     },
                     |a| Message::AdminProbed(a.is_some()),
                 );
-                Task::batch([push, probe])
+                Task::batch([ready, probe])
             }
             Err(e) => {
                 self.phase = Phase::Error(e);
@@ -565,53 +594,71 @@ impl App {
                     tasks.push(self.refresh_profile());
                     tasks.push(self.retry_page());
                 }
-                AcctEvent::BackToPicker => tasks.push(self.show_picker()),
+                AcctEvent::BackToPicker if self.picker.is_some() => tasks.push(self.show_picker()),
+                AcctEvent::BackToPicker => tasks.push(self.leave_account()),
             }
         }
         Task::batch(tasks)
     }
 
-    /// A login is ready (typed, Quick Connect or restored): build the source and show Home.
+    /// A login is ready (typed, Quick Connect or restored). Its server becomes a source profile (or
+    /// updates the one it already has: an account switch), gets a slot using this token, and Home shows.
     fn activate(&mut self, url: String, s: Session) -> Task<Message> {
-        let cfg = nocturne_jellyfin::Config {
-            base_url: url.clone(),
-            token: s.access_token.clone(),
-        };
-        let Ok(src) = Source::with_user(cfg, &s.user_id) else {
+        let url = url.trim_end_matches('/').to_string();
+        let id = self.sources.upsert_server(&url, &s.user_id, &s.user_name);
+        // ponytail: a small atomic file write on the UI thread; move to a task if it ever shows up in a trace.
+        if self.sources.save().is_err() {
+            self.toast("Couldn't save your sources.");
+        }
+        let profile = self.sources.get(id).cloned().expect("just added");
+        let token = s.access_token.clone();
+        let tok = move |_: &str, _: &str| Some(token.clone());
+        let slot = nocturne_core::catalog::Slot::build(
+            &profile,
+            &nocturne_core::catalog::Env {
+                token: &tok,
+                data_dir: &self.data,
+                disk: self.disk.clone(),
+            },
+        );
+        if slot.backend.is_none() {
             self.toast("This server address can't be used.");
             return Task::none();
-        };
+        }
+        self.catalog.upsert(slot);
+        self.catalog.set_status(id, Status::Online); // it just answered
+        self.catalog.reorder(&self.sources.ids());
         self.hooks = Arc::new(SyncHooks::new(
             UserClient::from_session(&url, &s).ok(),
             self.settings.allow_server_writes,
             self.settings.sync_progress,
         ));
-        self.source = Some(match self.disk.clone() {
-            Some(d) => src.with_disk(d),
-            None => src,
-        });
         self.images = Cache::new(600);
         self.stack.clear();
         self.fwd.clear();
         self.admin_open = false;
+        self.src_open = false;
+        self.settings_open = false;
+        self.account_back = None;
         // The admin section follows the account's own rights.
         self.admin = s.is_admin;
         self.apply_write_settings();
-        self.session = Some((url, s));
+        self.sessions.insert(id, (url, s));
+        self.active = Some(id);
         self.my_tag = None;
         let profile = self.refresh_profile();
-        self.phase = Phase::Ready;
-        let home = self.push(View::Home, None);
+        let ready = self.ready();
         if self.accounts.as_ref().is_some_and(|a| a.keyring_down()) {
             self.toast(account::KEYRING_NOTE);
         }
-        Task::batch([profile, home])
+        let setup = self.setup_after(Step::Server);
+        Task::batch([profile, ready, setup])
     }
 
     /// Read the own profile picture tag (`GET /Users/Me`), then the picture itself. Runs on
     /// sign-in, account switch and after the profile image is set or removed.
     fn refresh_profile(&mut self) -> Task<Message> {
-        let Some((url, s)) = self.session.as_ref() else {
+        let Some((url, s)) = self.session() else {
             return Task::none();
         };
         let (Ok(c), uid) = (UserClient::from_session(url, s), s.user_id.clone()) else {
@@ -625,8 +672,7 @@ impl App {
 
     /// Start fetching a user's profile picture (once per tag; a failure is retried later).
     fn load_user_pic(&mut self, uid: &str, tag: Option<String>) -> Task<Message> {
-        let (Some(tag), Some(src)) = (tag, self.source.clone().or_else(|| self.anon_src.clone()))
-        else {
+        let (Some(tag), Some(src)) = (tag, self.source().or_else(|| self.anon_src.clone())) else {
             return Task::none();
         };
         let key = user_pic_key(uid, &tag);
@@ -653,46 +699,90 @@ impl App {
     }
 
     fn my_pic(&self) -> Option<Handle> {
-        let uid = &self.session.as_ref()?.1.user_id;
+        let uid = &self.session()?.1.user_id;
         self.user_pic(uid, self.my_tag.as_deref())
     }
 
-    /// Back to the account screens: drop everything tied to the login.
+    /// Back to the account screens: drop everything tied to the login (the source itself stays
+    /// until a new login replaces it or it is signed out).
     fn leave_session(&mut self) {
-        self.source = None;
+        if let Some(id) = self.active {
+            self.sessions.remove(&id);
+        }
         self.stack.clear();
         self.admin = false;
         self.admin_open = false;
         self.settings_open = false;
+        self.src_open = false;
         self.menu = false;
-        self.session = None;
         self.my_tag = None;
         self.hooks = Arc::new(SyncHooks::new(None, false, false));
         self.phase = Phase::Account;
     }
 
-    fn sign_out(&mut self) {
+    /// Esc on an account screen opened from inside the app (or from the first-run choice).
+    fn leave_account(&mut self) -> Task<Message> {
+        match self.account_back.take() {
+            Some(AccountBack::Welcome) => {
+                self.setup = None;
+                self.welcome = Some(welcome::Welcome::new());
+                Task::none()
+            }
+            Some(AccountBack::Ready) => {
+                let load = self
+                    .active
+                    .filter(|_| self.session().is_none())
+                    .map(|id| self.load_session(id));
+                Task::batch([self.ready(), load.unwrap_or_else(Task::none)])
+            }
+            None => Task::none(),
+        }
+    }
+
+    /// Account screens that can be left again need somewhere to go back to.
+    fn can_return(&self) -> bool {
+        self.catalog.online().next().is_some()
+    }
+
+    fn sign_out(&mut self) -> Task<Message> {
         let client = self
-            .session
-            .as_ref()
+            .session()
             .and_then(|(u, s)| UserClient::from_session(u, s).ok());
-        let uid = self.session.as_ref().map(|(_, s)| s.user_id.clone());
+        let uid = self.session().map(|(_, s)| s.user_id.clone());
+        let url = self.session().map(|(u, _)| u.clone());
+        let id = self.active.take();
         self.leave_session();
-        if let Some(a) = self.accounts.as_mut() {
+        // This source is signed out; the others carry on.
+        if let Some(slot) = id.and_then(|i| self.catalog.slot_mut(i)) {
+            slot.backend = None;
+            slot.status = Status::SignedOut;
+        }
+        let mut t = self.ensure_accounts();
+        if let (Some(a), Some(url)) = (self.accounts.as_mut(), url) {
+            a.point_at(&url);
             a.sign_out(client, uid);
         }
+        if self.can_return() {
+            self.toast("Signed out.");
+            t = Task::batch([t, self.ready()]);
+        }
+        t
     }
 
     fn switch_server(&mut self) {
         self.leave_session();
+        self.account_back = self.can_return().then_some(AccountBack::Ready);
         if let Some(a) = self.accounts.as_mut() {
             a.switch_server();
         }
     }
 
     fn menu_items(&self) -> Vec<(String, AcctAct)> {
-        let mut v = vec![("Settings".to_string(), AcctAct::Settings)];
-        if !self.dev {
+        let mut v = vec![
+            ("Settings".to_string(), AcctAct::Settings),
+            ("Sources".to_string(), AcctAct::Sources),
+        ];
+        if !self.dev && self.active.is_some() {
             let mut add = |l: &str, a| v.push((l.to_string(), a));
             add("Change password", AcctAct::Password);
             add("Profile image", AcctAct::ProfileImage);
@@ -716,7 +806,7 @@ impl App {
 
     /// Remembered accounts of this server other than the one in use (names only; a tiny file).
     fn refresh_accounts(&mut self) -> Task<Message> {
-        self.other_accounts = match &self.session {
+        self.other_accounts = match self.session() {
             Some((url, s)) => nocturne_session::Accounts::load()
                 .unwrap_or_default()
                 .for_server(url)
@@ -877,7 +967,7 @@ impl App {
 
     /// Menu "Switch profile": leave the session (the login stays remembered) and ask who is watching.
     fn switch_profile(&mut self) -> Task<Message> {
-        let Some((url, s)) = self.session.clone() else {
+        let Some((url, s)) = self.session().cloned() else {
             return Task::none();
         };
         let list = picker::accounts_of(
@@ -938,8 +1028,7 @@ impl App {
     }
 
     fn client(&self) -> Option<UserClient> {
-        self.session
-            .as_ref()
+        self.session()
             .and_then(|(u, s)| UserClient::from_session(u, s).ok())
     }
 
@@ -1000,13 +1089,17 @@ impl App {
             }
             AcctAct::SwitchProfile => return self.switch_profile(),
             AcctAct::AddAccount => {
+                let url = self.session().map(|(u, _)| u.clone());
                 self.leave_session();
-                if let Some(a) = self.accounts.as_mut() {
+                self.account_back = self.can_return().then_some(AccountBack::Ready);
+                if let (Some(a), Some(url)) = (self.accounts.as_mut(), url) {
+                    a.point_at(&url);
                     a.add_account();
                 }
             }
             AcctAct::Switch => self.switch_server(),
-            AcctAct::SignOut => self.sign_out(),
+            AcctAct::SignOut => return self.sign_out(),
+            AcctAct::Sources => return self.open_sources(),
         }
         Task::none()
     }
@@ -1027,54 +1120,6 @@ impl App {
             .store(self.settings.allow_server_writes, Relaxed);
         self.hooks.sync.store(self.settings.sync_progress, Relaxed);
         // TODO(4e): push `can_write()` to the admin section; 4d: SyncPlay writes.
-    }
-
-    // ---- connection watch ----
-
-    /// 401 mid-session goes back to sign-in; no answer shows the banner and reconnects with backoff.
-    fn watch_connection(&mut self) -> Task<Message> {
-        let Some(src) = self.source.clone() else {
-            return Task::none();
-        };
-        match src.health() {
-            nocturne_jellyfin::Health::Unauthorized => self.session_rejected(),
-            nocturne_jellyfin::Health::Unreachable => {
-                let off = self.offline.get_or_insert_with(|| Offline {
-                    tries: 0,
-                    next: Instant::now() + Duration::from_secs(backoff_secs(0)),
-                    probing: false,
-                });
-                if off.probing || Instant::now() < off.next {
-                    return Task::none();
-                }
-                off.probing = true;
-                run(async move { src.ping().await }, |_| Message::Pinged)
-            }
-            nocturne_jellyfin::Health::Ok => {
-                if self.offline.take().is_some() {
-                    self.toast("Back online.");
-                    return self.retry_page();
-                }
-                Task::none()
-            }
-        }
-    }
-
-    /// The token is no longer valid: drop the session and say so calmly.
-    fn session_rejected(&mut self) -> Task<Message> {
-        self.offline = None;
-        if self.session.is_none() {
-            // Developer-token mode has no login to return to.
-            self.source = None;
-            self.phase = Phase::Error(ConnectError::Rejected);
-            return Task::none();
-        }
-        let uid = self.session.as_ref().map(|(_, s)| s.user_id.clone());
-        self.leave_session();
-        if let Some(a) = self.accounts.as_mut() {
-            a.session_expired(uid);
-        }
-        Task::none()
     }
 
     /// Load the current page again (after a failure or a reconnect).
@@ -1102,12 +1147,13 @@ impl App {
             view,
             media,
             libs: Load::Loading,
+            fan: Fanout::default(),
         });
         pid
     }
 
     fn push(&mut self, view: View, media: Option<Media>) -> Task<Message> {
-        if self.source.is_none() {
+        if self.catalog.slots.is_empty() {
             return Task::none();
         }
         let pid = self.push_page(view, media);
@@ -1117,17 +1163,19 @@ impl App {
         Task::none()
     }
 
-    /// Home 4a: only the libraries (header links). Rows, hero and resume arrive with step 4b.
+    /// Home 4a: only the libraries (header links), asked of every online source at once; each
+    /// answer shows as it arrives. Rows, hero and resume arrive with step 4b.
     fn load_home(&mut self, pid: u64) -> Task<Message> {
-        let Some(src) = self.source.clone() else {
-            return Task::none();
-        };
+        let (fan, task) = self.fan(pid, |b| async move { b.libraries().await });
         if let Some(p) = self.page_mut(pid) {
-            p.libs = Load::Loading;
+            p.libs = if fan.is_empty() {
+                Load::Ready(vec![])
+            } else {
+                Load::Loading
+            };
+            p.fan = fan;
         }
-        run(async move { src.libraries().await.ok() }, move |r| {
-            Message::Libraries(pid, r)
-        })
+        task
     }
 
     /// Library tabs always replace whatever is above Home.
@@ -1188,10 +1236,17 @@ impl App {
             return self.picker_key(key);
         }
         if let Some(w) = self.welcome.as_mut() {
-            if let Some(c) = w.key(key) {
-                self.first_run(c);
-            }
-            return Task::none();
+            return match w.key(key) {
+                Some(c) => self.first_run(c),
+                None => Task::none(),
+            };
+        }
+        if key == "escape"
+            && self.account_back.is_some()
+            && matches!(self.phase, Phase::Account)
+            && self.accounts.as_ref().is_some_and(|a| a.at_connect())
+        {
+            return self.leave_account();
         }
         if let Some(a) = self.accounts.as_mut()
             && (matches!(self.phase, Phase::Account) || a.dialog_open())
@@ -1206,6 +1261,21 @@ impl App {
             return Task::none();
         }
         // TODO(4c): photo viewer, More menu and media info panel.
+        if self.confirm.is_some() {
+            if matches!(key, "escape" | "backspace") {
+                self.confirm = None;
+            }
+            return Task::none();
+        }
+        if self.folders.is_some() {
+            return self.folders_key(key);
+        }
+        if self.src_open {
+            if matches!(key, "escape" | "backspace") {
+                self.src_open = false;
+            }
+            return Task::none();
+        }
         if self.settings_open {
             return self.settings_key(key);
         }
@@ -1297,6 +1367,15 @@ impl App {
                 "Create a new token on the server, update your .env file, then try again.",
                 true,
             ),
+            Phase::Fatal(why) => self.splash(
+                "Your sources could not be read",
+                &format!(
+                    "{why}. The file was left as it is; fix or move it and start NOCTURNE again."
+                ),
+                false,
+            ),
+            Phase::Ready if self.folders.is_some() => self.folders_page(),
+            Phase::Ready if self.src_open => self.sources_page(),
             Phase::Ready if self.settings_open => self.settings_page(),
             Phase::Ready => self.page_view(),
         };
@@ -1319,10 +1398,11 @@ impl App {
             layer(&self.dots, 0.09),
             body,
         ];
-        if ready {
+        let setting_up = self.folders.as_ref().is_some_and(|f| f.setup);
+        if ready && !setting_up {
             layers.push(self.header());
-            if self.offline.is_some() {
-                layers.push(self.offline_banner());
+            if let Some(b) = self.source_banner() {
+                layers.push(b);
             }
             if !self.admin_open
                 && !self.settings_open
@@ -1348,6 +1428,9 @@ impl App {
             .and_then(|a| a.dialog_view())
         {
             layers.push(d.map(Message::Account));
+        }
+        if let Some(id) = self.confirm {
+            layers.push(self.confirm_dialog(id));
         }
         if let Some((n, _)) = &self.note {
             layers.push(
@@ -1441,47 +1524,20 @@ impl App {
         ])
     }
 
-    /// A first-run choice. Server and Both go to the server-address screen; Local waits for the
-    /// local folders screen (catalog milestone), so for now it says so.
-    fn first_run(&mut self, c: welcome::FirstRun) {
-        match c {
-            welcome::FirstRun::Local => {
-                if let Some(w) = self.welcome.as_mut() {
-                    w.local_note = true;
-                }
+    /// A first-run choice: Local goes to the folders screen, Server to the server address flow, Both
+    /// to the server and then the folders.
+    fn first_run(&mut self, c: FirstRun) -> Task<Message> {
+        self.setup = Some(c);
+        match c.first() {
+            Step::Server => {
+                self.welcome = None;
+                // Esc on the address screen returns to the choice until a source exists.
+                self.account_back = Some(AccountBack::Welcome);
+                Task::none()
             }
-            welcome::FirstRun::Server | welcome::FirstRun::Both => self.welcome = None,
+            Step::Folders => self.open_folders_setup(),
+            Step::Done => Task::none(),
         }
-    }
-
-    /// Non-blocking: the page underneath stays usable.
-    fn offline_banner(&self) -> Element<'_, Message> {
-        let wait = self.offline.as_ref().map_or(0, |o| {
-            o.next.saturating_duration_since(Instant::now()).as_secs() + 1
-        });
-        container(
-            container(
-                row![
-                    text(format!(
-                        "Can't reach your server. Showing what's already loaded. Retrying in {wait}s."
-                    ))
-                    .size(t::BODY),
-                    action_button("Retry now", true, false, false, false, Message::RetryNow),
-                ]
-                .spacing(t::S4)
-                .align_y(Alignment::Center),
-            )
-            .padding([t::S2, t::S4])
-            .style(crate::style::raised_card),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(Alignment::Center)
-        .padding(Padding {
-            top: t::HEADER_H + t::S2,
-            ..Padding::ZERO
-        })
-        .into()
     }
 }
 

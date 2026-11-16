@@ -78,7 +78,7 @@ impl Sources {
     pub fn load() -> io::Result<Self> {
         let path = Self::default_path().ok_or_else(|| io::Error::other("no config directory"))?;
         load_or_migrate(&path, || {
-            legacy_login(
+            legacy_logins(
                 &Servers::load().unwrap_or_default(),
                 &Accounts::load().unwrap_or_default(),
                 &|url| {
@@ -154,19 +154,127 @@ impl Sources {
     pub fn ids(&self) -> Vec<SourceId> {
         self.profiles.iter().map(|p| p.id).collect()
     }
+
+    pub fn set_enabled(&mut self, id: SourceId, on: bool) {
+        if let Some(p) = self.profiles.iter_mut().find(|p| p.id == id) {
+            p.enabled = on;
+        }
+    }
+
+    /// Move one place up (`-1`) or down (`1`) in priority; stops at the ends. True if it moved.
+    pub fn shift(&mut self, id: SourceId, by: i32) -> bool {
+        let Some(i) = self.profiles.iter().position(|p| p.id == id) else {
+            return false;
+        };
+        let j =
+            (i as i64 + i64::from(by.signum())).clamp(0, self.profiles.len() as i64 - 1) as usize;
+        self.profiles.swap(i, j);
+        i != j
+    }
+
+    /// The profile of the server at `url` (one profile per server address, whatever the user).
+    pub fn server_for(&self, url: &str) -> Option<&Profile> {
+        let u = url.trim_end_matches('/');
+        self.profiles.iter().find(|p| {
+            matches!(&p.kind, ProfileKind::Jellyfin { url, .. } if url.trim_end_matches('/') == u)
+        })
+    }
+
+    /// A login on `url`: a known server only changes its user (the account switch), a new one is
+    /// appended. Returns the profile id.
+    pub fn upsert_server(&mut self, url: &str, user_id: &str, user_name: &str) -> SourceId {
+        let url = url.trim_end_matches('/');
+        let kind = ProfileKind::Jellyfin {
+            url: url.into(),
+            user_id: user_id.into(),
+            user_name: user_name.into(),
+        };
+        match self.server_for(url).map(|p| p.id) {
+            Some(id) => {
+                if let Some(p) = self.profiles.iter_mut().find(|p| p.id == id) {
+                    p.kind = kind;
+                }
+                id
+            }
+            None => self.add(label_for(url), kind),
+        }
+    }
+
+    /// The local library profile (all folders live in one), if any.
+    pub fn local(&self) -> Option<&Profile> {
+        self.profiles
+            .iter()
+            .find(|p| matches!(p.kind, ProfileKind::Local { .. }))
+    }
+
+    /// The local profile, created (lowest priority, no folders yet) if there is none.
+    pub fn ensure_local(&mut self) -> SourceId {
+        match self.local().map(|p| p.id) {
+            Some(id) => id,
+            None => self.add("Local library", ProfileKind::Local { roots: vec![] }),
+        }
+    }
+
+    /// Add a folder to the local library; false if it is already there.
+    pub fn add_root(&mut self, root: PathBuf) -> bool {
+        let id = self.ensure_local();
+        match self
+            .profiles
+            .iter_mut()
+            .find(|p| p.id == id)
+            .map(|p| &mut p.kind)
+        {
+            Some(ProfileKind::Local { roots }) if !roots.contains(&root) => {
+                roots.push(root);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn remove_root(&mut self, root: &Path) -> bool {
+        match self.profiles.iter_mut().find_map(|p| match &mut p.kind {
+            ProfileKind::Local { roots } => Some(roots),
+            _ => None,
+        }) {
+            Some(roots) => {
+                let n = roots.len();
+                roots.retain(|r| r != root);
+                roots.len() != n
+            }
+            None => false,
+        }
+    }
+
+    /// First run: nothing is set up at all (removing every source brings the welcome back).
+    pub fn needs_welcome(&self) -> bool {
+        self.profiles.is_empty()
+    }
 }
 
-/// An existing `sources.toml` wins. Without one, the old login (if any) becomes the first profile and is
-/// saved; with neither, the list is empty and nothing is written (first run).
-pub fn load_or_migrate(
-    path: &Path,
-    legacy: impl FnOnce() -> Option<Legacy>,
-) -> io::Result<Sources> {
+/// Forget the token of `user_id` on `url` (keyring and `accounts.toml`), plus the active-login
+/// entry when it is that user. Other users of the server are untouched.
+pub fn forget_login(url: &str, user_id: &str) {
+    nocturne_session::forget_account(url, user_id);
+    if nocturne_session::load(url)
+        .ok()
+        .flatten()
+        .is_some_and(|s| s.user_id == user_id)
+    {
+        let _ = nocturne_session::delete(url);
+    }
+}
+
+/// An existing `sources.toml` wins. Without one, every old login becomes a profile (the last used
+/// server first, so it keeps the highest priority) and is saved; with none, the list is empty and
+/// nothing is written (first run).
+pub fn load_or_migrate(path: &Path, legacy: impl FnOnce() -> Vec<Legacy>) -> io::Result<Sources> {
     if let Some(s) = Sources::load_from(path)? {
         return Ok(s);
     }
     let mut s = Sources::default();
-    if let Some(l) = legacy() {
+    let found = legacy();
+    for l in found {
         s.add(
             label_for(&l.url),
             ProfileKind::Jellyfin {
@@ -175,35 +283,48 @@ pub fn load_or_migrate(
                 user_name: l.user_name,
             },
         );
+    }
+    if !s.profiles.is_empty() {
         s.save_to(path)?;
     }
     Ok(s)
 }
 
-/// The login the old app would have restored: the last used server (else the first known one, else the
-/// first remembered account) with its keyring user, else that server's default or first remembered account.
-/// `active(url)` is the keyring lookup, `(user id, user name)`.
-pub fn legacy_login(
+/// The logins the old app knew: for every known server (last used first, then the others, then
+/// servers only known through an account) its keyring user, else its default or first remembered
+/// account. A server with neither is skipped. `active(url)` is the keyring lookup, `(user id, user name)`.
+pub fn legacy_logins(
     servers: &Servers,
     accounts: &Accounts,
     active: &dyn Fn(&str) -> Option<(String, String)>,
-) -> Option<Legacy> {
-    let url = servers
+) -> Vec<Legacy> {
+    let norm = |u: &str| u.trim_end_matches('/').to_string();
+    let mut urls: Vec<String> = vec![];
+    for u in servers
         .last_used
-        .clone()
-        .or_else(|| servers.servers.first().cloned())
-        .or_else(|| accounts.accounts.first().map(|a| a.server.clone()))?;
-    let (user_id, user_name) = active(&url).or_else(|| {
-        let a = accounts
-            .default_for(&url)
-            .or_else(|| accounts.for_server(&url).into_iter().next())?;
-        Some((a.user_id.clone(), a.user_name.clone()))
-    })?;
-    Some(Legacy {
-        url: url.trim_end_matches('/').to_string(),
-        user_id,
-        user_name,
-    })
+        .iter()
+        .chain(&servers.servers)
+        .chain(accounts.accounts.iter().map(|a| &a.server))
+    {
+        if !urls.contains(&norm(u)) {
+            urls.push(norm(u));
+        }
+    }
+    urls.into_iter()
+        .filter_map(|url| {
+            let (user_id, user_name) = active(&url).or_else(|| {
+                let a = accounts
+                    .default_for(&url)
+                    .or_else(|| accounts.for_server(&url).into_iter().next())?;
+                Some((a.user_id.clone(), a.user_name.clone()))
+            })?;
+            Some(Legacy {
+                url,
+                user_id,
+                user_name,
+            })
+        })
+        .collect()
 }
 
 /// Default label: the server's host.
@@ -288,7 +409,7 @@ mod tests {
         assert!(Sources::load_from(&p).is_err());
         std::fs::write(&p, "version = 99\n").unwrap();
         assert!(Sources::load_from(&p).is_err());
-        assert!(load_or_migrate(&p, || None).is_err(), "never overwritten");
+        assert!(load_or_migrate(&p, Vec::new).is_err(), "never overwritten");
         assert_eq!(std::fs::read_to_string(&p).unwrap(), "version = 99\n");
     }
 
@@ -316,7 +437,7 @@ mod tests {
         accounts.save_to(&ap).unwrap();
         let before = (std::fs::read(&sp).unwrap(), std::fs::read(&ap).unwrap());
         // keyring says nothing: the remembered account is used.
-        let legacy = || legacy_login(&servers, &accounts, &|_| None);
+        let legacy = || legacy_logins(&servers, &accounts, &|_| None);
         let s = load_or_migrate(&np, legacy).unwrap();
         assert_eq!(s.profiles.len(), 1);
         assert_eq!(
@@ -330,7 +451,8 @@ mod tests {
         assert_eq!(s.profiles[0].label, "old.test");
         assert!(!std::fs::read_to_string(&np).unwrap().contains("SECRET"));
         // second run: the saved file wins, legacy is not consulted again.
-        let again = load_or_migrate(&np, || panic!("must not migrate twice")).unwrap();
+        let again =
+            load_or_migrate(&np, || -> Vec<Legacy> { panic!("must not migrate twice") }).unwrap();
         assert_eq!(again, s);
         assert_eq!(
             before,
@@ -344,19 +466,100 @@ mod tests {
             servers: vec!["http://a.test".into()],
             last_used: None,
         };
-        let l = legacy_login(&servers, &Accounts::default(), &|u| {
+        let l = legacy_logins(&servers, &Accounts::default(), &|u| {
             (u == "http://a.test").then(|| ("k1".to_string(), "Kay".to_string()))
-        })
-        .unwrap();
-        assert_eq!((l.user_id.as_str(), l.user_name.as_str()), ("k1", "Kay"));
-        assert!(legacy_login(&Servers::default(), &Accounts::default(), &|_| None).is_none());
-        assert!(legacy_login(&servers, &Accounts::default(), &|_| None).is_none());
+        });
+        assert_eq!(l.len(), 1);
+        assert_eq!(
+            (l[0].user_id.as_str(), l[0].user_name.as_str()),
+            ("k1", "Kay")
+        );
+        assert!(legacy_logins(&Servers::default(), &Accounts::default(), &|_| None).is_empty());
+        assert!(legacy_logins(&servers, &Accounts::default(), &|_| None).is_empty());
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("sources.toml");
-        let s = load_or_migrate(&p, || None).unwrap();
+        let s = load_or_migrate(&p, Vec::new).unwrap();
         assert!(
             s.profiles.is_empty() && !p.exists(),
             "first run writes nothing"
         );
+    }
+
+    #[test]
+    fn every_server_with_a_login_migrates_last_used_first() {
+        let session = |id: &str, name: &str| Session {
+            access_token: "T".into(),
+            user_id: id.into(),
+            server_id: "s".into(),
+            user_name: name.into(),
+            is_admin: false,
+        };
+        let servers = Servers {
+            servers: vec![
+                "http://a.test".into(),
+                "http://b.test/".into(),
+                "http://c.test".into(),
+                "http://dead.test".into(),
+            ],
+            last_used: Some("http://b.test".into()),
+        };
+        let mut accounts = Accounts::default();
+        accounts.remember("http://a.test", &session("a1", "Ann"));
+        accounts.remember("http://a.test", &session("a2", "Al"));
+        accounts.remember("http://c.test", &session("c1", "Cy"));
+        // b has only a keyring login; dead has nothing; e is known only through an account.
+        accounts.remember("http://e.test", &session("e1", "Eve"));
+        let l = legacy_logins(&servers, &accounts, &|u| {
+            (u == "http://b.test").then(|| ("b9".to_string(), "Bo".to_string()))
+        });
+        let got: Vec<_> = l
+            .iter()
+            .map(|l| (l.url.as_str(), l.user_id.as_str()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("http://b.test", "b9"),
+                ("http://a.test", "a1"),
+                ("http://c.test", "c1"),
+                ("http://e.test", "e1")
+            ]
+        );
+        let d = tempfile::tempdir().unwrap();
+        let np = d.path().join("sources.toml");
+        let s = load_or_migrate(&np, || l.clone()).unwrap();
+        assert_eq!(s.profiles.len(), 4);
+        assert_eq!(s.profiles[0].label, "b.test");
+    }
+
+    #[test]
+    fn list_ops_follow_the_sources_screen() {
+        let mut s = Sources::default();
+        let a = s.upsert_server("http://a.test/", "u1", "Ann");
+        let b = s.upsert_server("http://b.test", "u2", "Bo");
+        // Same server again: the profile keeps its id and priority, only the user changes.
+        assert_eq!(s.upsert_server("http://a.test", "u7", "Al"), a);
+        assert_eq!(s.profiles.len(), 2);
+        assert!(matches!(&s.get(a).unwrap().kind,
+            ProfileKind::Jellyfin { user_id, .. } if user_id == "u7"));
+        assert!(!s.needs_welcome());
+        assert!(s.add_root("/m/films".into()));
+        assert!(!s.add_root("/m/films".into()), "no duplicate folder");
+        assert!(s.add_root("/m/shows".into()));
+        let local = s.local().unwrap().id;
+        assert_eq!(s.ids(), [a, b, local]);
+        assert!(s.shift(local, -1) && s.shift(local, -1));
+        assert_eq!(s.ids(), [local, a, b]);
+        assert!(!s.shift(local, -1), "stops at the top");
+        assert!(!s.shift(b, 1), "stops at the bottom");
+        s.set_enabled(a, false);
+        assert!(!s.get(a).unwrap().enabled);
+        assert!(s.remove_root(Path::new("/m/films")) && !s.remove_root(Path::new("/m/films")));
+        assert!(matches!(&s.local().unwrap().kind,
+            ProfileKind::Local { roots } if roots == &[PathBuf::from("/m/shows")]));
+        for id in s.ids() {
+            s.remove(id);
+        }
+        assert!(s.needs_welcome(), "all sources removed: welcome again");
     }
 }

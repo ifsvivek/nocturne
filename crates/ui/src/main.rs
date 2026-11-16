@@ -5,6 +5,7 @@ mod app;
 mod keys;
 mod motion;
 mod platform;
+mod snap;
 mod style;
 mod task;
 mod theme;

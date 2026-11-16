@@ -101,9 +101,14 @@ root on the catalog (first run, Sources settings, startup screen) -> 4b-4e writt
 Demo library on a throwaway server: `scripts/make-demo-library.sh build` (prints connection info; password in
 `$DEMO/jf/demo-password`). Or `scripts/test-jellyfin.sh start` (`/tmp/nocturne-jf-test/test.env`). Run with
 `NOCTURNE_JF_URL=http://127.0.0.1:8097` plus throwaway `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`,
-`NOCTURNE_KEYRING_SERVICE=nocturne-test`. Never the real server, never the repo `.env`. Screenshot only the app window:
-`grim -g "$(hyprctl clients -j | jq -r '.[]|select(.class=="nocturne")|"\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')" out.png`
-(never a full-screen grab: it captures the user's desktop).
+`NOCTURNE_KEYRING_SERVICE=nocturne-test`. Never the real server, never the repo `.env`: `Config::load` takes the nearest
+`.env` of the current directory **or any ancestor**, so run the binary from a directory outside the repository (a worktree
+under the repo finds the real `.env`). Screenshots: debug builds only, `NOCTURNE_SNAP=/tmp/x.png`
+(+ `NOCTURNE_SNAP_AFTER_MS=1500,4000` for several) writes the app window's own pixels through `window::screenshot`; never grab
+the screen (`grim`) because it captures the desktop. Driving the window on Hyprland: `wtype` for keys, clicks with
+`ydotool mousemove --absolute` (arguments are half the pixel coordinates on a 2560x1440 output) plus `ydotool click 0xC0`,
+window origin from `hyprctl clients -j`. Keyring entries are shared by every throwaway profile that uses the same
+`NOCTURNE_KEYRING_SERVICE`, so removing a server in one profile signs it out in the others.
 
 ## Progress
 
@@ -129,7 +134,19 @@ Demo library on a throwaway server: `scripts/make-demo-library.sh build` (prints
   clean-container installs pass (Arch tarball + PKGBUILD, Debian/Ubuntu/Fedora dep names). Binaries built here need
   glibc 2.44: fine for Arch; 0.4 .deb/.rpm must be built inside their distro containers; docs pass 2 must say the
   tarball targets current Arch.
-- [~] M3 Iced root on the catalog (Sources settings, local folders screen, source filter/marks, local playback)
+- [x] M3 Iced root on the catalog (worktree, `crates/ui/src/app/{catalog,sources,folders}.rs` + `crates/core/src/{sources,folders}.rs`):
+  `App` holds `Sources` + `Catalog` + `Preferred` + `SeriesIds`; sources load in a task after the first frame (keyring
+  reads, index opening); per-server health on the 200 ms tick (401 -> that slot SignedOut with a quiet banner, no
+  answer -> Offline with backoff, other sources unaffected); developer token = transient read-only slot id 0;
+  `Settings > Sources` page (own page, reached from Settings and the account menu) with status, sign in again,
+  rescan, enable/disable, priority up/down, remove (confirmation, says what is deleted); local folders screen (portal
+  chooser via `rfd` or typed path, availability, live scan progress on a thread, cancel, counts, Unmatched with manual
+  match -> overrides); first-run routing (`FirstRun`/`Step` in core); `source_mark` widget, `SourceFilter` (header
+  chip), `fan()` helper (one request per online slot, answers merge as they arrive, stale epochs dropped).
+  Debug-only `NOCTURNE_SNAP=/tmp/x.png` (+ `NOCTURNE_SNAP_AFTER_MS=1500[,3000,...]`) captures the app window through
+  `window::screenshot`; use it instead of any screen grab. Carry into 4b: header nav needs a "More" menu once there
+  are many libraries (now scrolls sideways), `Message::Fan` is only used for libraries, a scan holds the local
+  library's write lock (reads of that source wait; see the ponytail note in `core/folders.rs`).
 - [~] 4d player page (worktree, own module; root hook wired by master after M3)
 - [ ] 4b-4e screens
 - [ ] 5 cut-over

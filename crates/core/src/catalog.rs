@@ -94,11 +94,42 @@ pub fn data_dir() -> Option<PathBuf> {
     Some(base.join("nocturne"))
 }
 
+/// Where a local source keeps its index, overrides and state (never next to the media).
+pub fn local_dir(data_dir: &Path, id: SourceId) -> PathBuf {
+    data_dir.join("local").join(id.0.to_string())
+}
+
+/// Delete a local source's own index and state. The folders it indexed are never touched.
+pub fn drop_local_state(data_dir: &Path, id: SourceId) -> std::io::Result<()> {
+    match std::fs::remove_dir_all(local_dir(data_dir, id)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
+}
+
 impl Catalog {
     pub fn from_profiles(profiles: &[Profile], env: &Env) -> Self {
         Self {
             slots: profiles.iter().map(|p| Slot::build(p, env)).collect(),
         }
+    }
+
+    /// Replace the slot with the same id (keeping its place), or append.
+    pub fn upsert(&mut self, slot: Slot) {
+        match self.slots.iter_mut().find(|s| s.id == slot.id) {
+            Some(old) => *old = slot,
+            None => self.slots.push(slot),
+        }
+    }
+
+    pub fn remove(&mut self, id: SourceId) {
+        self.slots.retain(|s| s.id != id);
+    }
+
+    /// Put the slots in `ids` order (the profile list); slots not named keep their order, last.
+    pub fn reorder(&mut self, ids: &[SourceId]) {
+        self.slots
+            .sort_by_key(|s| ids.iter().position(|i| *i == s.id).unwrap_or(ids.len()));
     }
 
     pub fn slot(&self, id: SourceId) -> Option<&Slot> {
@@ -193,7 +224,7 @@ impl Catalog {
 }
 
 impl Slot {
-    fn build(p: &Profile, env: &Env) -> Self {
+    pub fn build(p: &Profile, env: &Env) -> Self {
         let mut s = Slot {
             id: p.id,
             profile: p.clone(),
@@ -230,8 +261,7 @@ impl Slot {
                 }
             }
             ProfileKind::Local { .. } => {
-                match LocalBackend::open(p.id, &env.data_dir.join("local").join(p.id.0.to_string()))
-                {
+                match LocalBackend::open(p.id, &local_dir(env.data_dir, p.id)) {
                     Ok(l) => {
                         s.backend = Some(Backend::Local(l));
                         s.status = Status::Online;
@@ -360,6 +390,31 @@ mod tests {
             &SeriesIds::default(),
         );
         assert_eq!(e[0].primary.origin, SourceId(3));
+    }
+
+    #[test]
+    fn slot_ops_keep_ids_and_order_and_dropping_local_state_spares_the_media() {
+        let d = tempfile::tempdir().unwrap();
+        let tokens = |_: &str, _: &str| Some("T".to_string());
+        let e = env(&tokens, d.path());
+        let mut c = Catalog::from_profiles(&[jf(1, "http://a.test"), jf(2, "http://b.test")], &e);
+        c.reorder(&[SourceId(2), SourceId(1)]);
+        assert_eq!(c.slots[0].id, SourceId(2));
+        let mut p = jf(2, "http://b.test");
+        p.enabled = false;
+        c.upsert(Slot::build(&p, &e));
+        assert_eq!(c.slots.len(), 2);
+        assert_eq!(c.slot(SourceId(2)).unwrap().status, Status::Disabled);
+        c.remove(SourceId(1));
+        assert_eq!(c.slots.len(), 1);
+        // A local source's state dir goes; the media folder next to it stays.
+        let media = tempfile::tempdir().unwrap();
+        std::fs::write(media.path().join("Heat (1995).mkv"), b"x").unwrap();
+        std::fs::create_dir_all(local_dir(d.path(), SourceId(7))).unwrap();
+        drop_local_state(d.path(), SourceId(7)).unwrap();
+        drop_local_state(d.path(), SourceId(7)).unwrap(); // already gone is fine
+        assert!(!local_dir(d.path(), SourceId(7)).exists());
+        assert!(media.path().join("Heat (1995).mkv").exists());
     }
 
     #[test]

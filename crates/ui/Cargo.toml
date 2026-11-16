@@ -19,14 +19,20 @@ path = "src/main.rs"
 [dependencies]
 iced = { version = "0.14", features = ["tokio", "image", "svg", "advanced", "lazy", "canvas"] }
 nocturne-core = { path = "../core" }
+nocturne-local = { path = "../local" }
 nocturne-jellyfin = { path = "../jellyfin" }
 nocturne-jellyfin-admin = { path = "../jellyfin-admin" }
 nocturne-jellyfin-user = { path = "../jellyfin-user" }
 nocturne-session = { path = "../session" }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time"] }
 libc = "0.2"
+image = { version = "0.25.1", default-features = false, features = ["png"] }
 
 # Only while GPUI shares the workspace: gpui's wgpu fork (naga 25) turns on codespan-reporting's
 # `termcolor`, which breaks naga 27 (iced's wgpu) unless naga 27 enables its own `termcolor` too.
 # Delete with the GPUI app at the cut-over.
 naga = { version = "27", default-features = false, features = ["termcolor"] }
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

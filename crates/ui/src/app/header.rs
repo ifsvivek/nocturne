@@ -5,9 +5,11 @@ use super::{App, GLOBALS, View};
 use crate::style::{self, border};
 use crate::theme as t;
 use crate::widget::press::Press;
-use crate::widget::{avatar, menu_row, mono, nav_link, rule, tip, wordmark};
+use crate::widget::{
+    avatar, menu_row, mono, nav_link, rule, source_mark, tip, value_chip, wordmark,
+};
 use iced::widget::button::{Status, Style};
-use iced::widget::{column, container, mouse_area, opaque, row, space, text};
+use iced::widget::{column, container, mouse_area, opaque, row, scrollable, space, text};
 use iced::{Alignment, Element, Length, Padding, Task};
 use nocturne_core::nav;
 use nocturne_core::sync::NEED_WRITES;
@@ -46,16 +48,25 @@ impl App {
             .stack
             .get(1)
             .and_then(|p| p.media.as_ref())
-            .map(|m| m.id.as_str());
+            .map(|m| (m.origin, m.id.as_str()));
         let at_home = self.stack.len() <= 1;
         let blur = self.admin_open;
         let mut nav_row = row![nav_link("Home", at_home && !blur, false, Message::GoHome)]
             .spacing(t::S1)
             .align_y(Alignment::Center);
+        // With several sources the libraries come grouped, each group led by its source mark.
+        let grouped = home.is_some_and(|h| h.fan.contributors() > 1);
+        let mut group = None;
         for (i, l) in libs.iter().enumerate() {
+            if grouped && group != Some(l.origin) {
+                group = Some(l.origin);
+                if let Some(slot) = self.catalog.slot(l.origin) {
+                    nav_row = nav_row.push(source_mark(slot, true));
+                }
+            }
             nav_row = nav_row.push(nav_link(
                 &l.title,
-                Some(l.id.as_str()) == cur && !at_home && !blur,
+                Some((l.origin, l.id.as_str())) == cur && !at_home && !blur,
                 false,
                 Message::OpenLibrary(i),
             ));
@@ -63,7 +74,7 @@ impl App {
         for (gi, (key, label)) in GLOBALS.iter().enumerate() {
             nav_row = nav_row.push(nav_link(
                 label,
-                cur == Some(*key) && !at_home && !blur,
+                cur.is_some_and(|c| c.1 == *key) && !at_home && !blur,
                 false,
                 Message::OpenGlobal(gi),
             ));
@@ -95,9 +106,16 @@ impl App {
             ]
             .spacing(t::S1)
             .align_y(Alignment::Center),
-            nav_row,
+            // Many sources make a long link row: it scrolls sideways (wheel) instead of pushing the
+            // search and avatar out of the window.
+            scrollable(nav_row)
+                .direction(scrollable::Direction::Horizontal(
+                    scrollable::Scrollbar::new().width(0).scroller_width(0),
+                ))
+                .width(Length::Fill),
         ]
         .spacing(t::S8)
+        .width(Length::Fill)
         .align_y(Alignment::Center);
         let search = tip(
             Press::new(
@@ -128,10 +146,22 @@ impl App {
             }),
             "Search (Ctrl+K or /)",
         );
-        let right = row![search, self.avatar()]
-            .spacing(t::S4)
-            .align_y(Alignment::Center);
-        let bar = row![left, space().width(Length::Fill), right]
+        let mut right = row![].spacing(t::S4).align_y(Alignment::Center);
+        if self.catalog.online().count() > 1 {
+            right = right.push(tip(
+                value_chip(
+                    &self.filter_label(),
+                    true,
+                    false,
+                    false,
+                    Message::CycleFilter,
+                ),
+                "Show one source or all",
+            ));
+        }
+        let right = right.push(search).push(self.avatar());
+        let right = row![right].spacing(t::S4).align_y(Alignment::Center);
+        let bar = row![left, right]
             .align_y(Alignment::Center)
             .height(t::HEADER_H - 1.0);
         let head = container(column![container(bar).padding([0.0, t::PAGE_PAD]), rule(),])
@@ -147,9 +177,10 @@ impl App {
     /// Initial in a hairline circle; opens the account menu.
     fn avatar(&self) -> El<'_> {
         let name = self
-            .session
-            .as_ref()
-            .map_or("dev", |(_, s)| s.user_name.as_str());
+            .session()
+            .map_or(if self.dev { "dev" } else { "NOCTURNE" }, |(_, s)| {
+                s.user_name.as_str()
+            });
         let open = self.menu;
         Press::new(avatar(
             32.0,
@@ -247,12 +278,17 @@ impl App {
 
     /// Dropdown under the avatar: who and where, then the account actions.
     pub(super) fn account_menu(&self) -> El<'_> {
+        let none = if self.dev {
+            ("Developer token".to_string(), "read-only".to_string())
+        } else {
+            (
+                "NOCTURNE".to_string(),
+                format!("{} sources", self.sources.profiles.len()),
+            )
+        };
         let (name, server) = self
-            .session
-            .as_ref()
-            .map_or(("Developer token".into(), "read-only".into()), |(u, s)| {
-                (s.user_name.clone(), u.clone())
-            });
+            .session()
+            .map_or(none, |(u, s)| (s.user_name.clone(), u.clone()));
         let who = row![
             avatar(
                 40.0,
@@ -350,5 +386,15 @@ impl App {
             _ => {}
         }
         Task::none()
+    }
+}
+
+impl App {
+    /// The source filter's chip text: All sources, or the one source's label.
+    fn filter_label(&self) -> String {
+        match self.filter {
+            nocturne_core::sources::SourceFilter::All => "All sources".into(),
+            nocturne_core::sources::SourceFilter::One(id) => self.label_of(id),
+        }
     }
 }
