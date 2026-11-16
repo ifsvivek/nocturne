@@ -109,6 +109,12 @@ Demo library on a throwaway server: `scripts/make-demo-library.sh build` (prints
 - [x] 3 core extraction (crates/core; 270 tests pass)
 - [x] sources M1 crates/local merged (docs/METADATA.md too)
 - [x] docs audit pass 1 merged (pass 2 after cut-over: PKGBUILD -p nocturne-app, gen-notices GPUI text, video-embedding.md trim, ci.yml mpv)
-- [ ] 4a-4e screens
+- [x] 4a foundation (`crates/ui`, bin `nocturne-iced`): bootstrap, theme, widget kit (eased `Press` button, `Popover`
+  overlay menu), connect / sign-in / Quick Connect / profile picker, header, history, breadcrumbs, toasts, offline
+  banner, account menu, Settings, help overlay, own-profile dialogs (password, authorize, profile image, language).
+  Verified against a demo server with wtype/ydotool. Deferred: Home/browse (4b), detail/playlists/search overlay (4b/4c),
+  player (4d), devices overlay, Watch together, admin, music queue (4e). Platform code is isolated in `ui/src/platform.rs`.
+  While GPUI shares the workspace, `crates/ui` carries a `naga` feature pin (see its Cargo.toml); delete at cut-over.
+- [ ] 4b-4e screens
 - [ ] 5 cut-over
 - [ ] 6 verification
