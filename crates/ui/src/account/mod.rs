@@ -1,6 +1,7 @@
 //! Accounts: connect, sign in (password or Quick Connect), restore, sign out, own-profile dialogs.
 //! One struct owns the state (`state::Account`); the root forwards keys to it while an account
 //! screen or dialog is up and drains its [`Event`]s. All I/O goes through `task::run`.
+pub mod devices;
 pub mod picker;
 mod view;
 
