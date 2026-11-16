@@ -188,6 +188,7 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   (written for the post-cut-over state; merge WITH the cut-over). Before release verify its assumptions: 4b/4e merged
   and working, mpv 0.42 TLS check DONE (it moved it to 'carried forward'; move back once done), startup does not wait
   for the network (measure), reduce motion honoured everywhere.
+- [~] single instance (worktree)
 - [~] onboarding flow module (worktree; wired by integration)
 - [~] integration (worktree; owns app/): mpv 0.42 TLS check (test playback against an HTTPS throwaway server with a self-signed cert using
   mpv 0.42 if available, else document; add per-server trust only if needed); wire the detail hook (and later 4e hooks) into app/mod.rs after 4b merges
