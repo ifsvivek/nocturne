@@ -11,7 +11,8 @@ Thanks for helping. NOCTURNE is an unofficial Linux desktop client for Jellyfin;
   Writes belong in `crates/jellyfin-user` or `crates/jellyfin-admin` and must respect the `allow_server_writes`
   switch; destructive admin calls need the `Confirmed` token minted by the confirmation dialog.
 - No secrets, tokens, server addresses, media titles or personal paths in code, tests, logs or issues.
-- Linux only. Do not add Windows or macOS code paths.
+- Linux first. macOS and Windows are planned ([docs/PLATFORMS.md](docs/PLATFORMS.md)): keep OS-specific code inside
+  the platform seams listed there and do not add macOS/Windows implementations before that phase starts.
 - Keep changes small and focused; one concern per pull request.
 
 ## Setup

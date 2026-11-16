@@ -3,6 +3,9 @@
 Everything here was tested on Arch Linux, x86_64, Wayland with Xwayland, mpv 0.41.0, Rust 1.99.
 Other distributions and architectures are UNVERIFIED.
 
+Planned formats (.deb, .rpm, AppImage, macOS, Windows), per-platform libmpv handling and the footprint budget are in
+[PLATFORMS.md](PLATFORMS.md).
+
 ## Install paths
 
 | File | Path under `PREFIX` |

@@ -23,6 +23,18 @@ stop and next, clock sync, drift correction and the Ready / Buffering handshake,
 Still to do: show what a group is playing (the API does not say), group repeat and shuffle modes, queue editing from the
 group, resume positions, and testing with more than two members and with transcoded members.
 
+## Next: 0.3, a new foundation (in development)
+
+- **Iced UI.** The interface moves from GPUI to Iced 0.14 with the same design and features; GPUI is removed.
+  In-window video keeps working on Wayland ([DECISIONS.md](DECISIONS.md)).
+- **libmpv no longer required to start.** It is loaded at run time; without it playback falls back to the `mpv`
+  binary or explains what to install. The release installer installs runtime packages itself.
+- **Local library, several servers, one catalog** ([SOURCES.md](SOURCES.md)): use NOCTURNE with local folders only,
+  with several Jellyfin servers and accounts, or both; duplicates across sources shown once with alternate sources;
+  a first-run choice between the three modes; a Sources section in Settings.
+- **Startup screen** with original artwork and real progress.
+- **Footprint baselines** (size, start time, idle memory and CPU) tracked per release ([PLATFORMS.md](PLATFORMS.md)).
+
 ## Then: compatibility and correctness (0.4)
 
 A review of the Jellyfin ecosystem (server, web and other official clients: issues, pull requests, API changes) found no
@@ -84,12 +96,11 @@ critical problems in NOCTURNE. It did find a set of small fixes worth doing befo
   safely needs a lock-out guard that can be tested
 
 **Platform**
-- Packages are tested on Arch Linux only; other distributions are unverified
-- Screen-reader support depends on GPUI. The accessibility layer exists in GPUI's development branch but not in the
-  published release NOCTURNE uses; a GPUI upgrade will be evaluated when it ships in a release or when native video
-  composition lands upstream
+- Packages are tested on Arch Linux only; .deb, .rpm and AppImage come next ([PLATFORMS.md](PLATFORMS.md))
+- Screen-reader support: re-evaluated on Iced once the migration ships (Iced's accessibility support is still limited)
 - HDR output depends on libmpv gaining a modern render API; until then HDR is tone-mapped to SDR
-- Windows and macOS: possible future work, not planned or supported
+- macOS (.dmg) and Windows (.msi/.exe): planned after the Linux 0.3 release; in-window video there needs its own
+  investigation ([PLATFORMS.md](PLATFORMS.md))
 
 ## Dropped (will not be built)
 

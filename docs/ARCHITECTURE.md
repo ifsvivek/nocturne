@@ -1,6 +1,11 @@
 # Architecture
 
-NOCTURNE is a Cargo workspace of six crates. The app is the only binary (`nocturne`).
+NOCTURNE is a Cargo workspace. The app is the only shipped binary (`nocturne`).
+
+> **In transition (branch `iced-migration`).** The UI is moving from GPUI to Iced 0.14 (`crates/ui`), and the
+> single-server model is growing into one catalog over local folders and several Jellyfin servers. Target design:
+> [SOURCES.md](SOURCES.md) and [DECISIONS.md](DECISIONS.md); plan and progress: [dev/ICED_MIGRATION.md](dev/ICED_MIGRATION.md).
+> Sections below that mention GPUI describe the legacy `crates/app` until the cut-over.
 
 | Crate | Role | Writes to server? |
 |---|---|---|
@@ -8,9 +13,11 @@ NOCTURNE is a Cargo workspace of six crates. The app is the only binary (`noctur
 | `crates/jellyfin-user` | User-scope calls: login, Quick Connect, logout, playback reporting, played / favourite, own password, own profile image, display language, own playlists, SyncPlay (REST, WebSocket, clock sync, state machine) | yes, user scope |
 | `crates/jellyfin-admin` | Admin reads and writes. Destructive calls need a `Confirmed` token; live tests guarded by `TestServerGuard` | yes, admin |
 | `crates/session` | Tokens in the system keyring (Secret Service): the active login per server and one per remembered account; server URLs in `servers.toml`, account names in `accounts.toml`; atomic writes | n/a |
-| `crates/player` | mpv playback: `EmbeddedPlayer` (libmpv in a Wayland subsurface) and `Player` (mpv child process over JSON IPC) | n/a |
+| `crates/player` | mpv playback: `EmbeddedPlayer` (libmpv in a Wayland subsurface) and `Player` (mpv child process over JSON IPC). libmpv is loaded at run time (`mpv_ffi.rs`); `deps.rs` probes libmpv / the mpv binary | n/a |
 | `crates/core` | UI-framework-free logic (settings, navigation, list/detail/admin/account state, playback logic, source layer, caches, bridge) shared by front ends | via the crates above |
-| `crates/app` | GPUI application: views, navigation, settings, caches, admin UI | via the crates above |
+| `crates/local` | Local library: scan, naming rules, index, `.nfo`/sidecar metadata, overrides, local resume state; never writes to media folders (in progress) | never |
+| `crates/ui` | Iced application (in progress; becomes `crates/app` at the cut-over) | via the crates above |
+| `crates/app` | Legacy GPUI application: views, navigation, admin UI; removed at the cut-over | via the crates above |
 
 `player` has no GPUI or Jellyfin dependencies; the Jellyfin crates have no UI dependencies.
 
@@ -34,7 +41,9 @@ returned handle is a plain future, so a GPUI `cx.spawn` task awaits it and updat
 
 GPUI has no native video surface. `EmbeddedPlayer` creates a `wl_subsurface` placed below the (transparent) GPUI
 window, renders with libmpv's OpenGL render API through EGL, and GPUI draws the controls on top. Hardware decoding
-is on by default. This uses raw Wayland handles and about 300 lines of `unsafe` glue that depends on GPUI
+is on by default. The Iced UI uses the same path: the player page leaves a transparent hole whose layout bounds
+drive `set_bounds` (spike: `spikes/iced-embed`). libmpv is `dlopen`ed, so when it is missing the app still starts:
+playback falls back to the external `mpv` binary, and if that is missing too the user gets an install hint. This uses raw Wayland handles and about 300 lines of `unsafe` glue that depends on GPUI
 internals, which is why GPUI is version-pinned. libmpv's Vulkan context is deliberately not used: a second Vulkan
 instance next to GPUI's crashed on NVIDIA (details and measurements in [video-embedding.md](video-embedding.md)).
 

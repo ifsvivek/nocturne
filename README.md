@@ -9,7 +9,9 @@ playing video in the app window through libmpv. Wayland first.
 
 [Website](https://nocturne.ifsvivek.in) · [Download](https://github.com/ifsvivek/nocturne/releases/latest) · [Features](docs/FEATURES.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
 
-Status: version 0.2.0, early software. Linux only. See [docs/ROADMAP.md](docs/ROADMAP.md) for what is missing.
+Status: version 0.2.0, early software, Linux only. **0.3 is in development**: a new Iced interface replacing GPUI,
+local media folders and several Jellyfin servers in one library, and an installer that sets up libmpv for you.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for what is coming and what is missing.
 
 ## Screenshots
 
@@ -46,13 +48,16 @@ The full checklist is [docs/FEATURES.md](docs/FEATURES.md); verification notes a
   confirmation dialog.
 
 Not implemented: Live TV, DLNA, casting, gapless music, playable books and audiobooks, and a few admin settings (HTTPS and
-proxy editing, access schedules). SyncPlay (watch together) is planned next. Windows and macOS are not supported.
+proxy editing, access schedules). Windows and macOS are not supported yet (planned after the Linux 0.3 release).
 
 ## Install
 
-NOCTURNE needs mpv's library (`libmpv`), a Vulkan driver (GPUI renders with Vulkan), an OpenGL/EGL stack, and a
-Secret Service provider (gnome-keyring, KWallet or KeePassXC) to remember your login. Packages are tested on Arch
-Linux only; see [docs/PACKAGING.md](docs/PACKAGING.md) for the full dependency list.
+NOCTURNE plays video with mpv's library, libmpv (package `mpv` on Arch, `libmpv2` on Debian/Ubuntu, `mpv-libs` on
+Fedora), and needs a Vulkan driver, an OpenGL/EGL stack, and a Secret Service provider (gnome-keyring, KWallet or
+KeePassXC) to remember your login. The Arch package depends on `mpv`, so pacman installs it. From 0.3 the release
+installer checks for every runtime library and installs missing ones with your distribution's package manager;
+with 0.2.0, install libmpv yourself first. Packages are tested on Arch Linux only; see
+[docs/PACKAGING.md](docs/PACKAGING.md) for the full dependency list.
 
 **Release tarball** (from the [latest release](https://github.com/ifsvivek/nocturne/releases/latest)):
 
@@ -84,7 +89,7 @@ A clean release build takes several minutes (fat LTO).
 
 | Area | Status |
 |---|---|
-| OS and architecture | Linux, x86_64. Windows and macOS are not supported. |
+| OS and architecture | Linux, x86_64. macOS and Windows are planned, not available yet ([docs/PLATFORMS.md](docs/PLATFORMS.md)). |
 | Packages | Tested on Arch Linux only (see [docs/PACKAGING.md](docs/PACKAGING.md)). Other distributions should build from source but are unverified. |
 | Wayland | In-window video (libmpv in a subsurface). Developed and tested here, on NVIDIA proprietary drivers; AMD and Intel GPUs are untested. |
 | X11 | The interface works; video plays in an external mpv window that closes with the app. Tested through Xwayland. |
@@ -98,7 +103,9 @@ A clean release build takes several minutes (fat LTO).
 - **Video opens in a separate mpv window.** That is the fallback when in-window video is unavailable (X11, or
   `NOCTURNE_VIDEO=external`, or a failure to set up the Wayland surface; the terminal says
   `video: embedded unavailable`). To force a different mpv video output set `NOCTURNE_VO`.
-- **"libmpv.so.2: cannot open shared object file" at start.** Install your distribution's libmpv package (`mpv` on Arch).
+- **"libmpv.so.2: cannot open shared object file" at start (0.2.0).** Install your distribution's libmpv package
+  (`mpv` on Arch, `libmpv2` on Debian/Ubuntu, `mpv-libs` on Fedora). From 0.3 NOCTURNE starts without it and tells you
+  what to install.
 - **"No system keyring found".** No Secret Service provider is running, so you will sign in again next time. Start gnome-keyring, KWallet or KeePassXC with
   the Secret Service integration enabled; NOCTURNE never writes tokens to a file.
 - **"Your session ended".** The server revoked the login (for example the device was removed in the dashboard);
