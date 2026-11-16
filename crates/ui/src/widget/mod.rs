@@ -3,6 +3,7 @@
 pub mod cell;
 pub mod controls;
 pub mod layout;
+pub mod overlay;
 pub mod popover;
 pub mod press;
 pub mod source;

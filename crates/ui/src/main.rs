@@ -1,14 +1,17 @@
 //! NOCTURNE, Iced front end (temporary binary `nocturne-iced`; becomes `nocturne` at the cut-over).
 #![allow(dead_code)] // the widget kit is consumed screen by screen over steps 4a-4e
 mod account;
+mod admin;
 mod app;
 mod detail;
 mod keys;
 mod motion;
 mod platform;
 mod player;
+mod queue;
 mod snap;
 mod style;
+mod syncplay;
 mod task;
 mod theme;
 mod timing;
@@ -38,6 +41,16 @@ fn main() -> iced::Result {
     #[cfg(debug_assertions)]
     if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("detail") {
         return detail::preview::run();
+    }
+    // Debug builds only: the admin screen alone on a throwaway server (see admin/preview.rs).
+    #[cfg(debug_assertions)]
+    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("admin") {
+        return admin::preview::run();
+    }
+    // Debug builds only: Watch together alone against throwaway servers (see syncplay/preview.rs).
+    #[cfg(debug_assertions)]
+    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("syncplay") {
+        return syncplay::preview::run();
     }
     // Config (and .env) is read once, before any other thread exists. (Not for the player preview:
     // it never touches the configured server.)

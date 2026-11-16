@@ -174,13 +174,22 @@ window origin from `hyprctl clients -j`. Keyring entries are shared by every thr
   keyboard focus scrolls into view without measuring. Debug preview: `NOCTURNE_PREVIEW=detail` (see `detail/preview.rs`).
   Deferred: hero fade-in, source marks on strip cells, "New playlist" entry point (the Add dialog creates one by name),
   a shared root image cache (the page keeps its own).
-- [~] 4e account page + devices, admin per server (confirm choke point), SyncPlay, music queue (worktree, modules + hooks)
+- [x] 4e (worktree, modules with root hooks documented at the top of each): `crates/ui/src/admin/` (all 20 sections,
+  confirmation dialog, `on_confirm` the only `Confirmed` mint, directory-scanning test; source picker over the sources
+  where the account is an administrator, `admin/pick.rs`), `syncplay/` (screen, pill, 50 ms socket drain as a
+  subscription, group-aware player glue, server = source of the played item or a picker), `queue.rs` (session music
+  queue + overlay + `Player::music_snapshot/restore_music`), `account/devices.rs` (own sessions overlay),
+  `widget/overlay.rs`. Debug previews: `NOCTURNE_PREVIEW=admin|syncplay`. Two real SyncPlay clients verified
+  (create, join, start for the group, queue, player opened) on a throwaway server. Admin writes were not run against a
+  server (guard needs :8097); the dialog flow to the minting point is unit-tested with a dead-port client.
+  Root wiring: integration worker. Admin WRITES still to be exercised on the 8097 throwaway server (guard).
 - polish backlog: disk-cached shrunken local posters (first scroll of a 5k local library decodes full-size art at ~92% CPU); several-source browse eagerly loads every page (cap 20k/source; revisit for huge servers); version sizes < 1 MB show "0 MB"; splash logo clipping check; one snapshot hook
 - [x] docs pass 2 + CHANGELOG [0.3.0] + docs/dev/RELEASE_NOTES_0.3.0.md drafted on local branch `docs-0.3-pending`
   (written for the post-cut-over state; merge WITH the cut-over). Before release verify its assumptions: 4b/4e merged
   and working, mpv 0.42 TLS check DONE (it moved it to 'carried forward'; move back once done), startup does not wait
   for the network (measure), reduce motion honoured everywhere.
-- [ ] integration: mpv 0.42 TLS check (test playback against an HTTPS throwaway server with a self-signed cert using
+- [~] onboarding flow module (worktree; wired by integration)
+- [~] integration (worktree; owns app/): mpv 0.42 TLS check (test playback against an HTTPS throwaway server with a self-signed cert using
   mpv 0.42 if available, else document; add per-server trust only if needed); wire the detail hook (and later 4e hooks) into app/mod.rs after 4b merges
 - [ ] 5 cut-over
 - [ ] 6 verification
