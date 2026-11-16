@@ -2,7 +2,8 @@
 
 By default NOCTURNE only reads. One setting, **Settings > Allow NOCTURNE to change data on the
 server** (`allow_server_writes`, default off), gates every change. Turn it on and the features below
-work, each with its existing confirmation dialog where one exists. Developer API-key mode
+work, each with its existing confirmation dialog where one exists. With several servers, every change goes only to the server
+the item came from (its **origin**) and uses that server's own account; no change is ever sent to another server. Developer API-key mode
 (`NOCTURNE_JF_TOKEN`) refuses all writes whatever the setting says (it also cannot take part in a group).
 
 | Feature | Needs server changes on | Also needs |
@@ -21,6 +22,9 @@ work, each with its existing confirmation dialog where one exists. Developer API
 | Admin: plugin repositories (add, enable, disable, remove), library rename, metadata / image fetcher order and enabling, local readers, per-user access and limits, user profile image (upload, remove) | yes | an administrator account and a confirmation dialog per action |
 | Admin: networking (ports, bind addresses, LAN networks, remote access, UPnP, discovery, IPv4 / IPv6) | yes | an administrator account, a confirmation dialog and the typed word NETWORK; wrong values can lock everyone out |
 | Admin: dashboards, activity, devices, logs, libraries (with display/NFO/trickplay flags), plugins and the plugin catalog, backups list, transcoding, trickplay and networking views, own sessions list | no (view only) | an administrator account |
+| Local library: mark watched, resume position, manual match, source preference, folders and sources list | no | nothing leaves your computer: stored in NOCTURNE's own files (`$XDG_DATA_HOME/nocturne/local/`, `sources.toml`) |
+
+Local media files are never modified, moved, renamed or deleted by NOCTURNE, whatever the setting says; scanning only reads.
 
 With the switch off, the controls above stay visible but dimmed with the tooltip "Turn on server
 changes in Settings", the keyboard shortcuts show a short notice, and the Admin section is view

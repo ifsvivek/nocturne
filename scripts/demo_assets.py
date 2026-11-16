@@ -262,7 +262,7 @@ def poster(sc, title, sub, seed, size=(1000, 1500)):
 
 
 def logo(title):
-    img = Image.new("RGBA", (1600, 600), (0, 0, 0, 0))
+    img = Image.new("RGBA", (1600, 1000), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     title_block(d, wrap(title), 800, 60, 1400, (240, 242, 255, 245), "Noto Serif:bold")
     img = img.crop(img.getbbox())

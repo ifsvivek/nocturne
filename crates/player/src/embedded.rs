@@ -1,16 +1,14 @@
-//! `EmbeddedPlayer`: libmpv (OpenGL render API, EGL) drawing into a `wl_subsurface` placed BELOW a
-//! GPUI window's `wl_surface`. GPUI stays a normal transparent window and draws controls on top.
+//! `EmbeddedPlayer`: libmpv (OpenGL render API, EGL) drawing into a `wl_subsurface` placed BELOW the UI
+//! window's `wl_surface`. The window stays a normal transparent window and the UI draws controls on top.
 //! Same method names / `State` / `Event` as the child-process [`crate::Player`].
 //!
-//! Threading: the main (GPUI) thread owns the Wayland proxies and calls `set_bounds`; one render
+//! Threading: the UI (main) thread owns the Wayland proxies and calls `set_bounds`; one render
 //! thread owns the EGL context + mpv render context; one event thread feeds `State`/`Event`.
 //! Teardown order (see `Drop`) is load-bearing; see docs/video-embedding.md.
 
+use crate::mpv_ffi::{Ev, Mpv, PropData, RenderCtx, UPDATE_FRAME};
 use crate::{Buffering, Error, Event, Result, State, e};
-use libmpv2::events::{Event as MpvEvent, PropertyData};
-use libmpv2::render::{OpenGLInitParams, RenderParam, RenderParamApiType, mpv_render_update};
-use libmpv2::{Format, Mpv};
-use std::ffi::{CString, c_char, c_int, c_void};
+use std::ffi::{c_char, c_int, c_void};
 use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::*};
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -134,14 +132,13 @@ pub struct EmbeddedPlayer {
     qh: QueueHandle<St>,
 }
 
-fn gpa(_: &(), name: &str) -> *mut c_void {
-    let c = CString::new(name).unwrap();
-    unsafe { eglGetProcAddress(c.as_ptr()) }
+unsafe extern "C" fn gpa(_: *mut c_void, name: *const c_char) -> *mut c_void {
+    unsafe { eglGetProcAddress(name) }
 }
 
 impl EmbeddedPlayer {
-    /// `display`/`parent`: raw `wl_display*` / `wl_surface*` from GPUI's `HasDisplayHandle` /
-    /// `HasWindowHandle`. Must be called on the GPUI main thread. Errors mean "embedding is not
+    /// `display`/`parent`: raw `wl_display*` / `wl_surface*` from the UI window's `HasDisplayHandle` /
+    /// `HasWindowHandle`. Must be called on the UI (main) thread. Errors mean "embedding is not
     /// available here" (no viewporter/subcompositor, EGL failure, ...) and callers fall back to
     /// [`crate::Player`].
     pub fn new(display: *mut c_void, parent: *mut c_void) -> Result<Self> {
@@ -154,8 +151,10 @@ impl EmbeddedPlayer {
         parent: *mut c_void,
         buffering: Buffering,
     ) -> Result<Self> {
+        // Before touching Wayland: without libmpv there is nothing to embed.
+        crate::mpv_ffi::available().map_err(Error::Mpv)?;
         unsafe {
-            // Wrap GPUI's connection (foreign display: we never own/close it) with our own queue.
+            // Wrap the UI toolkit's connection (foreign display: we never own/close it) with our own queue.
             let backend = Backend::from_foreign_display(display as *mut _);
             let conn = Connection::from_backend(backend);
             let (globals, queue) = registry_queue_init::<St>(&conn).map_err(e)?;
@@ -170,8 +169,8 @@ impl EmbeddedPlayer {
             let surface = compositor.create_surface(&qh, ());
             let sub = subcomp.get_subsurface(&surface, &parent_surface, &qh, ());
             sub.place_below(&parent_surface);
-            sub.set_desync(); // video updates must not wait for GPUI commits
-            // Clicks fall through to GPUI: empty input region.
+            sub.set_desync(); // video updates must not wait for the UI's commits
+            // Clicks fall through to the UI: empty input region.
             let empty = compositor.create_region(&qh, ());
             surface.set_input_region(Some(&empty));
             empty.destroy();
@@ -192,36 +191,40 @@ impl EmbeddedPlayer {
 
             // RULE: in-process mpv may ONLY use the OpenGL render API (`vo=libmpv`). Never
             // `gpu`/`gpu-next` (Vulkan context) and never `hwdec=vulkan` here: a second VkInstance
-            // next to GPUI's Vulkan renderer SIGSEGVs on NVIDIA at stop/quit. See docs/video-embedding.md.
-            let mpv = Mpv::with_initializer(|i| {
-                i.set_option("vo", "libmpv")?;
-                i.set_option("hwdec", "auto-safe")?;
-                i.set_option("keep-open", "yes")?;
-                i.set_option("background", "color")?; // opaque black bars (default would be alpha 0)
-                i.set_option("background-color", "#FF000000")?;
-                i.set_option("terminal", "no")?;
-                i.set_option("input-default-bindings", "no")?;
-                i.set_option("osc", "no")?;
-                for (k, v) in buffering.mpv_options() {
-                    i.set_option(k, v.as_str())?;
-                }
-                Ok(())
-            })
-            .map_err(|er| Error::Mpv(format!("init: {er:?}")))?;
+            // next to the UI's Vulkan renderer SIGSEGVs on NVIDIA at stop/quit. See docs/video-embedding.md.
+            let mut opts: Vec<(&str, String)> = vec![
+                ("vo", "libmpv".into()),
+                ("hwdec", "auto-safe".into()),
+                ("keep-open", "yes".into()),
+                ("background", "color".into()), // opaque black bars (default would be alpha 0)
+                ("background-color", "#FF000000".into()),
+                ("terminal", "no".into()),
+                ("input-default-bindings", "no".into()),
+                ("osc", "no".into()),
+            ];
+            opts.extend(buffering.mpv_options());
+            let opts: Vec<(&str, &str)> = opts.iter().map(|(k, v)| (*k, v.as_str())).collect();
+            let mpv = Mpv::new(&opts).map_err(|er| Error::Mpv(format!("init: {er}")))?;
             let mpv = Arc::new(mpv);
-            for (i, (n, f)) in [
-                ("pause", Format::Flag),
-                ("time-pos", Format::Double),
-                ("duration", Format::Double),
-                ("volume", Format::Double),
-                ("eof-reached", Format::Flag),
-                ("idle-active", Format::Flag),
-                ("demuxer-cache-duration", Format::Double),
+            for (i, (n, flag)) in [
+                ("pause", true),
+                ("time-pos", false),
+                ("duration", false),
+                ("volume", false),
+                ("eof-reached", true),
+                ("idle-active", true),
+                ("demuxer-cache-duration", false),
             ]
             .into_iter()
             .enumerate()
             {
-                mpv.observe_property(n, f, i as u64 + 1).map_err(e)?;
+                let id = i as u64 + 1;
+                let r = if flag {
+                    mpv.observe_flag(n, id)
+                } else {
+                    mpv.observe_double(n, id)
+                };
+                r.map_err(e)?;
             }
 
             let (tx, rx) = channel::<std::result::Result<(), String>>();
@@ -266,8 +269,8 @@ impl EmbeddedPlayer {
         }
     }
 
-    /// Logical position/size inside the parent window (GPUI Pixels as f32) plus scale factor.
-    /// Position applies at the parent's next commit, so ask GPUI for a redraw after calling.
+    /// Logical position/size inside the parent window (logical pixels as f32) plus scale factor.
+    /// Position applies at the parent's next commit, so ask the UI for a redraw after calling.
     pub fn set_bounds(&mut self, x: f32, y: f32, w: f32, h: f32, scale: f32) {
         let g = geometry(x, y, w, h, scale);
         self.sub.set_position(g.x, g.y);
@@ -332,7 +335,7 @@ impl EmbeddedPlayer {
     /// 0..=130 (mpv's range); values outside are clamped.
     pub fn set_volume(&self, vol: f64) -> Result<()> {
         self.mpv
-            .set_property("volume", vol.clamp(0.0, 130.0))
+            .set_double("volume", vol.clamp(0.0, 130.0))
             .map_err(e)
     }
 
@@ -348,7 +351,7 @@ impl EmbeddedPlayer {
 
     /// Reads one mpv property as JSON, same shape as the child-process player. `None` when unavailable.
     pub fn prop(&self, name: &str) -> Option<serde_json::Value> {
-        let s = self.mpv.get_property::<String>(name).ok()?;
+        let s = self.mpv.get_string(name).ok()?;
         Some(match s.as_str() {
             "yes" => true.into(),
             "no" => false.into(),
@@ -362,7 +365,7 @@ impl EmbeddedPlayer {
     }
 
     fn set_paused(&self, p: bool) -> Result<()> {
-        self.mpv.set_property("pause", p).map_err(e)
+        self.mpv.set_flag("pause", p).map_err(e)
     }
 }
 
@@ -394,21 +397,21 @@ impl Drop for EmbeddedPlayer {
 fn event_loop(mpv: Arc<Mpv>, state: Arc<Mutex<State>>, tx: Sender<Event>, sh: Arc<Shared>) {
     while !sh.stop.load(SeqCst) {
         let out = match mpv.wait_event(0.05) {
-            None => continue,
-            Some(Err(er)) => Some(Event::Failed(er.to_string())),
-            Some(Ok(MpvEvent::FileLoaded)) => Some(Event::Loaded),
-            Some(Ok(MpvEvent::Shutdown)) => break,
-            Some(Ok(MpvEvent::PropertyChange { name, change, .. })) => {
+            Ev::None => continue,
+            Ev::Failed(er) => Some(Event::Failed(er)),
+            Ev::FileLoaded => Some(Event::Loaded),
+            Ev::Shutdown => break,
+            Ev::Property(name, change) => {
                 let mut s = crate::lock(&state);
-                let flag = |d: &PropertyData, def| match d {
-                    PropertyData::Flag(b) => *b,
+                let flag = |d: &PropData, def| match d {
+                    PropData::Flag(b) => *b,
                     _ => def,
                 };
-                let num = |d: &PropertyData| match d {
-                    PropertyData::Double(v) => Some(*v),
+                let num = |d: &PropData| match d {
+                    PropData::Double(v) => Some(*v),
                     _ => None,
                 };
-                match name {
+                match name.as_str() {
                     "pause" => {
                         let p = flag(&change, false);
                         (std::mem::replace(&mut s.paused, p) != p).then_some(Event::Paused(p))
@@ -481,18 +484,9 @@ fn render_thread(
         }
         eglSwapInterval(dpy, 0);
         {
-            let rc = mpv.create_render_context(vec![
-                RenderParam::ApiType(RenderParamApiType::OpenGl),
-                RenderParam::InitParams(OpenGLInitParams {
-                    get_proc_address: gpa,
-                    ctx: (),
-                }),
-                RenderParam::WaylandDisplay(display as *const c_void),
-                RenderParam::AdvancedControl(true),
-            ]);
-            let mut rc = match rc {
+            let mut rc = match RenderCtx::new(&mpv, gpa, display as *const c_void) {
                 Ok(rc) => rc,
-                Err(e) => return drop(ready.send(Err(format!("mpv render ctx: {e:?}")))),
+                Err(e) => return drop(ready.send(Err(format!("mpv render ctx: {e}")))),
             };
             // Ready only now: `loadfile` before a render context exists is fatal for vo=libmpv.
             let _ = ready.send(Ok(()));
@@ -514,17 +508,17 @@ fn render_thread(
                 if sh.stop.load(SeqCst) {
                     break;
                 }
-                let flags = rc.update().unwrap_or(0) as u32;
+                let flags = rc.update();
                 let (w, h) = (sh.w.load(SeqCst), sh.h.load(SeqCst));
                 let resized = (w, h) != (cw, ch);
                 if resized {
                     egl_win.resize(w, h, 0, 0);
                     (cw, ch) = (w, h);
                 }
-                if flags & mpv_render_update::Frame != 0 || resized {
+                if flags & UPDATE_FRAME != 0 || resized {
                     clear_color(0.0, 0.0, 0.0, 1.0); // alpha 1: the video surface must be opaque
                     clear(0x4000);
-                    let _ = rc.render::<()>(0, w, h, true);
+                    let _ = rc.render(0, w, h, true);
                     eglSwapBuffers(dpy, surf);
                     rc.report_swap();
                 }

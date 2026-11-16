@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Regenerate THIRD_PARTY_NOTICES.md body from `cargo tree` + `cargo metadata`.
 
-Usage: scripts/gen-notices.py > THIRD_PARTY_NOTICES.md   (run from the repo root)
+Usage: [PKG=nocturne-app] scripts/gen-notices.py > THIRD_PARTY_NOTICES.md   (run from the repo root)
+PKG is the shipped app package (default nocturne-app; same variable as scripts/package.sh). Statements that only
+hold for some dependency sets (GPUI, vendored xattr, self_cell, option-ext) are emitted only when that crate is
+in the shipped tree, so the cut-over needs no edit here.
 Lists every crate compiled into the `nocturne` binary (normal deps, linux target),
 grouped by SPDX expression, then every distinct license/notice file text once
 with the crates that carry it. Review the output; do not paste blindly.
@@ -10,7 +13,21 @@ with the crates that carry it. Review the output; do not paste blindly.
 import hashlib, json, os, re, subprocess, sys
 from collections import defaultdict
 
-HEADER = """# Third-party notices
+def run(*a):
+    return subprocess.run(a, check=True, capture_output=True, text=True).stdout
+
+PKG = os.environ.get("PKG", "nocturne-app")
+tgt = "x86_64-unknown-linux-gnu"
+tree = run("cargo", "tree", "-p", PKG, "-e", "normal", "--prefix", "none", "--target", tgt, "--format", "{p}")
+shipped = set()
+for line in tree.splitlines():
+    m = re.match(r"(\S+) v(\S+)", line)
+    if m:
+        shipped.add((m[1], m[2].split(" ")[0]))
+names = {n for n, _ in shipped}
+has = lambda *ns: any(n in names or any(x.startswith(n) for x in names) for n in ns)
+
+INTRO = """# Third-party notices
 
 Copyright (C) 2026 ifsvivek
 
@@ -22,36 +39,44 @@ and carries the license and copyright notices those licenses require. Regenerate
 
 ## Compatibility summary
 
-Audit date 2026-11-15, over the normal (non-dev, non-build) dependency tree for `x86_64-unknown-linux-gnu`.
-No GPL-incompatible license was found: no GPL-2.0-only, proprietary, SSPL, or unknown license, and no
-GPL-licensed Zed crate (every GPUI crate in the tree, `gpui` and `gpui_*` 0.2.2, is `Apache-2.0`; the `zed-*`
-forks of font-kit, reqwest, xim and async-tar are MIT or MIT/Apache-2.0).
+Audit date 2026-11-16, over the normal (non-dev, non-build) dependency tree of the shipped package for
+`x86_64-unknown-linux-gnu`. `cargo deny check licenses` passes. No GPL-incompatible license was found: no
+GPL-2.0-only, proprietary, SSPL, or unknown license""" + (
+    ", and no GPL-licensed Zed crate (every GPUI crate in the tree, `gpui` and `gpui_*`, is `Apache-2.0`; the `zed-*` "
+    "forks of font-kit, reqwest, xim and async-tar are MIT or MIT/Apache-2.0)" if has("gpui") else "") + """.
 
 Points that needed a decision:
 
-- `libmpv2` and `libmpv2-sys` 7.0.1 / 4.0.1 (Rust bindings, compiled into the binary) are `LGPL-2.1`. A GPLv3+
+""" + (
+    """- `libmpv2` and `libmpv2-sys` (Rust bindings, compiled into the binary) are `LGPL-2.1`. A GPLv3+
   work may use and distribute them under LGPL-2.1 section 6 (work that uses a library), which allows any license
   that permits modification for the user's own use and reverse engineering for debugging; GPL-3.0 does. The
   complete corresponding source is the pinned crates.io release (`Cargo.lock`) plus this repository, so a user
   can rebuild and relink. The LGPL-2.1 text is reproduced below.
-- `self_cell` is `Apache-2.0 OR GPL-2.0-only`. We take it under `Apache-2.0` (GPL-2.0-only is not compatible
-  with GPLv3).
-- `option-ext` is `MPL-2.0` (file-level copyleft, unmodified, text reproduced below; compatible with GPLv3 via
-  MPL-2.0 section 3.3).
-- Apache-2.0 code is combined under GPLv3 (compatible; not with GPLv2). As of this audit no crate in the
-  shipped tree includes an Apache `NOTICE` file; the generator would reproduce one if it appeared.
-- `vendor/xattr` is xattr 0.2.3 (`MIT OR Apache-2.0`) with a one-line patch (`ENOATTR` replaced by `ENODATA`)
-  so it builds against current libc; it is only needed by GPUI's tar dependency. Its two license files are in
-  `vendor/xattr/` and reproduced below.
+""" if has("libmpv2") else "- libmpv is not linked: it is loaded at run time (see below), so no libmpv code is in the binary.\n") + """"""
+if has("self_cell"):
+    INTRO += ("- `self_cell` is `Apache-2.0 OR GPL-2.0-only`. We take it under `Apache-2.0` (GPL-2.0-only is not "
+              "compatible with GPLv3).\n")
+if has("option-ext"):
+    INTRO += ("- `option-ext` is `MPL-2.0` (file-level copyleft, unmodified, text reproduced below; compatible with "
+              "GPLv3 via MPL-2.0 section 3.3).\n")
+INTRO += ("- Apache-2.0 code is combined under GPLv3 (compatible; not with GPLv2). Any Apache `NOTICE` file shipped by "
+          "a crate is reproduced below by the generator.\n")
+if has("xattr"):
+    INTRO += ("- `vendor/xattr` is xattr 0.2.3 (`MIT OR Apache-2.0`) with a one-line patch (`ENOATTR` replaced by "
+              "`ENODATA`) so it builds against current libc; its two license files are in `vendor/xattr/` and "
+              "reproduced below.\n")
 
+GPU = "UI rendering (wgpu)" if has("wgpu") else "UI rendering"
+INTRO += f"""
 ## System libraries (loaded at run time, not distributed with NOCTURNE)
 
 | Library | Needed for | License of the Arch Linux build |
 |---|---|---|
-| libmpv.so.2 (mpv 0.41.0) | playback (linked at build and run time) | GPL-2.0-or-later AND LGPL-2.1-or-later (a GPL-enabled build makes the loaded library GPL-2.0-or-later, which is compatible with GPLv3 or later) |
-| libvulkan (vulkan-icd-loader) + a Vulkan driver | GPUI rendering | Apache-2.0 / driver specific |
-| libEGL (libglvnd) | video embedding | BSD-like (MIT) |
-| libxkbcommon, libxkbcommon-x11, libxcb, libwayland-client, libdbus-1, fontconfig, freetype | windowing, input, fonts, keyring | MIT / permissive / AFL-or-GPL (dbus) |
+| libmpv.so.2 (mpv 0.41.0) | playback (loaded at run time with dlopen) | GPL-2.0-or-later AND LGPL-2.1-or-later (a GPL-enabled build makes the loaded library GPL-2.0-or-later, which is compatible with GPLv3 or later) |
+| libvulkan (vulkan-icd-loader) + a Vulkan driver | {GPU} | Apache-2.0 / driver specific |
+| libEGL (libglvnd) | video embedding, GL fallback | BSD-like (MIT) |
+| libxkbcommon, libxkbcommon-x11, libxcb, libX11, libXcursor, libXi, libwayland-client, libwayland-egl, libdbus-1 | windowing, input, keyring | MIT / permissive / AFL-or-GPL (dbus) |
 | glibc, libgcc_s | runtime | LGPL-2.1+ / GPL-3.0+ with GCC runtime exception |
 
 If a distribution builds libmpv as GPL-2.0-only (not the case on Arch) the combination would not be redistributable;
@@ -59,25 +84,15 @@ distribution packages declare mpv as an external dependency, so nothing here is 
 
 ## Fonts, icons and artwork
 
-- No font files are bundled. The UI asks the system for "Noto Sans" (SIL OFL-1.1) and "JetBrainsMono Nerd Font"
-  (SIL OFL-1.1) by name and falls back to whatever fontconfig provides.
-- `crates/app/assets/icons/*.svg` are plain geometric glyphs authored in this repository (GPL-3.0-or-later like the
-  rest of the code). `packaging/nocturne.svg` and the PNGs derived from it are an original mark (crescent and play
+- No font files are bundled. The UI asks the system for "Noto Sans" (SIL OFL-1.1) by name and falls back to
+  whatever fontconfig provides.
+- The UI icons are plain geometric glyphs authored in this repository (GPL-3.0-or-later like the rest of the
+  code). `packaging/nocturne.svg` and the PNGs derived from it are an original mark (crescent and play
   triangle), GPL-3.0-or-later. The Jellyfin name and logo are not used.
 
 """
+HEADER = INTRO
 
-def run(*a):
-    return subprocess.run(a, check=True, capture_output=True, text=True).stdout
-
-tgt = "x86_64-unknown-linux-gnu"
-tree = run("cargo", "tree", "-p", "nocturne-app", "-e", "normal", "--prefix", "none",
-           "--target", tgt, "--format", "{p}")
-shipped = set()
-for line in tree.splitlines():
-    m = re.match(r"(\S+) v(\S+)", line)
-    if m:
-        shipped.add((m[1], m[2].split(" ")[0]))
 meta = json.loads(run("cargo", "metadata", "--format-version", "1", "--locked", "--filter-platform", tgt))
 pk = {(p["name"], p["version"]): p for p in meta["packages"]}
 

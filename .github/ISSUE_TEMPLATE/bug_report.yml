@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting. NOCTURNE is an unofficial Linux client for Jellyfin. Please do not paste access tokens,
+        Thanks for reporting. NOCTURNE is an unofficial desktop client for Jellyfin. Please do not paste access tokens,
         server addresses, usernames or personal media titles anywhere in this issue.
   - type: textarea
     id: what

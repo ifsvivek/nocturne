@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. NOCTURNE is an unofficial Linux desktop client for Jellyfin; read
+Thanks for helping. NOCTURNE is an unofficial desktop client for Jellyfin and local media (Linux first); read
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/WRITES.md](docs/WRITES.md) first.
 
 ## Ground rules
@@ -11,15 +11,16 @@ Thanks for helping. NOCTURNE is an unofficial Linux desktop client for Jellyfin;
   Writes belong in `crates/jellyfin-user` or `crates/jellyfin-admin` and must respect the `allow_server_writes`
   switch; destructive admin calls need the `Confirmed` token minted by the confirmation dialog.
 - No secrets, tokens, server addresses, media titles or personal paths in code, tests, logs or issues.
-- Linux only. Do not add Windows or macOS code paths.
+- Linux first. macOS and Windows are planned ([docs/PLATFORMS.md](docs/PLATFORMS.md)): keep OS-specific code inside
+  the platform seams listed there and do not add macOS/Windows implementations before that phase starts.
 - Keep changes small and focused; one concern per pull request.
 
 ## Setup
 
 ```sh
 git clone https://github.com/ifsvivek/nocturne && cd nocturne
-cargo build                      # needs stable Rust 1.89+ and libmpv dev files (`pkg-config --modversion mpv`)
-cargo run -p nocturne-app        # binary: nocturne; reads an optional git-ignored .env (see .env.example)
+cargo build                      # needs stable Rust 1.89+; libmpv is only needed at run time (loaded with dlopen)
+cargo run -p nocturne-app        # the app (binary: nocturne); debug builds read an optional git-ignored .env (see .env.example)
 cargo test --workspace           # offline tests
 ```
 
@@ -40,19 +41,21 @@ scripts/test-jellyfin.sh stop     # or `reset` to delete everything
 ```
 
 The admin and user crates' live tests refuse to run unless the URL is the loopback throwaway server
-(`guard::TestServerGuard`). When running the app against it, use isolated `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and
-`NOCTURNE_KEYRING_SERVICE` so nothing touches your real settings or keyring entries.
+(`guard::TestServerGuard`). When running the app against it, use `scripts/run-isolated.sh target/debug/nocturne` (add
+`NOCTURNE_JF_URL=http://127.0.0.1:8097`): it runs from a directory outside the repository (debug builds read `.env` from the
+current directory or any ancestor) with throwaway `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `NOCTURNE_KEYRING_SERVICE`, so
+nothing touches your real settings, local index or keyring entries.
+
+Debug builds have two hooks for checking the UI: `NOCTURNE_SNAP=/tmp/x.png` (and `NOCTURNE_SNAP_AFTER_MS=1500,4000` for
+several) saves the app window's own pixels, and `NOCTURNE_PREVIEW=<screen>` opens a screen with canned or throwaway-server data.
+Capture only the app window, never the whole screen, and never commit captures of a personal library.
 
 ## Code style
 
-Rust 2024 edition, `cargo fmt` defaults. Colours and sizes come from `crates/app/src/theme.rs`; do not add raw hex
-elsewhere (see [docs/DESIGN.md](docs/DESIGN.md)). Prefer the smallest change that works; comment non-obvious
-constraints (for example GPUI internals the video embedding depends on).
-
-## Vendored crate
-
-`vendor/xattr` is `xattr` 0.2.3 with a one-line fix, wired through `[patch.crates-io]` in `Cargo.toml`
-(see the note there). Leave it alone unless removing it.
+Rust 2024 edition, `cargo fmt` defaults. Colours and sizes come from `crates/app/src/theme.rs`; do not add raw hex elsewhere (see [docs/DESIGN.md](docs/DESIGN.md)).
+Prefer the smallest change that works; comment non-obvious constraints (for example window-handle details the video
+embedding depends on). Keep pure logic in `crates/core` or `crates/local` with unit tests; `crates/app` is the only crate
+with UI code. Local media files are never modified: scanning only reads.
 
 ## Dependencies and licences
 

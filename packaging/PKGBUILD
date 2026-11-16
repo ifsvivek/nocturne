@@ -1,22 +1,28 @@
 # Maintainer: ifsvivek
+# The one place that names the app package (crates/app, binary `nocturne`; installed name is always `nocturne`).
+_pkg=${_pkg:-nocturne-app}
+_bin=${_bin:-nocturne}
 pkgname=nocturne
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
-pkgdesc='Native Jellyfin desktop client (GPUI + libmpv), Wayland first'
+pkgdesc='Native Jellyfin desktop client with libmpv playback, Wayland first'
 arch=(x86_64)
 url='https://github.com/ifsvivek/nocturne'
 license=(GPL-3.0-or-later)
 # Runtime list derived from `readelf -d` of the release binary plus dlopen'd libraries (see docs/PACKAGING.md).
+# Only libdbus-1, glibc and libgcc_s are linked; libmpv.so.2, libvulkan.so.1, libEGL.so.1, libwayland-client.so.0,
+# libwayland-egl.so.1, libxkbcommon(-x11) and (X11 sessions) libxcb/libX11/libXcursor/libXi are dlopen'd, so namcap
+# cannot infer them: they stay listed explicitly on purpose. No fontconfig/freetype (cosmic-text parses fonts.conf itself).
 depends=(
-  dbus fontconfig freetype2 gcc-libs glibc libglvnd libxcb libxkbcommon libxkbcommon-x11
-  mpv          # provides libmpv.so.2
+  dbus gcc-libs glibc libglvnd libx11 libxcb libxcursor libxi libxkbcommon libxkbcommon-x11
+  mpv          # provides libmpv.so.2 (loaded at run time) and the `mpv` binary used as the fallback player
   vulkan-icd-loader vulkan-driver wayland
 )
-optdepends=('gnome-keyring: Secret Service provider for storing the login token (or kwallet / KeePassXC)')
+optdepends=('gnome-keyring: Secret Service provider for storing the login token (or kwallet / KeePassXC)'
+            'xdg-desktop-portal: folder picker for local libraries'
+            'noto-fonts: the UI font (Noto Sans); falls back to any system sans')
 options=(!lto) # aws-lc-sys C objects built with -flto cannot be linked by rustc
-makedepends=(cargo pkgconf)
-# libmpv2-sys uses pregenerated bindings (no clang/bindgen); it only needs libmpv to link, shipped by `mpv`.
-makedepends+=(mpv)
+makedepends=(cargo pkgconf) # libmpv is no longer linked at build time
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('3c01fbc914dfddcdcde5fff8e3b6a5614a69aaa3e53835aa559d5b8f844ebb33')
 
@@ -30,7 +36,7 @@ build() {
   cd "$pkgname-$pkgver"
   export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
   export RUSTFLAGS="$RUSTFLAGS --remap-path-prefix=$HOME=/home/build --remap-path-prefix=$PWD=/src"
-  cargo build --frozen --release -p nocturne-app
+  cargo build --frozen --release -p "$_pkg"
 }
 
 check() {
@@ -41,7 +47,7 @@ check() {
 
 package() {
   cd "$pkgname-$pkgver"
-  install -Dm755 target/release/nocturne "$pkgdir/usr/bin/nocturne"
+  install -Dm755 "target/release/$_bin" "$pkgdir/usr/bin/nocturne"
   install -Dm644 packaging/io.github.ifsvivek.nocturne.desktop -t "$pkgdir/usr/share/applications"
   for s in 48 128 256 512; do
     install -Dm644 "packaging/icons/nocturne-$s.png" "$pkgdir/usr/share/icons/hicolor/${s}x${s}/apps/nocturne.png"

@@ -1,7 +1,7 @@
 # Design
 
-The source of truth is `crates/app/src/theme.rs`; raw hex values live there and nowhere else. This page describes
-what it implements. Dark only.
+The source of truth is `crates/app/src/theme.rs` (Iced colour constants, sizes and motion durations); raw hex values
+live there and nowhere else. This page describes what it implements. Dark only.
 
 Principle: near-black base, hairline structure, one electric-blue accent, monochrome chrome. Library artwork is the
 only rich colour.
@@ -78,11 +78,21 @@ Short, ease-out, never gratuitous.
 - Base transitions: 220 ms
 - Slow (page-level): 300 ms
 
-Motion explains state changes (hover, focus, overlays); nothing loops or animates for decoration. Loading uses
-blurhash placeholders and skeletons rather than spinners where content shape is known.
+Motion explains state changes (hover, focus, overlays); nothing loops or animates for decoration, apart from the loading
+splash, which breathes gently while a stream is stalled so it never looks frozen. Loading uses blurhash placeholders and
+skeletons rather than spinners where content shape is known.
+
+Iced specifics: buttons are the `Press` widget (`widget/press.rs`), which cross-fades from its normal to its hovered look
+over the hover duration with `iced::animation::Animation` and an ease-out curve; overlays and menus use `Popover`. A widget
+asks for the next frame only while its animation runs, and the window subscribes to `window::frames()` only while
+something animates, so an idle window draws nothing.
+
+**Reduce motion** (Settings; System / On / Off): by default it follows the desktop's reduced-motion preference. When on,
+every animation duration resolves to zero through `motion::dur`, so state changes are instant and no frames are requested
+for animation. Colours and layout are identical either way.
 
 ## Accessibility
 
 Keyboard-first navigation (Ctrl+K / `/` search, Esc / Backspace back, player shortcuts with an in-player help
 overlay), minimum 12 px text outside mono micro labels, and visible focus. Screen-reader labels are limited by what
-GPUI exposes.
+the UI framework exposes (Iced's accessibility support is still limited); a re-evaluation is planned.

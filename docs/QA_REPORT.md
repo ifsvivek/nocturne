@@ -1,6 +1,8 @@
 # QA report
 
-Scope: Wayland and X11 (Xwayland) on Linux, release build. Read-only checks ran against a
+Scope: the sections below up to "0.3 branch" cover the released 0.2.0 (GPUI interface, Jellyfin only); the 0.3.0
+(Iced, local + several servers) checks are in the dated 0.3 sections at the end, ending with the 0.3.0 release
+walkthrough. Wayland and X11 (Xwayland) on Linux, release build. Read-only checks ran against a
 a real Jellyfin server in API-key developer mode (a GET-only recording proxy counted requests: 0 non-GET
 requests over the whole run, including one in-window playback). Everything with accounts or writes ran
 only against the throwaway server from `scripts/test-jellyfin.sh`. No personal media details are
@@ -214,3 +216,150 @@ and the screen on a real library.
 - Jellyfin reports a pending plugin change as status "Restart" and keeps offering "Disable" until the server restarts; renaming a library gives it a new item id once the server has refreshed it; the profile image endpoint wants a base64 body, not raw bytes (the raw upload returns 500).
 - Jellyfin lets any plugin endpoint "uninstall" a bundled plugin without error in one case we hit and refuses to disable it in another; NOCTURNE only offers these actions for removable plugins.
 - Stale `nocturne-mpv-*` directories from earlier crashed runs may exist in `$XDG_RUNTIME_DIR`; the player only removes its own.
+
+## 0.3 branch: clean-container install (2026-11-16)
+
+Script: `scripts/test-install.sh` (Docker, throwaway containers, no sudo, no CI). Tarball from `scripts/package.sh tarball`
+(`nocturne-0.2.0-x86_64-linux.tar.gz`, 11451356 B) built from the `iced-migration` head (GPUI `nocturne-app`).
+Final run: `arch`, `nompv`, `fedora`, `pkgbuild` all PASS; `debian` and `ubuntu` PASS for dependency resolution
+(binary does not run there, see below). Containers were `--rm`; pulled images were removed afterwards.
+
+| Case | Result | Evidence |
+|---|---|---|
+| `archlinux:latest`: `NOCTURNE_YES=1 ./install.sh` as root | PASS | exit 0; mpv, libglvnd, vulkan-icd-loader, wayland, libxkbcommon, libxkbcommon-x11, libxcb, dbus all installed by pacman; `libmpv.so.2` in ldconfig |
+| `ldd /usr/local/bin/nocturne` | PASS | no `not found` |
+| Headless start (no `DISPLAY`/`WAYLAND_DISPLAY`) | PASS | no loader error; `panicked at crates/app/src/main.rs:69:14: open window: neither DISPLAY nor WAYLAND_DISPLAY is set`, exit 101 (no `--version` flag exists) |
+| `./install.sh uninstall` | PASS | binary, desktop file and `share/licenses/nocturne` gone |
+| Arch without mpv (`--no-deps`, other libs installed, mpv absent) | PASS | binary has no libmpv in `ldd` (dlopen); same windowing panic, no dynamic-loader error |
+| `debian:stable`: installer dependency step | PASS | `apt-get update` + install of libmpv2, libegl1, libvulkan1, libwayland-client0, libwayland-egl1, libxkbcommon0, libxkbcommon-x11-0, libxcb1, libdbus-1-3, mpv all resolved; `dpkg -s` finds every one |
+| `ubuntu:latest`: installer dependency step | PASS | same package list resolved and installed |
+| Arch-built binary on Debian stable | does not run (expected) | `libm.so.6: version 'GLIBC_2.43' not found` and `'GLIBC_2.44' not found` |
+| Arch-built binary on Ubuntu latest | does not run (expected) | `libm.so.6: version 'GLIBC_2.44' not found` |
+| `fedora:latest`: dependency resolution | PASS | `dnf repoquery` finds mpv-libs, mpv, libglvnd-egl, vulkan-loader, libwayland-client, libwayland-egl, libxkbcommon(-x11), libxcb, dbus-libs in the default repos (no RPM Fusion needed in this image); `install.sh` exit 0 (384 packages). Binary execution on Fedora was not tested |
+| `archlinux:base-devel`: `makepkg -si --noconfirm --nocheck` of `packaging/PKGBUILD` as a non-root user, source = `git archive HEAD` of this tree (temporary PKGBUILD copy, `sha256sums=SKIP`) | PASS | package built and installed; `Depends On` includes `mpv`; ldd clean; headless start reaches the windowing panic |
+
+Findings:
+
+- The shipped binary needs glibc 2.44 (built on a current Arch/CachyOS toolchain), so the tarball only runs on distros
+  at least that new. Debian stable and Ubuntu cannot run it; building against an older glibc (or building from source on the
+  target) is the only fix. The migration plan limits 0.3 to Arch, so this is recorded, not a bug.
+- `install.sh` runs `pacman -S --needed` without `-y`/`-u` by design. On a stale system (the Docker `archlinux:latest`
+  image has no sync database and is older than the repos), `pacman -Sy` followed by `pacman -S` is a partial upgrade
+  and failed with file conflicts (openssl-3 `libcrypto.so.3` owned by `openssl`). The first harness run hit this and
+  was a test artifact, so the script now runs `pacman -Syu` first, as a real up-to-date Arch machine already is. No
+  change to `packaging/install.sh` was needed: every package name was proven right on Arch, Debian, Ubuntu and Fedora.
+- Not tested: the PKGBUILD `check()` step (skipped with `--nocheck` to save time), a real display or GPU in the
+  container (so only the "reaches windowing" stage), openSUSE, running the tarball binary on Fedora.
+
+## mpv 0.42 TLS verification (self-signed servers)
+
+Question: mpv 0.42 turns `tls-verify` on by default. Does that break playback from a self-signed server, and is a
+per-source "trust this certificate" option needed?
+
+Setup (all loopback, throwaway data): a small Python TLS reverse proxy (`https://127.0.0.1:8447` with a self-signed
+`CN=localhost` certificate, SAN `127.0.0.1`) in front of the throwaway demo Jellyfin on `127.0.0.1:8097`.
+
+Installed mpv: 0.41.0. `mpv --list-options` shows `--tls-verify  Flag (default: no)`, so 0.42's new default cannot be
+observed directly; the explicit flag reproduces it.
+
+| Check | Result |
+|---|---|
+| `mpv <https stream>` (0.41 default) | plays, exit 0 |
+| `mpv --tls-verify=yes <https stream>` (= the 0.42 default) | `tls: Peer certificate failed verification`, exit 2 |
+| `mpv --tls-verify=yes --tls-ca-file=<the self-signed cert>` | plays, exit 0 |
+| Embedded player (`NOCTURNE_PREVIEW=player`, libmpv, default options) on the https stream | plays (0:01 elapsed, controls and video up); the first launch needed a few seconds longer to open |
+| App's own client (`NOCTURNE_JF_URL=https://127.0.0.1:8447`) | "Can't reach your server": the Jellyfin API client (rustls, system roots) already refuses the self-signed certificate |
+| `crates/player`/`crates/app` set `tls-*` options anywhere | no (`grep` finds none), so mpv's own default applies |
+
+Conclusion: no change needed. On mpv 0.42 a self-signed certificate would stop mpv, but such a server never gets as far
+as playback: the API client rejects it at connect time (and has always done so). A server whose certificate chains to a
+CA in the system store (a private CA installed with `update-ca-trust`, or a public one) verifies in both mpv (system CA
+bundle) and the API client, so playback keeps working. A per-source "trust this certificate" setting would have to
+cover the API client as well, not only mpv; it is a feature of its own, not a 0.42 fix. The external mpv player was not
+run separately through the app: it is the same mpv with the same defaults as the CLI rows above.
+
+## Clean-container playback gate, Iced app (2026-11-16)
+
+`PKG=nocturne-ui BIN=nocturne-iced scripts/test-playback.sh` (names as they were before the cut-over; now `nocturne-app` / `nocturne`; package built from `git archive HEAD`
+in a fresh `archlinux:base-devel`, `makepkg -si --nocheck`, non-root user with the host uid, host Wayland socket
+bind-mounted, no `/dev/dri`, mesa `vulkan-swrast` (lavapipe), `WGPU_BACKEND=vulkan`, throwaway XDG dirs,
+`NOCTURNE_KEYRING_SERVICE=nocturne-test`, no Jellyfin URL/token). Result: 0 failures. Container, work dir and the pulled image were removed.
+
+| Check | Result | Detail |
+|---|---|---|
+| `makepkg -si` | PASS | `Depends On`: dbus gcc-libs glibc libglvnd libx11 libxcb libxcursor libxi libxkbcommon libxkbcommon-x11 mpv vulkan-icd-loader vulkan-driver wayland |
+| `ldd /usr/bin/nocturne` | PASS | no `not found` |
+| `libmpv.so.2` in ldconfig | PASS | from the `mpv` dependency |
+| Headless start (no display) | PASS | winit "neither WAYLAND_DISPLAY nor WAYLAND_SOCKET nor DISPLAY is set"; no loader error |
+| `mpv --vo=null --ao=null --hwdec=no --frames=60 clip.mp4` (generated h264/aac, 640x360) | PASS | installed libmpv decodes |
+| Installed `nocturne` on the host compositor | PASS | `hyprctl clients -j` shows a mapped `class=nocturne` window whose pid is in the container (`docker top`); still mapped and running after 10 s; no panic in the log (the log was empty) |
+
+Proves: the package builds from a clean image with only the declared dependencies, every linked and dlopen'd library the
+start-up path touches resolves, the binary opens a Wayland window and survives 10 s on the software Vulkan path, and the
+distro's libmpv decodes video. Does not prove: in-window video (libmpv render API into the Wayland subsurface), UI
+contents (release builds have no screenshot path), input, hardware rendering or decoding, a real library or server, other
+distributions. Those stay host-verified. Also checked 2026-11-16: package names exist in debian:stable, fedora:latest and
+openSUSE Tumbleweed (see PACKAGING.md; `libEGL1` does not exist on openSUSE, `libglvnd` provides `libEGL.so.1`);
+`cargo deny check licenses bans sources` passes on the workspace including the Iced app.
+
+## 0.3.0 release walkthrough (2026-11-16)
+
+Debug build for driving (wtype / ydotool on Hyprland, `NOCTURNE_SNAP_WATCH` captures), release build for the sanity
+launch. Two throwaway demo servers (127.0.0.1:8097 and :8098, `/tmp/nocturne-demo*`), a generated local fixture
+(ffmpeg clips, procedural posters, an `.nfo` giving "Ember Tide" the same IMDb id as the demo copies, one two-season
+series, one unmatched file) and a 2,000-file bulk folder (hard links of one clip). Every profile ran under
+`scripts/run-isolated.sh` with a test keyring service. No personal media or server was touched; the only server writes
+were on 8097.
+
+| # | Check | Result | Evidence |
+|---|---|---|---|
+| 1 | Fresh install: onboarding (Both), add local folder and the 8097 server, behaviour step, Home | PASS | Fresh config, "Where is your media?" -> Both -> typed folder path, scan ran -> typed server URL, signed in as `demo` -> behaviour step with the server-changes switch OFF -> Home showed local and server items together. `sources.toml` has the local and server profiles; `settings.toml` has `allow_server_writes = false`. |
+| 2 | Upgrader: 0.2 `servers.toml` + `accounts.toml` + keyring login | PASS | "What's new in 0.3" screen, then Home; `sources.toml` was created with the server as source 1; the old files were left in place. |
+| 3 | Second server (8098, user `alice`) in Settings > Sources; unified header; source filter; duplicates; Versions and sources; "Always prefer" persists | PASS | Header shows Movies / Shows / Music / Photos / Collections / Playlists / Favourites and a Libraries menu grouped by source; the filter chip cycles All / each source. "Ember Tide" shows "3 SOURCES" (local + both servers); the picker lists all three copies with source marks; "Always prefer" wrote `movie:imdb:tt9000001` to `preferred.json` and the choice survived a restart. |
+| 4 | Offline source: other sources usable, recovery | PASS | A TCP forwarder (:8099 -> :8098) was registered as a source, then stopped: status "Offline" in Sources, banner "Can't reach ... Retrying in Ns" with Retry now, Home and the other sources kept working. Restarting the forwarder: "back online" toast and the source returned to Online. The real 8098 server was never stopped. |
+| 5 | Browse: grid / thumb / list, sort, filter, A-Z, virtualised scroll, search | PASS | Poster / Thumb / List switch, Sort menu, Filters, A-Z strip all work on the merged 27-title Movies page. The 2,000-file local folder scanned in well under a minute; its list scrolled smoothly (about 380 MiB RSS, idle ~0% CPU in debug). Search (`/`) returned local and both servers' results grouped by type; duplicates collapse into one row. |
+| 6 | Detail pages; watched / favourite with writes off and on | PASS | Movie, series with season tabs and episode cards, episode, person, collection render. With writes OFF `w`/`f` show the "turn on server changes" toast and nothing changes. With writes ON (8097 only): `w` set Played true, `f` set favourite true, both reverted, each confirmed with a read-back of the server (all back to the starting values). |
+| 7 | Embedded playback (Wayland): local file and server episode, splash, seek, pause, tracks, subtitles, volume, next, resume, close, local resume | PASS (1 bug fixed) | Local and server items play inside the window; the loading overlay (backdrop + logo wiping with the buffer) shows and fades once playback runs. Space, seek keys, `v` (volume), `n` (next) work; the Ember Tide sidecar `.srt` shows in mpv's track list as an external track. Local resume saved in `state.json` (`resume_secs` written on close). `NOCTURNE_TIMING=1`: `hwdec-current nvdec`. Closing returns to the page. Bug fixed: the resume prompt was overwritten (see below). Not driven by hand: the audio/subtitle popover menus and a UI check of the picked subtitle line. |
+| 8 | X11 (`WAYLAND_DISPLAY=`, XWayland) | PASS | Window class `nocturne`, `xwayland: true`; browsing works; playing opens an external `mpv` window (`video: no Wayland window handle, using the external player`, `hwdec-current vulkan`); SIGTERM to the app removed both windows and left no `mpv` process. |
+| 9 | libmpv missing (`NOCTURNE_LIBMPV=/nonexistent`); both missing | PASS | With libmpv missing the log says `libmpv unavailable (...), using the external player` and an `mpv` window opens. With a `PATH` without `mpv` as well, the player page shows "Cannot play right now. Playback needs mpv, which was not found. Install it with: sudo pacman -S mpv" and a Back button; Back returns to the (working) detail page. |
+| 10 | Admin on 8097; one write + revert; SyncPlay with two instances | PASS | Admin opened for the demo (administrator) account; sections render; the Dashboard showed live sessions. One write behind the confirmation dialog: Branding > login message set to "QA note" (read back from the server) and cleared again (back to empty). SyncPlay: `bob` created the group "QAgroup", `alice` (second instance, different kept config dir and keyring) saw it, joined; both showed the group pill; starting an item opened the player in both; `leave` from each ended the group. (Playback in step was not timed by eye.) |
+| 11 | Single instance | PASS | Second launch with the same kept dir exited in 12 ms with status 0, still one process. The first window is told to activate (`gain_focus` + attention request); Hyprland's own focus-steal policy kept focus on the terminal (the window shows as `focusHistoryID 1`), so "comes forward" depends on the compositor. |
+| 12 | Settings rows, drop-downs, Reduce motion, Run setup again | PASS (partly by eye) | Every row reached by keyboard; language / buffering drop-downs open and scroll; the switch rows toggle; Reduce motion cycles System / On / Off and persists. "Run setup again" restarts the walkthrough. Not checked frame by frame: that no animation plays with Reduce motion On (the code paths honour `motion::reduced()`; confirmed only that the splash and `pulse()` consult it). |
+| 13 | Release build sanity | PASS | `cargo build --release -p nocturne-app` (3m28s, fat LTO), 30.1 MiB binary, launched with the developer token source: first frame **364 ms**, shell ready **397 ms**, boot 3 ms, fonts 19 ms; ~300 MiB RSS and 8% CPU right after the first load, reaching Home. Debug build: first frame 355 ms, shell ready 560 ms. |
+
+### Bugs fixed (each a commit on `iced-migration`)
+
+- **Resume position overwritten (medium).** Opening an item with a saved position reported "started at 0:00" before the
+  viewer answered the resume prompt, so declining or even ignoring the prompt left no saved position (observed
+  `resume_secs` 70 -> 0 for a local item). `report_tick` now waits until the prompt is answered.
+- **Sources page stayed on top of navigation (low).** Header links and back/forward did not close Settings > Sources.
+  `close_admin` and the Back/Forward messages now close it.
+- **Admin unreachable in a narrow window (low).** The header's Admin link scrolls off the edge in a narrow window; the
+  account menu now has an "Admin" entry for administrator accounts.
+- **Wording (trivial).** Empty descriptions said "No description from the server." for local items too; now "No
+  description available."
+- **Demo logos (trivial, demo data only).** The generated two-line logo was cropped to one line; fixed in
+  `scripts/demo_assets.py` (regenerated for the throwaway servers).
+
+### Open
+
+- **Header Admin link off-screen at narrow widths (low).** The link row scrolls sideways by design; there is no visual
+  hint that more links exist. Worked around by the account-menu entry.
+- **Manual subtitle verification (low, not a defect).** The sidecar `.srt` is present as a track; its rendering in the
+  window was not inspected because `window::screenshot` cannot see the video subsurface.
+- **Single-instance focus depends on the compositor (info).** See row 11.
+
+### Debug aids added
+
+`NOCTURNE_SNAP_WATCH=/tmp/req` (write a target path into that file to get an on-demand window capture) and
+`NOCTURNE_HOLD_SPLASH=0.55` (pin the loading overlay at 55 %), both debug-build only, in `crates/app/src/snap.rs` and
+`player/mod.rs`.
+
+### Website screenshots
+
+3840x2160 captures in `/tmp/shots-0.3/`, taken on a virtual 4K output at scale 2 (`hyprctl output create headless`, fullscreen
+window, `window::screenshot`; the output was removed afterwards): 01-home, 02-library, 03-movie-detail, 04-series-episodes,
+05-search, 06-playback, 07-settings, 08-admin-dashboard, 09-first-run, 10-sources, 11-local-folders, 12-loading,
+picker, account-menu, settings-dropdown. 06-playback is the only `grim` capture (that headless output only, window
+fullscreen, player showing, nothing else on it). Servers are labelled "Living room" / "Study" and the local source "This
+computer"; the demo library and a generated local fixture only; server changes OFF.

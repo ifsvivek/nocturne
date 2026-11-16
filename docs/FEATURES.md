@@ -1,15 +1,28 @@
 # Features
 
-What NOCTURNE 0.2.0 does today. `[x]` implemented, `[~]` partial, `[ ]` not implemented.
+What NOCTURNE 0.3 does. `[x]` implemented, `[~]` partial, `[ ]` not implemented.
 Verification detail per feature is in [QA_REPORT.md](QA_REPORT.md); remaining work is in [ROADMAP.md](ROADMAP.md).
 Which features change data on your server is in [WRITES.md](WRITES.md).
 
+## Sources: local folders and several servers
+- [x] First-run setup flow (5 steps fresh, 2 for upgraders): Local library, Connect to a server, or Both; Settings > Run setup again
+- [x] Single instance: a second launch raises the running window
+- [x] Several Jellyfin servers at once, each with its own account; a source that is signed out or offline never blocks the others (quiet banner, retry with backoff)
+- [x] Settings > Sources: status, sign in again, rescan, enable / disable, priority order, remove (says what is deleted)
+- [x] One unified library: Home, browse and search merge sources; a header filter narrows to one source; small source marks on cells and detail pages
+- [x] Duplicates shown once when provider ids (IMDb / TMDB / TVDB) or series id + season + episode agree; title alone never merges
+- [x] Versions and sources picker on the detail page: a server's own versions plus copies in other sources, with "Always prefer this source"
+- [x] Local folders: add by portal chooser or typed path, scan with live progress and cancel, availability of unplugged drives, counts
+- [x] Local metadata from names, `.nfo`, sidecar art and `ffprobe` (if installed); Unmatched list with manual match; your files are never modified
+- [x] Local playback with resume position and watched state kept in NOCTURNE's own data
+- [ ] Online metadata lookup for local media (planned for 0.4, opt-in; [METADATA.md](METADATA.md))
+
 ## Accounts and connection
 - [x] Sign in with username and password, Quick Connect, sign out, change own password
-- [x] Session stored in the system keyring (Secret Service); restored on launch
+- [x] Sessions stored in the system keyring (Secret Service), one per server account; restored on launch
 - [x] Server address entry with validation, remembered servers, forget server
 - [x] Session-ended handling (401 returns to sign-in), offline banner with retry
-- [~] Developer API-key mode via environment variables (read-only; all writes refused)
+- [~] Developer API-key mode via environment variables (a transient read-only source, never saved; all writes refused; `.env` is read by debug builds only)
 - [x] Watch together (SyncPlay): list, create, join and leave groups on the server; play, pause, seek, stop and next stay in step across members (clock sync, drift correction, Ready / Buffering handshake). `g` or the account menu; works with the embedded and the external mpv player. Needs server changes on. See [syncplay.md](syncplay.md)
 - [x] Authorize another device with Quick Connect; Your devices (read only list of this account's sessions)
 - [x] Switch between remembered accounts of a server without a password (tokens in the keyring, `accounts.toml` holds names and the public profile-image tag, never a token); the profile picture shows in the header avatar, the account menu, the switcher and the Admin Users list; add another account; own profile image set / remove; display language (the `language` entry other Jellyfin apps share). Sign out forgets the account
@@ -30,7 +43,10 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [ ] HDR filter (the server exposes none)
 
 ## Playback
-- [x] In-window GPU video through libmpv (Wayland); external mpv window fallback elsewhere
+- [x] In-window GPU video through libmpv with hardware decoding (Wayland); external mpv window on X11 and as a fallback
+- [x] libmpv is loaded at run time: without it the app still starts and falls back to the `mpv` program or shows what to install
+- [x] Player loading overlay (Stremio-style: backdrop, logo filling with the buffer) when a stream opens, a lighter version on stalls
+- [~] HDR video is tone-mapped to SDR in the window; an HDR pop-out window is planned for 0.4 ([HDR.md](HDR.md))
 - [x] Seek bar with chapters and trickplay hover thumbnails, volume, fullscreen, mini player
 - [x] Audio and subtitle menus, subtitle styling and delay, audio delay, speed, aspect and picture controls
 - [x] Skip intro / credits, next-episode autoplay, queue panel
@@ -42,7 +58,7 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] Music queue: queue panel (u) with reorder, remove, shuffle and repeat; kept for the session and started from the account menu
 
 ## Settings
-- [x] Settings screen: server-changes master switch, progress sync, buffering, grid density, home sections, language preferences
+- [x] Settings screen: server-changes master switch, progress sync, buffering, grid density, home sections, language preferences, reduce motion (follows the desktop by default)
 - [ ] Theme and accent choice, subtitle appearance presets
 
 ## Admin (administrator accounts only)
@@ -62,11 +78,11 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] Access and limits per user: library access, feature switches (remote access, playback, transcoding, remuxing, downloads, deletion, collections, subtitles, public sharing, hidden), maximum parental rating, blocked and allowed tags, remote bitrate limit, session limit, failed-sign-in lockout, profile image upload / remove, display preferences (read only). Jellyfin has no password length or expiry rules, so none are offered
 
 ## Not planned
-Live TV / DVR, DLNA, acting as a cast target, gapless music playback, Windows and macOS builds.
+Live TV / DVR, DLNA, acting as a cast target, gapless music playback. macOS and Windows builds are scheduled for 0.4 ([PLATFORMS.md](PLATFORMS.md)).
 
 ## Platform and quality
 - [x] Full-window responsive layout, keyboard-first navigation, loading / empty / error states
 - [x] Settings in TOML under `$XDG_CONFIG_HOME/nocturne/`, no secrets on disk
-- [x] Tarball and Arch PKGBUILD packaging, desktop entry, icon, AppStream metadata
+- [x] Tarball and Arch PKGBUILD packaging, desktop entry, icon, AppStream metadata; the tarball installer installs missing runtime libraries
 - [x] Keyboard shortcut reference: `?` on any browsing screen (the player has its own `?` with playback keys)
-- [~] Accessibility: keyboard navigation and visible focus on controls yes; screen-reader labels are limited by GPUI
+- [~] Accessibility: keyboard navigation and visible focus on controls yes; screen-reader support is limited by what Iced exposes today

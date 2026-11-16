@@ -1,89 +1,93 @@
+//! NOCTURNE, Iced front end.
+#![allow(dead_code)] // the widget kit is consumed screen by screen over steps 4a-4e
 mod account;
 mod admin;
 mod app;
-mod assets;
-mod blurhash;
-mod bridge;
-mod cache;
 mod detail;
-mod dropdown;
-mod imgcache;
-mod libview;
-mod nav;
-mod player_logic;
-mod player_mpris;
-mod player_ui;
-mod player_view;
-mod search;
-mod settings;
-mod source;
-mod sync;
+mod keys;
+mod motion;
+mod onboarding;
+mod platform;
+mod player;
+mod queue;
+mod single;
+mod snap;
+mod style;
 mod syncplay;
+mod task;
 mod theme;
-mod ui;
-mod video;
+mod timing;
+mod virt;
+mod widget;
 
-use gpui::*;
-use std::sync::atomic::{AtomicBool, Ordering};
+use app::App;
+use iced::{Color, Size, window};
 
-/// Set by SIGTERM/SIGINT; `Root::tick` turns it into a normal quit (settings are saved on change).
-pub static TERM: AtomicBool = AtomicBool::new(false);
-
-extern "C" fn on_term(_: libc::c_int) {
-    TERM.store(true, Ordering::Relaxed);
-}
-
-/// The now-playing poster the player wrote for desktop widgets.
-pub fn remove_art_file() {
-    if let Some(d) = std::env::var_os("XDG_RUNTIME_DIR") {
-        let _ = std::fs::remove_file(
-            std::path::Path::new(&d).join(format!("nocturne-art-{}.img", std::process::id())),
-        );
+fn main() -> iced::Result {
+    // Before anything costly: a second launch just wakes the first and leaves.
+    let Some(_single) = single::acquire() else {
+        return Ok(());
+    };
+    platform::mark_start();
+    platform::probe_motion_pref();
+    // Loading ~1000 system fonts takes a few hundred ms and would otherwise run after the window
+    // and GPU are up; do it on a thread alongside them.
+    std::thread::spawn(|| {
+        drop(iced::advanced::graphics::text::font_system().read());
+        timing::mark("fonts loaded");
+    });
+    platform::install_term_handlers();
+    // Debug builds only: run the player page alone on a local file (see player/preview.rs).
+    #[cfg(debug_assertions)]
+    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("player") {
+        return player::preview::run();
     }
-}
-
-fn main() {
-    // Config (and .env) is read once, before any other thread exists.
+    // Debug builds only: run the detail page alone on a throwaway server item or a local fixture
+    // (see detail/preview.rs).
+    #[cfg(debug_assertions)]
+    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("detail") {
+        return detail::preview::run();
+    }
+    // Debug builds only: the admin screen alone on a throwaway server (see admin/preview.rs).
+    #[cfg(debug_assertions)]
+    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("admin") {
+        return admin::preview::run();
+    }
+    // Debug builds only: Watch together alone against throwaway servers (see syncplay/preview.rs).
+    #[cfg(debug_assertions)]
+    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("syncplay") {
+        return syncplay::preview::run();
+    }
+    // Debug builds only: the first-run walkthrough alone (see onboarding/preview.rs).
+    #[cfg(debug_assertions)]
+    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("onboarding") {
+        return onboarding::preview::run();
+    }
+    // Config (and .env) is read once, before any other thread exists. (Not for the player preview:
+    // it never touches the configured server.)
     let cfg = nocturne_jellyfin::Config::load().ok();
-    // SAFETY: the handler only stores to an atomic.
-    unsafe {
-        libc::signal(libc::SIGTERM, on_term as *const () as libc::sighandler_t);
-        libc::signal(libc::SIGINT, on_term as *const () as libc::sighandler_t);
-    }
-    Application::new()
-        .with_assets(assets::Assets)
-        .run(move |cx: &mut App| {
-            let opts = WindowOptions {
-                titlebar: Some(TitlebarOptions {
-                    title: Some("NOCTURNE".into()),
-                    ..Default::default()
-                }),
-                app_id: Some("nocturne".into()),
-                // Transparent so the video subsurface below shows through; every normal screen paints
-                // an opaque background (Root), only the player page leaves a hole.
-                window_background: WindowBackgroundAppearance::Transparent,
-                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                    None,
-                    size(px(1280.0), px(800.0)),
-                    cx,
-                ))),
-                window_min_size: Some(size(px(800.0), px(560.0))),
+    iced::application(move || App::boot(cfg.clone()), App::update, App::view)
+        .title(App::title)
+        .subscription(App::subscription)
+        // Transparent app background: every screen paints its own opaque backdrop, only the
+        // player page (step 4d) leaves a hole for the video subsurface.
+        .style(|_, _| iced::theme::Style {
+            background_color: Color::TRANSPARENT,
+            text_color: theme::TEXT,
+        })
+        .theme(App::theme)
+        .default_font(theme::FONT)
+        .exit_on_close_request(false)
+        .window(window::Settings {
+            size: Size::new(1280.0, 800.0),
+            min_size: Some(Size::new(800.0, 560.0)),
+            transparent: true,
+            platform_specific: window::settings::PlatformSpecific {
+                application_id: "nocturne".into(),
                 ..Default::default()
-            };
-            cx.open_window(opts, |window, cx| {
-                let view = cx.new(|cx| app::Root::new(cfg, window, cx));
-                let handle = view.read(cx).focus.clone();
-                window.focus(&handle);
-                view
-            })
-            .expect("open window");
-            cx.on_app_quit(|_| async { remove_art_file() }).detach();
-            cx.on_window_closed(|cx| {
-                if cx.windows().is_empty() {
-                    cx.quit();
-                }
-            })
-            .detach();
-            cx.activate(true);
-        });
+            },
+            exit_on_close_request: false,
+            ..Default::default()
+        })
+        .run()
 }

@@ -4,7 +4,18 @@ import cfg from "../../site.config.json";
 // Read at build time (prerender). RELEASED env overrides the file so tests can build both variants.
 const env = typeof process !== "undefined" ? process.env.NOCTURNE_RELEASED : undefined;
 export const RELEASED = env !== undefined ? env === "true" : cfg.RELEASED === true;
-export const VERSION = String(cfg.VERSION ?? "0.1.0");
+export const VERSION = String(process.env.NOCTURNE_VERSION ?? cfg.VERSION ?? "0.1.0");
+// Copy for features that ship in a later version carries a "Coming in X" mark until VERSION reaches it, so the site
+// can describe the next release without claiming it is the one you download. No extra config: bumping VERSION at
+// release retires every mark for that version.
+const num = (v) => v.split(".").map(Number);
+export function shipped(v) {
+  const [a, b] = [num(VERSION), num(v)];
+  for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  return true;
+}
+// The interface toolkit changed in 0.3 (GPUI -> Iced); credits name the one in the version you can download.
+export const UI = shipped("0.3.0") ? ["Iced", "https://iced.rs"] : ["GPUI, from Zed", "https://www.gpui.rs"];
 export const SITE = "https://nocturne.ifsvivek.in";
 export const REPO = "https://github.com/ifsvivek/nocturne";
 export const RELEASES = `${REPO}/releases/latest`;
@@ -26,21 +37,24 @@ for (const [path, url] of Object.entries(shots)) {
   (bySize[key] ??= []).push({ url, width, height });
 }
 const ALT = {
-  home: "NOCTURNE home screen: a hero banner and a Continue watching row",
-  library: "A movie library grid with sort, filters and an A-Z rail",
-  "movie-detail": "A movie detail page with cast, chapters and media info",
+  home: "NOCTURNE home screen: a hero banner, the All sources filter, and Continue watching with a source mark on every card",
+  library: "A movie library grid with sort, filters, an A-Z rail and a source mark on every poster: Local, Living room or 2 sources",
   "series-episodes": "A series page with season tabs and an episode card grid",
-  search: "Global search results",
   playback: "In-window playback with the player controls drawn over the video",
-  settings: "Settings: the switch that allows changes to the server, then playback options as drop-downs and switches",
+  loading: "The loading overlay: the film's backdrop, its title half filled with light and a thin line showing the buffer",
+  settings: "Settings: Sources, Run setup again, the switch that allows changes to the server (off), then playback options",
   "settings-dropdown": "Settings with the audio language drop-down open, the current choice ticked",
-  "picker-crop": "The Who's watching? profile picker: three round profile tiles, an Add profile tile and a Use as default profile box",
-  "account-menu": "The account menu with Settings, Switch to other accounts, Switch profile, Add another account and Sign out",
-  "admin-dashboard": "The administrator dashboard inside the same app",
-  "search-crop": "The search palette listing matching movies, shows and episodes",
-  "settings-crop": "The setting Allow NOCTURNE to change data on the server, described as off by default",
+  "picker-crop": "The Who's watching? profile picker: two round profile tiles, an Add profile tile and a Use as default profile box",
+  "account-menu": "The account menu with Settings, Sources, Admin, Watch together, Add another account, Switch server and Sign out",
+  "admin-dashboard": "The administrator dashboard of one server, view-only while changes are off",
+  "search-crop": "The search palette: the same film listed once per source, Local, Living room and Study",
+  "settings-crop": "The setting Allow NOCTURNE to change data on the server, switched off and described as off by default",
   "video-crop": "The video picture on its own, without the player controls",
   "controls-crop": "The player control bar: seek, play, chapters, audio, subtitles and volume",
+  "alternates-crop": "Versions and sources: one film on three sources, Living room, Local and Study, with quality, and Always prefer this source",
+  "first-run": "Setup, step 2 of 5: Where is your media? Local folders, A Jellyfin server, or Both",
+  sources: "Settings, Sources: This computer with one folder, and the servers Living room and Study, all online",
+  "local-folders": "Local folders: one indexed folder, counts of movies, shows and episodes, and one unmatched file to place by hand",
 };
 // Image props for one screenshot: src (largest), srcset, intrinsic size and alt, so layout never shifts.
 export function shot(key) {

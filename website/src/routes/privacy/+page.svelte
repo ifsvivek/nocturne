@@ -1,11 +1,12 @@
 <script>
   import Seo from "#lib/components/Seo.svelte";
+  import Next from "#lib/components/Next.svelte";
 </script>
 
-<Seo title="Privacy: NOCTURNE" description="NOCTURNE's site sets no cookies and loads no third-party resources. The app talks only to the server you configure." path="/privacy" />
+<Seo title="Privacy: NOCTURNE" description="NOCTURNE's site sets no cookies and loads no third-party resources. The app talks only to the servers you add." path="/privacy" />
 <div class="wrap max-w-[760px] pt-[clamp(140px,18vh,200px)] pb-[clamp(64px,9vw,120px)]">
   <h1 class="scene-title">Privacy</h1>
-  <p class="mt-5 text-lg text-ink-2">Short version: this site tracks nothing, and the app only talks to the server you point it at.</p>
+  <p class="mt-5 text-lg text-ink-2">Short version: this site tracks nothing, and the app only talks to the servers you add.</p>
 
   <h2 class="role mb-5 mt-14">This website</h2>
   <ul class="tick">
@@ -16,9 +17,10 @@
 
   <h2 class="role mb-5 mt-14">The NOCTURNE app</h2>
   <ul class="tick">
-    <li>It connects only to the Jellyfin server you configure. It sends no telemetry, usage statistics or crash reports anywhere.</li>
-    <li>Your sign-in token is stored in the system keyring (Secret Service). It is not written to a plaintext file.</li>
-    <li>Changes to your server are off by default. A single setting, <em>Allow NOCTURNE to change data on the server</em>, must be turned on by you before the app will sync playback progress, mark items watched or favourite, change your password, or perform any admin action.</li>
+    <li>It connects only to the Jellyfin servers you add, and to none if you use local folders only. It sends no telemetry, usage statistics or crash reports anywhere.</li>
+    <li>Local folders are read in place. NOCTURNE never renames, moves, modifies or deletes your files; its index, resume points and your edits stay in its own data folder on your disk. <Next /></li>
+    <li>Each server sign-in token is stored in the system keyring (Secret Service). It is not written to a plaintext file.</li>
+    <li>Changes to your server are off by default. A single setting, <em>Allow NOCTURNE to change data on the server</em>, must be turned on by you before the app will sync playback progress, mark items watched or favourite, change your password, or perform any admin action. A change goes only to the server the item came from.</li>
     <li>Artwork is cached on your own disk to speed up browsing; nothing is uploaded.</li>
   </ul>
 

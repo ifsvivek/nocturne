@@ -20,5 +20,8 @@ Only the latest release receives fixes.
 - NOCTURNE is read-only toward your server unless you turn on `allow_server_writes`
   ([docs/WRITES.md](docs/WRITES.md)).
 - Server certificates are validated through rustls; NOCTURNE does not disable verification.
-- The app sends no telemetry and contacts only the Jellyfin server you configure.
-- Issues in Jellyfin itself, GPUI, mpv or other dependencies should go to those projects.
+- The app sends no telemetry and contacts only the Jellyfin server(s) you configure.
+- Local media files are never modified; scanning only reads them. The local index and watch state stay on your computer.
+- Release builds do not read `.env`, so a stray file cannot point an installed app at a server. Developer API-key mode
+  (environment variables) is a transient, read-only source.
+- Issues in Jellyfin itself, the UI framework (Iced), mpv or other dependencies should go to those projects.
