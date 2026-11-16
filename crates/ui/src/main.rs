@@ -5,6 +5,7 @@ mod app;
 mod keys;
 mod motion;
 mod platform;
+mod player;
 mod snap;
 mod style;
 mod task;
@@ -24,9 +25,15 @@ fn main() -> iced::Result {
         drop(iced::advanced::graphics::text::font_system().read());
         timing::mark("fonts loaded");
     });
-    // Config (and .env) is read once, before any other thread exists.
-    let cfg = nocturne_jellyfin::Config::load().ok();
     platform::install_term_handlers();
+    // Debug builds only: run the player page alone on a local file (see player/preview.rs).
+    #[cfg(debug_assertions)]
+    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("player") {
+        return player::preview::run();
+    }
+    // Config (and .env) is read once, before any other thread exists. (Not for the player preview:
+    // it never touches the configured server.)
+    let cfg = nocturne_jellyfin::Config::load().ok();
     iced::application(move || App::boot(cfg.clone()), App::update, App::view)
         .title(App::title)
         .subscription(App::subscription)
