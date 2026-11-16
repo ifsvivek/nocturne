@@ -122,9 +122,10 @@ Demo library on a throwaway server: `scripts/make-demo-library.sh build` (prints
   Backend enum (Jellyfin/Local), Catalog + statuses, merge/duplicates, preferred sources, write routing.
   Carry into M3: migrate every server with a usable login (not just the last), dev-token mode as a transient read-only
   source, availability flag on Media so unplugged local copies are demoted in merges.
-- [~] first-run welcome, glyph/button fixes, FAST launch (measured), player buffering overlay widget (worktree; the
-  cinematic launch screen was dropped: the user meant video buffering)
-- [ ] M3 Iced root on the catalog (Sources settings, local folders screen, source filter/marks, local playback)
+- [x] first-run welcome, tracked-text glyph fix, normal-size buttons, reduce-motion setting, Stremio-style player
+  buffering overlay widget (`widget/buffering.rs`, wired in 4d). Launch: ~9 ms app boot, ~430 ms to first frame
+  (wgpu/Vulkan init dominates). Screenshots from now on via the debug `NOCTURNE_SNAP` in-app hook, never grim.
+- [~] M3 Iced root on the catalog (Sources settings, local folders screen, source filter/marks, local playback)
 - [ ] 4b-4e screens
 - [ ] 5 cut-over
 - [ ] 6 verification
