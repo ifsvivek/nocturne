@@ -10,7 +10,28 @@ use nocturne_core::source::{Art, Kind, Media};
 /// The header and the breadcrumb strip float over the page; content starts below them.
 pub const TOP: f32 = t::HEADER_H + 29.0;
 pub const FACTS_H: f32 = 52.0;
-pub const CHIPS_H: f32 = 28.0 + t::S4;
+/// Chip height and the gaps of the chip band (a gap above keeps the rule off the chips).
+pub const CHIP_H: f32 = 28.0;
+const CHIPS_TOP: f32 = t::S3;
+
+/// Height of the chip band for these labels at window width `w`: chips wrap onto as many lines as
+/// they need, and the band grows with them so they never run into the next band.
+/// ponytail: text width is estimated per character (13 px font ~ 7.2 px); a measured width would be exact.
+pub fn chips_h(labels: &[String], w: f32) -> f32 {
+    let avail = (w - 2.0 * t::PAGE_PAD).max(1.0);
+    let mut lines = 1;
+    let mut x = 0.0;
+    for l in labels {
+        let cw = l.chars().count() as f32 * 7.2 + 2.0 * t::S3 + 2.0;
+        if x > 0.0 && x + t::S2 + cw > avail {
+            lines += 1;
+            x = cw;
+        } else {
+            x += if x > 0.0 { t::S2 + cw } else { cw };
+        }
+    }
+    CHIPS_TOP + lines as f32 * CHIP_H + (lines - 1) as f32 * t::S2 + t::S4
+}
 /// Section heading block (title, one line of text) without its padding.
 pub const HEAD_BLOCK: f32 = 70.0;
 pub const TABS_H: f32 = t::S4 + 37.0;
@@ -155,8 +176,9 @@ impl Geom {
         let mut y = TOP + hero_h(d.win) + 1.0;
         let hero_end = y;
         y += FACTS_H + 1.0;
-        let chips = (!d.chips().is_empty()).then(|| {
-            let c = (y, y + CHIPS_H + 1.0);
+        let labels: Vec<String> = d.chips().iter().map(model::Chip::label).collect();
+        let chips = (!labels.is_empty()).then(|| {
+            let c = (y, y + chips_h(&labels, w) + 1.0);
             y = c.1;
             c
         });
@@ -231,6 +253,27 @@ impl Geom {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chip_band_keeps_a_gap_and_grows_when_chips_wrap() {
+        let few: Vec<String> = ["Animation", "Drama", "Mystery"].map(String::from).to_vec();
+        let one_line = chips_h(&few, 1280.0);
+        assert_eq!(
+            one_line,
+            t::S3 + CHIP_H + t::S4,
+            "one line plus the gap above and below"
+        );
+        let many: Vec<String> = (0..30).map(|i| format!("Genre number {i}")).collect();
+        let wrapped = chips_h(&many, 900.0);
+        assert!(
+            wrapped >= one_line + 2.0 * (CHIP_H + t::S2),
+            "several lines: {wrapped}"
+        );
+        assert!(
+            chips_h(&many, 2400.0) < wrapped,
+            "a wider window needs fewer lines"
+        );
+    }
 
     #[test]
     fn hero_has_a_floor_and_follows_the_window() {

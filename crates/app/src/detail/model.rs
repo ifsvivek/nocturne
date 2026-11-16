@@ -112,6 +112,17 @@ pub enum Chip {
     Link(String, String),
 }
 
+impl Chip {
+    /// The text on the chip (links carry an arrow).
+    pub fn label(&self) -> String {
+        match self {
+            Chip::Genre(x) => x.clone(),
+            Chip::Studio(_, n) => n.clone(),
+            Chip::Link(n, _) => format!("{n} \u{2197}"),
+        }
+    }
+}
+
 /// Buttons a page offers, by kind.
 pub fn actions(m: &Media, has_prev: bool, has_next: bool) -> Vec<DAct> {
     use DAct::*;

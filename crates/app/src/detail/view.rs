@@ -362,17 +362,15 @@ impl Detail {
     }
 
     fn chips_band(&self, chips: Vec<Chip>, focus: Option<usize>) -> El<'_> {
+        let labels: Vec<String> = chips.iter().map(Chip::label).collect();
+        let h = geom::chips_h(&labels, self.win.width);
         let mut r: Vec<El<'_>> = vec![];
-        for (i, c) in chips.into_iter().enumerate() {
-            let (label, link) = match &c {
-                Chip::Genre(x) => (x.clone(), false),
-                Chip::Studio(_, n) => (n.clone(), false),
-                Chip::Link(n, _) => (format!("{n} \u{2197}"), true),
-            };
+        for (i, (c, label)) in chips.into_iter().zip(labels).enumerate() {
+            let link = matches!(c, Chip::Link(..));
             let on = focus == Some(i);
             r.push(
-                Press::new(container(g(label).size(t::CAPTION + 1.0)).center_y(28))
-                    .height(28)
+                Press::new(container(g(label).size(t::CAPTION + 1.0)).center_y(geom::CHIP_H))
+                    .height(geom::CHIP_H)
                     .padding([0.0, t::S3])
                     .on_press(Msg::Chip(i))
                     .style(move |s| {
@@ -409,9 +407,9 @@ impl Detail {
                 left: t::PAGE_PAD,
                 right: t::PAGE_PAD,
                 bottom: t::S4,
-                top: 0.0,
+                top: t::S3,
             })
-            .height(geom::CHIPS_H)
+            .height(h)
             .into()
     }
 
