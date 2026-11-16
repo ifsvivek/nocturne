@@ -1,86 +1,165 @@
 # Architecture
 
-NOCTURNE is a Cargo workspace. The app is the only shipped binary (`nocturne`; today the legacy GPUI `crates/app`, the Iced `crates/ui` after the cut-over).
+NOCTURNE is a Cargo workspace. The only shipped binary is `nocturne` (package `nocturne-app`, `crates/app`), an
+[Iced](https://iced.rs/) 0.14 application. Everything that does not need a window lives in framework-free crates so it
+can be tested without one.
 
-> **In transition (branch `iced-migration`).** The UI is moving from GPUI to Iced 0.14 (`crates/ui`), and the
-> single-server model is growing into one catalog over local folders and several Jellyfin servers. Target design:
-> [SOURCES.md](SOURCES.md) and [DECISIONS.md](DECISIONS.md); plan and progress: [dev/ICED_MIGRATION.md](dev/ICED_MIGRATION.md).
-> Sections below that mention GPUI describe the legacy `crates/app` until the cut-over.
-
-| Crate | Role | Writes to server? |
+| Crate | Role | Writes to a server? |
 |---|---|---|
-| `crates/jellyfin` | Async read-only Jellyfin client: libraries, items, images, stream URLs. GET only, enforced by `tests/readonly.rs` | never |
+| `crates/jellyfin` | Async read-only Jellyfin client: libraries, items, images, stream URLs, `Config`. GET only, enforced by `tests/readonly.rs` | never |
 | `crates/jellyfin-user` | User-scope calls: login, Quick Connect, logout, playback reporting, played / favourite, own password, own profile image, display language, own playlists, SyncPlay (REST, WebSocket, clock sync, state machine) | yes, user scope |
 | `crates/jellyfin-admin` | Admin reads and writes. Destructive calls need a `Confirmed` token; live tests guarded by `TestServerGuard` | yes, admin |
-| `crates/session` | Tokens in the system keyring (Secret Service): the active login per server and one per remembered account; server URLs in `servers.toml`, account names in `accounts.toml`; atomic writes | n/a |
-| `crates/player` | mpv playback: `EmbeddedPlayer` (libmpv in a Wayland subsurface) and `Player` (mpv child process over JSON IPC). libmpv is loaded at run time (`mpv_ffi.rs`); `deps.rs` probes libmpv / the mpv binary | n/a |
-| `crates/core` | UI-framework-free logic (settings, navigation, list/detail/admin/account state, playback logic, source layer, caches, bridge) shared by front ends | via the crates above |
-| `crates/local` | Local library: scan, naming rules, index, `.nfo`/sidecar metadata, overrides, local resume state; never writes to media folders (in progress) | never |
-| `crates/ui` | Iced application (in progress; becomes `crates/app` at the cut-over) | via the crates above |
-| `crates/app` | Legacy GPUI application: views, navigation, admin UI; removed at the cut-over | via the crates above |
+| `crates/session` | Tokens in the system keyring (Secret Service), one per server account; server and account names on disk; atomic writes | n/a |
+| `crates/player` | mpv playback: `EmbeddedPlayer` (libmpv in a Wayland subsurface) and `Player` (mpv child process over JSON IPC). libmpv is `dlopen`ed (`mpv_ffi.rs`); `deps.rs` probes libmpv and the mpv binary and builds the install hint. No UI or Jellyfin dependencies | n/a |
+| `crates/core` | Everything UI-framework-free: settings, navigation, list / detail / admin / account state, the source layer (`source`, `backend`, `catalog`, `sources`, `merge`, `versions`), playback rules (`player_logic`, `video`, `sync`, `syncplay`, `player_mpris`), caches, image cache, blurhash, the tokio `bridge` | via the crates above |
+| `crates/local` | The local library: scan, naming rules, `.nfo` and sidecar metadata, optional `ffprobe` details, index, overrides, local resume state. Never writes to media folders. No UI dependencies | never |
+| `crates/app` | The Iced application. The only crate with UI code | via the crates above |
 
-`player` has no UI-framework or Jellyfin dependencies; `core`, `local` and the Jellyfin crates have no UI dependencies.
+`player`, `core`, `local` and the Jellyfin crates have no UI-framework dependency; `player` also has no Jellyfin
+dependency.
 
-## Data flow
+## Data flow (Elm architecture)
 
-1. The UI (on the main thread; an Iced `update`, or a GPUI view in the legacy crate) asks for data and does not block.
-2. The request runs on the tokio bridge (below), which calls `nocturne-jellyfin` over HTTPS (reqwest, rustls).
-3. The result is applied back on the UI thread and the view re-renders.
-4. Images go through `imgcache.rs`: blurhash placeholder first, then bytes from a size-capped disk LRU cache,
-   fetched with retry on a miss. Item data is kept in `cache.rs`.
-5. Navigation state (`nav.rs`) is a history stack of pages, which gives back / forward and breadcrumbs.
+`crates/app/src/main.rs` starts `iced::application(App::boot, App::update, App::view)`. There is one `App` state
+(`app/mod.rs`) and one `Message` enum (`app/message.rs`).
 
-## Tokio bridge
+1. `view(&self)` builds the widget tree from state. It does no I/O.
+2. A user action or subscription event becomes a `Message`.
+3. `update(&mut self, Message) -> Task<Message>` changes the state on the UI thread and returns a `Task` for any work.
+4. Network and disk work runs through `bridge::spawn` (below), wrapped in `Task::perform`; its answer arrives as a new
+   `Message`.
 
-`nocturne-jellyfin` is async; the UI framework runs its own executor on the main thread. `crates/core/src/bridge.rs` keeps one
-process-wide multi-thread tokio runtime (two worker threads) and hands futures to it with `bridge::spawn`. The
-returned handle is a plain future, so an Iced `Task::perform` (a GPUI `cx.spawn` task in the legacy crate) awaits it and
-updates the state on the UI thread (`bridge::run`). No channels, no `block_on`, no nested runtimes.
+Screens that are larger than a handful of fields (`detail/`, `account/`, `player/`, admin) are plain structs with their own
+`Msg`, `update` and `view`; the root wraps them with `.map(...)`. A screen reports side effects to the root as an
+`Outcome` (play this, write that, prefer this source) instead of reaching into root state.
+
+Answers are stamped with what they were asked for: the page id or an **epoch** counter, plus the source. When the user
+has moved on (another page, another filter, a source removed) the answer is dropped on arrival, so a slow server can
+never paint over a newer screen. Subscriptions are limited to keyboard input, a 200 ms tick (connection health,
+playback reporting, shutdown on SIGTERM) and `window::frames()`, which is active only while something animates.
+
+### Tokio bridge
+
+`nocturne-jellyfin` is async; Iced runs its own executor on the main thread. `crates/core/src/bridge.rs` keeps one
+process-wide multi-thread tokio runtime (two worker threads, so every reqwest client lives on it) and hands futures to
+it with `bridge::spawn`. The returned handle is a plain future that `Task::perform` awaits. No `block_on`, no nested
+runtimes.
+
+## Catalog and sources
+
+A **source** is a local library or one Jellyfin server with one account. `core/catalog.rs` owns them as `Slot`s:
+`{ SourceId, Profile, Backend, Status }`.
+
+- `Backend` is an enum, `Jellyfin(Source)` or `Local(LocalBackend)`, with the methods the UI uses (libraries, browse, latest,
+  resume, detail, play target). A third kind would be one more variant; there is no plugin system. What a local source cannot
+  do (studios, similar items, extras, playlists) answers empty; admin and SyncPlay are Jellyfin-only and reached through
+  `Backend::jellyfin`.
+- Every `Media` carries `origin: SourceId`; `(origin, id)` is an item's identity in navigation, caches, image keys,
+  playback and writes.
+- `Profile`s persist in `sources.toml` (versioned, atomic, no secrets). A 0.2 install migrates its server login into a
+  source on first start; the old files stay in place. Tokens stay in the keyring.
+- `Status` per slot: `Connecting`, `Online`, `Offline { retry_at }` (backoff), `SignedOut` (401: sign in again for that
+  server only), `Indexing { done, total }` (local), `Disabled`. A health check on the tick updates them; one failing source
+  never blocks the others. Sources load in a task after the first frame (keyring reads, opening the index), so nothing
+  blocks startup.
+- A **fan-out** (`fan()` in the app, state in `core/sources.rs`) sends one request per online source; answers merge as they
+  arrive and stale epochs are dropped.
+- **Duplicates** (`core/merge.rs`) merge only on strong identity: movies and series on a shared provider id (IMDb, TMDB,
+  TVDB), episodes on the series' provider id plus season and episode number. Title and year alone never merge. A merged
+  `Entry` shows the preferred copy (by source priority, or the user's per-title choice kept locally) and lists the others
+  as alternates.
+- **Versions and sources** (`core/versions.rs`, picker in `detail/overlays.rs`): a server's own `MediaSources` and the
+  copies in other sources form one list. The choice goes to the root as `Outcome::Play { source_id }`; "Always prefer"
+  as `Outcome::Prefer`.
+- A developer token (`NOCTURNE_JF_TOKEN`, debug builds) is a transient read-only source with id 0.
+
+The first-run routing (`FirstRun` / `Step` in `core/sources.rs`) shows the welcome screen when there are no sources;
+Settings > Sources (`app/sources.rs`) and the local folders screen (`app/folders.rs`, scan on a thread with progress and
+cancel, unmatched items with manual match) manage them afterwards.
+
+### Local library
+
+`crates/local` scans each root (symlink loops end, unreadable entries are reported, hidden and `.nomedia` directories are
+skipped, re-scans are incremental), parses names (movies, `Show/Season 01/... S01E02 ...`, provider tags), and reads
+`.nfo` and sidecar art; `ffprobe` adds runtime and streams when installed. Metadata precedence: user overrides, `.nfo`,
+sidecar art, embedded tags, file name. Files keep a stable id across moves and renames (inode or size plus partial hash).
+Persistence under `$XDG_DATA_HOME/nocturne/local/`: `index.json` (rebuilt by scans), `overrides.json` (user edits,
+never touched by scans) and `state.json` (resume and played state). The index is held in memory, which is comfortable to
+tens of thousands of files; SQLite is the step beyond that if libraries outgrow it ([SOURCES.md](SOURCES.md)).
+
+## Images
+
+`core/imgcache.rs`: a blurhash placeholder first, then bytes from a size-capped disk LRU cache, fetched with retry on a
+miss; cache keys include the origin. The UI keeps decoded `iced::widget::image::Handle`s (cheap to clone) keyed the same
+way. Item data is cached in `core/cache.rs`. Library grids and lists are virtualised: only the rows in the scroll
+viewport are built.
 
 ## Playback and in-window video
 
-Neither UI framework has a native video surface. `EmbeddedPlayer` creates a `wl_subsurface` placed below the (transparent) app
-window, renders with libmpv's OpenGL render API through EGL, and the UI draws the controls on top. Hardware decoding
-is on by default. With Iced the player page leaves a transparent hole whose layout bounds drive `set_bounds` (spike:
-`spikes/iced-embed`). libmpv is `dlopen`ed, so when it is missing the app still starts: playback falls back to the
-external `mpv` binary, and if that is missing too the user gets an install hint. This uses raw Wayland handles and about
-300 lines of `unsafe` glue; in the legacy GPUI build it depends on GPUI internals, which is why GPUI is version-pinned.
-libmpv's Vulkan context is deliberately not used: a second Vulkan instance next to the UI's crashed on NVIDIA (details and
-measurements in [video-embedding.md](video-embedding.md), written against GPUI).
+Iced has no video surface. `EmbeddedPlayer` creates a `wl_subsurface` placed below the (transparent) Iced window and
+renders with libmpv's **OpenGL render API through EGL**. The player page draws a `Hole` widget (`widget/hole.rs`): it
+paints nothing, so the compositor shows the video through it, and it reports its layout bounds, which become
+`set_bounds`. The controls are ordinary Iced widgets drawn over it. Raw Wayland handles come from `window::run`
+(`platform.rs`). Hardware decoding is on by default; `hwdec-current` is read during embedded playback to verify it.
 
-Where in-window video is unavailable (X11, or `NOCTURNE_VIDEO=external`), `Player` runs the `mpv` binary as a child
-process with its own window, controlled over a private unix socket. A driver crash there cannot take the app down.
-Both backends share one API. Buffering watermarks are described in [buffering.md](buffering.md).
+**Never create an mpv Vulkan / `gpu-next` context in the app process.** A second Vulkan instance next to the renderer's
+crashed on NVIDIA; history and measurements in [video-embedding.md](video-embedding.md). The Iced renderer should also
+stay on its Vulkan backend: with the GL backend the video was darkened.
 
-The pure player rules (`player_logic.rs`, `video.rs`) and `player_mpris.rs` (media keys over D-Bus with zbus) live in
-`crates/core`; the player UI is `player_view.rs` / `player_ui.rs` in the legacy `crates/app` and its Iced replacement in
-`crates/ui`. Playback reporting is driven from the root tick (`sync.rs`), not from the player, so one code path
-handles all progress, played and stopped reports.
+Where in-window video is unavailable (X11, `NOCTURNE_VIDEO=external`, or a failed Wayland setup), `Player` runs the `mpv`
+binary as a child process with its own window, controlled over a private unix socket, so a driver crash cannot take the app
+down. Both backends are used through `core/video.rs` (`Playback`), which picks the backend at the first play. libmpv is
+`dlopen`ed at that point: if it is missing the external mpv is used, and if that is missing too the player page shows an
+install hint for the distribution. Opening a stream and stalls show the buffering overlay (`widget/buffering.rs`):
+backdrop, logo revealed by the buffer fill, status line. Buffering watermarks: [buffering.md](buffering.md).
+
+Pure player rules (`player_logic.rs`, `video.rs`) and MPRIS (`player_mpris.rs`, zbus) are in `crates/core`. Playback
+reporting (start, progress, stop) is driven from the root tick (`sync_tick`, pure state machine in `core/sync.rs`), not from
+the player, so one code path handles every report. The player page (`player/`) is its own screen with controls, popovers,
+trickplay and key handling; it closes by dropping the player before the window closes (`exit_on_close_request(false)`).
+Playback targets are a stream URL plus header lines (credentials never go in the URL or argv) or a local file path.
 
 ## Watch together (SyncPlay)
 
-`jellyfin-user/src/syncplay/` holds everything that is not UI: `model.rs` (typed messages and their decoding),
-`time.rs` (clock offset, lowest-delay sample), `engine.rs` (a pure state machine that takes `now` and returns what to do:
-schedule a command, load a queue, report Ready, correct drift), `rest.rs` (calls; writes take `UserConfirmed`) and `ws.rs`
-(reqwest does the HTTP upgrade, tungstenite only frames; reconnect with backoff). The app side is `crates/core/src/syncplay.rs` (pure rules: what the screen may offer, ordering the group's items, stall detection) plus the UI glue (legacy GPUI: `crates/app/src/app/ui_syncplay.rs`, the `Sp` state on `Root`, a 50 ms poll loop on the UI thread that drains the socket channel, the screen and the pill; the Iced version is being ported). While in a group the
-player's transport methods push `GroupReq` into an outbox instead of acting; `Root` sends them to the group and applies the
-group's commands through the `group_*` methods, which never route back. See [syncplay.md](syncplay.md).
+`jellyfin-user/src/syncplay/` holds everything that is not UI: `model.rs` (typed messages), `time.rs` (clock offset),
+`engine.rs` (a pure state machine that takes `now` and returns what to do), `rest.rs` (calls; writes take `UserConfirmed`)
+and `ws.rs` (reqwest upgrade, tungstenite framing, reconnect with backoff). `core/syncplay.rs` has the pure app rules.
+The Iced side drains the socket channel on a short poll, shows the screen and the header pill, and applies the
+group's commands through methods that never route back into the group. While in a group the player pushes transport
+requests into an outbox instead of acting. SyncPlay acts on one chosen server. See [syncplay.md](syncplay.md).
 
 ## Write gating
 
-All server changes funnel through one master setting, `allow_server_writes` (default off, persisted in
-`settings.toml`).
+All server changes funnel through one master setting, `allow_server_writes` (default off, persisted in `settings.toml`).
 
-- Progress reporting, played / favourite and password change are skipped (and their controls dimmed) when it is off.
-- The admin UI is view only when it is off; when on, every admin action goes through the single confirmation
-  choke point (`on_confirm` in the admin screen), which mints the `Confirmed` token the destructive `jellyfin-admin` calls require.
-- Developer API-key mode refuses writes regardless of the setting.
+- A write goes to the item's **origin**: the root resolves the slot from `media.origin` (`Catalog::write_slot`) and uses
+  that server's user client, never another one. Local items have no server: their watched and resume state is saved
+  to the local `state.json`, which needs neither setting.
+- Progress reporting, played / favourite and password change are skipped (controls dimmed) when the setting is off.
+- The admin UI is view only when it is off; when on, every admin action goes through the single confirmation choke point
+  (`Admin::on_confirm`), which mints the `Confirmed` token that destructive `jellyfin-admin` calls require. The user's
+  own password change mints `UserConfirmed` only in `account/mod.rs`.
+- The developer API-key source refuses writes whatever the setting says.
 - `crates/jellyfin` cannot write at all.
 
-The user-facing matrix is in [WRITES.md](WRITES.md).
+User-facing matrix: [WRITES.md](WRITES.md).
 
 ## Settings and sessions
 
-`crates/core/src/settings.rs` reads and writes versioned TOML under `$XDG_CONFIG_HOME/nocturne/` atomically on every change.
-Secrets never go there: tokens live in the keyring (`NOCTURNE_KEYRING_SERVICE` overrides the service name so tests
-never touch real entries).
+`core/settings.rs` reads and writes versioned TOML under `$XDG_CONFIG_HOME/nocturne/` atomically on every change. Secrets
+never go there: tokens live in the keyring (`NOCTURNE_KEYRING_SERVICE` overrides the service name so tests never touch real
+entries). Release builds never read `.env`.
+
+## Platform seams
+
+OS-specific code stays behind a few seams ([PLATFORMS.md](PLATFORMS.md)): `app/src/platform.rs` (window handles for the
+video surface, signals, now-playing art file), `crates/player` (embedded and external backends, IPC, libmpv loading),
+`crates/session` (keyring), MPRIS in core, and XDG paths. Everything else in the UI is OS-neutral.
+
+## Debug hooks
+
+Debug builds only: `NOCTURNE_SNAP=/tmp/x.png` (with `NOCTURNE_SNAP_AFTER_MS=1500,4000` for several) writes the app window's
+own pixels through `window::screenshot` (`snap.rs`); `NOCTURNE_PREVIEW=<screen>` opens a screen with canned or
+throwaway-server data for layout work (`detail/preview.rs`, `player/preview.rs`, `app/preview.rs`); `NOCTURNE_TIMING=1`
+prints boot and first-frame timings. Use `scripts/run-isolated.sh` so a test run never touches the real config, data or
+keyring.
