@@ -88,6 +88,9 @@ root on the catalog (first run, Sources settings, startup screen) -> 4b-4e writt
 - Video: player page leaves a transparent hole (custom `Hole` widget publishes its bounds -> `set_bounds`); Wayland
   handles via `window::run`; X11 / failure / `NOCTURNE_VIDEO=external` -> external `Player`. libmpv missing ->
   external mpv; mpv binary missing too -> actionable message with `nocturne_player::install_hint()`.
+- Hard requirements: library grids/lists are virtualised (build only the rows in the scroll viewport, from
+  `on_scroll` viewport math; no thousands of widgets); the player step verifies hardware decoding by reading mpv's
+  `hwdec-current` during embedded playback and records it in QA notes.
 - Temporary: until the cut-over, pages not yet ported render a plain "not ported yet" panel.
 
 ## Running it for checks
