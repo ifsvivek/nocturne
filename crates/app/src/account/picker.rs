@@ -1,151 +1,139 @@
-//! "Who's watching?": the model lives in `nocturne_core::account::picker`; this is the GPUI view.
-use crate::{theme as t, ui};
-use gpui::prelude::*;
-use gpui::*;
+//! "Who's watching?" view. The model (start decision, selection, default flag) lives in
+//! `nocturne_core::account::picker`.
 pub use nocturne_core::account::picker::*;
-use nocturne_session::Account;
-use std::sync::Arc;
 
-/// The screen. `pic` finds a loaded profile picture; `on` receives every click.
-pub fn view<T: 'static>(
-    p: &Picker,
-    pic: &dyn Fn(&Account) -> Option<Arc<Image>>,
-    on: fn(&mut T, Act, &mut Context<T>),
-    cx: &mut Context<T>,
-) -> AnyElement {
+use crate::style::{border, glow_shadow};
+use crate::theme as t;
+use crate::widget::press::Press;
+use crate::widget::{avatar, mono, wordmark};
+use iced::widget::button::{Status, Style};
+use iced::widget::image::Handle;
+use iced::widget::{column, container, mouse_area, row, text};
+use iced::{Alignment, Color, Element, Length, Shadow};
+use nocturne_session::Account;
+
+pub fn view<'a, M: Clone + 'a>(
+    p: &'a Picker,
+    pic: &dyn Fn(&Account) -> Option<Handle>,
+    on: impl Fn(Act) -> M + Copy + 'a,
+) -> Element<'a, M> {
     let n_acc = p.accounts.len();
-    let tile = |i: usize, label: String, face: Div| {
+    let tile = |i: usize, label: String, face: Element<'a, M>| -> Element<'a, M> {
         let on_it = i == p.sel;
-        div()
-            .id(("pick-tile", i))
-            .w(px(TILE_W))
-            .flex_none()
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap(px(t::S3))
-            .cursor_pointer()
-            .on_click(cx.listener(move |t, _, _, cx| {
-                let a = if i < n_acc { Act::Pick(i) } else { Act::Add };
-                on(t, a, cx)
-            }))
-            .child(
-                face.border_2()
-                    .border_color(if on_it { t::accent() } else { t::edge() })
-                    .when(on_it, |d| {
-                        d.shadow(vec![BoxShadow {
-                            color: t::glow().into(),
-                            offset: point(px(0.0), px(0.0)),
-                            blur_radius: px(24.0),
-                            spread_radius: px(0.0),
-                        }])
-                    })
-                    .hover(|s| {
-                        s.border_color(if on_it {
-                            t::accent()
-                        } else {
-                            t::text_tertiary()
-                        })
-                    })
-                    .font_family(t::MONO)
-                    .text_size(px(44.0))
-                    .text_color(t::accent_text()),
-            )
-            .child(
-                div()
-                    .max_w_full()
-                    .truncate()
-                    .text_size(px(t::BODY_LG))
-                    .font_weight(if on_it {
-                        FontWeight::SEMIBOLD
+        let act = if i < n_acc { Act::Pick(i) } else { Act::Add };
+        let ring = Press::new(face)
+            .width(PIC)
+            .height(PIC)
+            .padding(2)
+            .on_press(on(act))
+            .style(move |s| Style {
+                background: None,
+                text_color: t::ACCENT_TEXT,
+                border: border(
+                    if on_it {
+                        t::ACCENT
+                    } else if matches!(s, Status::Hovered | Status::Pressed) {
+                        t::TEXT_TERTIARY
                     } else {
-                        FontWeight::NORMAL
-                    })
-                    .text_color(if on_it {
-                        t::text()
-                    } else {
-                        t::text_secondary()
-                    })
-                    .child(label),
+                        t::EDGE
+                    },
+                    2.0,
+                    PIC / 2.0,
+                ),
+                shadow: if on_it {
+                    glow_shadow(t::GLOW.a)
+                } else {
+                    Shadow::default()
+                },
+                snap: false,
+            });
+        let name = text(label)
+            .size(t::BODY_LG)
+            .font(if on_it { t::SEMIBOLD } else { t::FONT })
+            .color(if on_it { t::TEXT } else { t::TEXT_SECONDARY });
+        mouse_area(
+            container(
+                column![ring, name]
+                    .spacing(t::S3)
+                    .align_x(Alignment::Center),
             )
-    };
-    let mut row = div()
-        .w(px(p.cols.min(p.tiles()) as f32 * (TILE_W + GAP) - GAP))
-        .flex()
-        .flex_wrap()
-        .justify_center()
-        .gap(px(GAP));
-    for (i, a) in p.accounts.iter().enumerate() {
-        row = row.child(tile(
-            i,
-            a.user_name.clone(),
-            ui::avatar(PIC, &a.user_name, pic(a)),
-        ));
-    }
-    let add = div()
-        .size(px(PIC))
-        .flex_none()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded_full()
-        .bg(t::glass())
-        .text_color(t::text_secondary())
-        .child("+");
-    row = row.child(tile(p.accounts.len(), "Add profile".into(), add));
-    let adding = p.sel == p.accounts.len();
-    let check = div()
-        .id("pick-default")
-        .flex()
-        .items_center()
-        .gap(px(t::S2))
-        .cursor_pointer()
-        .when(adding, |d| d.opacity(0.4))
-        .on_click(cx.listener(move |t, _, _, cx| on(t, Act::Toggle, cx)))
-        .child(
-            div()
-                .size(px(18.0))
-                .flex_none()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(4.0))
-                .border_1()
-                .border_color(if p.checked() { t::accent() } else { t::edge() })
-                .when(p.checked(), |d| d.bg(t::accent()))
-                .text_size(px(t::CAPTION))
-                .text_color(t::on_accent())
-                .child(if p.checked() { "\u{2713}" } else { "" }),
+            .width(TILE_W)
+            .align_x(Alignment::Center),
         )
-        .child(
-            div()
-                .text_size(px(t::BODY))
-                .text_color(t::text_secondary())
-                .child("Use as default profile"),
-        );
-    ui::fade_in(
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .items_center()
-            .justify_center()
-            .gap(px(t::S8))
-            .child(ui::wordmark(t::HEADING))
-            .child(
-                div()
-                    .text_size(px(36.0))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(t::text())
-                    .child("Who's watching?"),
-            )
-            .child(row)
-            .child(check)
-            .child(ui::mono(
-                "\u{2190} \u{2192} move    ENTER choose    SPACE default profile",
-            )),
-        "picker".into(),
-        t::SLOW,
+        .on_press(on(act))
+        .into()
+    };
+    let mut tiles: Vec<Element<'a, M>> = p
+        .accounts
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            let face = avatar(
+                PIC - 4.0,
+                &a.user_name,
+                pic(a).as_ref(),
+                t::NONE,
+                0.0,
+                44.0,
+                t::ACCENT_TEXT,
+            );
+            tile(i, a.user_name.clone(), face)
+        })
+        .collect();
+    let add: Element<'a, M> = container(text("+").size(44).font(t::MONO).color(t::TEXT_SECONDARY))
+        .width(PIC - 4.0)
+        .height(PIC - 4.0)
+        .center(PIC - 4.0)
+        .style(|_| iced::widget::container::Style {
+            background: Some(t::GLASS.into()),
+            border: border(t::NONE, 0.0, PIC / 2.0),
+            ..Default::default()
+        })
+        .into();
+    tiles.push(tile(n_acc, "Add profile".into(), add));
+    let grid = container(row(tiles).spacing(GAP).wrap().vertical_spacing(GAP))
+        .width(p.cols.min(p.tiles()) as f32 * (TILE_W + GAP) - GAP)
+        .align_x(Alignment::Center);
+    let adding = p.sel == n_acc;
+    let checked = p.checked();
+    let boxx = container(
+        text(if checked { "\u{2713}" } else { "" })
+            .size(t::CAPTION)
+            .color(t::ON_ACCENT),
     )
-    .into_any_element()
+    .width(18)
+    .height(18)
+    .center(18)
+    .style(move |_| iced::widget::container::Style {
+        background: checked.then(|| t::ACCENT.into()),
+        border: border(if checked { t::ACCENT } else { t::EDGE }, 1.0, 4.0),
+        ..Default::default()
+    });
+    let ink = Color {
+        a: if adding { 0.4 } else { 1.0 },
+        ..t::TEXT_SECONDARY
+    };
+    let check = Press::new(
+        row![
+            boxx,
+            text("Use as default profile").size(t::BODY).color(ink)
+        ]
+        .spacing(t::S2)
+        .align_y(Alignment::Center),
+    )
+    .on_press(on(Act::Toggle))
+    .style(|_| Style::default());
+    container(
+        column![
+            wordmark(t::HEADING),
+            text("Who's watching?").size(36).font(t::BOLD),
+            grid,
+            check,
+            mono("\u{2190} \u{2192} move    ENTER choose    SPACE default profile"),
+        ]
+        .spacing(t::S8)
+        .align_x(Alignment::Center),
+    )
+    .center(Length::Fill)
+    .into()
 }

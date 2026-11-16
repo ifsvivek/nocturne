@@ -1,86 +1,91 @@
 //! Design tokens: near-black base, hairline structure, one electric blue accent, monochrome
 //! chrome (library art is the only rich colour). Dark only. Raw hex lives here and nowhere else.
-use gpui::{Rgba, rgb, rgba};
+use iced::Color;
+use iced::Font;
+use iced::font::{Family, Weight};
 use std::time::Duration;
 
-pub const FONT: &str = "Noto Sans"; // ponytail: system fonts; bundle faces when branding needs it
-pub const MONO: &str = "JetBrainsMono Nerd Font";
+// ponytail: system fonts; bundle faces when branding needs it
+pub const FONT: Font = Font::with_name("Noto Sans");
+pub const MONO: Font = Font::with_name("JetBrainsMono Nerd Font");
+
+/// Noto Sans at `weight` (the GPUI app used MEDIUM / SEMIBOLD / BOLD).
+pub const fn font(weight: Weight) -> Font {
+    Font {
+        family: Family::Name("Noto Sans"),
+        weight,
+        ..Font::DEFAULT
+    }
+}
+pub const MEDIUM: Font = font(Weight::Medium);
+pub const SEMIBOLD: Font = font(Weight::Semibold);
+pub const BOLD: Font = font(Weight::Bold);
+
+const fn rgb(hex: u32) -> Color {
+    Color {
+        r: ((hex >> 16) & 0xff) as f32 / 255.0,
+        g: ((hex >> 8) & 0xff) as f32 / 255.0,
+        b: (hex & 0xff) as f32 / 255.0,
+        a: 1.0,
+    }
+}
+const fn rgba(hex: u32) -> Color {
+    Color {
+        r: ((hex >> 24) & 0xff) as f32 / 255.0,
+        g: ((hex >> 16) & 0xff) as f32 / 255.0,
+        b: ((hex >> 8) & 0xff) as f32 / 255.0,
+        a: (hex & 0xff) as f32 / 255.0,
+    }
+}
+
+/// Fully transparent (the GPUI `rgba(0)`).
+pub const NONE: Color = Color::TRANSPARENT;
+/// Header / breadcrumb fill: the frame colour at 90%.
+pub const HEADER_BG: Color = rgba(0x07080ce6);
+/// Tile / cell chrome that is neither text nor a control, kept here so no raw hex leaks out.
+pub const PROGRESS_TRACK: Color = rgba(0xffffff1f);
+pub const POSTER_DIM: Color = rgba(0x07080c40);
+pub const INDEX_TAG: Color = rgba(0xffffffb0);
+pub const INITIAL_TINT: Color = rgba(0x8fb0ff38);
+/// Backdrop texture tints (RGB; alpha is procedural).
+pub const DOT: [u8; 3] = [0xc8, 0xd4, 0xff];
+pub const BACKDROP_GLOW: [u8; 3] = [0x3b, 0x6b, 0xff];
+/// Modal scrim.
+pub const SCRIM: Color = rgba(0x000000b8);
 
 // Surfaces.
-pub fn frame() -> Rgba {
-    rgb(0x07080c)
-}
-pub fn surface() -> Rgba {
-    rgb(0x0c0e16)
-}
-pub fn raised() -> Rgba {
-    rgb(0x12151f)
-}
+pub const FRAME: Color = rgb(0x07080c);
+pub const SURFACE: Color = rgb(0x0c0e16);
+pub const RAISED: Color = rgb(0x12151f);
 
 // Structure: hairlines ~8% white, faint glass fill.
-pub fn hairline() -> Rgba {
-    rgba(0xffffff14)
-}
-pub fn hairline_strong() -> Rgba {
-    rgba(0xffffff29)
-}
-pub fn glass() -> Rgba {
-    rgba(0xffffff0a)
-}
+pub const HAIRLINE: Color = rgba(0xffffff14);
+pub const HAIRLINE_STRONG: Color = rgba(0xffffff29);
+pub const GLASS: Color = rgba(0xffffff0a);
 /// Boundary of an interactive control (chip, button, switch track, avatar): opaque, >= 3:1 on every
 /// surface (WCAG 1.4.11). Hairlines stay decorative dividers and panel outlines.
-pub fn edge() -> Rgba {
-    rgb(0x747a91)
-}
+pub const EDGE: Color = rgb(0x747a91);
 /// Quiet filled background of a value control; the edge carries the boundary.
-pub fn control() -> Rgba {
-    rgb(0x1a1e2c)
-}
-pub fn control_hover() -> Rgba {
-    rgb(0x232838)
-}
+pub const CONTROL: Color = rgb(0x1a1e2c);
+pub const CONTROL_HOVER: Color = rgb(0x232838);
 
 // Text.
-pub fn text() -> Rgba {
-    rgb(0xeceef5)
-}
-pub fn text_secondary() -> Rgba {
-    rgb(0xa4aabf)
-}
-pub fn text_tertiary() -> Rgba {
-    rgb(0x8990a9)
-}
+pub const TEXT: Color = rgb(0xeceef5);
+pub const TEXT_SECONDARY: Color = rgb(0xa4aabf);
+pub const TEXT_TERTIARY: Color = rgb(0x8990a9);
 
 // Single accent: electric blue.
-pub fn accent() -> Rgba {
-    rgb(0x4c8dff)
-}
-pub fn accent_hover() -> Rgba {
-    rgb(0x6ba0ff)
-}
-pub fn accent_text() -> Rgba {
-    rgb(0x9cc0ff)
-}
-pub fn accent_tint() -> Rgba {
-    rgba(0x4c8dff1f)
-}
-pub fn glow() -> Rgba {
-    rgba(0x4c8dff59)
-}
-pub fn on_accent() -> Rgba {
-    rgb(0x050816)
-}
+pub const ACCENT: Color = rgb(0x4c8dff);
+pub const ACCENT_HOVER: Color = rgb(0x6ba0ff);
+pub const ACCENT_TEXT: Color = rgb(0x9cc0ff);
+pub const ACCENT_TINT: Color = rgba(0x4c8dff1f);
+pub const GLOW: Color = rgba(0x4c8dff59);
+pub const ON_ACCENT: Color = rgb(0x050816);
 
 // Destructive confirmations and warnings only; never decoration.
-pub fn danger() -> Rgba {
-    rgb(0xf0716f)
-}
-pub fn danger_tint() -> Rgba {
-    rgba(0xf0716f1f)
-}
-pub fn warn() -> Rgba {
-    rgb(0xe3b341)
-}
+pub const DANGER: Color = rgb(0xf0716f);
+pub const DANGER_TINT: Color = rgba(0xf0716f1f);
+pub const WARN: Color = rgb(0xe3b341);
 
 // Type scale (px). Only mono micro-annotations may use MICRO; everything else >= 12.
 pub const MICRO: f32 = 11.0;
@@ -119,7 +124,7 @@ mod tests {
 
     type Rgb = [f32; 3];
 
-    fn over(fg: Rgba, bg: Rgb) -> Rgb {
+    fn over(fg: Color, bg: Rgb) -> Rgb {
         [
             fg.r * fg.a + bg[0] * (1.0 - fg.a),
             fg.g * fg.a + bg[1] * (1.0 - fg.a),
@@ -140,7 +145,7 @@ mod tests {
         let (x, y) = (lum(a), lum(b));
         (x.max(y) + 0.05) / (x.min(y) + 0.05)
     }
-    fn solid(c: Rgba) -> Rgb {
+    fn solid(c: Color) -> Rgb {
         [c.r, c.g, c.b]
     }
 
@@ -148,19 +153,15 @@ mod tests {
     /// (selected) and danger tint (destructive).
     fn grounds() -> Vec<(String, Rgb)> {
         let mut v = vec![];
-        for (n, b) in [
-            ("frame", frame()),
-            ("surface", surface()),
-            ("raised", raised()),
-        ] {
+        for (n, b) in [("frame", FRAME), ("surface", SURFACE), ("raised", RAISED)] {
             let b = solid(b);
             v.push((n.to_string(), b));
-            v.push((format!("{n}+glass"), over(glass(), b)));
-            v.push((format!("{n}+tint"), over(accent_tint(), b)));
-            v.push((format!("{n}+danger"), over(danger_tint(), b)));
+            v.push((format!("{n}+glass"), over(GLASS, b)));
+            v.push((format!("{n}+tint"), over(ACCENT_TINT, b)));
+            v.push((format!("{n}+danger"), over(DANGER_TINT, b)));
         }
-        v.push(("control".into(), solid(control())));
-        v.push(("control-hover".into(), solid(control_hover())));
+        v.push(("control".into(), solid(CONTROL)));
+        v.push(("control-hover".into(), solid(CONTROL_HOVER)));
         v
     }
 
@@ -168,13 +169,13 @@ mod tests {
     fn text_tokens_reach_4_5_on_every_surface() {
         let mut bad = vec![];
         for (tn, c) in [
-            ("text", text()),
-            ("secondary", text_secondary()),
-            ("tertiary", text_tertiary()),
-            ("accent", accent()),
-            ("accent_text", accent_text()),
-            ("danger", danger()),
-            ("warn", warn()),
+            ("text", TEXT),
+            ("secondary", TEXT_SECONDARY),
+            ("tertiary", TEXT_TERTIARY),
+            ("accent", ACCENT),
+            ("accent_text", ACCENT_TEXT),
+            ("danger", DANGER),
+            ("warn", WARN),
         ] {
             for (gn, g) in grounds() {
                 let r = ratio(solid(c), g);
@@ -188,35 +189,27 @@ mod tests {
 
     #[test]
     fn labels_on_filled_controls_reach_4_5() {
-        for fill in [accent(), accent_hover()] {
-            let r = ratio(solid(on_accent()), solid(fill));
+        for fill in [ACCENT, ACCENT_HOVER] {
+            let r = ratio(solid(ON_ACCENT), solid(fill));
             assert!(r >= 4.5, "on_accent on accent fill: {r:.2}");
         }
     }
 
     #[test]
     fn control_edges_and_focus_rings_reach_3() {
-        for (tn, c) in [
-            ("edge", edge()),
-            ("accent ring", accent()),
-            ("danger", danger()),
-        ] {
+        for (tn, c) in [("edge", EDGE), ("accent ring", ACCENT), ("danger", DANGER)] {
             for (gn, g) in grounds() {
                 let r = ratio(solid(c), g);
                 assert!(r >= 3.0, "{tn} on {gn}: {r:.2}");
             }
         }
         // The control's own fill must also sit apart from the page so the edge reads as a boundary.
-        assert!(ratio(solid(edge()), solid(control_hover())) >= 3.0);
+        assert!(ratio(solid(EDGE), solid(CONTROL_HOVER)) >= 3.0);
     }
 
     #[test]
     fn hierarchy_stays_quiet_but_distinct() {
-        let (t, s, q) = (
-            solid(text()),
-            solid(text_secondary()),
-            solid(text_tertiary()),
-        );
+        let (t, s, q) = (solid(TEXT), solid(TEXT_SECONDARY), solid(TEXT_TERTIARY));
         assert!(lum(t) > lum(s) && lum(s) > lum(q));
         assert!(
             ratio(s, q) >= 1.25,
@@ -230,11 +223,11 @@ mod tests {
     fn contrast_table() {
         // Run with --nocapture to print the numbers quoted in docs/DESIGN.md.
         for (tn, c) in [
-            ("text", text()),
-            ("secondary", text_secondary()),
-            ("tertiary", text_tertiary()),
-            ("accent", accent()),
-            ("edge", edge()),
+            ("text", TEXT),
+            ("secondary", TEXT_SECONDARY),
+            ("tertiary", TEXT_TERTIARY),
+            ("accent", ACCENT),
+            ("edge", EDGE),
         ] {
             let all: Vec<f32> = grounds().iter().map(|(_, g)| ratio(solid(c), *g)).collect();
             let (lo, hi) = (
