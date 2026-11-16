@@ -18,17 +18,15 @@ path = "src/main.rs"
 
 [dependencies]
 gpui = "=0.2.2"
+nocturne-core = { path = "../core" }
 nocturne-jellyfin = { path = "../jellyfin" }
 nocturne-jellyfin-admin = { path = "../jellyfin-admin" }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time"] }
 nocturne-player = { path = "../player" }
 nocturne-jellyfin-user = { path = "../jellyfin-user" }
 nocturne-session = { path = "../session" }
-serde = { version = "1.0.229", features = ["derive"] }
-toml = "1.2.1"
 # Procedural film-grain texture only.
 image = { version = "0.25.1", default-features = false, features = ["png"] }
 raw-window-handle = "0.6"
 serde_json = "1.0.154"
 libc = "0.2"
-zbus = "5.19"

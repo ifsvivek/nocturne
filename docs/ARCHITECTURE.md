@@ -9,6 +9,7 @@ NOCTURNE is a Cargo workspace of six crates. The app is the only binary (`noctur
 | `crates/jellyfin-admin` | Admin reads and writes. Destructive calls need a `Confirmed` token; live tests guarded by `TestServerGuard` | yes, admin |
 | `crates/session` | Tokens in the system keyring (Secret Service): the active login per server and one per remembered account; server URLs in `servers.toml`, account names in `accounts.toml`; atomic writes | n/a |
 | `crates/player` | mpv playback: `EmbeddedPlayer` (libmpv in a Wayland subsurface) and `Player` (mpv child process over JSON IPC) | n/a |
+| `crates/core` | UI-framework-free logic (settings, navigation, list/detail/admin/account state, playback logic, source layer, caches, bridge) shared by front ends | via the crates above |
 | `crates/app` | GPUI application: views, navigation, settings, caches, admin UI | via the crates above |
 
 `player` has no GPUI or Jellyfin dependencies; the Jellyfin crates have no UI dependencies.
@@ -24,7 +25,7 @@ NOCTURNE is a Cargo workspace of six crates. The app is the only binary (`noctur
 
 ## Tokio bridge
 
-`nocturne-jellyfin` is async; GPUI runs its own executor on the main thread. `crates/app/src/bridge.rs` keeps one
+`nocturne-jellyfin` is async; GPUI runs its own executor on the main thread. `crates/core/src/bridge.rs` keeps one
 process-wide multi-thread tokio runtime (two worker threads) and hands futures to it with `bridge::spawn`. The
 returned handle is a plain future, so a GPUI `cx.spawn` task awaits it and updates the entity on the UI thread
 (`bridge::run`). No channels, no `block_on`, no nested runtimes.

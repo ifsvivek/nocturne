@@ -2,28 +2,18 @@ mod account;
 mod admin;
 mod app;
 mod assets;
-mod blurhash;
 mod bridge;
-mod cache;
-mod detail;
-mod dropdown;
-mod imgcache;
-mod libview;
-mod nav;
-mod player_logic;
-mod player_mpris;
 mod player_ui;
 mod player_view;
-mod search;
-mod settings;
 mod source;
-mod sync;
-mod syncplay;
 mod theme;
 mod ui;
-mod video;
 
 use gpui::*;
+use nocturne_core::{
+    blurhash, cache, detail, dropdown, imgcache, libview, nav, player_logic, player_mpris, search,
+    settings, sync, syncplay, video,
+};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Set by SIGTERM/SIGINT; `Root::tick` turns it into a normal quit (settings are saved on change).

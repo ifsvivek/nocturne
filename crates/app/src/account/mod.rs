@@ -2,7 +2,7 @@
 //! One GPUI entity owns the state (`state::Account`); `Root` forwards keys to it while an account
 //! screen is up and reacts to its events. All I/O goes through the tokio bridge, never the UI thread.
 pub mod picker;
-mod state;
+pub use nocturne_core::account::state;
 mod view;
 
 use crate::bridge;
