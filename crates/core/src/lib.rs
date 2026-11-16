@@ -7,6 +7,7 @@ pub mod bridge;
 pub mod cache;
 pub mod detail;
 pub mod dropdown;
+pub mod help;
 pub mod imgcache;
 pub mod libview;
 pub mod nav;
