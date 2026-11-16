@@ -10,6 +10,12 @@ Delete this file (fold the lasting parts into ARCHITECTURE.md / DECISIONS.md) wh
   `wl_subsurface` below the transparent Iced window); external `mpv` child process on X11 / failure.
 - libmpv is loaded at runtime (`dlopen`), so a missing library degrades playback instead of killing the process.
 
+## Scope change 2026-11-16
+
+Multi-source (local library + several Jellyfin servers, unified catalog) is now core: design and milestones in
+`docs/SOURCES.md`. Order: 4a (running) -> sources M1 (`crates/local`, parallel, worktree) -> M2 core catalog -> M3 Iced
+root on the catalog (first run, Sources settings, startup screen) -> 4b-4e written directly on the catalog model.
+
 ## Steps
 
 1. **libmpv runtime loading + installer** (crates/player, packaging). Independent of the UI work.
