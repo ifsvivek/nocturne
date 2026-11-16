@@ -546,6 +546,10 @@ pub fn menu_row<'a, M: Clone + 'a>(
 
 /// 0.35..1.0 breathing opacity used by "Connecting" style labels, `period_ms` per cycle.
 pub fn pulse(now: std::time::Instant, period_ms: u128) -> f32 {
+    // Reduce motion: a steady, calm label instead of breathing.
+    if crate::motion::reduced() {
+        return 0.75;
+    }
     static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
     let start = *START.get_or_init(|| now);
     let v =

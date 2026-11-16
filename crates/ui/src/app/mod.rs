@@ -407,9 +407,11 @@ impl App {
                     .ob
                     .as_ref()
                     .is_some_and(|o| o.animating(Instant::now()))
-            || matches!(self.phase, Phase::Connecting)
-            || (matches!(self.phase, Phase::Account)
-                && self.accounts.as_ref().is_some_and(|a| a.animating()))
+            // The breathing labels are steady with reduced motion: no frames needed for them.
+            || !crate::motion::reduced()
+                && (matches!(self.phase, Phase::Connecting)
+                    || (matches!(self.phase, Phase::Account)
+                        && self.accounts.as_ref().is_some_and(|a| a.animating())))
     }
 
     // ---- update ----
