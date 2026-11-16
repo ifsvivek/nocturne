@@ -46,6 +46,8 @@ Catalog (core)                      one per process, owned by the UI root
   number; series by provider id. Jellyfin supplies `ProviderIds` (requested as an extra field, GET only); local
   items get them from `.nfo` files or `[imdbid-tt…]` / `{tmdb-…}` tags in names (Jellyfin naming convention).
 - Title + year matches without ids are *possible* duplicates: shown separately, never merged automatically.
+- Server-side versions of one item (Jellyfin `MediaSources`, e.g. 4K and 1080p) and cross-source copies share one
+  "Versions and sources" picker on the detail page.
 - A merged `Entry` shows the preferred copy (first by profile priority among available slots, overridable per item
   and remembered locally) and lists the others as alternate sources on the detail page (source, quality, availability).
 - Metadata conflicts: the entry displays the preferred copy's metadata; nothing is written back anywhere.

@@ -33,9 +33,21 @@ group, resume positions, and testing with more than two members and with transco
   with several Jellyfin servers and accounts, or both; duplicates across sources shown once with alternate sources;
   a first-run choice between the three modes; a Sources section in Settings.
 - **Startup screen** with original artwork and real progress.
+- **Version picker**: movies and episodes with several versions, and copies of the same title on other servers or
+  in local folders, are offered in one "Versions and sources" choice on the detail page.
+- **mpv 0.42 check**: mpv now verifies HTTPS certificates by default; playback against servers with private or
+  self-signed certificates is tested, and a per-server trust option is added only if needed.
 - **Footprint baselines** (size, start time, idle memory and CPU) tracked per release ([PLATFORMS.md](PLATFORMS.md)).
 
-## Then: compatibility and correctness (0.4)
+## Then: 0.4, right after 0.3 is approved
+
+Chosen by the maintainer from the research backlog: dual subtitles; audio and subtitle language remembered per show
+across restarts (including original audio); a Latest row with new episodes and Play on a show card starting the next
+unwatched episode; truthful playback reports with visible errors and a retried final report; an optional extra HTTP
+header per server (reverse proxies); "Included in" collections on detail pages; **HDR playback mode** on Linux
+([HDR.md](HDR.md)). The compatibility items below are folded into the same release where they overlap.
+
+## Then: compatibility and correctness
 
 A review of the Jellyfin ecosystem (server, web and other official clients: issues, pull requests, API changes) found no
 critical problems in NOCTURNE. It did find a set of small fixes worth doing before new features.
