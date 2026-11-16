@@ -90,7 +90,8 @@ root on the catalog (first run, Sources settings, startup screen) -> 4b-4e writt
 - Video: player page leaves a transparent hole (custom `Hole` widget publishes its bounds -> `set_bounds`); Wayland
   handles via `window::run`; X11 / failure / `NOCTURNE_VIDEO=external` -> external `Player`. libmpv missing ->
   external mpv; mpv binary missing too -> actionable message with `nocturne_player::install_hint()`.
-- Hard requirements: library grids/lists are virtualised (build only the rows in the scroll viewport, from
+- Hard requirements: launch is fast (first frame and interactive shell measured with NOCTURNE_TIMING=1; nothing
+  blocking before the first frame); library grids/lists are virtualised (build only the rows in the scroll viewport, from
   `on_scroll` viewport math; no thousands of widgets); the player step verifies hardware decoding by reading mpv's
   `hwdec-current` during embedded playback and records it in QA notes.
 - Temporary: until the cut-over, pages not yet ported render a plain "not ported yet" panel.
@@ -117,6 +118,13 @@ Demo library on a throwaway server: `scripts/make-demo-library.sh build` (prints
   Verified against a demo server with wtype/ydotool. Deferred: Home/browse (4b), detail/playlists/search overlay (4b/4c),
   player (4d), devices overlay, Watch together, admin, music queue (4e). Platform code is isolated in `ui/src/platform.rs`.
   While GPUI shares the workspace, `crates/ui` carries a `naga` feature pin (see its Cargo.toml); delete at cut-over.
+- [x] sources M2 core catalog merged (348 tests): SourceId/origin, provider ids, sources.toml profiles + migration,
+  Backend enum (Jellyfin/Local), Catalog + statuses, merge/duplicates, preferred sources, write routing.
+  Carry into M3: migrate every server with a usable login (not just the last), dev-token mode as a transient read-only
+  source, availability flag on Media so unplugged local copies are demoted in merges.
+- [~] first-run welcome, glyph/button fixes, FAST launch (measured), player buffering overlay widget (worktree; the
+  cinematic launch screen was dropped: the user meant video buffering)
+- [ ] M3 Iced root on the catalog (Sources settings, local folders screen, source filter/marks, local playback)
 - [ ] 4b-4e screens
 - [ ] 5 cut-over
 - [ ] 6 verification
