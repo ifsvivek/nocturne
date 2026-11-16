@@ -4,7 +4,7 @@ Everything NOCTURNE does not do yet, in the order it is likely to be built, plus
 What already works is in [FEATURES.md](FEATURES.md); verification status is in [QA_REPORT.md](QA_REPORT.md).
 No dates are promised. Priorities can change with user feedback and with what upstream Jellyfin changes.
 
-## 0.2.x (current release)
+## 0.2.x (current release; GPUI interface)
 
 Shipped: browsing, search, details, in-window GPU playback with a full player, accounts (password, Quick Connect,
 switching), playlists and a music queue, an admin dashboard inside the same app, settings, packaging for Arch Linux.
@@ -96,11 +96,11 @@ critical problems in NOCTURNE. It did find a set of small fixes worth doing befo
   safely needs a lock-out guard that can be tested
 
 **Platform**
-- Packages are tested on Arch Linux only; .deb, .rpm and AppImage come next ([PLATFORMS.md](PLATFORMS.md))
+- Packages are tested on Arch Linux only; .deb, .rpm and AppImage are planned, not started ([PLATFORMS.md](PLATFORMS.md))
 - Screen-reader support: re-evaluated on Iced once the migration ships (Iced's accessibility support is still limited)
 - HDR output depends on libmpv gaining a modern render API; until then HDR is tone-mapped to SDR
-- macOS (.dmg) and Windows (.msi/.exe): planned after the Linux 0.3 release; in-window video there needs its own
-  investigation ([PLATFORMS.md](PLATFORMS.md))
+- macOS (.dmg) and Windows (.msi/.exe): planned, not started; work begins only after the maintainer has tested the Arch
+  0.3 build and approved it; in-window video there needs its own investigation ([PLATFORMS.md](PLATFORMS.md))
 
 ## Dropped (will not be built)
 

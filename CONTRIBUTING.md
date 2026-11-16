@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. NOCTURNE is an unofficial Linux desktop client for Jellyfin; read
+Thanks for helping. NOCTURNE is an unofficial desktop client for Jellyfin and local media (Linux first); read
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/WRITES.md](docs/WRITES.md) first.
 
 ## Ground rules
@@ -19,8 +19,9 @@ Thanks for helping. NOCTURNE is an unofficial Linux desktop client for Jellyfin;
 
 ```sh
 git clone https://github.com/ifsvivek/nocturne && cd nocturne
-cargo build                      # needs stable Rust 1.89+ and libmpv dev files (`pkg-config --modversion mpv`)
-cargo run -p nocturne-app        # binary: nocturne; reads an optional git-ignored .env (see .env.example)
+cargo build                      # needs stable Rust 1.89+; libmpv is only needed at run time (loaded with dlopen)
+cargo run -p nocturne-ui         # the Iced UI (in development); `-p nocturne-app` runs the legacy GPUI UI (binary: nocturne)
+                                 # both read an optional git-ignored .env (see .env.example)
 cargo test --workspace           # offline tests
 ```
 
@@ -46,14 +47,15 @@ The admin and user crates' live tests refuse to run unless the URL is the loopba
 
 ## Code style
 
-Rust 2024 edition, `cargo fmt` defaults. Colours and sizes come from `crates/app/src/theme.rs`; do not add raw hex
-elsewhere (see [docs/DESIGN.md](docs/DESIGN.md)). Prefer the smallest change that works; comment non-obvious
-constraints (for example GPUI internals the video embedding depends on).
+Rust 2024 edition, `cargo fmt` defaults. Colours and sizes come from the UI crate's `theme.rs` (`crates/ui`; the legacy
+GPUI crate has its own in `crates/app/src/theme.rs`); do not add raw hex elsewhere (see [docs/DESIGN.md](docs/DESIGN.md)).
+Prefer the smallest change that works; comment non-obvious constraints (for example window-handle details the video
+embedding depends on). New features go into `crates/ui` and `crates/core`, not the legacy GPUI crate.
 
 ## Vendored crate
 
 `vendor/xattr` is `xattr` 0.2.3 with a one-line fix, wired through `[patch.crates-io]` in `Cargo.toml`
-(see the note there). Leave it alone unless removing it.
+(see the note there). Only the legacy GPUI crate needs it; leave it alone until it is removed with that crate.
 
 ## Dependencies and licences
 

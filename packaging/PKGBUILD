@@ -2,7 +2,7 @@
 pkgname=nocturne
 pkgver=0.2.0
 pkgrel=1
-pkgdesc='Native Jellyfin desktop client (GPUI + libmpv), Wayland first'
+pkgdesc='Native Jellyfin desktop client with libmpv playback, Wayland first'
 arch=(x86_64)
 url='https://github.com/ifsvivek/nocturne'
 license=(GPL-3.0-or-later)

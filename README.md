@@ -4,18 +4,20 @@
 
 **YOUR MEDIA. YOUR NIGHT.**
 
-A native, cinematic desktop client for Jellyfin on Linux. Written in Rust with [GPUI](https://www.gpui.rs/),
-playing video in the app window through libmpv. Wayland first.
+A native, cinematic desktop client for Jellyfin, written in Rust and playing video in the app window through libmpv.
+Linux first, Wayland first. The released 0.2.0 uses [GPUI](https://www.gpui.rs/) for its interface; 0.3 moves to
+[Iced](https://iced.rs/).
 
 [Website](https://nocturne.ifsvivek.in) · [Download](https://github.com/ifsvivek/nocturne/releases/latest) · [Features](docs/FEATURES.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
 
-Status: version 0.2.0, early software, Linux only. **0.3 is in development**: a new Iced interface replacing GPUI,
+Status: version 0.2.0, early software, Linux (tested on Arch only); macOS and Windows are planned, not available yet
+([docs/PLATFORMS.md](docs/PLATFORMS.md)). **0.3 is in development**: a new Iced interface replacing GPUI,
 local media folders and several Jellyfin servers in one library, and an installer that sets up libmpv for you.
 See [docs/ROADMAP.md](docs/ROADMAP.md) for what is coming and what is missing.
 
 ## Screenshots
 
-Captured full-screen at 3840x2160 against a generated demo library, not personal media.
+Of the released 0.2.0 (GPUI interface), captured at 3840x2160 against a generated demo library, not personal media.
 
 |                                                           |                                                               |
 | --------------------------------------------------------- | ------------------------------------------------------------- |
@@ -48,7 +50,7 @@ The full checklist is [docs/FEATURES.md](docs/FEATURES.md); verification notes a
   confirmation dialog.
 
 Not implemented: Live TV, DLNA, casting, gapless music, playable books and audiobooks, and a few admin settings (HTTPS and
-proxy editing, access schedules). Windows and macOS are not supported yet (planned after the Linux 0.3 release).
+proxy editing, access schedules). Windows and macOS are not supported yet (planned, see [docs/PLATFORMS.md](docs/PLATFORMS.md)).
 
 ## Install
 
@@ -59,7 +61,7 @@ installer checks for every runtime library and installs missing ones with your d
 with 0.2.0, install libmpv yourself first. Packages are tested on Arch Linux only; see
 [docs/PACKAGING.md](docs/PACKAGING.md) for the full dependency list.
 
-**Release tarball** (from the [latest release](https://github.com/ifsvivek/nocturne/releases/latest)):
+**Release tarball** (0.2.0; from the [latest release](https://github.com/ifsvivek/nocturne/releases/latest)):
 
 ```sh
 sha256sum -c nocturne-0.2.0-x86_64-linux.tar.gz.sha256
@@ -77,9 +79,9 @@ git clone https://github.com/ifsvivek/nocturne && cd nocturne/packaging && makep
 
 ```sh
 # Arch: sudo pacman -S rust mpv pkgconf libxkbcommon-x11 vulkan-icd-loader
-# Debian/Ubuntu (names may differ): libmpv-dev pkg-config libxkbcommon-x11-dev libvulkan1 libwayland-dev libdbus-1-dev
+# Debian/Ubuntu (names may differ): pkg-config libxkbcommon-x11-dev libvulkan1 libwayland-dev libdbus-1-dev
 git clone https://github.com/ifsvivek/nocturne && cd nocturne
-cargo build --release --locked      # needs stable Rust 1.89+ and `pkg-config --modversion mpv` to succeed
+cargo build --release --locked      # needs stable Rust 1.89+; libmpv is only needed at run time
 ./target/release/nocturne
 ```
 
@@ -93,12 +95,12 @@ A clean release build takes several minutes (fat LTO).
 | Packages | Tested on Arch Linux only (see [docs/PACKAGING.md](docs/PACKAGING.md)). Other distributions should build from source but are unverified. |
 | Wayland | In-window video (libmpv in a subsurface). Developed and tested here, on NVIDIA proprietary drivers; AMD and Intel GPUs are untested. |
 | X11 | The interface works; video plays in an external mpv window that closes with the app. Tested through Xwayland. |
-| Server | Jellyfin 12.4 (a real server and a throwaway one). Other versions are untested; other media servers are not supported. |
+| Server | Jellyfin 12.4 (a real server and a throwaway one). Other versions are untested; other media servers are not supported. Local media folders arrive with 0.3 (in development). |
 | Needed at run time | libmpv, a Vulkan driver, EGL, a Secret Service provider to remember logins |
 
 ## Troubleshooting
 
-- **The window opens but no video appears, or the app fails to start.** GPUI renders with Vulkan: check that a Vulkan
+- **The window opens but no video appears, or the app fails to start.** The interface renders with Vulkan: check that a Vulkan
   driver is installed (`vulkaninfo --summary`). Run `nocturne` from a terminal to see its messages.
 - **Video opens in a separate mpv window.** That is the fallback when in-window video is unavailable (X11, or
   `NOCTURNE_VIDEO=external`, or a failure to set up the Wayland surface; the terminal says
@@ -148,8 +150,8 @@ referenced from [AGENTS.md](AGENTS.md)) has the crate map, commands and safety r
 
 ## Documentation
 
-[Features](docs/FEATURES.md) | [Architecture](docs/ARCHITECTURE.md) | [Design](docs/DESIGN.md) |
-[Roadmap](docs/ROADMAP.md) | [Writes](docs/WRITES.md) | [Packaging](docs/PACKAGING.md) | [QA report](docs/QA_REPORT.md) |
+[Features](docs/FEATURES.md) | [Architecture](docs/ARCHITECTURE.md) | [Decisions](docs/DECISIONS.md) |
+[Sources](docs/SOURCES.md) | [Platforms](docs/PLATFORMS.md) | [Design](docs/DESIGN.md) | [Roadmap](docs/ROADMAP.md) | [Writes](docs/WRITES.md) | [Packaging](docs/PACKAGING.md) | [QA report](docs/QA_REPORT.md) |
 [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Changelog](CHANGELOG.md)
 
 ## License
@@ -162,11 +164,13 @@ GPL-3.0-or-later. See [LICENSE](LICENSE); third-party licences are listed in
 - **[Jellyfin](https://jellyfin.org/)** is the media server NOCTURNE talks to. "Jellyfin" and its logo are trademarks of
   the Jellyfin project. NOCTURNE is an unofficial third-party client; it is not affiliated with, endorsed by or
   sponsored by Jellyfin, and uses the name only to say which server it works with.
-- **[GPUI](https://github.com/zed-industries/zed)** by Zed Industries, the UI framework (Apache-2.0).
+- **[Iced](https://iced.rs/)**, the UI framework of 0.3 (MIT), and **[GPUI](https://github.com/zed-industries/zed)** by Zed
+  Industries, the UI framework of the released 0.2.0 (Apache-2.0), which Iced replaces.
 - **[mpv](https://mpv.io/) / libmpv** for playback and hardware decoding.
 - **[Rust](https://www.rust-lang.org/)** and the crates NOCTURNE builds on, including tokio, reqwest, rustls, serde, zbus,
   keyring, wayland-client and image. The full list with licences is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-- `vendor/xattr` is a patched copy of the [xattr](https://github.com/Stebalien/xattr) crate (MIT / Apache-2.0).
+- `vendor/xattr` is a patched copy of the [xattr](https://github.com/Stebalien/xattr) crate (MIT / Apache-2.0), needed only
+  by GPUI and removed with it.
 
 ---
 

@@ -5,8 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Check [docs/ROADMAP.md](https://github.com/ifsvivek/nocturne/blob/main/docs/ROADMAP.md) first: Live TV, SyncPlay,
-        DLNA, casting, gapless music and Windows or macOS builds are intentionally out of scope.
+        Check [docs/ROADMAP.md](https://github.com/ifsvivek/nocturne/blob/main/docs/ROADMAP.md) first: Live TV, DLNA,
+        casting and gapless music are intentionally out of scope; macOS and Windows builds are planned but not started yet
+        ([docs/PLATFORMS.md](https://github.com/ifsvivek/nocturne/blob/main/docs/PLATFORMS.md)).
   - type: textarea
     id: problem
     attributes:

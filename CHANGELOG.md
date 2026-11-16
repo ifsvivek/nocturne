@@ -19,6 +19,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   crate exposes `libmpv_available()` and a per-distro install hint) rather than a loader failure before startup. The
   tarball `install.sh` now checks and installs the runtime libraries through the distro package manager (`--no-deps`
   skips it).
+- Documentation: the direction for 0.3 is written down (Iced interface in place of GPUI, local folders plus several
+  Jellyfin servers in one library, Arch first with other platforms planned): `docs/DECISIONS.md`, `docs/SOURCES.md`,
+  `docs/PLATFORMS.md`. The "Linux only" statements became "Linux first; macOS and Windows planned, not available".
 
 ### Fixed
 - Clicking Home with the mouse could leave the header highlighting a library (for example Movies) instead of Home, because

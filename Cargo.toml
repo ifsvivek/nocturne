@@ -5,12 +5,12 @@ members = ["crates/*"]
 [workspace.package]
 edition = "2024"
 version = "0.2.0"
-description = "A native, cinematic Jellyfin desktop client for Linux, built with GPUI and libmpv"
+description = "A native, cinematic desktop media client (Jellyfin, local folders), Linux first, playing video through libmpv"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/ifsvivek/nocturne"
 homepage = "https://nocturne.ifsvivek.in"
 readme = "README.md"
-keywords = ["jellyfin", "media-player", "gpui", "mpv", "linux"]
+keywords = ["jellyfin", "media-player", "mpv", "wayland", "linux"]
 categories = ["multimedia::video", "gui"]
 authors = ["ifsvivek"]
 # MSRV is the highest declared by a dependency (uuid 1.89). `cargo check --workspace --locked` passes on 1.89.0; clippy and tests run on current stable only.

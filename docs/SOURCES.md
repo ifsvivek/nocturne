@@ -6,7 +6,7 @@ never renamed, moved, modified or deleted.
 
 ## Where we start
 
-- `nocturne_core::source::Source` wraps one Jellyfin client + user; the UI holds a single `Option<Source>`.
+- `nocturne_core::source::Source` wraps one Jellyfin client + user; the UI holds a single `Option<Source>` (the 0.2.0 model).
 - `Media` carries a per-server item id and nothing that says which server it came from.
 - Credentials: keyring entries per (server URL, user id) (`crates/session`), plus `servers.toml` / `accounts.toml`.
   No database; settings are versioned TOML; images in a disk LRU (`imgcache.rs`).
@@ -65,8 +65,8 @@ Catalog (core)                      one per process, owned by the UI root
   "Unmatched" for manual sorting.
 - **Metadata, in order**: user overrides > `.nfo` (Kodi format) > sidecar art (`poster.jpg`, `folder.jpg`,
   `fanart.jpg`, `<name>-poster.jpg`, …) > embedded tags (`ffprobe` if installed: runtime, streams) > filename.
-  Online metadata is optional and off by default (see `docs/METADATA.md` for sources, licences, keys, limits and
-  attribution); the app is fully usable without it.
+  Online metadata is optional and off by default (sources, licences, keys, limits and attribution are to be written
+  up before milestone 5); the app is fully usable without it.
 - **Persistence**: `$XDG_DATA_HOME/nocturne/local/index.json` (versioned schema with in-code migrations, atomic
   write) and `overrides.json` (user edits keyed by `LocalId`, never touched by scans); resume positions and
   played state for local items in `state.json`. ponytail: JSON in memory is fine to ~50k files; move to SQLite if

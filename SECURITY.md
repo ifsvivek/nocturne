@@ -20,5 +20,5 @@ Only the latest release receives fixes.
 - NOCTURNE is read-only toward your server unless you turn on `allow_server_writes`
   ([docs/WRITES.md](docs/WRITES.md)).
 - Server certificates are validated through rustls; NOCTURNE does not disable verification.
-- The app sends no telemetry and contacts only the Jellyfin server you configure.
-- Issues in Jellyfin itself, GPUI, mpv or other dependencies should go to those projects.
+- The app sends no telemetry and contacts only the Jellyfin server(s) you configure.
+- Issues in Jellyfin itself, the UI framework (Iced, or GPUI in the legacy 0.2.0 interface), mpv or other dependencies should go to those projects.

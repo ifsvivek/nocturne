@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 60
     container: archlinux:base-devel
     steps:
-      # Build dependencies from docs/PACKAGING.md (mpv provides libmpv.so.2).
+      # Dependencies from docs/PACKAGING.md. libmpv is loaded at run time, not linked; mpv is installed so tests that probe it behave like a user's machine.
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm --needed git rust pkgconf mpv dbus fontconfig freetype2 libglvnd libxcb \

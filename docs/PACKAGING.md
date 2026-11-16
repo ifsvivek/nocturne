@@ -1,9 +1,10 @@
 # Packaging
 
-Everything here was tested on Arch Linux, x86_64, Wayland with Xwayland, mpv 0.41.0, Rust 1.99.
-Other distributions and architectures are UNVERIFIED.
+Everything here was tested on Arch Linux, x86_64, Wayland with Xwayland, mpv 0.41.0, Rust 1.99 (the 0.2.0 release;
+the link list below is that GPUI build's, re-check it for the Iced build). Other distributions and architectures are
+UNVERIFIED.
 
-Planned formats (.deb, .rpm, AppImage, macOS, Windows), per-platform libmpv handling and the footprint budget are in
+Planned, not available yet: .deb, .rpm, AppImage, macOS and Windows packages. Per-platform libmpv handling and the footprint budget are in
 [PLATFORMS.md](PLATFORMS.md).
 
 ## Install paths
@@ -22,7 +23,7 @@ Planned formats (.deb, .rpm, AppImage, macOS, Windows), per-platform libmpv hand
 `libxkbcommon-x11.so.0`, glibc, libgcc_s.
 
 **Loaded at run time with `dlopen`** (invisible to `readelf`/namcap, so they are listed explicitly in the PKGBUILD
-and in `install.sh`): `libmpv.so.2` (in-window video, `crates/player/src/mpv_ffi.rs`), `libvulkan.so.1` (GPUI
+and in `install.sh`): `libmpv.so.2` (in-window video, `crates/player/src/mpv_ffi.rs`), `libvulkan.so.1` (the UI
 renderer), `libwayland-client.so.0`, `libwayland-egl.so.1`. A Vulkan driver (Mesa or NVIDIA) is also required;
 it depends on the GPU, so the installer does not pick one. libmpv pulls in about 200 more libraries (ffmpeg, libass,
 ...) that the distribution's mpv package resolves. A Secret Service provider (gnome-keyring, KWallet, KeePassXC)
@@ -73,12 +74,14 @@ the UI). Clean build on 16 cores: about 4.5 minutes, about 24 MB binary (thin LT
 
 ## Not shipped
 
-AppImage: not provided. libmpv's closure is about 205 shared libraries (about 240 MB uncompressed) including GPL
+AppImage: not provided yet (planned, to be evaluated: [PLATFORMS.md](PLATFORMS.md)). libmpv's closure is about 205 shared libraries (about 240 MB uncompressed) including GPL
 codecs, the GPU stack (libEGL/libvulkan and driver ICDs) must come from the host and cannot be bundled, and a
 binary built on a rolling glibc would not be self-contained on older systems. Use the tarball or the distribution
 package, which take libmpv from the system.
 
 ## Vendored xattr
+
+Only the legacy GPUI crate needs this; it goes away with GPUI at the cut-over.
 
 `vendor/xattr` is the crates.io `xattr` 0.2.3 with one line changed (`ENOATTR` is defined as `ENODATA`).
 GPUI pulls it in through `zed-async-tar`, which requires the 0.2 series, and 0.2.3 is the last 0.2 release. It
