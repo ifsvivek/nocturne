@@ -23,7 +23,7 @@
       {#if !RELEASED}<p class="lede mx-auto mt-6">Install commands and download links appear here with the first release.</p>{/if}
     </header>
 
-    <div class="stagger mt-[clamp(56px,7vw,96px)] grid gap-y-10 lg:grid-cols-3 lg:divide-x lg:divide-line">
+    <div class="stagger mt-[clamp(56px,7vw,96px)] grid gap-y-10 *:min-w-0 lg:grid-cols-3 lg:divide-x lg:divide-line">
       <div class="lg:pr-10">
         <h3 class="role text-ink">Arch Linux</h3>
         <p class="m-0 mt-3 text-ink-2">A PKGBUILD that builds from the source archive of the release tag and pulls in mpv for playback.</p>
