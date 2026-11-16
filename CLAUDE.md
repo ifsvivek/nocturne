@@ -65,9 +65,11 @@ NOCTURNE_JF_TEST_ENV=/tmp/nocturne-jf-test/test.env cargo test -p nocturne-jelly
 scripts/test-jellyfin.sh stop        # `reset` deletes everything
 ```
 
-To run the app against it, set `NOCTURNE_JF_URL=http://127.0.0.1:8097` plus isolated `XDG_CONFIG_HOME`,
-`XDG_DATA_HOME`, `XDG_CACHE_HOME` and `NOCTURNE_KEYRING_SERVICE` so your real settings and keyring entries are
-untouched. Screenshots: capture the app window only, never the whole screen.
+To run the app for testing, ALWAYS use `scripts/run-isolated.sh target/debug/nocturne-iced` (add
+`NOCTURNE_JF_URL=http://127.0.0.1:8097` for the throwaway server). It runs from a directory outside the repo with
+blank server variables, throwaway XDG dirs and a test keyring service. Never launch a debug build from inside the repo
+tree: debug builds read `.env` from the current directory or any ancestor, and the maintainer's `.env` points at a
+real server. Screenshots: capture the app window only, never the whole screen.
 
 ## Safety rules (apply to humans and agents)
 

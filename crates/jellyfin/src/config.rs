@@ -19,9 +19,21 @@ impl std::fmt::Debug for Config {
 
 impl Config {
     /// Reads `NOCTURNE_JF_URL` (default `http://127.0.0.1:8096`) and `NOCTURNE_JF_TOKEN`.
-    /// A `.env` file in the current directory or the nearest ancestor is loaded first;
-    /// variables already set in the process environment win.
+    /// Debug builds first load a `.env` file from the current directory or the nearest ancestor
+    /// (developer convenience); variables already set in the process environment win. Release
+    /// builds never read `.env`, so a stray file in some parent directory cannot point an
+    /// installed app at a server.
     pub fn load() -> Result<Self> {
+        if cfg!(debug_assertions) {
+            Self::load_dotenv();
+        }
+        Self::from_vars(
+            std::env::var("NOCTURNE_JF_URL").ok(),
+            std::env::var("NOCTURNE_JF_TOKEN").ok(),
+        )
+    }
+
+    fn load_dotenv() {
         let found = std::env::current_dir().ok().and_then(|cwd| {
             cwd.ancestors()
                 .map(|d| d.join(".env"))
@@ -30,10 +42,6 @@ impl Config {
         if let Some(p) = found {
             load_env_file(&p);
         }
-        Self::from_vars(
-            std::env::var("NOCTURNE_JF_URL").ok(),
-            std::env::var("NOCTURNE_JF_TOKEN").ok(),
-        )
     }
 
     pub(crate) fn from_vars(url: Option<String>, token: Option<String>) -> Result<Self> {
