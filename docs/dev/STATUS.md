@@ -48,7 +48,6 @@ Cannot be checked here: HDR output (no HDR display, mpv 0.41), gamepad / TV couc
 - [ ] .deb / .rpm run on real Debian / Fedora machines; decide Flatpak (0.5).
 - [ ] Update the website (version, features, download) and the screenshots from a generated demo library; set `VERSION` and `RELEASED`.
 - [ ] Date the changelog section, tag, publish only when the maintainer asks.
-- Left from the polish list: admin dashboard session label.
 
 ## Decisions
 

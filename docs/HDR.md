@@ -1,7 +1,7 @@
 # HDR playback
 
-Status: plan accepted 2026-11-16. Linux implementation in 0.4; macOS and Windows get the same mode with their ports
-([PLATFORMS.md](PLATFORMS.md)).
+Status: implemented for 0.4 (unreleased; detection, prompt, setting and pop-out tested with generated HDR10/HLG clips; real HDR
+output untested: no HDR display yet). macOS and Windows use the same pop-out path ([PLATFORMS.md](PLATFORMS.md)).
 
 ## Why in-window video is SDR today
 

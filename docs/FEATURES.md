@@ -20,7 +20,7 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] (0.4) Subtitle download for local files (OpenSubtitles, your own key, opt-in), stored in NOCTURNE's folder. Search live-tested; actual download needs an OpenSubtitles login and is mock-tested
 - [x] (0.4) Offline copies: "Download to this computer" for a server movie, episode, season or show; GET only, resumable, shows up as a second local source. Verified on a throwaway server; exFAT/FAT targets and servers that deny downloads untested live
 - [x] (0.4) Smart collections: saved rules (watched state, genres, years, rating, added within N days, resolution, runtime, sources) over every source; local only. Unit-tested; resolution rules apply to servers only
-- [x] (0.4) One watched state across sources (opt-in, write-gated), matched by provider ids only. Mock-tested; not exercised on two real servers
+- [x] (0.4) One watched state across sources (opt-in, write-gated), matched by provider ids only. Verified on a throwaway server with a local copy of the same title (setting off: nothing follows; on with server changes: the server copy follows; on without: only local copies; unrelated titles never touched). Not yet tried with two real servers
 - [x] (0.4) Optional extra HTTP header per server (keyring). Verified on a throwaway server
 
 ## Accounts and connection
@@ -57,7 +57,7 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] (0.4) Secondary subtitle; audio and subtitle language remembered per show across restarts (local file, "Original audio" option); player menus by keyboard (T, V, O, Q). Built and unit-tested; not checked against a long real series
 - [x] (0.4) Truthful playback reports (play method, media source, session id), visible notice on failure, final "stopped" retried once
 - [~] (0.4) Trakt (opt-in, your own Trakt app): scrobble and watched-history import. Mock-tested only; **live sign-in not done** ([TRAKT.md](TRAKT.md))
-- [~] (0.4) Remote control from other Jellyfin apps (opt-in, needs server changes on). Protocol handling mock-tested; verified with a real second client: not yet ([WRITES.md](WRITES.md))
+- [~] (0.4) Remote control from other Jellyfin apps (opt-in, needs server changes on). Verified on a throwaway 12.x server: the session shows as controllable, and Play, Pause, Unpause, Seek, Next and Stop sent through the server's API took effect; with the setting off the session is not controllable. Not yet tried from a phone app ([WRITES.md](WRITES.md))
 - [~] (0.4) Couch mode: 10-foot layout, keyboard / remote-key navigation, gamepad (`gilrs`). Layout and key paths checked; **no real gamepad or TV tested**
 - [x] Seek bar with chapters and trickplay hover thumbnails, volume, fullscreen, mini player
 - [x] Audio and subtitle menus, subtitle styling and delay, audio delay, speed, aspect and picture controls

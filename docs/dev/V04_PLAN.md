@@ -36,7 +36,7 @@ every test launch, throwaway servers only). Workers use worktrees off `v0.4-loca
   (no hosted CI by maintainer decision).
 
 **Polish**: player menus reachable by keyboard (Subtitles menu has no keyboard path); trim surrounding quotes/whitespace from pasted API keys (TMDB, OpenSubtitles, Trakt); carried from 0.3: friendly message instead of a panic when no display is available; header nav overflow
-hint; admin dashboard session label.
+hint. (Admin session label dropped: it was a stale label in an old screenshot.)
 
 ## After 0.4 (not this release)
 
