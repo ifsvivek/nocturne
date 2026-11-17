@@ -194,9 +194,12 @@ impl Backend {
                     return Err(PlayError::NotPlayable);
                 }
                 let (c, _) = s.client();
+                // The token header stays first; the server's extra header (if any) follows.
+                let mut headers = vec![format!("Authorization: {}", c.auth_header())];
+                headers.extend(c.extra_header_line());
                 Ok(PlayTarget::Url {
                     url: c.stream_url(&m.id),
-                    headers: vec![format!("Authorization: {}", c.auth_header())],
+                    headers,
                 })
             }
             Self::Local(l) => Ok(PlayTarget::File(l.resolve(m).await?)),

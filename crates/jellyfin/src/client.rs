@@ -128,6 +128,9 @@ impl Client {
         auth.set_sensitive(true);
         let mut headers = header::HeaderMap::new();
         headers.insert(header::AUTHORIZATION, auth);
+        if let Some((n, v)) = crate::header::for_url(&cfg.base_url) {
+            headers.insert(n, v);
+        }
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
             .default_headers(headers)
@@ -160,6 +163,11 @@ impl Client {
             Some(_) => Health::Ok,
         };
         self.health.store(h as u8, Ordering::Relaxed);
+    }
+
+    /// The server's extra header as `Name: value` for mpv (`http-header-fields`), if one is set.
+    pub fn extra_header_line(&self) -> Option<String> {
+        crate::header::line_for(self.base.as_str())
     }
 
     /// Full `Authorization` header value, for handing to mpv (`http-header-fields`).
