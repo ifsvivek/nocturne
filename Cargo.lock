@@ -2762,6 +2762,8 @@ dependencies = [
 name = "nocturne-core"
 version = "0.3.0"
 dependencies = [
+ "base64 0.23.1",
+ "getrandom 0.3.4",
  "libc",
  "nocturne-jellyfin",
  "nocturne-jellyfin-admin",
@@ -2772,6 +2774,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "tokio",
  "toml",

@@ -10,13 +10,23 @@ use serde_json::{Value, json};
 use std::time::Duration;
 
 pub const KEY_ID: &str = "trakt-client-id";
-pub const KEY_SECRET: &str = "trakt-client-secret";
 pub const KEY_TOKENS: &str = "trakt-tokens";
 
 /// What the dialog says is sent, and to whom.
-pub const PRIVACY: &str = "While Trakt is on, NOCTURNE sends api.trakt.tv the provider ids (IMDb / TMDB / TVDB) of the movie or episode you are playing, the season and episode numbers, and how far in you are, when you start, pause and stop. History import reads your watched list. Titles, file names, paths and server addresses are never sent. Your Trakt app's client secret and your sign-in stay in the system keyring on this computer.";
+pub const PRIVACY: &str = "While Trakt is on, NOCTURNE sends api.trakt.tv the provider ids (IMDb / TMDB / TVDB) of the movie or episode you are playing, the season and episode numbers, and how far in you are, when you start, pause and stop. History import reads your watched list. Titles, file names, paths and server addresses are never sent. You sign in on trakt.tv in your browser; NOCTURNE never sees your Trakt password, and its sign-in and your app's client id stay in the system keyring on this computer.";
 
-const REDIRECT: &str = "urn:ietf:wg:oauth:2.0:oob";
+/// Shown with every Trakt feature. Plain text name only (no logo is used).
+pub const CREDIT: &str = "Trakt is a trademark of Trakt, Inc. NOCTURNE uses the Trakt API but is not affiliated with or endorsed by Trakt. NOCTURNE does not use or store Trakt images or comments.";
+
+/// Trakt's sign-in and token host (PKCE guide); the API itself is api.trakt.tv.
+pub const AUTH_BASE: &str = "https://auth.trakt.tv";
+/// The loopback port of the redirect URI the user registers in their Trakt app (RFC 8252, fixed port).
+pub const REDIRECT_PORT: u16 = 38917;
+
+pub fn redirect_uri(port: u16) -> String {
+    format!("http://127.0.0.1:{port}/callback")
+}
+
 /// Refresh this long before the access token runs out.
 const REFRESH_MARGIN: u64 = 3600;
 
@@ -42,6 +52,16 @@ pub fn base_url() -> String {
         return u.trim_end_matches('/').to_string();
     }
     "https://api.trakt.tv".into()
+}
+
+/// The sign-in / token host: [`AUTH_BASE`], or the same mock as the API in debug builds.
+pub fn auth_base() -> String {
+    if cfg!(debug_assertions)
+        && let Ok(u) = std::env::var("NOCTURNE_TRAKT_URL")
+    {
+        return u.trim_end_matches('/').to_string();
+    }
+    AUTH_BASE.into()
 }
 
 // ---- ids and request bodies ------------------------------------------------------------------------
@@ -244,23 +264,157 @@ impl Tokens {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct DeviceCode {
-    pub device_code: String,
-    pub user_code: String,
-    pub verification_url: String,
-    pub expires_in: u64,
-    pub interval: u64,
+// ---- sign-in: authorization code + PKCE (RFC 7636 / RFC 8252) ----------------------------------------------
+
+/// One sign-in attempt's secrets: the verifier stays here, only its S256 challenge goes to Trakt.
+#[derive(Clone, Debug)]
+pub struct Pkce {
+    pub verifier: String,
+    pub challenge: String,
+    pub state: String,
+}
+
+fn b64(b: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b)
+}
+
+/// `BASE64URL(SHA256(verifier))`.
+pub fn challenge_of(verifier: &str) -> String {
+    use sha2::{Digest, Sha256};
+    b64(&Sha256::digest(verifier.as_bytes()))
+}
+
+impl Pkce {
+    pub fn new() -> Self {
+        let (mut v, mut s) = ([0u8; 32], [0u8; 16]);
+        // An OS random source that fails is not something to limp on from.
+        getrandom::fill(&mut v).expect("os randomness");
+        getrandom::fill(&mut s).expect("os randomness");
+        Self::from_bytes(&v, &s)
+    }
+
+    /// 32 random bytes give a 43-character verifier (RFC 7636: 43 to 128).
+    pub fn from_bytes(verifier: &[u8], state: &[u8]) -> Self {
+        let verifier = b64(verifier);
+        Self {
+            challenge: challenge_of(&verifier),
+            verifier,
+            state: b64(state),
+        }
+    }
+}
+
+impl Default for Pkce {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The page to open in the browser.
+pub fn authorize_url(auth: &str, client_id: &str, redirect: &str, p: &Pkce) -> String {
+    reqwest::Url::parse_with_params(
+        &format!("{}/oauth/authorize", auth.trim_end_matches('/')),
+        [
+            ("response_type", "code"),
+            ("client_id", client_id.trim()),
+            ("redirect_uri", redirect),
+            ("code_challenge", p.challenge.as_str()),
+            ("code_challenge_method", "S256"),
+            ("state", p.state.as_str()),
+        ],
+    )
+    .map_or_else(|_| String::new(), |u| u.to_string())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Poll {
-    Pending,
-    SlowDown,
-    Granted(Tokens),
+pub enum Callback {
+    Code(String),
+    /// The user said no on trakt.tv.
     Denied,
-    Expired,
-    Failed,
+    PortBusy,
+    Timeout,
+    Cancelled,
+}
+
+const DONE_PAGE: &str = "<!doctype html><meta charset=utf-8><title>NOCTURNE</title><body style=\"font-family:sans-serif;background:#0b0d12;color:#e8eaf0;text-align:center;padding-top:20vh\"><h2>You can close this tab</h2><p>Return to NOCTURNE.</p>";
+
+async fn reply(s: &mut tokio::net::TcpStream, status: &str, body: &str) {
+    use tokio::io::AsyncWriteExt;
+    let _ = s
+        .write_all(
+            format!(
+                "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        )
+        .await;
+}
+
+/// One-shot listener on `127.0.0.1:port` for Trakt's redirect to `/callback?code=..&state=..`.
+/// Requests with another path or a wrong `state` are answered and ignored; it ends on the right
+/// callback, a denial, `timeout` or `cancel`.
+pub async fn wait_callback(
+    port: u16,
+    state: &str,
+    timeout: Duration,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> Callback {
+    use std::sync::atomic::Ordering;
+    use tokio::io::AsyncReadExt;
+    let Ok(l) = tokio::net::TcpListener::bind(("127.0.0.1", port)).await else {
+        return Callback::PortBusy;
+    };
+    let end = std::time::Instant::now() + timeout;
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Callback::Cancelled;
+        }
+        if std::time::Instant::now() >= end {
+            return Callback::Timeout;
+        }
+        let Ok(Ok((mut s, _))) = tokio::time::timeout(Duration::from_millis(250), l.accept()).await
+        else {
+            continue;
+        };
+        let mut buf = vec![0u8; 8192];
+        let n = tokio::time::timeout(Duration::from_secs(5), s.read(&mut buf))
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or(0);
+        let head = String::from_utf8_lossy(&buf[..n]).to_string();
+        let target = head.split_whitespace().nth(1).unwrap_or("");
+        let Ok(url) = reqwest::Url::parse(&format!("http://127.0.0.1{target}")) else {
+            reply(&mut s, "400 Bad Request", "bad request").await;
+            continue;
+        };
+        if url.path() != "/callback" {
+            reply(&mut s, "404 Not Found", "not found").await;
+            continue;
+        }
+        let q = |k: &str| {
+            url.query_pairs()
+                .find(|(n, _)| n == k)
+                .map(|(_, v)| v.into_owned())
+        };
+        if q("state").as_deref() != Some(state) {
+            reply(&mut s, "400 Bad Request", "wrong state").await;
+            continue;
+        }
+        if q("error").is_some() {
+            reply(&mut s, "200 OK", "Cancelled. You can close this tab.").await;
+            return Callback::Denied;
+        }
+        match q("code").filter(|c| !c.is_empty()) {
+            Some(c) => {
+                reply(&mut s, "200 OK", DONE_PAGE).await;
+                return Callback::Code(c);
+            }
+            None => reply(&mut s, "400 Bad Request", "no code").await,
+        }
+    }
 }
 
 // ---- history ---------------------------------------------------------------------------------------------
@@ -324,8 +478,8 @@ pub fn parse_shows(v: &Value) -> Vec<Show> {
 pub struct Trakt {
     http: reqwest::Client,
     base: String,
+    auth: String,
     id: String,
-    secret: String,
     gate: Gate,
     tokens: tokio::sync::Mutex<Option<Tokens>>,
     /// Keep refreshed tokens in the keyring (off in tests).
@@ -333,21 +487,14 @@ pub struct Trakt {
 }
 
 impl Trakt {
-    pub fn new(base: &str, id: &str, secret: &str, tokens: Option<Tokens>, persist: bool) -> Self {
-        Self::paced(
-            base,
-            id,
-            secret,
-            tokens,
-            persist,
-            Duration::from_millis(1100),
-        )
+    pub fn new(base: &str, auth: &str, id: &str, tokens: Option<Tokens>, persist: bool) -> Self {
+        Self::paced(base, auth, id, tokens, persist, Duration::from_millis(1100))
     }
 
     fn paced(
         base: &str,
+        auth: &str,
         id: &str,
-        secret: &str,
         tokens: Option<Tokens>,
         persist: bool,
         every: Duration,
@@ -359,8 +506,8 @@ impl Trakt {
                 .build()
                 .expect("http client"),
             base: base.trim_end_matches('/').into(),
+            auth: auth.trim_end_matches('/').into(),
             id: id.trim().into(),
-            secret: secret.trim().into(),
             gate: Gate::new(every),
             tokens: tokio::sync::Mutex::new(tokens),
             persist,
@@ -369,14 +516,20 @@ impl Trakt {
 
     /// The user's app credentials and sign-in from the keyring; `None` when not connected.
     pub async fn load() -> Option<Self> {
-        let (id, secret, tok) = tokio::task::spawn_blocking(|| {
+        let (id, tok) = tokio::task::spawn_blocking(|| {
             let get = |k| nocturne_session::load_secret(k).ok().flatten();
-            (get(KEY_ID), get(KEY_SECRET), get(KEY_TOKENS))
+            (get(KEY_ID), get(KEY_TOKENS))
         })
         .await
         .ok()?;
         let tokens = Tokens::from_json(&tok?)?;
-        Some(Self::new(&base_url(), &id?, &secret?, Some(tokens), true))
+        Some(Self::new(
+            &base_url(),
+            &auth_base(),
+            &id?,
+            Some(tokens),
+            true,
+        ))
     }
 
     pub fn has_tokens_blocking() -> bool {
@@ -388,20 +541,18 @@ impl Trakt {
 
     /// Forget the app credentials and the sign-in (blocking keyring calls).
     pub fn forget_blocking() {
-        for k in [KEY_ID, KEY_SECRET, KEY_TOKENS] {
+        for k in [KEY_ID, KEY_TOKENS] {
             let _ = nocturne_session::delete_secret(k);
         }
     }
 
     /// Keep the credentials entered in the dialog (blocking keyring calls).
-    pub fn save_app_blocking(id: &str, secret: &str) -> Result<(), String> {
-        crate::online::set_secret(KEY_ID, id)?;
-        crate::online::set_secret(KEY_SECRET, secret)
+    pub fn save_app_blocking(id: &str) -> Result<(), String> {
+        crate::online::set_secret(KEY_ID, id)
     }
 
-    pub fn saved_app_blocking() -> Option<(String, String)> {
-        let get = |k| nocturne_session::load_secret(k).ok().flatten();
-        Some((get(KEY_ID)?, get(KEY_SECRET)?))
+    pub fn saved_app_blocking() -> Option<String> {
+        nocturne_session::load_secret(KEY_ID).ok().flatten()
     }
 
     fn headers(&self, rb: reqwest::RequestBuilder, token: Option<&str>) -> reqwest::RequestBuilder {
@@ -444,40 +595,28 @@ impl Trakt {
         }
     }
 
-    // -- device sign-in
+    // -- sign-in
 
-    pub async fn device_code(&self) -> Result<DeviceCode, Error> {
+    /// Trade the authorization `code` for tokens (PKCE: the verifier, no client secret).
+    pub async fn exchange(&self, code: &str, p: &Pkce, redirect: &str) -> Result<Tokens, Error> {
         let rb = self
-            .http
-            .post(format!("{}/oauth/device/code", self.base))
-            .json(&json!({"client_id": self.id}));
+            .headers(self.http.post(format!("{}/oauth/token", self.auth)), None)
+            .json(&json!({
+                "code": code,
+                "client_id": self.id,
+                "redirect_uri": redirect,
+                "grant_type": "authorization_code",
+                "code_verifier": p.verifier,
+            }));
         let r = self.send(rb).await?;
-        Self::check(&r)?;
-        r.json().await.map_err(|_| Error::Failed)
-    }
-
-    /// One poll of the device code; call every `interval` seconds, slower on `SlowDown`.
-    pub async fn poll(&self, device_code: &str) -> Poll {
-        let rb = self
-            .http
-            .post(format!("{}/oauth/device/token", self.base))
-            .json(
-                &json!({"code": device_code, "client_id": self.id, "client_secret": self.secret}),
-            );
-        let Ok(r) = rb.send().await else {
-            return Poll::Failed;
-        };
-        match r.status().as_u16() {
-            200 => match r.json::<TokenReply>().await {
-                Ok(t) => Poll::Granted(t.into()),
-                Err(_) => Poll::Failed,
-            },
-            400 => Poll::Pending,
-            429 => Poll::SlowDown,
-            418 => Poll::Denied,
-            404 | 409 | 410 => Poll::Expired,
-            _ => Poll::Failed,
+        if matches!(r.status().as_u16(), 400 | 401 | 403) {
+            return Err(Error::Auth);
         }
+        Self::check(&r)?;
+        Ok(r.json::<TokenReply>()
+            .await
+            .map_err(|_| Error::Failed)?
+            .into())
     }
 
     /// Adopt a granted sign-in and keep it in the keyring.
@@ -501,14 +640,13 @@ impl Trakt {
         if !t.stale(now()) {
             return Ok(t.access);
         }
+        // Refresh needs only the client id and the refresh token (no secret under PKCE).
         let rb = self
-            .http
-            .post(format!("{}/oauth/token", self.base))
+            .headers(self.http.post(format!("{}/oauth/token", self.auth)), None)
             .json(&json!({
                 "refresh_token": t.refresh,
                 "client_id": self.id,
-                "client_secret": self.secret,
-                "redirect_uri": REDIRECT,
+                "redirect_uri": redirect_uri(REDIRECT_PORT),
                 "grant_type": "refresh_token",
             }));
         let r = self.send(rb).await?;
@@ -530,9 +668,8 @@ impl Trakt {
     pub async fn revoke(&self) {
         if let Ok(tok) = self.access().await {
             let rb = self
-                .http
-                .post(format!("{}/oauth/revoke", self.base))
-                .json(&json!({"token": tok, "client_id": self.id, "client_secret": self.secret}));
+                .headers(self.http.post(format!("{}/oauth/revoke", self.auth)), None)
+                .json(&json!({"token": tok, "client_id": self.id}));
             let _ = self.send(rb).await;
         }
         *self.tokens.lock().await = None;
@@ -787,7 +924,7 @@ mod tests {
     }
 
     fn client(base: &str, t: Option<Tokens>) -> Trakt {
-        Trakt::paced(base, "cid", "csec", t, false, Duration::from_millis(1))
+        Trakt::paced(base, base, "cid", t, false, Duration::from_millis(1))
     }
 
     fn good() -> Tokens {
@@ -877,38 +1014,127 @@ mod tests {
         assert!(p[0].ids.matches(&ids));
     }
 
-    #[tokio::test]
-    async fn device_flow_polls_until_granted() {
-        let tok = r#"{"access_token":"A","token_type":"bearer","expires_in":86400,"refresh_token":"R","scope":"public","created_at":4102444800}"#;
-        let (base, log) = mock(vec![
-            (
-                "/oauth/device/code",
-                vec![(
-                    200,
-                    r#"{"device_code":"dc","user_code":"ABCD1234","verification_url":"https://trakt.tv/activate","expires_in":600,"interval":5}"#.into(),
-                )],
-            ),
-            (
-                "/oauth/device/token",
-                vec![(400, "".into()), (429, "".into()), (200, tok.into())],
-            ),
-        ])
-        .await;
-        let c = client(&base, None);
-        let d = c.device_code().await.unwrap();
-        assert_eq!((d.user_code.as_str(), d.interval), ("ABCD1234", 5));
-        assert_eq!(c.poll("dc").await, Poll::Pending);
-        assert_eq!(c.poll("dc").await, Poll::SlowDown);
-        let Poll::Granted(t) = c.poll("dc").await else {
-            panic!("granted")
-        };
-        assert_eq!((t.access.as_str(), t.refresh.as_str()), ("A", "R"));
-        let log = log.lock().unwrap();
-        assert!(log[0].0.to_lowercase().contains("user-agent: nocturne/"));
-        assert!(log[0].1.contains("\"client_id\":\"cid\""));
-        assert!(
-            log[2].1.contains("\"client_secret\":\"csec\"") && log[2].1.contains("\"code\":\"dc\"")
+    #[test]
+    fn pkce_matches_rfc7636_vector_and_lengths() {
+        assert_eq!(
+            challenge_of("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
         );
+        let a = Pkce::new();
+        let b = Pkce::new();
+        assert_eq!(a.verifier.len(), 43);
+        assert_eq!(a.challenge, challenge_of(&a.verifier));
+        assert_ne!((&a.verifier, &a.state), (&b.verifier, &b.state));
+        assert!(!a.verifier.contains(['+', '/', '=']));
+    }
+
+    #[test]
+    fn authorize_url_carries_the_pkce_parameters_and_no_secret() {
+        let p = Pkce::from_bytes(&[7; 32], &[9; 16]);
+        let u = authorize_url("https://auth.trakt.tv", "cid", &redirect_uri(38917), &p);
+        let url = reqwest::Url::parse(&u).unwrap();
+        assert_eq!(url.path(), "/oauth/authorize");
+        let q: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(q["response_type"], "code");
+        assert_eq!(q["client_id"], "cid");
+        assert_eq!(q["redirect_uri"], "http://127.0.0.1:38917/callback");
+        assert_eq!(q["code_challenge_method"], "S256");
+        assert_eq!(q["code_challenge"], p.challenge);
+        assert_eq!(q["state"], p.state);
+        assert!(!q.contains_key("client_secret") && !u.contains(&p.verifier));
+    }
+
+    async fn free_port() -> u16 {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        l.local_addr().unwrap().port()
+    }
+
+    #[tokio::test]
+    async fn loopback_callback_checks_state_and_ignores_strays() {
+        let port = free_port().await;
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let w = tokio::spawn(wait_callback(
+            port,
+            "st",
+            Duration::from_secs(10),
+            cancel.clone(),
+        ));
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let get = |p: &str| {
+            let u = format!("http://127.0.0.1:{port}{p}");
+            async move { reqwest::get(u).await.unwrap() }
+        };
+        assert_eq!(get("/favicon.ico").await.status(), 404);
+        assert_eq!(get("/callback?code=evil&state=nope").await.status(), 400);
+        let ok = get("/callback?code=abc%20d&state=st").await;
+        assert_eq!(ok.status(), 200);
+        assert!(ok.text().await.unwrap().contains("You can close this tab"));
+        assert_eq!(w.await.unwrap(), Callback::Code("abc d".into()));
+    }
+
+    #[tokio::test]
+    async fn loopback_callback_denial_timeout_cancel_and_busy_port() {
+        let port = free_port().await;
+        let no = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let w = tokio::spawn(wait_callback(
+            port,
+            "st",
+            Duration::from_secs(10),
+            no.clone(),
+        ));
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let _ = reqwest::get(format!(
+            "http://127.0.0.1:{port}/callback?error=access_denied&state=st"
+        ))
+        .await;
+        assert_eq!(w.await.unwrap(), Callback::Denied);
+
+        let port = free_port().await;
+        assert_eq!(
+            wait_callback(port, "st", Duration::from_millis(400), no.clone()).await,
+            Callback::Timeout
+        );
+        let yes = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        assert_eq!(
+            wait_callback(port, "st", Duration::from_secs(5), yes).await,
+            Callback::Cancelled
+        );
+        let hold = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let busy = hold.local_addr().unwrap().port();
+        assert_eq!(
+            wait_callback(busy, "st", Duration::from_secs(1), no).await,
+            Callback::PortBusy
+        );
+    }
+
+    #[tokio::test]
+    async fn code_exchange_sends_verifier_and_no_secret() {
+        let tok = r#"{"access_token":"A","token_type":"bearer","expires_in":86400,"refresh_token":"R","scope":"public","created_at":4102444800}"#;
+        let (base, log) = mock(vec![("/oauth/token", vec![(200, tok.into())])]).await;
+        let c = client(&base, None);
+        let p = Pkce::from_bytes(&[1; 32], &[2; 16]);
+        let t = c
+            .exchange("thecode", &p, &redirect_uri(REDIRECT_PORT))
+            .await
+            .unwrap();
+        assert_eq!((t.access.as_str(), t.refresh.as_str()), ("A", "R"));
+        let log = log.lock().unwrap().clone();
+        let h = log[0].0.to_lowercase();
+        assert!(h.starts_with("post /oauth/token") && h.contains("user-agent: nocturne/"));
+        assert!(h.contains("trakt-api-key: cid") && h.contains("trakt-api-version: 2"));
+        let b: Value = serde_json::from_str(&log[0].1).unwrap();
+        assert_eq!(b["grant_type"], "authorization_code");
+        assert_eq!(b["code"], "thecode");
+        assert_eq!(b["code_verifier"], p.verifier);
+        assert_eq!(b["client_id"], "cid");
+        assert_eq!(b["redirect_uri"], "http://127.0.0.1:38917/callback");
+        assert!(b.get("client_secret").is_none());
+        // a refused code is an auth error
+        let (base, _) = mock(vec![("/oauth/token", vec![(400, "{}".into())])]).await;
+        let r = client(&base, None)
+            .exchange("x", &p, "http://127.0.0.1:1/callback")
+            .await;
+        assert_eq!(r, Err(Error::Auth));
     }
 
     #[tokio::test]

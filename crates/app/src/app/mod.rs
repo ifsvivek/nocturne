@@ -21,7 +21,7 @@ mod remote;
 mod search;
 mod settings;
 mod sources;
-mod trakt;
+pub(crate) mod trakt;
 
 use crate::account::{self, Accounts, Event as AcctEvent, devices, picker};
 use crate::keys::Key;

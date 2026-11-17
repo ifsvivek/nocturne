@@ -1,60 +1,62 @@
-//! Trakt (opt-in): the connect dialog (device-code sign-in with the user's own Trakt app), scrobbling
-//! from the player's reports and the watched-history import. Protocol and rules are in
+//! Trakt (opt-in): the connect dialog (browser sign-in with PKCE, using the user's own Trakt app id),
+//! scrobbling from the player's reports and the watched-history import. Protocol and rules are in
 //! `nocturne_core::trakt` (docs/TRAKT.md); this file is only the glue.
 use super::App;
 use super::message::Message;
 use crate::player::{PlayEvent, Reported};
 use crate::style;
-use crate::task::{after, run};
+use crate::task::run;
 use crate::theme as t;
 use crate::widget::{action_button, mono};
 use iced::widget::{column, container, opaque, row, text, text_input};
 use iced::{Alignment, Element, Length, Task};
 use nocturne_core::source::{Kind, Media};
-use nocturne_core::trakt::{self as tk, DeviceCode, Ev, History, Poll, Scrobbler, Trakt};
+use nocturne_core::trakt::{self as tk, Callback, Ev, History, Pkce, Scrobbler, Trakt};
 use nocturne_core::watched::Via;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 type El<'a> = Element<'a, Message>;
 
 const PORTAL: &str = "https://trakt.tv/oauth/applications";
+/// How long the browser sign-in may take.
+const SIGN_IN_WAIT: Duration = Duration::from_secs(300);
 
 #[derive(Clone)]
 pub enum Msg {
     Open,
     Close,
     Id(String),
-    Secret(String),
     Connect,
-    Code(u64, Result<DeviceCode, tk::Error>),
-    Poll(u64, u64),
-    Polled(u64, Poll, u64),
+    /// The loopback listener ended (epoch of the attempt).
+    Callback(u64, Callback),
+    /// The code was exchanged: the client with its tokens, and the user name when it could be read.
+    Connected(u64, Result<(Arc<Trakt>, Option<String>), tk::Error>),
     /// The saved sign-in was read at launch: (client, username when it still works).
     Loaded(Option<(Arc<Trakt>, Option<String>)>),
-    /// A fresh sign-in was granted and its user name read.
-    Connected(Arc<Trakt>, Option<String>),
     Disconnect,
     Import,
     Imported(Result<Vec<Media>, ()>),
     OpenUrl(&'static str),
-    OpenCode,
+    /// Open the authorize page again.
+    Reopen,
 }
 
 enum Stage {
     Form,
-    /// Waiting for the user to enter the code on trakt.tv.
-    Code(DeviceCode),
+    /// Waiting for the browser sign-in; the URL is kept so it can be opened again.
+    Browser(String),
 }
 
 pub struct State {
     open: bool,
     id: String,
-    secret: String,
     stage: Stage,
     note: Option<String>,
     epoch: u64,
+    pkce: Option<Pkce>,
+    cancel: Arc<AtomicBool>,
     client: Option<Arc<Trakt>>,
     worker: Option<tk::Worker>,
     scrobbler: Scrobbler,
@@ -68,10 +70,11 @@ impl Default for State {
         Self {
             open: false,
             id: String::new(),
-            secret: String::new(),
             stage: Stage::Form,
             note: None,
             epoch: 0,
+            pkce: None,
+            cancel: Arc::default(),
             client: None,
             worker: None,
             scrobbler: Scrobbler::default(),
@@ -94,6 +97,14 @@ impl State {
             (None, Some(_)) => "Reconnect".into(),
             _ => "Set up".into(),
         }
+    }
+
+    /// Stop a running sign-in wait (closes the loopback listener).
+    fn abort(&mut self) {
+        self.cancel.store(true, Ordering::Relaxed);
+        self.epoch += 1;
+        self.pkce = None;
+        self.stage = Stage::Form;
     }
 }
 
@@ -123,8 +134,15 @@ impl App {
             Msg::Open => {
                 self.trakt.open = true;
                 self.trakt.note = None;
+                // Debug builds only: prefill from the environment (a live test with the maintainer's own app).
+                if cfg!(debug_assertions)
+                    && self.trakt.id.is_empty()
+                    && let Ok(id) = std::env::var("NOCTURNE_TRAKT_CLIENT_ID")
+                {
+                    self.trakt.id = id;
+                }
                 if self.trakt.client.is_none() && self.trakt.id.is_empty() {
-                    // The id is not secret; the user may have entered it before.
+                    // The client id is not secret under PKCE; the user may have entered it before.
                     return run(
                         async {
                             tokio::task::spawn_blocking(Trakt::saved_app_blocking)
@@ -132,82 +150,78 @@ impl App {
                                 .ok()
                                 .flatten()
                         },
-                        |r| Message::Trakt(Msg::Id(r.map(|(i, _)| i).unwrap_or_default())),
+                        |r| Message::Trakt(Msg::Id(r.unwrap_or_default())),
                     );
                 }
             }
             Msg::Close => {
                 self.trakt.open = false;
-                self.trakt.epoch += 1;
-                self.trakt.stage = Stage::Form;
+                self.trakt.abort();
             }
             Msg::Id(s) => self.trakt.id = s,
-            Msg::Secret(s) => self.trakt.secret = s,
             Msg::Connect => return self.trakt_connect(),
-            Msg::Code(e, r) if e == self.trakt.epoch => match r {
-                Ok(d) => {
-                    let wait = d.interval.max(1);
-                    self.trakt.stage = Stage::Code(d);
-                    self.trakt.note = None;
-                    let e = self.trakt.epoch;
-                    return after(
-                        Duration::from_secs(wait),
-                        Message::Trakt(Msg::Poll(e, wait)),
-                    );
+            Msg::Reopen => {
+                if let Stage::Browser(u) = &self.trakt.stage {
+                    open_url(u);
                 }
-                Err(tk::Error::Auth) => {
-                    self.trakt.note = Some("Trakt didn't accept that client id.".into())
-                }
-                Err(_) => {
-                    self.trakt.note =
-                        Some("Couldn't reach Trakt. Check the network and try again.".into())
-                }
-            },
-            Msg::Poll(e, every) if e == self.trakt.epoch => {
-                let (Some(c), Stage::Code(d)) = (self.trakt.client.clone(), &self.trakt.stage)
+            }
+            Msg::Callback(e, cb) if e == self.trakt.epoch => {
+                let (Some(c), Some(p)) = (self.trakt.client.clone(), self.trakt.pkce.clone())
                 else {
                     return Task::none();
                 };
-                let code = d.device_code.clone();
-                return run(async move { c.poll(&code).await }, move |p| {
-                    Message::Trakt(Msg::Polled(e, p, every))
-                });
+                match cb {
+                    Callback::Code(code) => {
+                        return run(
+                            async move {
+                                let tokens = c
+                                    .exchange(&code, &p, &tk::redirect_uri(tk::REDIRECT_PORT))
+                                    .await?;
+                                c.set_tokens(tokens).await;
+                                let u = c.username().await.ok();
+                                Ok((c, u))
+                            },
+                            move |r| Message::Trakt(Msg::Connected(e, r)),
+                        );
+                    }
+                    Callback::PortBusy => {
+                        self.trakt.abort();
+                        self.trakt.note = Some(format!(
+                            "Port {} is in use, so the sign-in can't finish. Close what uses it and try again.",
+                            tk::REDIRECT_PORT
+                        ));
+                    }
+                    Callback::Timeout => {
+                        self.trakt.abort();
+                        self.trakt.note = Some("The sign-in took too long. Try again.".into());
+                    }
+                    Callback::Denied => {
+                        self.trakt.abort();
+                        self.trakt.note = Some("You said no on trakt.tv.".into());
+                    }
+                    Callback::Cancelled => {}
+                }
             }
-            Msg::Polled(e, p, every) if e == self.trakt.epoch => match p {
-                Poll::Pending | Poll::SlowDown => {
-                    let every = if p == Poll::SlowDown {
-                        every + 5
-                    } else {
-                        every
-                    };
-                    return after(
-                        Duration::from_secs(every),
-                        Message::Trakt(Msg::Poll(e, every)),
-                    );
+            Msg::Connected(e, r) if e == self.trakt.epoch => {
+                self.trakt.pkce = None;
+                self.trakt.stage = Stage::Form;
+                match r {
+                    Ok((c, user)) => {
+                        self.trakt_adopt(c, user);
+                        // Connecting is the opt-in to scrobbling; history import stays its own switch.
+                        self.settings.trakt_scrobble = true;
+                        self.settings.save();
+                        self.toast("Trakt connected.");
+                        if self.settings.trakt_history {
+                            return self.trakt_import();
+                        }
+                    }
+                    Err(tk::Error::Auth) => {
+                        self.trakt.note = Some("Trakt didn't accept the sign-in. Check the client id and that the redirect URI matches.".into())
+                    }
+                    Err(_) => self.trakt.note = Some("Couldn't reach Trakt. Try again.".into()),
                 }
-                Poll::Granted(tokens) => {
-                    let Some(c) = self.trakt.client.clone() else {
-                        return Task::none();
-                    };
-                    return run(
-                        async move {
-                            c.set_tokens(tokens).await;
-                            let u = c.username().await.ok();
-                            (c, u)
-                        },
-                        |(c, u)| Message::Trakt(Msg::Connected(c, u)),
-                    );
-                }
-                Poll::Denied => {
-                    self.trakt.stage = Stage::Form;
-                    self.trakt.note = Some("You denied the request on trakt.tv.".into());
-                }
-                Poll::Expired | Poll::Failed => {
-                    self.trakt.stage = Stage::Form;
-                    self.trakt.note =
-                        Some("The code expired or Trakt couldn't be reached. Try again.".into());
-                }
-            },
+            }
             Msg::Loaded(Some((c, user))) => {
                 self.trakt_adopt(c, user);
                 // History sync runs at launch when it is on.
@@ -216,25 +230,12 @@ impl App {
                 }
             }
             Msg::Loaded(None) => {}
-            Msg::Connected(c, user) => {
-                self.trakt.stage = Stage::Form;
-                self.trakt.secret.clear();
-                self.trakt_adopt(c, user);
-                // Connecting is the opt-in to scrobbling; history import stays its own switch.
-                self.settings.trakt_scrobble = true;
-                self.settings.save();
-                self.toast("Trakt connected.");
-                if self.settings.trakt_history {
-                    return self.trakt_import();
-                }
-            }
             Msg::Disconnect => {
-                self.trakt.epoch += 1;
+                self.trakt.abort();
                 let c = self.trakt.client.take();
                 self.trakt.worker = None;
                 self.trakt.user = None;
                 self.trakt.loaded = false;
-                self.trakt.stage = Stage::Form;
                 self.settings.trakt_scrobble = false;
                 self.settings.trakt_history = false;
                 self.settings.save();
@@ -252,13 +253,6 @@ impl App {
             Msg::Import => return self.trakt_import(),
             Msg::Imported(r) => return self.trakt_imported(r),
             Msg::OpenUrl(u) => open_url(u),
-            Msg::OpenCode => {
-                if let Stage::Code(d) = &self.trakt.stage
-                    && d.verification_url.starts_with("https://")
-                {
-                    open_url(&d.verification_url);
-                }
-            }
             _ => {} // a stale epoch: the dialog was closed or restarted
         }
         Task::none()
@@ -270,32 +264,46 @@ impl App {
         self.trakt.user = user;
     }
 
+    /// Start the browser sign-in: listen on the loopback port, open the authorize page, wait for the redirect.
     fn trakt_connect(&mut self) -> Task<Message> {
-        let (id, secret) = (
-            self.trakt.id.trim().to_string(),
-            self.trakt.secret.trim().to_string(),
-        );
-        if id.is_empty() || secret.is_empty() {
-            self.trakt.note = Some("Enter both the client id and the client secret.".into());
+        let id = self.trakt.id.trim().to_string();
+        if id.is_empty() {
+            self.trakt.note = Some("Enter the client id of your Trakt app.".into());
             return Task::none();
         }
-        self.trakt.epoch += 1;
-        let e = self.trakt.epoch;
-        let c = Arc::new(Trakt::new(&tk::base_url(), &id, &secret, None, true));
-        self.trakt.client = Some(c.clone());
-        self.trakt.note = Some("Asking Trakt for a code\u{2026}".into());
+        self.trakt.abort(); // a previous attempt's listener ends
+        self.trakt.cancel = Arc::new(AtomicBool::new(false));
+        let (e, cancel, pkce) = (self.trakt.epoch, self.trakt.cancel.clone(), Pkce::new());
+        let url = tk::authorize_url(
+            &tk::auth_base(),
+            &id,
+            &tk::redirect_uri(tk::REDIRECT_PORT),
+            &pkce,
+        );
+        self.trakt.client = Some(Arc::new(Trakt::new(
+            &tk::base_url(),
+            &tk::auth_base(),
+            &id,
+            None,
+            true,
+        )));
+        self.trakt.stage = Stage::Browser(url.clone());
+        self.trakt.note = None;
+        let state = pkce.state.clone();
+        self.trakt.pkce = Some(pkce);
         run(
             async move {
-                let (i, s) = (id.clone(), secret.clone());
-                let saved = tokio::task::spawn_blocking(move || Trakt::save_app_blocking(&i, &s))
-                    .await
-                    .unwrap_or(Err("failed".into()));
-                if saved.is_err() {
-                    return Err(tk::Error::Failed);
-                }
-                c.device_code().await
+                let i = id.clone();
+                let _ = tokio::task::spawn_blocking(move || Trakt::save_app_blocking(&i)).await;
+                // The listener is bound before the browser opens, so the redirect cannot arrive early.
+                let wait = tokio::spawn(async move {
+                    tk::wait_callback(tk::REDIRECT_PORT, &state, SIGN_IN_WAIT, cancel).await
+                });
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                open_url(&url);
+                wait.await.unwrap_or(Callback::Cancelled)
             },
-            move |r| Message::Trakt(Msg::Code(e, r)),
+            move |cb| Message::Trakt(Msg::Callback(e, cb)),
         )
     }
 
@@ -420,50 +428,19 @@ impl App {
         let mut card = column![
             mono("TRAKT"),
             text("Scrobble and sync with Trakt").size(t::HEADING).font(t::BOLD),
-            dim("NOCTURNE ships no Trakt credentials. Create a free API app at trakt.tv/oauth/applications (use urn:ietf:wg:oauth:2.0:oob as its redirect URI), then paste its Client ID and Client Secret below. Both stay in your system keyring.".into()),
+            dim(format!("NOCTURNE ships no Trakt credentials. Create a free API app at trakt.tv/oauth/applications, register {} as its redirect URI, then paste its Client ID below. There is no client secret: you sign in on trakt.tv in your browser.", tk::redirect_uri(tk::REDIRECT_PORT))),
             dim(tk::PRIVACY.into()),
+            text(tk::CREDIT).size(t::CAPTION).color(t::TEXT_TERTIARY),
         ]
         .spacing(t::S3);
-        let field = |ph: &str, v: &str, secret: bool, f: fn(String) -> Msg| {
-            let i = text_input(ph, v)
-                .on_input(move |x| Message::Trakt(f(x)))
-                .on_submit(Message::Trakt(Msg::Connect))
-                .size(t::BODY)
-                .padding([t::S2, t::S3])
-                .style(style::input);
-            if secret { i.secure(true) } else { i }
-        };
         match (&s.stage, &s.user) {
-            (Stage::Code(d), _) => {
+            (Stage::Browser(_), _) => {
                 card = card
-                    .push(dim(
-                        "On any device, open the address below and enter this code.".into(),
-                    ))
-                    .push(
-                        text(d.user_code.clone())
-                            .size(t::HEADING + 8.0)
-                            .font(t::BOLD),
-                    )
-                    .push(mono(d.verification_url.clone()))
-                    .push(dim("Waiting for you to approve it\u{2026}".into()))
+                    .push(dim("Approve NOCTURNE in the browser tab that opened. This window continues by itself (it gives up after five minutes).".into()))
                     .push(
                         row![
-                            action_button(
-                                "Open trakt.tv",
-                                true,
-                                false,
-                                true,
-                                false,
-                                Message::Trakt(Msg::OpenCode)
-                            ),
-                            action_button(
-                                "Cancel",
-                                false,
-                                false,
-                                false,
-                                false,
-                                Message::Trakt(Msg::Close)
-                            ),
+                            action_button("Open the page again", false, false, false, false, Message::Trakt(Msg::Reopen)),
+                            action_button("Cancel", true, false, true, false, Message::Trakt(Msg::Close)),
                         ]
                         .spacing(t::S3),
                     );
@@ -498,30 +475,33 @@ impl App {
                     );
             }
             (Stage::Form, None) => {
-                card = card
-                    .push(field("Client ID", &s.id, false, Msg::Id))
-                    .push(field("Client Secret", &s.secret, true, Msg::Secret))
-                    .push(
-                        row![
-                            action_button(
-                                "Connect",
-                                true,
-                                false,
-                                true,
-                                false,
-                                Message::Trakt(Msg::Connect)
-                            ),
-                            action_button(
-                                "Create a Trakt app",
-                                false,
-                                false,
-                                false,
-                                false,
-                                Message::Trakt(Msg::OpenUrl(PORTAL))
-                            ),
-                        ]
-                        .spacing(t::S3),
-                    );
+                let id = text_input("Client ID", &s.id)
+                    .on_input(|x| Message::Trakt(Msg::Id(x)))
+                    .on_submit(Message::Trakt(Msg::Connect))
+                    .size(t::BODY)
+                    .padding([t::S2, t::S3])
+                    .style(style::input);
+                card = card.push(id).push(
+                    row![
+                        action_button(
+                            "Sign in with Trakt",
+                            true,
+                            false,
+                            true,
+                            false,
+                            Message::Trakt(Msg::Connect)
+                        ),
+                        action_button(
+                            "Create a Trakt app",
+                            false,
+                            false,
+                            false,
+                            false,
+                            Message::Trakt(Msg::OpenUrl(PORTAL))
+                        ),
+                    ]
+                    .spacing(t::S3),
+                );
             }
         }
         if let Some(n) = &s.note {
@@ -554,7 +534,7 @@ impl App {
 }
 
 fn open_url(u: &str) {
-    if u.starts_with("https://") {
+    if u.starts_with("https://") || u.starts_with("http://127.0.0.1") {
         let _ = std::process::Command::new("xdg-open").arg(u).spawn();
     }
 }

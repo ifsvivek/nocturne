@@ -115,6 +115,22 @@ fn shares(keys: &[String], cand: &Media, series: &SeriesIds) -> bool {
     identity_keys(cand, series).iter().any(|x| keys.contains(x))
 }
 
+/// The title as is, and without a trailing "(year)" / "[tag]" (an unscraped title keeps its folder name).
+fn search_terms(title: &str) -> Vec<String> {
+    let cut = title
+        .find(" (")
+        .into_iter()
+        .chain(title.find(" ["))
+        .min()
+        .map_or(title, |i| &title[..i])
+        .trim();
+    let mut v = vec![title.to_string()];
+    if !cut.is_empty() && cut != title {
+        v.push(cut.to_string());
+    }
+    v
+}
+
 /// The copy of `m` on every other source in `backends`, by strong identity only. Reads: a title
 /// search per source, then the provider ids of the hits (episodes: the series first, then its season).
 /// ponytail: relies on the title search finding the other copy; a copy under a very different name is missed.
@@ -151,14 +167,14 @@ pub async fn find_copies(m: &Media, backends: &[(SourceId, Backend)]) -> Vec<Med
     };
     let mut out = vec![];
     for (_, b) in backends.iter().filter(|(o, _)| *o != m.origin) {
-        let Ok(hits) = b.search(&term).await else {
-            continue;
-        };
-        let mut hits: Vec<Media> = hits
-            .into_iter()
-            .filter(|h| h.kind == want)
-            .take(20)
-            .collect();
+        let mut hits: Vec<Media> = vec![];
+        for t in search_terms(&term) {
+            for h in b.search(&t).await.unwrap_or_default() {
+                if h.kind == want && !hits.iter().any(|x| x.id == h.id) && hits.len() < 20 {
+                    hits.push(h);
+                }
+            }
+        }
         let ids: Vec<String> = hits.iter().map(|h| h.id.clone()).collect();
         if let Ok(found) = b.provider_ids(&ids).await {
             for h in &mut hits {
@@ -298,6 +314,15 @@ mod tests {
             }
         );
         assert_eq!(scaled(0.0, 10.0, 10.0), None);
+    }
+
+    #[test]
+    fn search_terms_drop_year_and_tags() {
+        assert_eq!(search_terms("Heat"), ["Heat"]);
+        assert_eq!(
+            search_terms("Heat (1995) [imdbid-tt0113277]"),
+            ["Heat (1995) [imdbid-tt0113277]", "Heat"]
+        );
     }
 
     #[test]

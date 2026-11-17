@@ -422,7 +422,7 @@ impl Settings {
             ),
             r(
                 "Trakt account",
-                "Connect your own Trakt app: you create it at trakt.tv/oauth/applications and enter its client id and secret. NOCTURNE ships no Trakt credentials.",
+                "Connect your own Trakt app: you create it at trakt.tv/oauth/applications and enter its client id, then sign in in your browser. NOCTURNE ships no Trakt credentials. Trakt is a trademark of Trakt, Inc.; NOCTURNE is not affiliated with Trakt.",
                 "Set up".into(),
             ),
             r(

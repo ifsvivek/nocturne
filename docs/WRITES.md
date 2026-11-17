@@ -11,6 +11,8 @@ the item came from (its **origin**) and uses that server's own account; no chang
 | Browse, search, details, playback, resume position | no | |
 | Report playback progress (Continue Watching follows you) | yes | **Sync watch progress** on |
 | Mark watched / unwatched (card chip, detail button, `w`) | yes | |
+| Same watched state on the title's copies on other servers (`sync_watched`, default off) | yes | **Keep watched status in step across sources** on. Each copy is written only on its own server with that server's own account; resume positions of copies also need **Sync watch progress**. Local copies follow without the master switch. Details below |
+| Trakt: scrobble, history import (`trakt_scrobble`, `trakt_history`, default off) | no for Trakt itself; yes to mark imported items watched on a server | your own Trakt app, connected in its dialog. Nothing is written to a server unless server changes are on; imported state is never copied on to other sources |
 | Favourite (card chip, detail button, player heart, `f`) | yes | |
 | Change own password | yes | the current password |
 | Own profile image (set, remove), display language | yes | a confirmation dialog |
@@ -35,6 +37,14 @@ SetSubtitleStreamIndex, DisplayMessage shown as a notice). Everything else is ig
 never writes, never runs an admin action and never answers a confirmation dialog. Switching the setting off posts
 "not controllable" again (when server changes are on), closes the socket and ignores commands. With it off nothing is posted at
 all: the app does not announce itself as controllable.
+
+**Watched state in step** (`sync_watched`). Only a user action starts it: marking watched / unwatched, or finishing an item
+(90% of its length, as Jellyfin counts). The title's other copies are looked up by strong identity only (a shared IMDb /
+TMDB / TVDB id; an episode by its series' ids plus season and number); "possible duplicates" that share only a title and
+year are never touched. A server copy is written only with server changes on and a real login (never in developer API-key
+mode, skipped silently otherwise), through that server's own hooks; a local copy is written to the local state file. The
+setters it calls never start another cascade, and state that arrives from elsewhere (the Trakt import) is applied without
+spreading. Resume positions follow only with Sync watch progress on, scaled by runtime when the copies differ in length.
 
 Local media files are never modified, moved, renamed or deleted by NOCTURNE, whatever the setting says; scanning only reads.
 
