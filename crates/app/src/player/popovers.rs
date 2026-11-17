@@ -343,7 +343,7 @@ pub fn overlays(p: &Player) -> Vec<Element<'_, Msg>> {
         ));
     }
     if p.help {
-        const KEYS: [(&str, &str); 25] = [
+        const KEYS: [(&str, &str); 26] = [
             ("Space / click", "Play / pause"),
             ("Left / Right", "Seek 10 s"),
             ("Up / Down", "Volume"),
@@ -356,6 +356,7 @@ pub fn overlays(p: &Player) -> Vec<Element<'_, Msg>> {
             ("[ ]  \\", "Speed down / up / reset"),
             (", .", "Frame back / forward"),
             ("PgUp / PgDn", "Previous / next chapter"),
+            ("t  v  o  q", "Subtitles / audio / settings / quality menus"),
             ("c", "Cycle subtitles"),
             ("Shift+C", "Cycle the secondary subtitle"),
             ("z x", "Subtitle delay -/+ 100 ms"),
