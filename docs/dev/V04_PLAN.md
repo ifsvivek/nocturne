@@ -35,7 +35,7 @@ every test launch, throwaway servers only). Workers use worktrees off `v0.4-loca
   media keys, bundled libmpv, .dmg/.msi packaging scripts. Windows: cross-compile check only; macOS: written, not built
   (no hosted CI by maintainer decision).
 
-**Polish carried from 0.3**: friendly message instead of a panic when no display is available; header nav overflow
+**Polish**: trim surrounding quotes/whitespace from pasted API keys (TMDB, OpenSubtitles, Trakt); carried from 0.3: friendly message instead of a panic when no display is available; header nav overflow
 hint; admin dashboard session label.
 
 ## After 0.4 (not this release)
