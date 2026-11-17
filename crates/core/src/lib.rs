@@ -26,6 +26,7 @@ pub mod profile;
 pub mod remote;
 pub mod search;
 pub mod settings;
+pub mod smart;
 pub mod source;
 pub mod sources;
 pub mod sync;

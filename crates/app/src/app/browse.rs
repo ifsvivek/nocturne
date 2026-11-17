@@ -93,6 +93,8 @@ pub struct Browse {
     pub total: usize,
     pub slots: Vec<Option<Media>>,
     pub merged: Option<Merged>,
+    /// A smart collection page: its id and whether its sources are still answering.
+    pub smart: Option<(u64, bool)>,
     pub list: Vec<Entry>,
     pub pending: HashSet<usize>,
     pub failed: bool,
@@ -119,6 +121,7 @@ impl Browse {
             total: 0,
             slots: vec![],
             merged: None,
+            smart: None,
             list: vec![],
             pending: HashSet::new(),
             failed: false,
@@ -170,7 +173,8 @@ impl Browse {
     }
 
     fn show_letters(&self) -> bool {
-        self.prefs.sort == SortKey::Name
+        self.smart.is_none()
+            && self.prefs.sort == SortKey::Name
             && matches!(
                 self.tab,
                 Tab::Library | Tab::Favourites | Tab::Collections | Tab::Artists
@@ -338,6 +342,10 @@ pub fn scope_tag(kind: &str, key: &str, label: &str) -> Scope {
     }
 }
 
+fn scroll_top() -> Task<Message> {
+    operation::scroll_to(Id::from(GRID_ID), AbsoluteOffset { x: 0.0, y: 0.0 })
+}
+
 impl App {
     // ---- opening ----
 
@@ -436,7 +444,10 @@ impl App {
         (br.total, br.off) = (0, 0.0);
         br.pending.clear();
         br.failed = false;
-        let scroll = operation::scroll_to(Id::from(GRID_ID), AbsoluteOffset { x: 0.0, y: 0.0 });
+        if let Some((id, _)) = br.smart {
+            return Task::batch([scroll_top(), self.smart_reload(id)]);
+        }
+        let scroll = scroll_top();
         if br.tab.is_names() {
             return Task::batch([scroll, self.ensure_options(pid)]);
         }
@@ -744,6 +755,7 @@ impl App {
 
     /// Reload the page in view (a source came back, the filter or the order of sources changed).
     pub(super) fn reload_browse(&mut self) -> Task<Message> {
+        self.smart.clear();
         match self.stack.last() {
             Some(p) if p.view == View::Grid => {
                 let pid = p.pid;
@@ -885,9 +897,10 @@ impl App {
         let loading = n == 0
             && !br.failed
             && !names_tab
-            && match &br.merged {
-                Some(g) => g.loading(),
-                None => br.epoch == 0 || br.pending.contains(&0),
+            && match (&br.merged, br.smart) {
+                (_, Some((_, loading))) => loading,
+                (Some(g), _) => g.loading(),
+                (None, _) => br.epoch == 0 || br.pending.contains(&0),
             };
         let count = if br.failed {
             "unavailable".to_string()
@@ -895,7 +908,7 @@ impl App {
             format!("{} entries", lv::thousands(n))
         } else if loading {
             "loading".to_string()
-        } else if br.merged.as_ref().is_some_and(Merged::loading) {
+        } else if br.merged.as_ref().is_some_and(Merged::loading) || br.smart.is_some_and(|s| s.1) {
             format!("{} items, loading more", lv::thousands(n))
         } else {
             format!(
@@ -1072,14 +1085,16 @@ impl App {
                     .style(style::panel)
                     .into()
             });
-            bar = bar.push(
+            let own_order = br.smart.is_some();
+            bar = bar.extend((!own_order).then(|| -> El<'_> {
                 Popover::new(
                     sort_btn,
                     sort_pop,
                     Message::Browse(pid, BMsg::Menu(Menu::None)),
                 )
-                .left(),
-            );
+                .left()
+                .into()
+            }));
             let filter_btn = action_button(
                 &if nfilters > 0 {
                     format!("Filters ({nfilters})")
@@ -1133,14 +1148,15 @@ impl App {
                 .style(style::panel)
                 .into()
             });
-            bar = bar.push(
+            bar = bar.extend((!own_order).then(|| -> El<'_> {
                 Popover::new(
                     filter_btn,
                     filter_pop,
                     Message::Browse(pid, BMsg::Menu(Menu::None)),
                 )
-                .left(),
-            );
+                .left()
+                .into()
+            }));
             let mut seg = row![].spacing(t::S1);
             for v in ViewKind::ALL {
                 seg = seg.push(action_button(

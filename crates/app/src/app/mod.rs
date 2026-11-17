@@ -20,6 +20,7 @@ mod preview;
 mod remote;
 mod search;
 mod settings;
+pub(crate) mod smart;
 mod sources;
 pub(crate) mod trakt;
 
@@ -180,6 +181,7 @@ pub struct App {
     folders: Option<folders::Folders>,
     online: online::State,
     trakt: trakt::State,
+    smart: smart::State,
     setup: Option<FirstRun>,
     account_back: Option<AccountBack>,
     phase: Phase,
@@ -294,6 +296,7 @@ impl App {
             folders: None,
             online: Default::default(),
             trakt: Default::default(),
+            smart: smart::State::load(),
             setup: None,
             account_back: None,
             phase: Phase::Connecting,
@@ -593,6 +596,7 @@ impl App {
             Message::Folder(m) => self.folder_msg(m),
             Message::Online(m) => self.online_msg(m),
             Message::Trakt(m) => self.trakt_msg(m),
+            Message::Smart(m) => self.smart_msg(m),
             Message::Cascade(m) => self.cascade_msg(m),
             Message::CycleFilter => {
                 self.filter = self.filter.next(&self.catalog.priority());
@@ -1469,6 +1473,16 @@ impl App {
             }
             return Task::none();
         }
+        if self.smart.is_open() {
+            if key == "escape" {
+                return self.smart_msg(smart::Msg::Close);
+            }
+            return Task::none();
+        }
+        if self.smart.menu_open() && matches!(key, "escape" | "backspace") {
+            self.smart.close_menu();
+            return Task::none();
+        }
         if self.trakt.is_open() {
             if key == "escape" {
                 return self.trakt_msg(trakt::Msg::Close);
@@ -1593,6 +1607,7 @@ impl App {
             Some(Link::Lib(i)) => self.update(Message::OpenLibrary(i)),
             Some(Link::Libraries) => self.update(Message::ToggleLibMenu),
             Some(Link::Global(i)) => self.update(Message::OpenGlobal(i)),
+            Some(Link::Smart) => self.update(Message::Smart(smart::Msg::Menu)),
             Some(Link::Admin) => self.update(Message::OpenAdmin),
             None => Task::none(),
         }
@@ -1795,6 +1810,9 @@ impl App {
         }
         if self.trakt.is_open() {
             layers.push(self.trakt_dialog());
+        }
+        if self.smart.is_open() {
+            layers.push(self.smart_dialog());
         }
         if let Some((n, _)) = &self.note {
             layers.push(
