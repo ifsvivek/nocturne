@@ -696,6 +696,7 @@ impl App {
                 id: DEV,
                 label: "Developer token".into(),
                 enabled: true,
+                online: Default::default(),
                 kind: ProfileKind::Jellyfin {
                     url,
                     user_id: String::new(),

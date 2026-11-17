@@ -28,6 +28,9 @@ pub struct Profile {
     pub label: String,
     #[serde(default = "yes")]
     pub enabled: bool,
+    /// Online details and subtitle switches (local sources only; off by default). No secrets: keys are in the keyring.
+    #[serde(default)]
+    pub online: crate::online::Flags,
     #[serde(flatten)]
     pub kind: ProfileKind,
 }
@@ -127,6 +130,7 @@ impl Sources {
             id,
             label: label.into(),
             enabled: true,
+            online: Default::default(),
             kind,
         });
         id
@@ -398,6 +402,34 @@ pub fn set_extra_header(url: &str, line: Option<&str>) -> Result<(), String> {
             .map_err(|_| "Couldn't remove the saved header".to_string())?,
     }
     nocturne_jellyfin::header::set(url, line).map_err(str::to_string)
+}
+
+#[cfg(test)]
+mod online_flag_tests {
+    use super::*;
+
+    #[test]
+    fn online_flags_default_off_persist_and_old_files_load() {
+        let mut s = Sources::default();
+        let id = s.ensure_local();
+        assert!(!s.get(id).unwrap().online.details, "off by default");
+        s.profiles[0].online = crate::online::Flags {
+            details: true,
+            tmdb: true,
+            ..Default::default()
+        };
+        let text = toml::to_string_pretty(&s).unwrap();
+        assert!(
+            !text.to_lowercase().contains("key"),
+            "switches only, never a key: {text}"
+        );
+        let back: Sources = toml::from_str(&text).unwrap();
+        assert_eq!(back, s);
+        // A sources.toml written before this existed has no `online` table.
+        let old = "version = 1\nnext_id = 2\n[[profile]]\nid = 1\nlabel = \"Local\"\nkind = \"local\"\nroots = []\n";
+        let o: Sources = toml::from_str(old).unwrap();
+        assert_eq!(o.profiles[0].online, crate::online::Flags::default());
+    }
 }
 
 #[cfg(test)]

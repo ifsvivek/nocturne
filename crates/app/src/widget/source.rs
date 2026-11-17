@@ -65,6 +65,7 @@ mod tests {
                 id: SourceId(1),
                 label: label.into(),
                 enabled: true,
+                online: Default::default(),
                 kind,
             },
             backend: None,
