@@ -35,7 +35,7 @@ every test launch, throwaway servers only). Workers use worktrees off `v0.4-loca
   media keys, bundled libmpv, .dmg/.msi packaging scripts. Windows: cross-compile check only; macOS: written, not built
   (no hosted CI by maintainer decision).
 
-**Polish**: trim surrounding quotes/whitespace from pasted API keys (TMDB, OpenSubtitles, Trakt); carried from 0.3: friendly message instead of a panic when no display is available; header nav overflow
+**Polish**: player menus reachable by keyboard (Subtitles menu has no keyboard path); trim surrounding quotes/whitespace from pasted API keys (TMDB, OpenSubtitles, Trakt); carried from 0.3: friendly message instead of a panic when no display is available; header nav overflow
 hint; admin dashboard session label.
 
 ## After 0.4 (not this release)
@@ -45,4 +45,4 @@ exact meaning to be agreed when 0.5 starts); plus UI refresh and user customizat
 their order, density and scale, backdrops, per-library views). Wish list to be agreed with the maintainer first.
 
 ## Progress
-- [x] W1 (merged; real HDR output unverified: no HDR display, mpv 0.41)  - [x] W2 (merged; player hooks wired)  - [ ] W3  - [~] Wave 2 (merged: online metadata + subtitles, remote control, watched sync + Trakt (Trakt live sign-in untested); running: download-to-local + subtitle hook; left: smart collections)  - [ ] Wave 3  - [ ] polish  - [ ] 0.4 QA walkthrough
+- [x] W1 (merged; real HDR output unverified: no HDR display, mpv 0.41)  - [x] W2 (merged; player hooks wired)  - [ ] W3  - [~] Wave 2 (merged: online metadata + subtitles, remote control, watched sync + Trakt (Trakt live sign-in untested); download-to-local + subtitle hook; running: smart collections)  - [ ] Wave 3  - [ ] polish  - [ ] 0.4 QA walkthrough
