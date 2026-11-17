@@ -389,3 +389,25 @@ Findings (not fixed here, need a code change in `crates/player`):
   app can show its message, unlike libmpv.
 - A friendly message instead of the winit panic when no display exists (already a 0.4 polish item).
 - An explicit libmpv path override (e.g. `NOCTURNE_LIBMPV`) would let an AppImage avoid `LD_LIBRARY_PATH`.
+
+## 0.4 Windows installer (2026-11-17)
+
+**Everything below ran under wine 10.0 (Debian 13 container, Xvfb). Wine is not Windows**: it proves the installer logic and
+that the exe starts, nothing about real Windows (SmartScreen, shell shortcut rendering, wgpu on a Windows GPU driver,
+Credential Manager, mpv.exe playback, Add/Remove Programs UI). Details: [PACKAGING.md](PACKAGING.md).
+
+| Check | Result |
+|---|---|
+| `cargo build --release --target x86_64-pc-windows-gnu -p nocturne-app` in `rust:1-bookworm` | built; `nocturne.exe` 27,187,200 bytes (26 MiB) |
+| `scripts/package-windows.sh` | `nocturne-0.3.0-x86_64-setup.exe` 42,162,558 bytes (40 MiB); portable zip 58,916,596 bytes (56 MiB) |
+| mpv archive hash check | SHA256 `f259b5fd...72baf` matches the pin (and GitHub's asset digest) |
+| `setup.exe /S` | exit 0; `nocturne.exe`, `mpv.exe`, `nocturne.ico`, `LICENSE.txt`, `THIRD_PARTY_NOTICES.md`, `uninstall.exe` land in `%LOCALAPPDATA%\Programs\NOCTURNE` (per-user, no admin) |
+| Registry | HKCU Uninstall entry written with name, version, publisher, icon, (quiet) uninstall string |
+| Start menu | `NOCTURNE\NOCTURNE.lnk` created |
+| Installed `mpv.exe --version` | runs: mpv v0.42.0-38-gbcde6b93c, FFmpeg N-128766-gcd4e96eb3 |
+| `nocturne.exe` start (15 s, Xvfb) | still running at the timeout, no crash output (a window under wine/Xvfb; no GPU test) |
+| `uninstall.exe /S _?=<dir>` | exit 0; shortcut and registry key removed; program files removed (only `uninstall.exe` remains because `_?=` makes NSIS wait instead of copying itself to a temp dir and deleting itself afterwards; normal silent uninstall self-deletes) |
+
+Not tested: real Windows (any version), the interactive wizard pages (licence page, directory page, finish page "run"),
+upgrade-over-existing install, installing with a custom `/D=`, running playback, code signing. Not done: the macOS
+`.dmg` script has never run (no Mac).

@@ -33,6 +33,28 @@ Points that needed a decision:
 If a distribution builds libmpv as GPL-2.0-only (not the case on Arch) the combination would not be redistributable;
 distribution packages declare mpv as an external dependency, so nothing here is relicensed by NOCTURNE.
 
+## Bundled native libraries (installers only)
+
+The Linux packages bundle nothing (libmpv comes from the distribution). The **Windows installer** (and portable zip)
+ships one prebuilt third-party program next to `nocturne.exe`: `mpv.exe`, used as the external playback window
+(in-window video exists on Linux only). It is not modified by NOCTURNE.
+
+| File | Version | Origin | SHA256 of the downloaded archive |
+|---|---|---|---|
+| `mpv.exe` | mpv v0.42.0-38-gbcde6b93c | shinchiro/mpv-winbuild-cmake release 20261111, `mpv-x86_64-20261111-git-bcde6b93cc.7z` (https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261111/mpv-x86_64-20261111-git-bcde6b93cc.7z) | `f259b5fd4b5c395617c948a4fadcdf55bba1c5282fb7c13e88626b3f71072baf` |
+
+License: this build of mpv statically links FFmpeg and other libraries, including GPL ones (libx264 is present, so
+FFmpeg was built with `--enable-gpl`); the program as distributed is therefore under the GNU General Public License
+(mpv itself is GPL-2.0-or-later, compatible with the GPL-3.0-or-later of NOCTURNE). Each library inside carries its
+own license; the exact list is in the upstream build recipe. Corresponding source, as the GPL requires us to offer it:
+
+- mpv: https://github.com/mpv-player/mpv/tree/bcde6b93cc
+- FFmpeg: https://github.com/FFmpeg/FFmpeg/tree/cd4e96eb3
+- build recipe, which also fetches and pins every other library statically linked into it: https://github.com/shinchiro/mpv-winbuild-cmake/tree/20261111
+
+NOCTURNE starts `mpv.exe` as a separate process (no linking), so the two programs are an aggregate; you can replace
+`mpv.exe` with any other build.
+
 ## Fonts, icons and artwork
 
 - No font files are bundled. The UI asks the system for "Noto Sans" (SIL OFL-1.1) by name and falls back to
