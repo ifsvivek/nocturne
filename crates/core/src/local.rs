@@ -44,6 +44,20 @@ impl LocalBackend {
     }
 
     /// Blocking write access (scans, state, overrides).
+    /// Subtitles downloaded for a local item (id in decimal), for the player to add as external tracks.
+    pub fn subtitles_of(&self, id: &str) -> Vec<PathBuf> {
+        id.parse()
+            .map_or(vec![], |n| self.with(|l| l.subtitles(LocalId(n))))
+    }
+
+    /// Keep a downloaded subtitle in the library's data directory.
+    pub fn save_subtitle(&self, id: &str, name: &str, bytes: &[u8]) -> Result<PathBuf, nl::Error> {
+        let n = id
+            .parse()
+            .map_err(|_| nl::Error::Corrupt("not a local item id"))?;
+        self.with(|l| l.save_subtitle(LocalId(n), name, bytes))
+    }
+
     pub fn with_mut<T>(&self, f: impl FnOnce(&mut Library) -> T) -> T {
         f(&mut self.lib.write().unwrap_or_else(|e| e.into_inner()))
     }
@@ -305,6 +319,7 @@ fn blank(origin: SourceId, id: String, title: String, kind: Kind) -> Media {
         backdrop_id: None,
         ids: nl::ProviderIds::default(),
         available: true,
+        details_from: None,
     }
 }
 
@@ -331,6 +346,7 @@ fn view_media(lib: &Library, origin: SourceId, v: &nl::View) -> Media {
     m.genres = v.genres.clone();
     m.ids = v.ids.clone();
     m.available = v.status == nl::Status::Available;
+    m.details_from = v.details_from.map(String::from);
     m.played = st.played;
     m.resume_s = (st.resume_secs > 0 && !st.played).then_some(st.resume_secs as f64);
     m.added = Some(iso(v.added));
@@ -397,6 +413,7 @@ fn series_media(origin: SourceId, s: &nl::Series, a: Option<&Agg>) -> Media {
     m.genres = s.genres.clone();
     m.rating = s.rating;
     m.ids = s.ids.clone();
+    m.details_from = s.details_from.map(String::from);
     m.child_count = Some(s.seasons.len() as u32);
     m.unplayed = a.map(|a| a.unplayed);
     m.played = a.is_some_and(|a| a.total > 0 && a.unplayed == 0);

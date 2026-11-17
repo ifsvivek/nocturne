@@ -118,6 +118,8 @@ pub struct Media {
     /// duplicates are merged and marked in the UI. Server items are always available here (a server
     /// that is down is a source status, not an item flag).
     pub available: bool,
+    /// A local item whose details came (in part) from an online provider: its name ("TMDB").
+    pub details_from: Option<String>,
 }
 
 impl Media {
@@ -154,6 +156,7 @@ impl Media {
             origin,
             ids: provider_ids(&i.x.provider_ids),
             available: true,
+            details_from: None,
             id: i.id.clone(),
             title: i.name.clone(),
             kind,
