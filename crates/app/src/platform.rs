@@ -36,6 +36,19 @@ pub fn handles(id: window::Id) -> Task<Handles> {
     .map(|h| h.unwrap_or(Handles::Other))
 }
 
+/// Linux/BSD: is there no display server to connect to (no `WAYLAND_DISPLAY`, `WAYLAND_SOCKET`
+/// or `DISPLAY`)? Other OSes always have one.
+pub fn no_graphical_session() -> bool {
+    !cfg!(any(target_os = "macos", windows))
+        && no_session_in(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()))
+}
+
+fn no_session_in(set: impl Fn(&str) -> bool) -> bool {
+    !["WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY"]
+        .iter()
+        .any(|k| set(k))
+}
+
 /// Per-OS window options: on Linux the Wayland app id / X11 class (matches the .desktop file).
 pub fn window_settings() -> window::settings::PlatformSpecific {
     #[cfg(target_os = "linux")]
@@ -187,6 +200,13 @@ pub fn since_start() -> std::time::Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display_detection() {
+        assert!(no_session_in(|_| false));
+        assert!(!no_session_in(|k| k == "DISPLAY"));
+        assert!(!no_session_in(|k| k == "WAYLAND_DISPLAY"));
+    }
 
     #[test]
     fn gnome_and_kde_detection() {

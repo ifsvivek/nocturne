@@ -212,6 +212,14 @@ fn check(l: &Lib, code: c_int) -> Result<(), String> {
     if code < 0 { Err(err(l, code)) } else { Ok(()) }
 }
 
+/// Applies the first of `alts` that `set` accepts; false if none was.
+fn first_accepted(
+    alts: &[(&str, &str)],
+    mut set: impl FnMut(&str, &str) -> Result<(), String>,
+) -> bool {
+    alts.iter().any(|(k, v)| set(k, v).is_ok())
+}
+
 pub struct Mpv {
     l: &'static Lib,
     h: Handle,
@@ -237,8 +245,13 @@ pub enum Ev {
 }
 
 impl Mpv {
-    /// `mpv_create` + string options + `mpv_initialize`.
-    pub fn new(options: &[(&str, &str)]) -> Result<Self, String> {
+    /// `mpv_create` + string options + `mpv_initialize`; `optional` groups of alternatives: in each group the first option
+    /// mpv accepts is kept, and a group nothing in is accepted for is skipped. For options whose
+    /// name or values differ between libmpv versions (mpv < 0.40 rejects `background=color`).
+    pub fn new_with(
+        options: &[(&str, &str)],
+        optional: &[&[(&str, &str)]],
+    ) -> Result<Self, String> {
         let l = lib()?;
         let h = unsafe { (l.create)() };
         if h.is_null() {
@@ -250,6 +263,14 @@ impl Mpv {
             check(l, unsafe {
                 (l.set_option_string)(h, k.as_ptr(), v.as_ptr())
             })?;
+        }
+        for alts in optional {
+            first_accepted(alts, |k, v| {
+                let (k, v) = (cstr(k)?, cstr(v)?);
+                check(l, unsafe {
+                    (l.set_option_string)(h, k.as_ptr(), v.as_ptr())
+                })
+            });
         }
         check(l, unsafe { (l.initialize)(h) })?;
         Ok(m)
@@ -470,6 +491,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn optional_options_fall_back_per_libmpv_version() {
+        let alts = [("background", "color"), ("background", "#FF000000")];
+        // mpv >= 0.40 takes the mode word ...
+        let mut got = vec![];
+        assert!(first_accepted(&alts, |k, v| {
+            got.push((k.to_string(), v.to_string()));
+            Ok(())
+        }));
+        assert_eq!(got, [("background".to_string(), "color".to_string())]);
+        // ... older mpv (-7 for the word) takes the colour itself ...
+        let mut got = vec![];
+        assert!(first_accepted(&alts, |_, v| {
+            got.push(v.to_string());
+            if v == "color" {
+                Err("bad".into())
+            } else {
+                Ok(())
+            }
+        }));
+        assert_eq!(got, ["color", "#FF000000"]);
+        // ... and an option mpv does not know at all is skipped, not fatal.
+        assert!(!first_accepted(
+            &[("background-color", "#FF000000")],
+            |_, _| Err("x".into())
+        ));
+    }
+
+    #[test]
     fn library_names_per_os() {
         let d = Path::new("/App/Contents/MacOS");
         assert_eq!(candidates("linux", Some(d)), ["libmpv.so.2"]);
@@ -498,7 +547,15 @@ mod tests {
     /// Needs libmpv installed (a CI/dev prerequisite); no display or audio device.
     #[test]
     fn headless_properties_and_events_round_trip() {
-        let m = Mpv::new(&[("vo", "null"), ("ao", "null"), ("terminal", "no")]).unwrap();
+        let background: [&[(&str, &str)]; 2] = [
+            &[("background", "color"), ("background", "#FF000000")],
+            &[("background-color", "#FF000000")],
+        ];
+        let m = Mpv::new_with(
+            &[("vo", "null"), ("ao", "null"), ("terminal", "no")],
+            &background,
+        )
+        .unwrap();
         m.observe_flag("pause", 1).unwrap();
         m.set_flag("pause", true).unwrap();
         assert_eq!(m.get_string("pause").unwrap(), "yes");
