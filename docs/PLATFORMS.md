@@ -7,7 +7,10 @@ after 0.3 ships for Arch. Nothing here may degrade playback quality, stability o
 ## Platform seams (keep everything platform-specific behind these; `#[cfg(target_os = ...)]` only inside them)
 
 Implemented state (0.4): Linux is built, run and tested. macOS and Windows are **written, cross-checked to compile,
-never run** (`scripts/check-cross.sh`); no installers yet.
+never run** (`scripts/check-cross.sh`); no installers yet. Windows: the whole app compiles (`x86_64-pc-windows-gnu`).
+macOS: only `nocturne-player` and `nocturne-local` can be checked on Linux; everything that depends on reqwest
+(jellyfin*, session, core, app) is blocked by `aws-lc-sys`, which compiles C against the Apple SDK's libc headers, so
+the macOS paths in those crates are **written, not built** until a real Mac is available.
 
 | Concern | Linux | macOS | Windows |
 |---|---|---|---|

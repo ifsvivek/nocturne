@@ -41,12 +41,13 @@ for t in "${targets[@]}"; do
     windows)
       run windows x86_64-pc-windows-gnu gcc-mingw-w64-x86-64 -p nocturne-app || rc=1 ;;
     macos)
-      # Whole app first; if a C dependency blocks it (no Apple SDK), fall back to the crates
-      # that hold our OS-specific code so the failure is pinned to the dependency, not to us.
+      # Whole app first. Known blocker: aws-lc-sys (rustls crypto under reqwest) compiles C and needs the
+      # Apple SDK's libc headers, which cannot be had on Linux (osxcross needs a downloaded SDK we may not
+      # redistribute). Then every crate that depends on reqwest (jellyfin*, session, core, app) cannot be
+      # checked here: "written, not built". The two crates without it, player and local, still are.
       if ! run macos x86_64-apple-darwin clang -p nocturne-app; then
-        echo "-- macOS app check failed; checking our own crates only"
-        run macos-libs x86_64-apple-darwin clang \
-          -p nocturne-session -p nocturne-player -p nocturne-local -p nocturne-core || rc=1
+        echo "-- macOS app check failed (see above); checking the crates that avoid the C dependency"
+        run macos-libs x86_64-apple-darwin clang -p nocturne-player -p nocturne-local || rc=1
         rc=1
       fi ;;
     *) echo "unknown target $t (windows|macos)"; rc=2 ;;
