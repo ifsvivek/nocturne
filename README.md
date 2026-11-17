@@ -75,13 +75,8 @@ library. Step-by-step page: [nocturne.ifsvivek.in/repo](https://nocturne.ifsvive
 curl -fsSL https://nocturne.ifsvivek.in/repo/ARCH-GPG-KEY | sudo pacman-key --add -
 sudo pacman-key --lsign-key 5204B42AF768DE210D4979E397FA02EFCF1A4E3B
 
-# 2. Add the repository
-sudo tee -a /etc/pacman.conf << 'EOF'
-
-[nocturne]
-SigLevel = Required TrustedOnly
-Server = https://nocturne.ifsvivek.in/repo/arch/$arch
-EOF
+# 2. Add the repository (one line; works in bash, zsh and fish)
+printf '%s\n' '' '[nocturne]' 'SigLevel = Required TrustedOnly' 'Server = https://nocturne.ifsvivek.in/repo/arch/$arch' | sudo tee -a /etc/pacman.conf
 
 # 3. Install
 sudo pacman -Syu nocturne
@@ -91,6 +86,9 @@ Check that the key fingerprint is `5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 
 2029-11-15). Then:
 
 - **Update**: `sudo pacman -Syu` (new NOCTURNE versions come with your normal system updates).
+- **"target not found: nocturne"**: the `[nocturne]` section is missing from `/etc/pacman.conf`
+  (`grep -A2 '^\[nocturne\]' /etc/pacman.conf` shows it); repeat step 2. gpg's note that "SHA1 third-party key
+  signatures are rejected" is about Arch's own keyring and harmless: keep `SigLevel = Required TrustedOnly`.
 - **Uninstall**: `sudo pacman -Rns nocturne`, and delete the `[nocturne]` lines from `/etc/pacman.conf` if you want.
 - **Coming from a 0.2 tarball install?** Remove it first so only one copy exists:
   `sudo /path/to/nocturne-0.2.0-x86_64-linux/install.sh uninstall` (or delete `/usr/local/bin/nocturne`). Your

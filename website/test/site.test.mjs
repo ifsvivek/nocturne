@@ -44,7 +44,7 @@ test("package repository page: exact pacman steps, signing key, other formats pl
   for (const s of [
     "curl -fsSL https://nocturne.ifsvivek.in/repo/ARCH-GPG-KEY | sudo pacman-key --add -",
     "sudo pacman-key --lsign-key 5204B42AF768DE210D4979E397FA02EFCF1A4E3B",
-    "sudo tee -a /etc/pacman.conf << 'EOF'\n\n[nocturne]\nSigLevel = Required TrustedOnly\nServer = https://nocturne.ifsvivek.in/repo/arch/$arch\nEOF",
+    "printf '%s\\n' '' '[nocturne]' 'SigLevel = Required TrustedOnly' 'Server = https://nocturne.ifsvivek.in/repo/arch/$arch' | sudo tee -a /etc/pacman.conf",
     "sudo pacman -Syu nocturne", "sudo pacman -Syu",
     "5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B", "ed25519, valid until 2029-11-15",
     "CachyOS, EndeavourOS and Manjaro", "Planned with 0.4", 'rel="canonical" href="https://nocturne.ifsvivek.in/repo"',

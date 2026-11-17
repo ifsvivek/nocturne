@@ -7,7 +7,8 @@
   const FINGERPRINT = "5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B";
   const steps = [
     ["Import the signing key", `curl -fsSL ${KEY_URL} | sudo pacman-key --add -\nsudo pacman-key --lsign-key ${KEY_ID}`],
-    ["Add the repository to /etc/pacman.conf", `sudo tee -a /etc/pacman.conf << 'EOF'\n\n[nocturne]\nSigLevel = Required TrustedOnly\nServer = ${SITE}/repo/arch/$arch\nEOF`],
+    // printf, not a heredoc: fish (CachyOS's default shell) has no heredocs, and this line works in bash, zsh and fish.
+    ["Add the repository to /etc/pacman.conf", `printf '%s\\n' '' '[nocturne]' 'SigLevel = Required TrustedOnly' 'Server = ${SITE}/repo/arch/$arch' | sudo tee -a /etc/pacman.conf`],
     ["Install NOCTURNE (also refreshes the package databases)", "sudo pacman -Syu nocturne"],
   ];
   const later = [["Debian and Ubuntu", ".deb"], ["Fedora", ".rpm"]];
@@ -33,6 +34,12 @@
           </li>
         {/each}
       </ol>
+
+      <div class="mt-10 grid gap-y-4 text-sm text-ink-2" aria-label="Troubleshooting">
+        <p class="m-0"><span class="text-ink">Works in bash, zsh and fish.</span> Paste the commands as they are into any of them.</p>
+        <p class="m-0"><span class="text-ink">"target not found: nocturne"</span> means the <code>[nocturne]</code> section is not in <code>/etc/pacman.conf</code>: check with <code>grep -A2 '^\[nocturne\]' /etc/pacman.conf</code> and repeat step 2.</p>
+        <p class="m-0"><span class="text-ink">"third-party key signatures using the SHA1 algorithm are rejected"</span> is a harmless note from gpg about Arch's own keyring. Keep <code>SigLevel = Required TrustedOnly</code>; never lower it to make NOCTURNE install.</p>
+      </div>
 
       <aside class="mt-10 rounded-[3px] border-l-2 border-accent bg-surface px-6 py-5 ring-1 ring-line ring-inset" aria-label="Signing key">
         <p class="role m-0">Signing key</p>
