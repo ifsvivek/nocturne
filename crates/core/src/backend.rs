@@ -233,6 +233,14 @@ impl Backend {
         }
     }
 
+    /// Collections this item is part of (server only; local items have none).
+    pub async fn collections_of(&self, id: &str) -> Result<Vec<Media>, Failed> {
+        match self {
+            Self::Jellyfin(s) => s.collections_of(id).await,
+            Self::Local(_) => Ok(vec![]),
+        }
+    }
+
     // ---- local state (no server is involved) ----
 
     /// Mark a local item (un)played. A server item is changed by the user client of its own source,

@@ -252,6 +252,22 @@ impl Client {
         .await
     }
 
+    /// Recently added items of a library (`GET /Items/Latest`, a bare array). With grouping on (the
+    /// server default) new episodes of a show collapse into that show, as in Jellyfin Web.
+    pub async fn latest(&self, user_id: &str, parent_id: &str, limit: u32) -> Result<Vec<Item>> {
+        self.get(
+            &["Items", "Latest"],
+            &[
+                ("userId", user_id.to_string()),
+                ("parentId", parent_id.to_string()),
+                ("limit", limit.to_string()),
+                ("groupItems", "true".into()),
+                ("fields", ID_FIELDS.into()),
+            ],
+        )
+        .await
+    }
+
     /// Next unwatched episode of each series being followed (`GET /Shows/NextUp`).
     pub async fn next_up(&self, user_id: &str, limit: u32) -> Result<Items> {
         self.get(&["Shows", "NextUp"], &next_up_pairs(user_id, limit))

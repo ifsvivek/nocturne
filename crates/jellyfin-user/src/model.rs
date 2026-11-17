@@ -76,11 +76,33 @@ pub(crate) struct QuickConnectState {
     pub authenticated: bool,
 }
 
+/// How the server delivers the stream; reported so its dashboard is right and a transcode is stopped.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PlayMethod {
+    #[default]
+    DirectPlay,
+    DirectStream,
+    Transcode,
+}
+
+impl PlayMethod {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::DirectPlay => "DirectPlay",
+            Self::DirectStream => "DirectStream",
+            Self::Transcode => "Transcode",
+        }
+    }
+}
+
 /// What is being reported to `/Sessions/Playing*`. Position is in 100 ns ticks.
 #[derive(Debug, Clone, Default)]
 pub struct PlaybackReport {
     pub item_id: String,
     pub media_source_id: Option<String>,
+    pub play_method: PlayMethod,
+    /// The id the stream URL carried (transcodes); the server stops that transcode on "stopped".
+    pub play_session_id: Option<String>,
     pub position_ticks: u64,
     pub is_paused: bool,
     pub audio_stream_index: Option<u32>,
