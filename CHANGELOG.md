@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- macOS and Windows code behind the platform seams (written and cross-compile-checked, never run; no installers yet):
+  per-OS config/data/cache paths, keyring backends, named-pipe mpv IPC, per-OS libmpv loading, single-instance guard,
+  and playback through the external mpv window. Linux behaviour is unchanged. `scripts/check-cross.sh` runs the
+  Windows/macOS compile checks in Docker ([PLATFORMS.md](docs/PLATFORMS.md)).
 - One watched state across sources (Settings > Watched state, opt-in, off by default): marking a title watched or finishing
   it also marks its copies on your other sources, found by IMDb / TMDB / TVDB id (episodes: series ids plus season and
   episode number), never by title alone. Server copies only change when server changes are on (each write goes to that

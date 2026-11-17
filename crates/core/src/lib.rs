@@ -1,6 +1,8 @@
 //! UI-framework-free logic shared by the front ends: settings, navigation, list/detail state,
 //! playback logic, the Jellyfin source layer, caches, and admin/account state machines.
 pub mod account;
+/// Per-OS config/data/cache/runtime dirs (lives in `nocturne-session`, which core builds on).
+pub use nocturne_session::paths;
 pub mod admin;
 pub mod backend;
 pub mod blurhash;

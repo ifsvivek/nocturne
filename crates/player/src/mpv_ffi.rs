@@ -5,13 +5,56 @@
 //! process before `main`. Only what `embedded.rs` needs is declared. In-process mpv uses the OpenGL
 //! render API only (see the RULE in `embedded.rs`).
 
+// Only the Linux in-window player calls most of this; elsewhere just the load probe is used.
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
+
 use libloading::Library;
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
 use std::sync::OnceLock;
 
-const SONAME: &str = "libmpv.so.2";
+/// The library to `dlopen`, per OS, in order of preference; `exe_dir` is the directory of the
+/// running executable. Linux: the distro's soname (unchanged). macOS: the app bundle's
+/// `Frameworks/` (next to `Contents/MacOS`), then the default paths and Homebrew. Windows: next to
+/// the exe, then the DLL search path.
+fn candidates(os: &str, exe_dir: Option<&Path>) -> Vec<String> {
+    let in_dir = |d: Option<PathBuf>, f: &str| d.map(|d| d.join(f).display().to_string());
+    let list = match os {
+        "macos" => vec![
+            in_dir(exe_dir.map(|d| d.join("../Frameworks")), "libmpv.2.dylib"),
+            in_dir(exe_dir.map(Path::to_path_buf), "libmpv.2.dylib"),
+            Some("libmpv.2.dylib".into()),
+            Some("/opt/homebrew/lib/libmpv.2.dylib".into()),
+            Some("/usr/local/lib/libmpv.2.dylib".into()),
+        ],
+        "windows" => vec![
+            in_dir(exe_dir.map(Path::to_path_buf), "libmpv-2.dll"),
+            Some("libmpv-2.dll".into()),
+        ],
+        _ => vec![Some("libmpv.so.2".into())],
+    };
+    list.into_iter().flatten().collect()
+}
+
+/// Directory of the running executable.
+pub(crate) fn exe_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()?
+        .parent()
+        .map(Path::to_path_buf)
+}
+
+fn os_name() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(windows) {
+        "windows"
+    } else {
+        "linux"
+    }
+}
 /// Test/debug override for the library to load (e.g. a nonexistent path to exercise the failure path).
 const ENV_OVERRIDE: &str = "NOCTURNE_LIBMPV";
 
@@ -132,9 +175,23 @@ fn load(name: &str) -> Result<Lib, String> {
 /// Loaded once per process and never unloaded (mpv spawns threads that may outlive any handle).
 fn lib() -> Result<&'static Lib, String> {
     static LIB: OnceLock<Result<Lib, String>> = OnceLock::new();
-    LIB.get_or_init(|| load(&std::env::var(ENV_OVERRIDE).unwrap_or_else(|_| SONAME.into())))
-        .as_ref()
-        .map_err(Clone::clone)
+    LIB.get_or_init(|| {
+        let names = match std::env::var(ENV_OVERRIDE) {
+            Ok(n) => vec![n],
+            Err(_) => candidates(os_name(), exe_dir().as_deref()),
+        };
+        let mut first_err = String::new();
+        for n in &names {
+            match load(n) {
+                Ok(l) => return Ok(l),
+                Err(e) if first_err.is_empty() => first_err = e,
+                Err(_) => {}
+            }
+        }
+        Err(first_err)
+    })
+    .as_ref()
+    .map_err(Clone::clone)
 }
 
 /// Cheap probe: is a usable libmpv present? Loads it on first call.
@@ -411,6 +468,24 @@ impl Drop for RenderCtx<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn library_names_per_os() {
+        let d = Path::new("/App/Contents/MacOS");
+        assert_eq!(candidates("linux", Some(d)), ["libmpv.so.2"]);
+        let mac = candidates("macos", Some(d));
+        assert!(
+            mac[0].ends_with("MacOS/../Frameworks/libmpv.2.dylib"),
+            "{mac:?}"
+        );
+        assert!(mac.contains(&"libmpv.2.dylib".to_string()));
+        let win = candidates("windows", Some(Path::new("C:/n")));
+        assert!(
+            win[0].ends_with("libmpv-2.dll") && win[0].contains("C:/n"),
+            "{win:?}"
+        );
+        assert_eq!(candidates("windows", None), ["libmpv-2.dll"]);
+    }
 
     #[test]
     fn missing_library_is_an_error_not_a_panic() {

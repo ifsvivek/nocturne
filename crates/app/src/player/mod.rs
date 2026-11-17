@@ -1880,7 +1880,7 @@ impl Player {
         let Some(p) = &self.playback else { return };
         let dir = std::env::var_os("XDG_PICTURES_DIR")
             .map(std::path::PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join("Pictures")))
+            .or_else(|| nocturne_session::paths::home().map(|h| h.join("Pictures")))
             .filter(|d| d.is_dir())
             .unwrap_or_else(std::env::temp_dir);
         let secs = std::time::SystemTime::now()

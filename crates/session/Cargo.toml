@@ -14,8 +14,15 @@ rust-version.workspace = true
 
 [dependencies]
 nocturne-jellyfin-user = { path = "../jellyfin-user" } # Session type
-keyring = { version = "3.6", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 thiserror = "2.0.21"
 toml = "1.2.1"
+
+# One credential store per OS; no file fallback anywhere.
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["apple-native"] }
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["windows-native"] }

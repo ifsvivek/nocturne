@@ -908,8 +908,11 @@ mod tests {
         // unreadable (skipped where permissions do not apply, e.g. running as root)
         let matrix = m_by(&b, films, "The Matrix").await;
         let p2 = t.path().join("media/Films/The.Matrix.1999.1080p.mkv");
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&p2, std::fs::Permissions::from_mode(0o000)).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p2, std::fs::Permissions::from_mode(0o000)).unwrap();
+        }
         if std::fs::File::open(&p2).is_err() {
             assert_eq!(be.play_target(&matrix).await, Err(PlayError::Unreadable));
         }

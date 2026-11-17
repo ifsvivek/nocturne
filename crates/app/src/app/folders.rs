@@ -91,9 +91,13 @@ pub enum Msg {
 /// `~/x` and `~` to the home directory; anything else as typed (it must then be absolute).
 fn expand(raw: &str) -> PathBuf {
     let raw = raw.trim();
-    match (raw.strip_prefix("~/"), raw == "~", std::env::var_os("HOME")) {
-        (Some(rest), _, Some(h)) => PathBuf::from(h).join(rest),
-        (_, true, Some(h)) => PathBuf::from(h),
+    match (
+        raw.strip_prefix("~/"),
+        raw == "~",
+        nocturne_session::paths::home(),
+    ) {
+        (Some(rest), _, Some(h)) => h.join(rest),
+        (_, true, Some(h)) => h,
         _ => PathBuf::from(raw),
     }
 }
@@ -752,9 +756,9 @@ mod tests {
 
     #[test]
     fn home_relative_paths_expand_and_others_must_be_absolute() {
-        let home = std::env::var("HOME").unwrap();
-        assert_eq!(expand(" ~/Movies "), PathBuf::from(&home).join("Movies"));
-        assert_eq!(expand("~"), PathBuf::from(home));
+        let home = nocturne_session::paths::home().unwrap();
+        assert_eq!(expand(" ~/Movies "), home.join("Movies"));
+        assert_eq!(expand("~"), home);
         assert_eq!(expand("/mnt/x"), PathBuf::from("/mnt/x"));
         assert!(check_folder(Path::new("movies")).is_err());
         assert!(check_folder(Path::new("/definitely/not/here")).is_err());
