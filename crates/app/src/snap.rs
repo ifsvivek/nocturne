@@ -24,6 +24,13 @@ pub fn on_boot() -> Task<Message> {
                 .parse()
                 .ok()
                 .map(|i| Message::Smart(crate::app::smart::Msg::Open(i))),
+            "open-sources" => Some(Message::OpenSources),
+            // `open-folders-1`: the Local folders screen of source id 1.
+            n if n.starts_with("open-folders-") => n[13..].parse().ok().map(|i| {
+                Message::Src(crate::app::message::SrcAct::Folders(
+                    nocturne_core::source::SourceId(i),
+                ))
+            }),
             "open-trakt" => Some(Message::Trakt(crate::app::trakt::Msg::Open)),
             // `open-global-0`: the header's n-th merged link (Movies, Shows, ...).
             "open-movies" => Some(Message::OpenKind(nocturne_core::unified::UKind::Movies)),
@@ -38,9 +45,14 @@ pub fn on_boot() -> Task<Message> {
                 msg,
             ));
         }
+        // `shift+c`: the same key with Shift held (the player's secondary-subtitle cycle).
+        let (name, shift) = name
+            .strip_prefix("shift+")
+            .map_or((name, false), |n| (n, true));
         let key = crate::keys::Key {
             name: name.into(),
             text: (name.chars().count() == 1).then(|| name.into()),
+            shift,
             ..Default::default()
         };
         Some(crate::task::after(
