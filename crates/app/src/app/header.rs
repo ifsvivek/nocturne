@@ -91,6 +91,10 @@ impl App {
                     focused,
                     Message::OpenGlobal(gi),
                 ),
+                Link::Smart => self.smart_menu(
+                    cur.is_some_and(|c| c.1.starts_with("smart-")) && !at_home && !blur,
+                    focused,
+                ),
                 Link::Admin => nav_link("Admin", self.admin_open, focused, Message::OpenAdmin),
             });
         }
@@ -402,7 +406,7 @@ impl App {
         let home = self.stack.first();
         let libs = home.map_or(&[][..], |h| h.libs.items());
         let several = home.is_some_and(|h| h.fan.contributors() > 1);
-        links(
+        let mut v = links(
             libs,
             several,
             |o| {
@@ -412,7 +416,14 @@ impl App {
             },
             GLOBALS.len(),
             self.admin,
-        )
+        );
+        // Smart collections sit just before the globals.
+        let at = v
+            .iter()
+            .position(|l| matches!(l, Link::Global(_) | Link::Admin))
+            .unwrap_or(v.len());
+        v.insert(at, Link::Smart);
+        v
     }
 
     /// "Libraries": every source's libraries grouped under its source mark.

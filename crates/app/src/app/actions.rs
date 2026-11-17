@@ -234,6 +234,7 @@ impl App {
 
     /// Apply `f` to every copy of the item the UI holds, so an optimistic change shows everywhere.
     pub(super) fn patch(&mut self, origin: SourceId, id: &str, f: impl Fn(&mut Media)) {
+        self.smart.clear();
         let hit = |m: &mut Media| {
             if m.origin == origin && m.id == id {
                 f(m)

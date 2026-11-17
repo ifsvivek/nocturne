@@ -17,6 +17,13 @@ pub fn on_boot() -> Task<Message> {
             "open-admin" => Some(Message::OpenAdmin),
             "run-setup" => Some(Message::RunSetup),
             "open-settings" => Some(Message::MenuAct(crate::app::message::AcctAct::Settings)),
+            "smart-menu" => Some(Message::Smart(crate::app::smart::Msg::Menu)),
+            "smart-manage" => Some(Message::Smart(crate::app::smart::Msg::Manage)),
+            "smart-new" => Some(Message::Smart(crate::app::smart::Msg::New)),
+            n if n.starts_with("smart-open-") => n[11..]
+                .parse()
+                .ok()
+                .map(|i| Message::Smart(crate::app::smart::Msg::Open(i))),
             "open-trakt" => Some(Message::Trakt(crate::app::trakt::Msg::Open)),
             // `open-global-0`: the header's n-th merged link (Movies, Shows, ...).
             "open-movies" => Some(Message::OpenKind(nocturne_core::unified::UKind::Movies)),

@@ -208,6 +208,7 @@ pub enum Message {
     Folder(super::folders::Msg),
     Online(super::online::Msg),
     Trakt(super::trakt::Msg),
+    Smart(super::smart::Msg),
     Cascade(super::cascade::Msg),
     Downloads(super::downloads::Msg),
     CycleFilter,

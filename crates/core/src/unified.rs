@@ -12,7 +12,8 @@ pub const MERGED_PAGE: usize = 300;
 // ponytail: merged lists load fully, up to this cap per source; a bigger library needs a paged merge.
 pub const MERGED_CAP: usize = 20_000;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum UKind {
     Movies,
     Shows,
@@ -87,6 +88,8 @@ pub enum Link {
     /// The menu of every source's libraries (several sources only).
     Libraries,
     Global(usize),
+    /// The smart collections menu (added by the UI, never by [`links`]).
+    Smart,
     Admin,
 }
 
