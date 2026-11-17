@@ -268,6 +268,7 @@ pub struct Player {
     switched: bool,
     target_checked: bool,
     series_ids: Option<(SourceId, String, ProviderIds)>,
+    subs_retry: Option<Instant>,
 }
 
 impl Player {
@@ -393,6 +394,7 @@ impl Player {
             switched: false,
             target_checked: false,
             series_ids: None,
+            subs_retry: None,
             ctx,
         };
         let first = me.begin(media, true);
@@ -691,6 +693,7 @@ impl Player {
         self.sheets.clear();
         self.ext_added = false;
         self.applied = false;
+        self.subs_retry = None;
         self.tracks.clear();
         self.chapters.clear();
         self.art_url.clear();
@@ -1009,6 +1012,16 @@ impl Player {
             self.setp("aid", &a.to_string());
             self.refresh_meta();
         }
+        self.set.audio_original = mem.audio == Some(AudioPick::Original);
+        self.apply_sub2_pos();
+        self.subs_retry = (!self.apply_subs()).then(|| Instant::now() + Duration::from_secs(5));
+    }
+
+    /// Main and secondary subtitle from the memory and preferences. `false`: the memory names a
+    /// language no track carries yet (external subtitles can arrive after the file loads), so
+    /// the tick tries again for a few seconds.
+    fn apply_subs(&mut self) -> bool {
+        let (prefs, mem) = (self.ctx.prefs.clone(), self.choice());
         let audio = self
             .tracks
             .iter()
@@ -1019,9 +1032,9 @@ impl Player {
         self.setp("sid", &track_arg(sid));
         let sid2 = pl::pick_sub2(&self.tracks, sid, &mem);
         self.setp("secondary-sid", &track_arg(sid2));
-        self.set.audio_original = mem.audio == Some(AudioPick::Original);
-        self.apply_sub2_pos();
         self.refresh_meta();
+        let missing = |p: &Option<SubPick>, id: i64| matches!(p, Some(SubPick::Lang(_))) && id == 0;
+        !(missing(&mem.sub, sid) || missing(&mem.sub2, sid2))
     }
 
     /// Friendly names, plus the server's external/text subtitles (needed in transcode mode, where
@@ -1063,6 +1076,7 @@ impl Player {
     /// Select a track of `prop` (`sid`, `secondary-sid` or `aid`; 0 = off) and remember its language
     /// for this show. A track with no language tag changes the selection only.
     pub fn set_track(&mut self, prop: &str, id: i64, label: &str) {
+        self.subs_retry = None; // the viewer chose: stop applying the memory
         self.setp(prop, &track_arg(id));
         self.refresh_meta();
         let (kind, second) = match prop {
@@ -2272,6 +2286,12 @@ impl Player {
     }
 
     fn poll_extras(&mut self) {
+        if let Some(t) = self.subs_retry {
+            self.refresh_meta();
+            if Instant::now() > t || self.apply_subs() {
+                self.subs_retry = None;
+            }
+        }
         // End of the buffered range: position plus the demuxer's buffered-ahead seconds.
         self.cache_end = self
             .state
