@@ -9,7 +9,7 @@ more. Debian/Fedora/openSUSE builds are UNVERIFIED.
 package `nocturne-app` (`crates/app`) / binary `nocturne`; `scripts/gen-notices.py` and `scripts/test-playback.sh` take the same `PKG`/`BIN`). The installed name is always `nocturne`.
 
 Linux formats: Arch package, tarball, **.deb** and **.rpm** (0.4, built in distro containers, see below). AppImage was
-evaluated and is not shipped (below). The Windows installer is built (tested under wine only) and the macOS script is written but never run (below). Per-platform libmpv handling and the
+evaluated and is not shipped (below). The Windows installer is built (wine-tested; first native run is the manual CI workflow) and the macOS script is written, first run also via that workflow (below). Per-platform libmpv handling and the
 footprint budget are in [PLATFORMS.md](PLATFORMS.md).
 
 **libmpv version the app really needs: mpv 0.40 or newer.** The embedded player sets `background=color`
@@ -221,6 +221,23 @@ PLATFORMS.md). Expect to fix small things on the first run. It builds one `.dmg`
   Without them the bundle is ad-hoc signed and Gatekeeper requires right-click > Open.
 - Homebrew dylibs target the Homebrew machine's macOS version; `LSMinimumSystemVersion` is 12.0 as a guess, to be set
   from `otool -l` (`minos`) of the bundled dylibs.
+
+## CI build of the Windows and macOS packages
+
+`.github/workflows/platforms.yml` is `workflow_dispatch` only and is meant to be **run manually once per release** (there
+is no push/PR/schedule trigger; `ci.yml` is the separate manual Linux check). No secrets, no publishing: artifacts
+(`windows`: setup.exe, portable zip, `.sha256` files; `macos`: .dmg and `.sha256`) are kept 7 days and the maintainer
+attaches them to a release by hand.
+
+- **windows** (`windows-latest`): native `x86_64-pc-windows-msvc` release build (the Docker script cross-compiles
+  `-gnu`; CI uses MSVC because the runner has it), pinned mpv fetched and SHA256-verified from `mpv.pin`, `makensis`
+  installer and portable zip with the same layout as `scripts/package-windows.sh` (icon via Pillow instead of ImageMagick),
+  then a smoke test: silent install, `mpv.exe --version`, launch `nocturne.exe` (a GPU/window exit is fine, a loader error
+  code is not), silent uninstall with file and registry checks. Unsigned.
+- **macos** (`macos-latest`, arm64 only): Homebrew `mpv` + `dylibbundler`, `scripts/package-macos.sh` (ad-hoc signed,
+  plain `hdiutil` dmg because `create-dmg` needs Finder), then `otool -L` over the bundle (no `/opt/homebrew` or
+  `/usr/local`), bundled `mpv --version`, libmpv `dlopen`, brief launch (dyld errors fail, GPU errors do not).
+- `cargo test --workspace --locked` runs last in each job so a test failure cannot hide the packaging result.
 
 ## AppImage: evaluated, not shipped
 
