@@ -1423,10 +1423,16 @@ impl App {
 
     fn on_key(&mut self, k: Key) -> Task<Message> {
         if self.dl.visible() {
-            if matches!(k.name.as_str(), "escape" | "backspace") {
-                self.dl.escape();
-            }
-            return Task::none();
+            return match k.name.as_str() {
+                "escape" | "backspace" => {
+                    self.dl.escape();
+                    Task::none()
+                }
+                "enter" => self.dl_msg(downloads::Msg::Confirm),
+                "up" => self.dl_msg(downloads::Msg::Step(-1)),
+                "down" => self.dl_msg(downloads::Msg::Step(1)),
+                _ => Task::none(),
+            };
         }
         // The player page takes every key first (the subtitle finder over it takes Esc).
         if self.player.is_some() && self.online.finder_open() {

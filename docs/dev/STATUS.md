@@ -51,7 +51,8 @@ Release gate: `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo d
 - Binaries built on Arch need a current glibc; the 0.4 .deb / .rpm must be built inside their distribution containers.
 - In-window video is SDR; the HDR pop-out window is 0.4 ([HDR.md](../HDR.md)).
 - Screen-reader support is limited by Iced; re-evaluate when it improves.
-- 0.4 online details / subtitles: built and unit-tested against a loopback mock; needs a real TMDB key and OpenSubtitles key to verify live; the player must load `LocalBackend::subtitles_of` (hook for the player owner).
+- 0.4 online details / subtitles: built and unit-tested against a loopback mock; needs a real TMDB key and OpenSubtitles key to verify live; the player loads `LocalBackend::subtitles_of` and offers the finder in its Subtitles menu (checked live with a mock-downloaded file).
+- 0.4 offline copies (`core/download`, `app/downloads.rs`): verified live on a throwaway server (movie, episode batch, interrupted download resumed with Range, copy merges as "2 sources", local copy plays). Not checked: a server that really denies downloads (mapped from 403, unit-tested), exFAT/FAT targets (no hard links: falls back to a checked rename), very large files.
 - Local scans hold the local library's write lock, so reads of that source wait during a scan (note in `core/folders.rs`).
 - `scripts/test-jellyfin.sh`: reject any `..` in `NOCTURNE_JF_TEST_DIR` before `reset` removes the directory.
 - Player: mpv's own window key bindings stay active in the external-mpv fallback.

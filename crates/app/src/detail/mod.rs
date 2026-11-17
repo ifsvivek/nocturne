@@ -716,6 +716,10 @@ impl Detail {
         if self.play_err.is_some() {
             v.retain(|a| *a != DAct::Play);
         }
+        // A show or season has only the download in its menu: no button when that is not offered.
+        if matches!(self.media.kind, Kind::Series | Kind::Season) && self.more_items().is_empty() {
+            v.retain(|a| *a != DAct::More);
+        }
         if versions::worth_showing(&self.versions()) && self.media.playable() {
             let at = v.iter().position(|a| *a == DAct::Play).map_or(0, |i| i + 1);
             v.insert(at, DAct::Versions);

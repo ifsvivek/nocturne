@@ -7,7 +7,7 @@ use super::{App, Phase};
 use crate::style;
 use crate::task::run;
 use crate::theme as t;
-use crate::widget::{action_button, menu_row, mono, progress_bar, rule};
+use crate::widget::{action_button, menu_row, mono, progress_bar};
 use iced::widget::{column, container, opaque, row, scrollable as scroll, space, text};
 use iced::{Alignment, Element, Length, Task};
 use nocturne_core::download::fetch::{self, CANCEL, End, PAUSE, Shared};
@@ -27,6 +27,8 @@ pub enum Msg {
     Ask(Box<Media>),
     Planned(u64, Box<Plan>),
     Pick(usize),
+    /// Arrow keys in the destination list.
+    Step(i32),
     Confirm,
     CancelAsk,
     Open,
@@ -124,6 +126,11 @@ impl App {
             Msg::Pick(i) => {
                 if let Some(a) = self.dl.ask.as_mut() {
                     a.sel = i.min(a.roots.len().saturating_sub(1));
+                }
+            }
+            Msg::Step(d) => {
+                if let Some(a) = self.dl.ask.as_mut() {
+                    a.sel = (a.sel as i32 + d).clamp(0, a.roots.len() as i32 - 1) as usize;
                 }
             }
             Msg::CancelAsk => self.dl.ask = None,
@@ -388,11 +395,16 @@ impl App {
     }
 
     fn dl_finished(&mut self, id: u64, r: Result<End, Why>) -> Task<Message> {
-        let dest = self
-            .dl
-            .run
-            .take_if(|x| x.id == id)
+        let run = self.dl.run.take_if(|x| x.id == id);
+        let dest = run
+            .as_ref()
             .and_then(|x| x.sh.dest.lock().ok().and_then(|d| d.clone()));
+        let totals = run.map(|x| {
+            (
+                x.sh.done.load(Ordering::Relaxed),
+                x.sh.total.load(Ordering::Relaxed),
+            )
+        });
         let mut rescan = None;
         let mut note = None;
         match (r, self.dl.queue.get_mut(id)) {
@@ -401,7 +413,7 @@ impl App {
             }
             (Ok(End::Done), Some(j)) => {
                 j.dest = dest.or(j.dest.take());
-                j.done = j.done.max(j.total);
+                (j.done, j.total) = totals.unwrap_or((j.done, j.total));
                 j.state = JobState::Done;
                 note = Some(format!("Downloaded {}.", j.meta.label()));
                 rescan = Some(j.into);
@@ -442,6 +454,9 @@ impl App {
         if self.dl.open || self.dl.ask.is_none() {
             card = card.push(self.dl_list());
         }
+        if self.dl.ask.is_some() {
+            return Self::downloads_card(card);
+        }
         let any_done = self
             .dl
             .queue
@@ -470,6 +485,10 @@ impl App {
             Message::Downloads(Msg::Close),
         ));
         card = card.push(foot);
+        Self::downloads_card(card)
+    }
+
+    fn downloads_card(card: iced::widget::Column<'_, Message>) -> El<'_> {
         opaque(
             container(
                 container(card)
@@ -548,7 +567,6 @@ impl App {
             ]
             .spacing(t::S2),
         )
-        .push(rule())
         .into()
     }
 
