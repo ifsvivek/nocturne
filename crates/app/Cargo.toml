@@ -31,6 +31,7 @@ tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time"] }
 libc = "0.2"
 image = { version = "0.25.1", default-features = false, features = ["png", "jpeg", "webp"] }
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
+gilrs = "0.11.2"
 
 [dev-dependencies]
 tempfile = "3.27.0"

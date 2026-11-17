@@ -107,6 +107,9 @@ pub const R_PANEL: f32 = 10.0;
 pub const PAGE_PAD: f32 = 48.0;
 pub const HEADER_H: f32 = 56.0;
 
+/// Couch mode grows the whole UI by this factor (a 10-foot layout from the same tokens).
+pub const COUCH_SCALE: f32 = 1.35;
+
 // Motion: short, ease-out, never gratuitous.
 pub const HOVER: Duration = Duration::from_millis(140);
 pub const BASE: Duration = Duration::from_millis(220);

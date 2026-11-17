@@ -250,8 +250,8 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
                 .height(Length::Fill)
                 .style(|_| container::Style {
                     background: Some(t::ACCENT_TINT.into()),
-                    border: border(t::ACCENT, 1.0, 0.0),
-                    shadow: glow_shadow(0.5),
+                    border: border(t::ACCENT, crate::couch::ring(), 0.0),
+                    shadow: glow_shadow(if crate::couch::on() { 1.0 } else { 0.5 }),
                     ..Default::default()
                 })
                 .into(),

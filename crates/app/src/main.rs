@@ -3,10 +3,12 @@
 mod account;
 mod admin;
 mod app;
+mod couch;
 mod detail;
 mod keys;
 mod motion;
 mod onboarding;
+mod pad;
 mod platform;
 mod player;
 mod queue;
@@ -76,6 +78,7 @@ fn main() -> iced::Result {
             text_color: theme::TEXT,
         })
         .theme(App::theme)
+        .scale_factor(App::scale_factor)
         .default_font(theme::FONT)
         .exit_on_close_request(false)
         .window(window::Settings {

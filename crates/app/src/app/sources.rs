@@ -136,7 +136,13 @@ impl App {
             return Task::none();
         };
         let (id, url) = (d.id, d.url.clone());
-        let line = (!clear).then(|| format!("{}: {}", d.name.trim(), d.value.trim()));
+        let line = (!clear).then(|| {
+            format!(
+                "{}: {}",
+                d.name.trim(),
+                nocturne_core::secret::clean(&d.value)
+            )
+        });
         d.busy = true;
         super::run(
             async move {

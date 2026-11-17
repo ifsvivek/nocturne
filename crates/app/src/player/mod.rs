@@ -960,6 +960,18 @@ impl Player {
         )
     }
 
+    /// An overlay (prompt, menu, skip chip, next card) is waiting for Enter; otherwise A plays / pauses.
+    pub fn wants_enter(&self) -> bool {
+        self.problem.is_some()
+            || self.hdr_prompt.is_some()
+            || self.resume_prompt.is_some()
+            || self.ctx_menu.is_some()
+            || self.queue_open
+            || self.pop.is_some()
+            || self.active_seg().is_some()
+            || self.next_card().is_some()
+    }
+
     pub fn active_seg(&self) -> Option<Seg> {
         if !self.loaded || self.resume_prompt.is_some() {
             return None;

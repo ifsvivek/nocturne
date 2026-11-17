@@ -47,6 +47,27 @@ impl Density {
     }
 }
 
+/// Couch / TV mode: a 10-foot layout (larger type and targets, always-visible focus, button hints).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CouchMode {
+    #[default]
+    Off,
+    On,
+    /// On while a gamepad is connected or the window fills a TV-sized display.
+    Auto,
+}
+
+impl CouchMode {
+    pub fn active(self, pad: bool, fills_tv: bool) -> bool {
+        match self {
+            Self::Off => false,
+            Self::On => true,
+            Self::Auto => pad || fills_tv,
+        }
+    }
+}
+
 /// Reduce motion: follow the desktop (`System`), or force it on / off.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -146,6 +167,7 @@ pub struct Settings {
     /// Disk image cache cap in MB.
     pub image_cache_mb: u32,
     pub reduce_motion: ReduceMotion,
+    pub couch: CouchMode,
     /// Sort, view and flag filters remembered per library (key = library id).
     pub libs: BTreeMap<String, LibPrefs>,
     /// Most recent first.
@@ -179,6 +201,7 @@ impl Default for Settings {
             density: Density::Comfortable,
             image_cache_mb: 512,
             reduce_motion: ReduceMotion::System,
+            couch: CouchMode::Off,
             libs: BTreeMap::new(),
             recent_searches: vec![],
         }
@@ -231,10 +254,13 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 23;
+pub const ROWS: usize = 24;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
 pub const PROFILE_ROW: usize = 22;
+
+/// The "Couch mode" row.
+pub const COUCH_ROW: usize = 23;
 
 /// The "Trakt account" row: not a toggle, it opens the connect dialog.
 pub const TRAKT_ROW: usize = 19;
@@ -250,6 +276,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         18 => Some("Watched state"),
         19 => Some("Trakt"),
         22 => Some("Profiles"),
+        23 => Some("Living room"),
         _ => None,
     }
 }
@@ -294,6 +321,11 @@ const MOTION: [(ReduceMotion, &str); 3] = [
     (ReduceMotion::System, "System"),
     (ReduceMotion::On, "On"),
     (ReduceMotion::Off, "Off"),
+];
+const COUCH: [(CouchMode, &str); 3] = [
+    (CouchMode::Off, "Off"),
+    (CouchMode::On, "On"),
+    (CouchMode::Auto, "Automatic"),
 ];
 const DENSITIES: [Density; 3] = [Density::Compact, Density::Comfortable, Density::Spacious];
 
@@ -440,6 +472,15 @@ impl Settings {
                 "Opens at launch without asking. Ask every time shows Who's watching. Needs two or more profiles on this server.",
                 self.profiles.labels()[self.profiles.current()].clone(),
             ),
+            r(
+                "Couch mode",
+                "A layout for the sofa and a TV: larger text and targets, a clear focus ring and button hints, driven by a gamepad, remote or keyboard. Automatic turns it on while a gamepad is connected or the window fills a large display.",
+                COUCH
+                    .iter()
+                    .find(|(m, _)| *m == self.couch)
+                    .map_or("Off", |(_, n)| n)
+                    .into(),
+            ),
         ]
     }
 
@@ -486,6 +527,10 @@ impl Settings {
                 MOTION.iter().map(|(_, n)| n.to_string()).collect(),
                 MOTION.iter().position(|(m, _)| *m == self.reduce_motion)?,
             ),
+            COUCH_ROW => (
+                COUCH.iter().map(|(_, n)| n.to_string()).collect(),
+                COUCH.iter().position(|(m, _)| *m == self.couch)?,
+            ),
             PROFILE_ROW if self.profiles.list.len() > 1 => {
                 (self.profiles.labels(), self.profiles.current())
             }
@@ -514,6 +559,7 @@ impl Settings {
             14 => self.density = DENSITIES.get(idx).copied().unwrap_or(self.density),
             15 => self.image_cache_mb = CACHE_MB.get(idx).copied().unwrap_or(self.image_cache_mb),
             16 => self.reduce_motion = MOTION.get(idx).map_or(self.reduce_motion, |(m, _)| *m),
+            COUCH_ROW => self.couch = COUCH.get(idx).map_or(self.couch, |(m, _)| *m),
             _ => {}
         }
     }
@@ -567,6 +613,11 @@ impl Settings {
             19 => {} // opens the Trakt dialog (the app handles it)
             20 => self.trakt_scrobble ^= true,
             21 => self.trakt_history ^= true,
+            COUCH_ROW => {
+                let i = COUCH.iter().position(|(m, _)| *m == self.couch);
+                let i = (i.unwrap_or(0) as i32 + d).rem_euclid(COUCH.len() as i32) as usize;
+                self.couch = COUCH[i].0;
+            }
             _ => {}
         }
     }
@@ -657,6 +708,22 @@ mod tests {
         let d = std::env::temp_dir().join(format!("nocturne-settings-{n}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         d
+    }
+
+    #[test]
+    fn couch_mode_is_off_by_default_and_automatic_follows_pad_or_tv() {
+        let mut s = Settings::default();
+        assert_eq!(s.couch, CouchMode::Off);
+        assert!(!s.couch.active(true, true));
+        s.cycle(COUCH_ROW, 1);
+        assert_eq!(s.couch, CouchMode::On);
+        assert!(s.couch.active(false, false));
+        s.choose(COUCH_ROW, 2);
+        assert_eq!(s.couch, CouchMode::Auto);
+        assert!(!s.couch.active(false, false));
+        assert!(s.couch.active(true, false) && s.couch.active(false, true));
+        assert_eq!(s.choices(COUCH_ROW).unwrap().1, 2);
+        assert_eq!(s.rows()[COUCH_ROW].value, "Automatic");
     }
 
     #[test]
@@ -923,12 +990,12 @@ mod tests {
 
     #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19 and 22.
+        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22 and 23.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
         assert_eq!(scroll_child(11), 15);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 8);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 9);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));
         assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));
