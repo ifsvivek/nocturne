@@ -16,10 +16,18 @@ async fn trakt_signed_in_round_trip() {
     let h = t.history().await;
     eprintln!("history read: {}", h.is_ok());
     if let Ok(h) = &h {
-        eprintln!("watched movies: {}, watched shows: {}", h.movies.len(), h.shows.len());
+        eprintln!(
+            "watched movies: {}, watched shows: {}",
+            h.movies.len(),
+            h.shows.len()
+        );
     }
     // A public-domain film (Night of the Living Dead, 1968). Stopping at 2% leaves a paused playback, not history.
-    let film = Target::Movie(Ids { imdb: Some("tt0063350".into()), tmdb: Some(10331), tvdb: None });
+    let film = Target::Movie(Ids {
+        imdb: Some("tt0063350".into()),
+        tmdb: Some(10331),
+        tvdb: None,
+    });
     let start = t.scrobble(Action::Start, &film, 1.0).await;
     eprintln!("scrobble start ok: {}", start.is_ok());
     tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
