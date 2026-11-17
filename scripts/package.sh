@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# Build release artifacts into dist/.   usage: scripts/package.sh tarball
+# Build release artifacts into dist/.   usage: scripts/package.sh tarball|deb|rpm|appimage
+# deb, rpm and appimage build inside a distro container (docker, no sudo) via scripts/package-<format>.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-[ "${1:-}" = tarball ] || { echo "usage: $0 tarball" >&2; exit 2; }
+case "${1:-}" in
+  tarball) ;;
+  deb|rpm|appimage) exec "scripts/package-$1.sh" ;;
+  *) echo "usage: $0 tarball|deb|rpm|appimage" >&2; exit 2 ;;
+esac
 # The one place that names the app package (crates/app, binary `nocturne`; installed name is always `nocturne`).
 PKG="${PKG:-nocturne-app}"; BIN="${BIN:-nocturne}"
 ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
