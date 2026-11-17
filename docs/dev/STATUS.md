@@ -38,7 +38,7 @@ Cannot be checked here: HDR output (no HDR display, mpv 0.41), gamepad / TV couc
 (macOS code was never built).
 
 0.4 release checklist:
-- [ ] QA walkthrough of every 0.4 feature through `scripts/run-isolated.sh` (throwaway server + demo library); update [QA_REPORT.md](../QA_REPORT.md).
+- [x] QA walkthrough of every 0.4 feature (2026-11-17, see [QA_REPORT.md](../QA_REPORT.md) "0.4.0 walkthrough"); open items listed there.
 - [ ] Live Trakt test with the maintainer's own Trakt app: sign-in, scrobble, history import, disconnect.
 - [ ] HDR hardware test on an HDR display (pop-out colours, fullscreen, IPC control, return to the window).
 - [ ] Couch mode with a real gamepad and on a TV.
