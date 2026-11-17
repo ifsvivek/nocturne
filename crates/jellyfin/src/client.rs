@@ -346,6 +346,28 @@ impl Client {
         Ok(resp.bytes().await.map_err(http_err)?.to_vec())
     }
 
+    /// `GET /Items/{id}/Download`: the original file, from byte `from` on (HTTP Range) when it is not 0.
+    /// The caller streams the body (`Response::chunk`). A user without download permission gets 403.
+    pub async fn download(&self, id: &str, from: u64) -> Result<reqwest::Response> {
+        let url = self.url(&["Items", id, "Download"], &[]);
+        let path = url.path().to_string();
+        // The client-wide 15 s timeout would end a long transfer; stalls are the caller's to detect.
+        let mut rb = self.http.get(url).timeout(Duration::from_secs(24 * 3600));
+        if from > 0 {
+            rb = rb.header(header::RANGE, format!("bytes={from}-"));
+        }
+        self.send_with(rb, path).await
+    }
+
+    /// One text subtitle track as SRT, for keeping next to an offline copy.
+    pub async fn subtitle_bytes(&self, id: &str, source_id: &str, index: i64) -> Result<Vec<u8>> {
+        let url = Url::parse(&self.subtitle_url(id, source_id, index))
+            .map_err(|_| Error::Config("subtitle url".into()))?;
+        let path = url.path().to_string();
+        let resp = self.send(url, path).await?;
+        Ok(resp.bytes().await.map_err(http_err)?.to_vec())
+    }
+
     // ---- URL builders (pure, no network) ----
 
     /// `/Videos/{id}/Trickplay/{width}/{index}.jpg`; no credentials in the URL.
@@ -454,7 +476,15 @@ impl Client {
 
     /// One GET: records the outcome for `health()`, and turns a non-2xx answer into `Error::Status`.
     async fn send(&self, url: Url, path: String) -> Result<reqwest::Response> {
-        let resp = self.http.get(url).send().await.map_err(|e| {
+        self.send_with(self.http.get(url), path).await
+    }
+
+    async fn send_with(
+        &self,
+        rb: reqwest::RequestBuilder,
+        path: String,
+    ) -> Result<reqwest::Response> {
+        let resp = rb.send().await.map_err(|e| {
             if e.is_connect() || e.is_timeout() {
                 self.note(None);
             }
