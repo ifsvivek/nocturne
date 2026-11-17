@@ -1497,10 +1497,13 @@ impl App {
         // The subtitle finder is modal on every page (over the player and over a detail page): it takes Esc and
         // swallows the rest, so keys never act on the page underneath.
         if self.online.finder_open() {
-            if k.name == "escape" {
-                return self.online_msg(online::Msg::CloseFinder);
-            }
-            return Task::none();
+            return match k.name.as_str() {
+                "escape" | "backspace" => self.online_msg(online::Msg::CloseFinder),
+                "up" => self.online_msg(online::Msg::Step(-1)),
+                "down" => self.online_msg(online::Msg::Step(1)),
+                "enter" => self.online_msg(online::Msg::Confirm),
+                _ => Task::none(),
+            };
         }
         if self.player.is_some() {
             return self.player_msg(player::Msg::Key(k));
