@@ -1710,6 +1710,9 @@ impl App {
                     .into(),
                 );
             }
+            if self.online.finder_open() {
+                layers.push(self.finder_dialog());
+            }
             return Stack::with_children(layers).into();
         }
         let ready = matches!(self.phase, Phase::Ready);
