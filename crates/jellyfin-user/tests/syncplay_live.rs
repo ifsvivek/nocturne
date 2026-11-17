@@ -185,8 +185,9 @@ async fn two_members_group_lifecycle() {
     }
     assert_eq!(pauses[0].position_ticks, pauses[1].position_ticks);
 
-    // Bob seeks: everyone gets a Seek command to that position.
-    bob.api.syncplay_seek(600_000_000, c).await.unwrap();
+    // Bob seeks: everyone gets a Seek command to that position. 1 s: the throwaway server's clips are 2 s and the
+    // server clamps a seek past the end.
+    bob.api.syncplay_seek(10_000_000, c).await.unwrap();
     for m in [&alice, &bob] {
         let s = m
             .wait("Seek", |m| match m {
@@ -194,7 +195,7 @@ async fn two_members_group_lifecycle() {
                 _ => None,
             })
             .await;
-        assert_eq!(s.position_ticks, 600_000_000);
+        assert_eq!(s.position_ticks, 10_000_000);
     }
 
     // Leaving: the other member is told, then the empty group is gone.
