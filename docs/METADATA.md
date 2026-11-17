@@ -1,6 +1,7 @@
 # Online metadata for local media: sources and terms
 
-Status: research only (2026-11-16), no integration code. Feeds milestone 5 of [SOURCES.md](SOURCES.md). The local
+Status: research (2026-11-16); implemented in 0.4 for TMDB, TVmaze, MusicBrainz + Cover Art Archive and OpenSubtitles (see
+"Implementation" at the end). Feeds milestone 5 of [SOURCES.md](SOURCES.md). The local
 library works fully from file names, `.nfo` and sidecar art; online lookup is an optional extra. Terms change, so
 re-read the linked pages before implementing. Items marked (unverified) came from secondary sources only.
 
@@ -47,3 +48,52 @@ library to a third party, plus the user's IP address. Nothing is sent unless the
 - Same text in About / Credits, and in `THIRD_PARTY_NOTICES.md` style docs for the website.
 - Items whose fields came from a provider show a small source label on the detail page ("Metadata: TMDB"), which also
   satisfies per-view credit if a provider ever requires it.
+
+## Implementation (0.4)
+
+Code: `crates/core/src/online/` (clients, matching, gates, run loop), `crates/local/src/online.rs` (stored layer, ageing),
+`crates/app/src/app/online.rs` (switches, keys, finder dialog). Per local source the switches live in its profile in
+`sources.toml` (`[profile.online]`: `details`, `tmdb`, `tvmaze`, `musicbrainz`, `subtitles`; all off by default); API keys
+and the OpenSubtitles login live only in the system keyring (`secret|tmdb`, `secret|opensubtitles`,
+`secret|opensubtitles-login`).
+
+- **What is sent**: the parsed title, year, provider ids (IMDb / TMDB / TVDB from names or `.nfo`), season and episode
+  numbers, and for music the album and artist name, plus the IP address. Never a file name, folder or path, a file hash or a
+  server address. A unit test checks that no recorded request contains the media path.
+- **User-Agent**: `NOCTURNE/<version> (+https://nocturne.ifsvivek.in)` on every request.
+- **Gates** (minimum spacing per provider): TMDB 250 ms, TVmaze 600 ms (limit: 20 per 10 s), MusicBrainz 1100 ms (limit about
+  1 per second), Cover Art Archive 500 ms, OpenSubtitles 300 ms. HTTP 429 / 503 back off (Retry-After if given, else 2, 4,
+  8 s, at most 30 s, 4 tries). Three failed lookups in a row end the run; the next scan tries again.
+- **Matching**: ids first (TMDB id, IMDb id via TMDB `find` / TVmaze `lookup`), else a search by title and year. A result is
+  taken automatically only when its score is at least 0.85 and the runner-up trails by 0.15 (an exact title with a matching
+  year scores 1.0, exact title and unknown year 0.85, wrong year 0.5). Otherwise up to five candidates wait in "Choose the
+  right match" (Local folders page). Nothing found is retried after 30 days.
+- **Layering**: user override > `.nfo` > sidecar art > online > file name, per field. Online data is stored in
+  `online.json` and `online-art/` next to the index (never next to media). A title is looked up once.
+- **TMDB retention**: entries older than 150 days are refreshed on the next run (with TMDB on); entries older than 180 days
+  are deleted with their images on every run, even with TMDB off. "Remove downloaded details" deletes everything fetched.
+- **Credits shown** (Local folders page, per enabled provider): TMDB link plus "This product uses the TMDB API but is not
+  endorsed or certified by TMDB."; TVmaze link plus "TV data from TVmaze.com, licensed CC BY-SA 4.0."; MusicBrainz and Cover
+  Art Archive; OpenSubtitles. Detail pages show a "Details" row naming the provider for items filled in online. The TMDB
+  logo is not shipped (the notice is shown as text); add it before a public release if TMDB requires the logo.
+- **Credentials**: TMDB accepts the v3 API key (sent as `api_key`) or the v4 read access token (Bearer, starts with `eyJ`);
+  the key is checked with one `/configuration` request before it is stored.
+
+### OpenSubtitles.com (subtitles)
+
+Could not be re-read for this implementation: the official docs (Stoplight) are script-rendered and the site refused
+automated fetches, so the points below come from the API as known at implementation time and are **unverified**; re-check
+https://opensubtitles.stoplight.io/docs/opensubtitles-api and https://www.opensubtitles.com/consumers before release.
+
+- Base URL `https://api.opensubtitles.com/api/v1`. Every request needs the user's own `Api-Key` (a free "consumer" key from
+  their account) and a descriptive `User-Agent` (ours above).
+- Search `GET /subtitles` with `query`, `year`, `imdb_id`, `season_number`, `episode_number`, `type`, `languages` (we send
+  title or show name, year, IMDb digits, numbers and a two-letter language from the user's subtitle preference, default
+  `en`; we do not send a movie hash).
+- Download `POST /download {file_id}` returns a temporary `link` (and `remaining` quota); downloads normally require the
+  user's login (`POST /login` for a bearer token). Free accounts have a small daily download quota (HTTP 406 when used up);
+  the dialog says so. Search is cheap, downloads are the limited resource.
+- Terms (unverified): personal use with the user's own key; the data may not be redistributed. Credit shown as text
+  "Subtitles from OpenSubtitles." on the folders page. Downloaded files are kept in
+  `<data>/local/<source>/subtitles/<item id>/`, keyed to the file's NOCTURNE id, and offered to the player by
+  `LocalBackend::subtitles_of`.

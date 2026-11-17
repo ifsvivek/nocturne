@@ -248,6 +248,7 @@ impl Preview {
                 Outcome::Prefer(m) => format!("prefer origin={}", m.origin.0),
                 Outcome::Queue { tracks, next } => format!("queue {} next={next}", tracks.len()),
                 Outcome::OpenUrl(_) => "open-url".into(),
+                Outcome::FindSubs(_) => "find-subs".into(),
                 Outcome::Back => "back".into(),
             };
             eprintln!("OUTCOME {what}");

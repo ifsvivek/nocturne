@@ -557,3 +557,84 @@ fn no_temp_files_left_and_media_tree_untouched() {
         "{names:?}"
     );
 }
+
+#[test]
+fn online_layer_sits_between_filename_and_nfo() {
+    use nocturne_local::{OnlineMeta, online};
+    let f = fx();
+    put(&f.media, "Movies/Heat (1995)/Heat (1995).mkv");
+    put(&f.media, "Movies/Alien (1979)/Alien (1979).mkv");
+    fs::write(
+        f.media.join("Movies/Alien (1979)/Alien (1979).nfo"),
+        "<movie><title>Alien</title><plot>From the nfo.</plot></movie>",
+    )
+    .unwrap();
+    let mut lib = Library::open(&f.data).unwrap();
+    scan(&mut lib, &[&f.media]);
+    let heat = id_of(&lib, "Heat");
+    let alien = id_of(&lib, "Alien");
+    assert_eq!(lib.online_targets(0).len(), 2, "both want a lookup");
+
+    for (id, name) in [(heat, "h.jpg"), (alien, "a.jpg")] {
+        let m = OnlineMeta {
+            provider: "tmdb".into(),
+            fetched: 10,
+            title: Some("Online Title".into()),
+            plot: Some("From online.".into()),
+            genres: vec!["Crime".into()],
+            poster: Some(name.into()),
+            ..Default::default()
+        };
+        lib.put_online(
+            &online::item_key(id),
+            "x",
+            Some(m),
+            vec![],
+            &[(name.into(), vec![1, 2, 3])],
+        )
+        .unwrap();
+    }
+    let h = lib.view(heat).unwrap();
+    assert_eq!(
+        (h.title.as_str(), h.plot.as_deref()),
+        ("Online Title", Some("From online."))
+    );
+    assert_eq!(h.details_from, Some("TMDB"));
+    assert!(
+        h.art.poster.unwrap().starts_with(&f.data),
+        "art lives in the data dir"
+    );
+    // .nfo beats online per field; the online genres still fill what the nfo left empty.
+    let a = lib.view(alien).unwrap();
+    assert_eq!(
+        (a.title.as_str(), a.plot.as_deref()),
+        ("Alien", Some("From the nfo."))
+    );
+    assert_eq!(a.genres, vec!["Crime".to_string()]);
+    // user override beats both
+    lib.set_override(
+        heat,
+        Override {
+            plot: Some("Mine.".into()),
+            title: Some("Mine".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let h = lib.view(heat).unwrap();
+    assert_eq!(
+        (h.title.as_str(), h.plot.as_deref()),
+        ("Mine", Some("Mine."))
+    );
+    // looked up once: nothing left to do, and it survives a reopen
+    assert!(lib.online_targets(100).is_empty());
+    let lib2 = Library::open(&f.data).unwrap();
+    assert_eq!(lib2.view(alien).unwrap().details_from, Some("TMDB"));
+    // six months on, TMDB data is dropped with its art
+    let mut lib = lib2;
+    let day = 24 * 3600;
+    assert_eq!(lib.online_prune(10 + 181 * day).unwrap(), 2);
+    assert_eq!(lib.view(heat).unwrap().details_from, None);
+    assert!(!f.data.join("online-art/h.jpg").exists());
+    assert!(!f.media.join("online-art").exists());
+}

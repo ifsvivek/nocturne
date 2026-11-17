@@ -628,6 +628,9 @@ impl App {
                 let mut tasks = vec![self.retry_page(), self.refresh_folders()];
                 if again {
                     tasks.push(self.start_scan(id));
+                } else if !cancelled && error.is_none() {
+                    // Opt-in details for what the scan found (does nothing unless switched on).
+                    tasks.push(self.start_online(id));
                 }
                 Task::batch(tasks)
             }
@@ -696,6 +699,7 @@ impl App {
                 id: DEV,
                 label: "Developer token".into(),
                 enabled: true,
+                online: Default::default(),
                 kind: ProfileKind::Jellyfin {
                     url,
                     user_id: String::new(),

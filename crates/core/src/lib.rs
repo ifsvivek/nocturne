@@ -19,6 +19,7 @@ pub mod libview;
 pub mod local;
 pub mod merge;
 pub mod nav;
+pub mod online;
 pub mod player_logic;
 pub mod player_mpris;
 pub mod profile;

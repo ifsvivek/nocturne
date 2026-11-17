@@ -13,6 +13,7 @@ mod home;
 mod images;
 pub mod message;
 mod onboard;
+mod online;
 mod play;
 mod preview;
 mod remote;
@@ -175,6 +176,7 @@ pub struct App {
     /// The extra-header dialog of a server.
     hdr: Option<sources::HeaderDlg>,
     folders: Option<folders::Folders>,
+    online: online::State,
     setup: Option<FirstRun>,
     account_back: Option<AccountBack>,
     phase: Phase,
@@ -287,6 +289,7 @@ impl App {
             confirm: None,
             hdr: None,
             folders: None,
+            online: Default::default(),
             setup: None,
             account_back: None,
             phase: Phase::Connecting,
@@ -584,6 +587,7 @@ impl App {
             }
             Message::HeaderDone(id, r) => self.header_done(id, r),
             Message::Folder(m) => self.folder_msg(m),
+            Message::Online(m) => self.online_msg(m),
             Message::CycleFilter => {
                 self.filter = self.filter.next(&self.catalog.priority());
                 self.stack.truncate(1);
@@ -1773,6 +1777,9 @@ impl App {
         }
         if self.hdr.is_some() {
             layers.push(self.header_dialog());
+        }
+        if self.online.finder_open() {
+            layers.push(self.finder_dialog());
         }
         if let Some((n, _)) = &self.note {
             layers.push(

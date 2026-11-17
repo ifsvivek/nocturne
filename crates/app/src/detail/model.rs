@@ -107,6 +107,7 @@ pub enum MoreAct {
     DeletePlaylist,
     PlayNext,
     AddToQueue,
+    FindSubs,
 }
 
 #[derive(Clone, Debug, PartialEq)]

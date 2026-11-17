@@ -5,16 +5,19 @@
 //! the data directory passed to [`Library::open`] (enforced by `tests/readonly.rs`). The API is blocking: run
 //! [`Library::scan`] on a thread.
 //!
-//! Metadata precedence per field: user override > `.nfo` > sidecar art (art fields only) > file name. `ffprobe`
+//! Metadata precedence per field: user override > `.nfo` > sidecar art (art fields only) > online provider
+//! (opt-in, see [`online`]) > file name. `ffprobe`
 //! (only when the caller asks via [`Library::probe`]) fills the runtime when nothing else has it.
 
 pub mod naming;
 pub mod nfo;
+pub mod online;
 pub mod probe;
 mod scan;
 mod store;
 
 pub use naming::Parsed;
+pub use online::{Candidate, OnlineMeta, Target, TargetKind};
 pub use probe::Probe;
 pub use scan::{Progress, ScanReport};
 
@@ -84,6 +87,12 @@ pub struct ProviderIds {
 impl ProviderIds {
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
+    }
+    /// Fill what is still missing from `o` (a lower layer never replaces a value).
+    pub(crate) fn fill(&mut self, o: &ProviderIds) {
+        self.imdb = self.imdb.take().or(o.imdb.clone());
+        self.tmdb = self.tmdb.take().or(o.tmdb.clone());
+        self.tvdb = self.tvdb.take().or(o.tvdb.clone());
     }
     fn overlay(&mut self, o: &ProviderIds) {
         self.imdb = o.imdb.clone().or(self.imdb.take());
@@ -267,6 +276,8 @@ pub struct View {
     pub album: Option<String>,
     pub track: Option<u32>,
     pub art: Art,
+    /// Display name of the provider when some field came from online metadata.
+    pub details_from: Option<&'static str>,
     pub status: Status,
     pub added: u64,
     pub path: PathBuf,
@@ -303,6 +314,7 @@ pub struct Series {
     pub art: Art,
     pub seasons: Vec<u32>,
     pub episodes: usize,
+    pub details_from: Option<&'static str>,
 }
 
 pub fn now_secs() -> u64 {
@@ -345,6 +357,7 @@ pub struct Library {
     index: Index,
     overrides: Overrides,
     state: States,
+    online: online::OnlineStore,
 }
 
 impl Library {
@@ -358,6 +371,7 @@ impl Library {
         Ok(Library {
             overrides: store::load(&dir.join("overrides.json"))?.unwrap_or_default(),
             state: store::load(&dir.join("state.json"))?.unwrap_or_default(),
+            online: Library::load_online(&dir)?,
             dir,
             index,
         })
@@ -402,6 +416,7 @@ impl Library {
         for id in &gone {
             self.overrides.items.remove(id);
             self.state.items.remove(id);
+            self.forget_online_item(*id);
         }
         self.save_overrides()?;
         self.save_state()?;
@@ -458,6 +473,7 @@ impl Library {
             album: None,
             track: None,
             art: it.art.clone(),
+            details_from: None,
             status: if it.unavailable {
                 Status::Unavailable
             } else if it.missing_since.is_some() {
@@ -505,15 +521,40 @@ impl Library {
             }
             Parsed::Unmatched { title } => v.title = title.clone(),
         }
+        // Online provider layer: above the file name, below everything the user or the files say.
+        let okey = match v.kind {
+            Kind::Movie | Kind::Episode => Some(online::item_key(it.id)),
+            Kind::Track => v
+                .artist
+                .as_deref()
+                .zip(v.album.as_deref())
+                .map(|(a, b)| online::album_key(a, b)),
+            Kind::Unmatched => None,
+        };
+        if let Some(m) = okey.and_then(|k| self.online_meta(&k)) {
+            if let (Some(t), Kind::Movie | Kind::Episode) = (&m.title, v.kind) {
+                v.title = t.clone();
+            }
+            v.year = m.year.or(v.year);
+            (v.plot, v.runtime_min, v.rating) = (m.plot.clone(), m.runtime_min, m.rating);
+            v.genres = m.genres.clone();
+            v.ids.fill(&m.ids);
+            let a = self.online_art(m);
+            v.art.poster = v.art.poster.take().or(a.poster);
+            v.art.backdrop = v.art.backdrop.take().or(a.backdrop);
+            v.details_from = Some(online::provider_label(&m.provider));
+        }
         if let Some(m) = &it.nfo {
             if let Some(t) = &m.title {
                 v.title = t.clone();
             }
             v.year = m.year.or(v.year);
-            v.plot = m.plot.clone();
-            v.genres = m.genres.clone();
-            v.runtime_min = m.runtime_min;
-            v.rating = m.rating;
+            v.plot = m.plot.clone().or(v.plot.take());
+            if !m.genres.is_empty() {
+                v.genres = m.genres.clone();
+            }
+            v.runtime_min = m.runtime_min.or(v.runtime_min);
+            v.rating = m.rating.or(v.rating);
             v.ids.overlay(&m.ids);
         }
         if v.runtime_min.is_none() {
@@ -538,6 +579,13 @@ impl Library {
             v.art.poster = o.poster.clone().or(v.art.poster);
         }
         v
+    }
+
+    fn online_art(&self, m: &OnlineMeta) -> Art {
+        Art {
+            poster: m.poster.as_deref().map(|n| self.online_art_path(n)),
+            backdrop: m.backdrop.as_deref().map(|n| self.online_art_path(n)),
+        }
     }
 
     /// Browsable items: in a configured root and not missing (unavailable ones stay, flagged by `status`).
@@ -626,8 +674,21 @@ impl Library {
                 });
                 let meta = info.and_then(|s| s.meta.clone()).unwrap_or_default();
                 let first = &eps[0].0;
+                let om = first
+                    .show
+                    .as_deref()
+                    .and_then(|s| self.online_meta(&online::show_key(s)));
                 let mut ids = first.ids.clone();
                 ids.overlay(&meta.ids);
+                if let Some(m) = om {
+                    ids.fill(&m.ids);
+                }
+                let mut art = info.map(|s| s.art.clone()).unwrap_or_default();
+                if let Some(m) = om {
+                    let a = self.online_art(m);
+                    art.poster = art.poster.take().or(a.poster);
+                    art.backdrop = art.backdrop.take().or(a.backdrop);
+                }
                 let mut seasons: Vec<u32> = eps.iter().filter_map(|(v, _)| v.season).collect();
                 seasons.sort_unstable();
                 seasons.dedup();
@@ -638,14 +699,19 @@ impl Library {
                         .or(first.show.clone())
                         .unwrap_or_default(),
                     show: first.show.clone().unwrap_or_default(),
-                    year: meta.year.or(first.year),
-                    plot: meta.plot,
-                    genres: meta.genres,
-                    rating: meta.rating,
+                    year: meta.year.or(om.and_then(|m| m.year)).or(first.year),
+                    plot: meta.plot.or(om.and_then(|m| m.plot.clone())),
+                    genres: if meta.genres.is_empty() {
+                        om.map(|m| m.genres.clone()).unwrap_or_default()
+                    } else {
+                        meta.genres
+                    },
+                    rating: meta.rating.or(om.and_then(|m| m.rating)),
                     ids,
-                    art: info.map(|s| s.art.clone()).unwrap_or_default(),
+                    art,
                     seasons,
                     episodes: eps.len(),
+                    details_from: om.map(|m| online::provider_label(&m.provider)),
                 }
             })
             .collect();
@@ -811,6 +877,38 @@ impl Library {
         }
         self.save_index()?;
         Ok(true)
+    }
+
+    /// Save a downloaded subtitle for `id` in the library's own data directory (never next to the media).
+    pub fn save_subtitle(&self, id: LocalId, name: &str, bytes: &[u8]) -> Result<PathBuf, Error> {
+        let name: String = name
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || "-_.".contains(c) {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let name = name.trim_start_matches('.');
+        let sub = format!("{}/{name}", id.0);
+        let path = self.dir.join("subtitles").join(&sub);
+        store::write_atomic(&self.dir.join("subtitles").join(&sub), bytes)?;
+        Ok(path)
+    }
+
+    /// Subtitles downloaded for `id`, for the player to load as external tracks.
+    pub fn subtitles(&self, id: LocalId) -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> =
+            std::fs::read_dir(self.dir.join("subtitles").join(id.0.to_string()))
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|e| e.path())
+                .collect();
+        v.sort();
+        v
     }
 
     pub fn data_dir(&self) -> &Path {

@@ -146,6 +146,24 @@ pub fn delete_header(server_url: &str) -> Result<()> {
     Keyring(service()).delete(&header_key(server_url))
 }
 
+/// A named third-party secret (online metadata / subtitle API keys). Keyring only, like every token.
+pub fn save_secret(name: &str, value: &str) -> Result<()> {
+    Keyring(service()).set(&secret_key(name), value)
+}
+
+pub fn load_secret(name: &str) -> Result<Option<String>> {
+    Keyring(service()).get(&secret_key(name))
+}
+
+pub fn delete_secret(name: &str) -> Result<()> {
+    Keyring(service()).delete(&secret_key(name))
+}
+
+/// Cannot collide with a server URL key (those start with a scheme).
+fn secret_key(name: &str) -> String {
+    format!("secret|{name}")
+}
+
 fn header_key(server_url: &str) -> String {
     format!("{}|extra-header", key(server_url))
 }

@@ -33,11 +33,20 @@ pub struct Unmatched {
     pub dir: String,
 }
 
+/// A title the online lookup could not decide: the user picks one of the candidates.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pending {
+    pub key: String,
+    pub label: String,
+    pub candidates: Vec<nl::Candidate>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Overview {
     pub folders: Vec<Folder>,
     pub counts: Counts,
     pub unmatched: Vec<Unmatched>,
+    pub pending: Vec<Pending>,
 }
 
 /// Unmatched rows shown at once (the rest wait their turn as these are sorted out).
@@ -63,6 +72,15 @@ impl LocalBackend {
             let count = |k| lib.items(k).len();
             let unmatched = lib.items(Kind::Unmatched);
             Overview {
+                pending: lib
+                    .online_pending()
+                    .into_iter()
+                    .map(|(key, label, candidates)| Pending {
+                        key,
+                        label,
+                        candidates,
+                    })
+                    .collect(),
                 folders,
                 counts: Counts {
                     movies: count(Kind::Movie),

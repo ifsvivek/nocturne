@@ -85,6 +85,7 @@ impl App {
             d.set_siblings(photos);
             tasks.push(d.open_photo());
         }
+        d.subs_ok = self.subtitles_on(m.origin);
         let pid = self.push_page(View::Detail, Some(m));
         let Some(p) = self.page_mut(pid) else {
             return Task::none();
@@ -189,6 +190,9 @@ impl App {
                     Ok(m) | Err(m) => self.toast(m),
                 }
                 Task::none()
+            }
+            Outcome::FindSubs(m) => {
+                Task::done(Message::Online(super::online::Msg::Find(Box::new(m))))
             }
             Outcome::OpenUrl(u) => {
                 if u.starts_with("http://") || u.starts_with("https://") {

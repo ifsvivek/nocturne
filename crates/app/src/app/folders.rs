@@ -136,7 +136,11 @@ impl App {
     pub(super) fn open_folders(&mut self, id: Option<SourceId>) -> Task<Message> {
         let id = id.unwrap_or_else(|| self.ensure_local_slot());
         self.folders = Some(Folders::new(id, false));
-        Task::batch([operation::focus(Id::from(PATH_ID)), self.refresh_folders()])
+        Task::batch([
+            operation::focus(Id::from(PATH_ID)),
+            self.refresh_folders(),
+            self.load_secrets(),
+        ])
     }
 
     /// First run, local choice: the folders screen without the app around it.
@@ -149,7 +153,7 @@ impl App {
     }
 
     /// The slot keeps its own copy of the profile; bring it up to date after the folder list changed.
-    fn sync_profile(&mut self, id: SourceId) {
+    pub(super) fn sync_profile(&mut self, id: SourceId) {
         if let (Some(p), Some(s)) = (self.sources.get(id).cloned(), self.catalog.slot_mut(id)) {
             s.profile = p;
         }
@@ -526,6 +530,9 @@ impl App {
             .spacing(t::S4),
         );
         page = page.push(container(idx).padding([t::S6, t::PAGE_PAD]));
+        if !f.setup {
+            page = page.push(self.online_section(f.id, &f.overview.pending));
+        }
 
         // unmatched
         if c.unmatched > 0 {

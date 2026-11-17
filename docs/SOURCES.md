@@ -99,4 +99,4 @@ Catalog (core)                      one per process, owned by the UI root
    resume state, cinematic startup screen driven by real init steps.
 4. Remaining screens ported directly on the catalog model (home, browse, search, detail incl. alternate sources,
    player, account, admin per server, SyncPlay per server).
-5. Optional online metadata provider for local items (opt-in, key supplied by the user where required).
+5. (done in 0.4) Optional online metadata provider for local items (opt-in, key supplied by the user where required); layer order: user overrides > .nfo > sidecar art > online > filename.
