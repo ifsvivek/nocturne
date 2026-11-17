@@ -117,13 +117,9 @@ impl App {
             ]
             .spacing(t::S1)
             .align_y(Alignment::Center),
-            // Many sources make a long link row: it scrolls sideways (wheel) instead of pushing the
-            // search and avatar out of the window.
-            scrollable(nav_row)
-                .direction(scrollable::Direction::Horizontal(
-                    scrollable::Scrollbar::new().width(0).scroller_width(0),
-                ))
-                .width(Length::Fill),
+            // Many sources make a long link row: it scrolls sideways (wheel, chevrons, or the focus
+            // on Home) instead of pushing the search and avatar out of the window.
+            self.nav_strip(nav_row),
         ]
         .spacing(t::S8)
         .width(Length::Fill)
@@ -400,7 +396,148 @@ impl App {
     }
 }
 
+pub const NAV_ID: &str = "nav-scroll";
+
+/// Rough width of one header link (label at body size plus its padding and gap); the real widths
+/// are not known until layout, and the strip only needs to land near the focused link.
+fn link_w(label: &str) -> f32 {
+    label.chars().count() as f32 * t::BODY * 0.58 + 2.0 * t::S3 + t::S1
+}
+
+/// Where to scroll the strip so link `col` is in view (`None`: already visible). `widths` are the
+/// links' widths in order, `off` / `vw` the current offset and viewport width.
+pub fn nav_target(widths: &[f32], col: usize, off: f32, vw: f32) -> Option<f32> {
+    let start: f32 = widths.iter().take(col).sum();
+    let w = widths.get(col).copied()?;
+    let content: f32 = widths.iter().sum();
+    // A chevron (48 px) covers each end that has more beyond it.
+    let (more_l, more_r) = nav_more(off, vw, content);
+    let (pad_l, pad_r) = (
+        if more_l { 48.0 } else { 0.0 },
+        if more_r { 48.0 } else { 0.0 },
+    );
+    if start >= off + pad_l && start + w <= off + vw - pad_r {
+        return None;
+    }
+    let max = (content - vw).max(0.0);
+    Some((start - (vw - w) / 2.0).clamp(0.0, max))
+}
+
+/// Whether there is more of the strip to the left / right of the visible part.
+pub fn nav_more(off: f32, vw: f32, content: f32) -> (bool, bool) {
+    (off > 1.0, off + vw < content - 1.0)
+}
+
 impl App {
+    fn nav_label(&self, l: &Link) -> String {
+        let libs = self.stack.first().map_or(&[][..], |h| h.libs.items());
+        match l {
+            Link::Home => "Home".into(),
+            Link::Kind(k) => k.label().into(),
+            Link::Lib(i) => libs.get(*i).map_or(String::new(), |m| m.title.clone()),
+            Link::Libraries => "Libraries \u{25BE}".into(),
+            Link::Global(i) => GLOBALS[*i].1.into(),
+            Link::Smart => "Smart \u{25BE}".into(),
+            Link::Admin => "Admin".into(),
+        }
+    }
+
+    pub(super) fn nav_widths(&self) -> Vec<f32> {
+        self.nav_links()
+            .iter()
+            .map(|l| link_w(&self.nav_label(l)))
+            .collect()
+    }
+
+    /// Offset, viewport width and content width of the link strip: measured once it has scrolled,
+    /// estimated before (the chrome around it takes about 600 px).
+    pub(super) fn nav_geom(&self) -> (f32, f32, f32) {
+        if let Some(g) = self.nav_vp {
+            return g;
+        }
+        let content: f32 = self.nav_widths().iter().sum();
+        (
+            0.0,
+            (self.win.width - 2.0 * t::PAGE_PAD - 600.0).max(200.0),
+            content,
+        )
+    }
+
+    /// Scroll task that brings link `col` into view.
+    pub(super) fn nav_reveal(&self, col: usize) -> Task<Message> {
+        let (off, vw, _) = self.nav_geom();
+        match nav_target(&self.nav_widths(), col, off, vw) {
+            Some(x) => iced::widget::operation::scroll_to(
+                iced::widget::Id::from(NAV_ID),
+                iced::widget::scrollable::AbsoluteOffset { x, y: 0.0 },
+            ),
+            None => Task::none(),
+        }
+    }
+
+    /// Chevrons and fades at the ends of the strip when links are hidden past them.
+    fn nav_strip<'a>(&'a self, nav: iced::widget::Row<'a, Message>) -> El<'a> {
+        use iced::widget::Stack;
+        let strip = scrollable(nav)
+            .id(NAV_ID)
+            .direction(scrollable::Direction::Horizontal(
+                scrollable::Scrollbar::new().width(0).scroller_width(0),
+            ))
+            .on_scroll(|v| {
+                Message::NavScrolled(
+                    v.absolute_offset().x,
+                    v.bounds().width,
+                    v.content_bounds().width,
+                )
+            })
+            .width(Length::Fill);
+        let (off, vw, content) = self.nav_geom();
+        let (left, right) = nav_more(off, vw, content);
+        if !left && !right {
+            return strip.into();
+        }
+        let edge = |glyph: &'static str, to_right: bool, dir: f32| -> El<'a> {
+            // Solid frame colour at the outer edge, clear on the strip side.
+            let clear = iced::Color { a: 0.0, ..t::FRAME };
+            let angle = if to_right { 0.0 } else { std::f32::consts::PI };
+            let g = iced::gradient::Linear::new(angle)
+                .add_stop(0.0, clear)
+                .add_stop(1.0, t::FRAME);
+            let chev = Press::new(container(text(glyph).size(t::HEADING)).center(Length::Fill))
+                .width(48)
+                .height(t::HEADER_H - 1.0)
+                .on_press(Message::NavPage(dir))
+                .style(|s| Style {
+                    text_color: if matches!(s, Status::Hovered | Status::Pressed) {
+                        t::ACCENT_TEXT
+                    } else {
+                        t::TEXT
+                    },
+                    ..Default::default()
+                });
+            container(container(chev).style(move |_| container::Style {
+                background: Some(iced::Background::Gradient(g.into())),
+                ..Default::default()
+            }))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(if to_right {
+                Alignment::End
+            } else {
+                Alignment::Start
+            })
+            .into()
+        };
+        let mut layers: Vec<El<'a>> = vec![strip.into()];
+        if left {
+            layers.push(edge("\u{2039}", false, -1.0));
+        }
+        if right {
+            layers.push(edge("\u{203A}", true, 1.0));
+        }
+        Stack::with_children(layers).width(Length::Fill).into()
+    }
+
     /// The header's links for the libraries known now (see `unified::links`).
     pub(super) fn nav_links(&self) -> Vec<Link> {
         let home = self.stack.first();
@@ -476,5 +613,36 @@ impl App {
             nocturne_core::sources::SourceFilter::All => "All sources".into(),
             nocturne_core::sources::SourceFilter::One(id) => self.label_of(id),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_strip_follows_the_focused_link() {
+        let w = [100.0; 10]; // 1000 px of links in a 400 px strip
+        assert_eq!(
+            nav_target(&w, 0, 0.0, 400.0),
+            None,
+            "the first link is in view"
+        );
+        assert_eq!(nav_target(&w, 2, 0.0, 400.0), None);
+        // Link 3 ends at 400: under the right chevron, so it scrolls (centred).
+        assert_eq!(nav_target(&w, 3, 0.0, 400.0), Some(300.0 - 150.0));
+        // The last link lands against the end, not past it.
+        assert_eq!(nav_target(&w, 9, 0.0, 400.0), Some(600.0));
+        // Going back left: link 1 sits under the left chevron at offset 100.
+        assert_eq!(nav_target(&w, 1, 100.0, 400.0), Some(0.0));
+        assert_eq!(nav_target(&w, 20, 0.0, 400.0), None, "no such link");
+    }
+
+    #[test]
+    fn chevrons_only_where_links_are_hidden() {
+        assert_eq!(nav_more(0.0, 400.0, 300.0), (false, false));
+        assert_eq!(nav_more(0.0, 400.0, 1000.0), (false, true));
+        assert_eq!(nav_more(300.0, 400.0, 1000.0), (true, true));
+        assert_eq!(nav_more(600.0, 400.0, 1000.0), (true, false));
     }
 }

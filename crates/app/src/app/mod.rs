@@ -5,6 +5,7 @@ mod browse;
 mod cascade;
 mod catalog;
 mod cells;
+mod couch;
 mod details;
 mod downloads;
 mod extras;
@@ -195,6 +196,11 @@ pub struct App {
     /// Big backdrops, kept apart so they cannot push posters out of `images`.
     heroes: Cache<String, Img>,
     scale: f32,
+    /// Gamepads connected now, and the monitor under the window (Automatic couch mode).
+    pads: usize,
+    /// Measured offset / viewport / content width of the header link strip.
+    nav_vp: Option<(f32, f32, f32)>,
+    monitor: Option<Size>,
     /// Write hooks of the servers that are not the active login.
     hooks_by: HashMap<SourceId, Arc<SyncHooks>>,
     player: Option<Player>,
@@ -262,6 +268,7 @@ impl App {
                 .reduce_motion
                 .reduced(crate::platform::system_reduces_motion()),
         );
+        crate::couch::set(settings.couch == nocturne_core::settings::CouchMode::On);
         // Opening the image cache scans its directory; that happens after the first frame.
         let cache_max = u64::from(settings.image_cache_mb) * 1024 * 1024;
         let open_disk = run(
@@ -309,6 +316,9 @@ impl App {
             images: Cache::new(600),
             heroes: Cache::new(6),
             scale: 1.0,
+            pads: 0,
+            nav_vp: None,
+            monitor: None,
             hooks_by: HashMap::new(),
             player: None,
             search: None,
@@ -373,6 +383,11 @@ impl App {
         iced::Theme::Dark
     }
 
+    /// Couch mode scales the whole UI (type, targets and spacing together).
+    pub fn scale_factor(&self) -> f32 {
+        crate::couch::factor()
+    }
+
     pub fn title(&self) -> String {
         "NOCTURNE".into()
     }
@@ -399,6 +414,9 @@ impl App {
             subs.push(p.subscription().map(Message::Player));
         }
         subs.push(self.sp.subscription().map(Message::SyncPlay));
+        if self.settings.couch != nocturne_core::settings::CouchMode::Off {
+            subs.push(Subscription::run(crate::pad::events).map(Message::Pad));
+        }
         // A focused text field keeps Esc from the keyboard listener; the overlay still has to close.
         if self.search.is_some() {
             subs.push(event::listen_with(|e, status, _| match e {
@@ -463,12 +481,41 @@ impl App {
                 self.scale = f;
                 Task::none()
             }
+            Message::Rescale => Task::batch([
+                window::oldest()
+                    .and_then(window::scale_factor)
+                    .map(Message::Scale),
+                window::oldest()
+                    .and_then(window::size)
+                    .map(Message::Resized),
+            ]),
+            Message::Pad(e) => self.on_pad(e),
+            Message::NavScrolled(o, w, c) => {
+                self.nav_vp = Some((o, w, c));
+                Task::none()
+            }
+            Message::NavPage(d) => {
+                let (off, vw, content) = self.nav_geom();
+                let x = (off + d * vw * 0.7).clamp(0.0, (content - vw).max(0.0));
+                iced::widget::operation::scroll_to(
+                    iced::widget::Id::from(header::NAV_ID),
+                    iced::widget::scrollable::AbsoluteOffset { x, y: 0.0 },
+                )
+            }
+            Message::Monitor(m) => {
+                self.monitor = m;
+                self.refresh_couch()
+            }
             Message::Resized(s) => {
                 self.win = s;
                 if let Some(p) = &mut self.picker {
                     p.cols = picker::columns(s.width);
                 }
-                Task::batch([self.home_wants(), self.browse_visible()])
+                Task::batch([
+                    self.home_wants(),
+                    self.browse_visible(),
+                    self.probe_monitor(),
+                ])
             }
             Message::CloseRequested(_) => self.quit(),
             Message::Back => {
@@ -702,8 +749,7 @@ impl App {
             }
             Message::SetChoose(row, idx) => {
                 self.dd = None;
-                self.choose_setting(row, idx);
-                Task::none()
+                self.choose_setting(row, idx)
             }
             Message::SetClose => {
                 self.dd = None;
@@ -1431,7 +1477,11 @@ impl App {
 
     // ---- keyboard ----
 
-    fn on_key(&mut self, k: Key) -> Task<Message> {
+    fn on_key(&mut self, mut k: Key) -> Task<Message> {
+        // The remote's Menu key outside the player opens the account menu.
+        if k.name == "menu" && self.player.is_none() {
+            k.name = "a".into();
+        }
         if self.dl.visible() {
             return match k.name.as_str() {
                 "escape" | "backspace" => {
@@ -1771,6 +1821,9 @@ impl App {
             if self.online.finder_open() {
                 layers.push(self.finder_dialog());
             }
+            if let Some(h) = self.hints() {
+                layers.push(h);
+            }
             return Stack::with_children(layers).into();
         }
         let ready = matches!(self.phase, Phase::Ready);
@@ -1821,6 +1874,9 @@ impl App {
         }
         if self.search.is_some() && ready {
             layers.push(self.search_overlay());
+        }
+        if let Some(h) = self.hints() {
+            layers.push(h);
         }
         if self.help_open {
             layers.push(self.help_overlay());

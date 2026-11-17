@@ -741,6 +741,8 @@ impl App {
     /// Arrow keys, Enter on Home. Returns the task for scrolling and image requests.
     pub(super) fn home_key(&mut self, key: &str) -> Task<Message> {
         let links = self.nav_links();
+        let nav_w = self.nav_widths();
+        let (nav_off, nav_vw, _) = self.nav_geom();
         let (size, wide) = self.dims();
         let (win_w, win_h) = (self.win.width, self.win.height);
         let Some(h) = self.stack.last_mut().and_then(|p| p.home.as_deref_mut()) else {
@@ -825,6 +827,14 @@ impl App {
                     h.strips.insert(h.row, x);
                     tasks.push(operation::scroll_to(
                         strip_id(h.row),
+                        AbsoluteOffset { x, y: 0.0 },
+                    ));
+                }
+            }
+            if matches!(k, HRow::Nav) {
+                if let Some(x) = super::header::nav_target(&nav_w, h.col, nav_off, nav_vw) {
+                    tasks.push(operation::scroll_to(
+                        Id::from(super::header::NAV_ID),
                         AbsoluteOffset { x, y: 0.0 },
                     ));
                 }

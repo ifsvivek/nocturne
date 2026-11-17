@@ -128,6 +128,8 @@ pub fn key(k: &str, shift: bool, ctrl: bool) -> Option<Key> {
         ("s", true) => Key::Screenshot,
         (_, true) => return None,
         ("space", _) => Key::Toggle,
+        ("left", _) if shift => Key::Seek(-30.0),
+        ("right", _) if shift => Key::Seek(30.0),
         ("left", _) => Key::Seek(-10.0),
         ("right", _) => Key::Seek(10.0),
         ("up", _) => Key::Volume(5.0),
@@ -1213,6 +1215,8 @@ mod tests {
             "ctrl+s is not stop"
         );
         assert_eq!(key("/", true, false), Some(Key::Help));
+        assert_eq!(key("left", true, false), Some(Key::Seek(-30.0)));
+        assert_eq!(key("right", true, false), Some(Key::Seek(30.0)));
         assert_eq!(key("t", false, false), Some(Key::Menu(Pop::Subs)));
         assert_eq!(key("v", false, false), Some(Key::Menu(Pop::Audio)));
         assert_eq!(key("o", false, false), Some(Key::Menu(Pop::Settings)));

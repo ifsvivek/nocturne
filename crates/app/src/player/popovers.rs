@@ -343,9 +343,10 @@ pub fn overlays(p: &Player) -> Vec<Element<'_, Msg>> {
         ));
     }
     if p.help {
-        const KEYS: [(&str, &str); 26] = [
+        const KEYS: [(&str, &str); 27] = [
             ("Space / click", "Play / pause"),
             ("Left / Right", "Seek 10 s"),
+            ("Shift+Left / Right", "Seek 30 s"),
             ("Up / Down", "Volume"),
             ("m", "Mute"),
             ("f / double-click", "Fullscreen"),
