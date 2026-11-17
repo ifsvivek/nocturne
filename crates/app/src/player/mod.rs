@@ -218,6 +218,7 @@ pub struct Player {
     pub trick: Option<(String, jf::TrickplayInfo)>,
     pub sheets: HashMap<u32, Sheet>,
     ext_added: bool,
+    find_subs_req: bool,
     applied: bool,
     transcoding: bool,
     play_session: String,
@@ -357,6 +358,7 @@ impl Player {
             trick: None,
             sheets: HashMap::new(),
             ext_added: false,
+            find_subs_req: false,
             applied: false,
             transcoding: false,
             play_session: String::new(),
@@ -688,6 +690,8 @@ impl Player {
         self.epoch += 1;
         let epoch = self.epoch;
         self.media = m.clone();
+        self.set.find_subs = self.ctx.hooks.as_ref().is_some_and(|h| h.can_find_subs())
+            && self.backend_of(&m).is_some_and(|b| b.local().is_some());
         self.state = None;
         self.loaded = false;
         self.ended = false;
@@ -1073,6 +1077,23 @@ impl Player {
         if !self.loaded || self.ext_added {
             return;
         }
+        // A local file's subtitles are the ones downloaded for it (none come with the file here).
+        if self
+            .backend_of(&self.media)
+            .is_some_and(|b| b.local().is_some())
+        {
+            self.ext_added = true;
+            let paths = self
+                .ctx
+                .hooks
+                .as_ref()
+                .map(|h| h.subtitles(&self.media.id))
+                .unwrap_or_default();
+            for path in paths {
+                self.add_sub_file(&path);
+            }
+            return;
+        }
         let Some(src) = self
             .play_item
             .as_ref()
@@ -1100,6 +1121,28 @@ impl Player {
             }
         }
         self.refresh_meta();
+    }
+
+    /// Add a downloaded subtitle (`en-123.srt`: language, then id) as an external track.
+    pub fn add_sub_file(&mut self, path: &std::path::Path) {
+        let lang = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .and_then(|s| s.split_once('-'))
+            .map_or("", |(l, _)| l);
+        if let (Some(p), Some(f)) = (&self.playback, path.to_str()) {
+            let title = if lang.is_empty() {
+                "Subtitles".to_string()
+            } else {
+                lang.to_uppercase()
+            };
+            let _ = p.command(&["sub-add", f, "auto", &title, lang]);
+        }
+        self.refresh_meta();
+    }
+
+    pub fn take_find_subs(&mut self) -> Option<Media> {
+        std::mem::take(&mut self.find_subs_req).then(|| self.media.clone())
     }
 
     /// Select a track of `prop` (`sid`, `secondary-sid` or `aid`; 0 = off) and remember its language
@@ -1400,6 +1443,10 @@ impl Player {
                 }
                 self.pop = Some(p);
                 self.pop_sel = 0;
+            }
+            MenuAct::FindSubs => {
+                self.pop = None;
+                self.find_subs_req = true;
             }
             MenuAct::Info => {
                 self.pop = None;

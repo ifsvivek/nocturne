@@ -87,6 +87,7 @@ impl App {
             tasks.push(d.open_photo());
         }
         d.subs_ok = self.subtitles_on(m.origin);
+        d.dl_ok = matches!(self.catalog.backend(m.origin), Some(Backend::Jellyfin(_)));
         let pid = self.push_page(View::Detail, Some(m));
         let Some(p) = self.page_mut(pid) else {
             return Task::none();
@@ -194,6 +195,9 @@ impl App {
             }
             Outcome::FindSubs(m) => {
                 Task::done(Message::Online(super::online::Msg::Find(Box::new(m))))
+            }
+            Outcome::Download(m) => {
+                Task::done(Message::Downloads(super::downloads::Msg::Ask(Box::new(m))))
             }
             Outcome::OpenUrl(u) => {
                 if u.starts_with("http://") || u.starts_with("https://") {

@@ -108,6 +108,7 @@ pub enum MoreAct {
     PlayNext,
     AddToQueue,
     FindSubs,
+    Download,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -147,12 +148,13 @@ pub fn actions(m: &Media, has_prev: bool, has_next: bool) -> Vec<DAct> {
             v.push(More);
             v
         }
-        Kind::Series => vec![Play, Watched, Fav],
+        Kind::Series => vec![Play, Watched, Fav, More],
         Kind::Season => {
             let mut v = vec![Play, Watched];
             if m.series_id.is_some() {
                 v.push(Series);
             }
+            v.push(More);
             v
         }
         Kind::BoxSet | Kind::Playlist | Kind::MusicAlbum => vec![PlayAll, Shuffle, Fav, More],
@@ -400,8 +402,8 @@ mod tests {
             actions(&m("Episode"), false, false),
             [Play, Watched, Fav, Series, More]
         );
-        assert_eq!(actions(&m("Series"), false, false), [Play, Fav]);
-        assert_eq!(actions(&m("Season"), false, false), [Play, Series]);
+        assert_eq!(actions(&m("Series"), false, false), [Play, Fav, More]);
+        assert_eq!(actions(&m("Season"), false, false), [Play, Series, More]);
         assert_eq!(
             actions(&m("Playlist"), false, false),
             [PlayAll, Shuffle, Fav, More]

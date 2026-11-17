@@ -18,6 +18,7 @@ use std::time::Duration;
 struct LocalHooks {
     backend: LocalBackend,
     origin: SourceId,
+    find_subs: bool,
 }
 
 impl LocalHooks {
@@ -49,6 +50,12 @@ impl PlayerHooks for LocalHooks {
     }
     fn can_write(&self) -> bool {
         false
+    }
+    fn subtitles(&self, id: &str) -> Vec<std::path::PathBuf> {
+        self.backend.subtitles_of(id)
+    }
+    fn can_find_subs(&self) -> bool {
+        self.find_subs
     }
 }
 
@@ -119,6 +126,7 @@ impl App {
             Some(Backend::Local(l)) => Some(Arc::new(LocalHooks {
                 backend: l.clone(),
                 origin: m.origin,
+                find_subs: self.subtitles_on(m.origin),
             })),
             _ => self.hooks_for(m.origin).map(|h| {
                 h.seed_favorite(&m.id, m.favorite);
@@ -185,6 +193,11 @@ impl App {
             {
                 tasks.push(d.reload().map(move |m| Message::Detail(pid, m)));
             }
+        }
+        if let Some(m) = self.player.as_mut().and_then(|p| p.take_find_subs()) {
+            tasks.push(Task::done(Message::Online(super::online::Msg::Find(
+                Box::new(m),
+            ))));
         }
         Task::batch(tasks)
     }

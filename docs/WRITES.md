@@ -25,6 +25,7 @@ the item came from (its **origin**) and uses that server's own account; no chang
 | Admin: plugin repositories (add, enable, disable, remove), library rename, metadata / image fetcher order and enabling, local readers, per-user access and limits, user profile image (upload, remove) | yes | an administrator account and a confirmation dialog per action |
 | Admin: networking (ports, bind addresses, LAN networks, remote access, UPnP, discovery, IPv4 / IPv6) | yes | an administrator account, a confirmation dialog and the typed word NETWORK; wrong values can lock everyone out |
 | Admin: dashboards, activity, devices, logs, libraries (with display/NFO/trickplay flags), plugins and the plugin catalog, backups list, transcoding, trickplay and networking views, own sessions list | no (view only) | an administrator account |
+| Offline copies: "Download to this computer" (GET `Items/{id}/Download`, only reads the server) | no | writes only new files into the local folder you choose, never overwrites; needs the server to allow downloads for your account |
 | Local library: mark watched, resume position, manual match, source preference, folders and sources list | no | nothing leaves your computer: stored in NOCTURNE's own files (`$XDG_DATA_HOME/nocturne/local/`, `sources.toml`) |
 
 **Remote control** (`remote_control`, default off; needs server changes on; never in developer API-key mode). When on, each

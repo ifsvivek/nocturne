@@ -33,6 +33,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Optional subtitle download for local files: "Find subtitles online" in a title's menu searches OpenSubtitles with your own
   API key (and, for downloads, your OpenSubtitles login; both in the keyring) and your subtitle language, and keeps the file
   in NOCTURNE's own folder, never next to the media.
+- Offline copies: "Download to this computer" in the … menu of a server movie, episode, season or show saves the original
+  file(s) into a folder of your local library (or NOCTURNE's own downloads folder), named the Jellyfin way with a small `.nfo`
+  so the copy shows as a second source of the same title. GET only, resumable (`.part` and HTTP Range, renamed when whole),
+  never overwrites a file, one transfer at a time, a queue that survives restarts (account menu > Downloads), external
+  subtitles come along. A server that does not let your account download says so. Nothing on the server changes.
+- Local files play the subtitles you downloaded, and the player's Subtitles menu offers "Find subtitles online" (when the
+  source's subtitle download is on); a download is added to the playing video at once.
 - Home "Latest" rows use the server's `Items/Latest`, so new episodes of shows already in the library surface (grouped under
   the show); Play on a show card starts its next unwatched episode (`Shows/NextUp`).
 - "Included in" strip on movie and show pages (collections the item belongs to, Jellyfin 12+).

@@ -18,6 +18,11 @@ pub fn on_boot() -> Task<Message> {
             "run-setup" => Some(Message::RunSetup),
             "open-settings" => Some(Message::MenuAct(crate::app::message::AcctAct::Settings)),
             "open-trakt" => Some(Message::Trakt(crate::app::trakt::Msg::Open)),
+            // `open-global-0`: the header's n-th merged link (Movies, Shows, ...).
+            "open-movies" => Some(Message::OpenKind(nocturne_core::unified::UKind::Movies)),
+            "open-shows" => Some(Message::OpenKind(nocturne_core::unified::UKind::Shows)),
+            n if n.starts_with("open-library-") => n[13..].parse().ok().map(Message::OpenLibrary),
+            n if n.starts_with("open-global-") => n[12..].parse().ok().map(Message::OpenGlobal),
             _ => None,
         };
         if let Some(msg) = msg {

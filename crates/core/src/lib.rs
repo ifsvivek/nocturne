@@ -9,6 +9,7 @@ pub mod cache;
 pub mod catalog;
 pub mod detail;
 pub mod detail_reads;
+pub mod download;
 pub mod dropdown;
 pub mod folders;
 pub mod hdr;

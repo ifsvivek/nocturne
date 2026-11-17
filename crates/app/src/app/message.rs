@@ -58,6 +58,7 @@ pub enum AcctAct {
     RemoveImage,
     Language,
     Sources,
+    Downloads,
     Admin,
 }
 
@@ -208,6 +209,7 @@ pub enum Message {
     Online(super::online::Msg),
     Trakt(super::trakt::Msg),
     Cascade(super::cascade::Msg),
+    Downloads(super::downloads::Msg),
     CycleFilter,
     OpenSources,
     /// Debug builds only: a window capture for `NOCTURNE_SNAP`.

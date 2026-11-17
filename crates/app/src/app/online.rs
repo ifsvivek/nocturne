@@ -369,6 +369,12 @@ impl App {
             Msg::Downloaded(epoch, r) => {
                 if let Some(f) = self.online.finder.as_mut().filter(|f| f.epoch == epoch) {
                     f.busy = false;
+                    if let (Ok(path), Some(p)) = (&r, self.player.as_mut())
+                        && p.media.id == f.media.id
+                        && p.media.origin == f.media.origin
+                    {
+                        p.add_sub_file(path);
+                    }
                     f.note =
                         Some(r.map(|_| {
                             "Saved. It loads the next time you play this file.".to_string()

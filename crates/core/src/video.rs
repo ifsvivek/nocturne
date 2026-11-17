@@ -41,6 +41,14 @@ pub trait PlayerHooks: Send + Sync {
     fn is_favorite(&self, item_id: &str) -> bool;
     /// Server changes are allowed (master switch on, real login): the heart is live only then.
     fn can_write(&self) -> bool;
+    /// Downloaded subtitles of a local item, to add as external tracks.
+    fn subtitles(&self, _item_id: &str) -> Vec<std::path::PathBuf> {
+        vec![]
+    }
+    /// "Find subtitles online" is offered for this session's items (local source, switch on).
+    fn can_find_subs(&self) -> bool {
+        false
+    }
 }
 
 /// How long the controls stay up without mouse movement or keys.
@@ -582,6 +590,8 @@ pub struct Settings {
     pub audio_original: bool,
     /// The video is HDR: `Some(true)` plays in the HDR pop-out, `Some(false)` in the window in SDR.
     pub hdr_popout: Option<bool>,
+    /// The Subtitles menu offers "Find subtitles online".
+    pub find_subs: bool,
 }
 
 impl Default for Settings {
@@ -609,6 +619,7 @@ impl Default for Settings {
             sub2_pos: 0,
             audio_original: false,
             hdr_popout: None,
+            find_subs: false,
         }
     }
 }
@@ -654,6 +665,7 @@ pub enum MenuAct {
     ResetPicture,
     Open(Pop),
     Info,
+    FindSubs,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -739,6 +751,9 @@ pub fn items(pop: Pop, tracks: &[Track], s: &Settings) -> Vec<Item> {
                     MenuAct::Sub2Pos(-5),
                     MenuAct::Sub2Pos(5),
                 ));
+            }
+            if s.find_subs {
+                v.push(row("Find subtitles online\u{2026}", "", MenuAct::FindSubs));
             }
             v.push(row("Subtitle Style", "", MenuAct::Open(Pop::SubStyle)));
             v
@@ -1198,5 +1213,23 @@ mod tests {
         assert_eq!(key("m", true, false), Some(Key::Mini));
         assert_eq!(key("m", false, false), Some(Key::Mute));
         assert_eq!(key("p", false, false), Some(Key::Prev));
+    }
+}
+
+#[cfg(test)]
+mod find_subs_tests {
+    use super::*;
+
+    #[test]
+    fn subtitle_menu_offers_the_finder_only_when_enabled() {
+        let mut s = Settings::default();
+        let has = |s: &Settings| {
+            items(Pop::Subs, &[], s)
+                .iter()
+                .any(|i| i.act == MenuAct::FindSubs)
+        };
+        assert!(!has(&s));
+        s.find_subs = true;
+        assert!(has(&s));
     }
 }
