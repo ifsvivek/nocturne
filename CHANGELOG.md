@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Player: a secondary subtitle (Subtitles menu, "Secondary" section; Shift+C cycles it; top by default).
+- Player: audio and subtitle language are remembered per show (and per movie) across restarts in a local file under
+  `$XDG_DATA_HOME/nocturne/`, never on a server; "Original audio" is a choice in the Audio menu.
+- HDR video: when a video is HDR the player asks whether to play in the window in SDR or open an HDR pop-out window (mpv's
+  own window, driven from the app); new setting "HDR video" (Ask / Play in the window in SDR / Open in HDR pop-out window).
 - Home "Latest" rows use the server's `Items/Latest`, so new episodes of shows already in the library surface (grouped under
   the show); Play on a show card starts its next unwatched episode (`Shows/NextUp`).
 - "Included in" strip on movie and show pages (collections the item belongs to, Jellyfin 12+).
