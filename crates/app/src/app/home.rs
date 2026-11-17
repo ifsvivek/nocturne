@@ -831,13 +831,13 @@ impl App {
                     ));
                 }
             }
-            if matches!(k, HRow::Nav) {
-                if let Some(x) = super::header::nav_target(&nav_w, h.col, nav_off, nav_vw) {
-                    tasks.push(operation::scroll_to(
-                        Id::from(super::header::NAV_ID),
-                        AbsoluteOffset { x, y: 0.0 },
-                    ));
-                }
+            if matches!(k, HRow::Nav)
+                && let Some(x) = super::header::nav_target(&nav_w, h.col, nav_off, nav_vw)
+            {
+                tasks.push(operation::scroll_to(
+                    Id::from(super::header::NAV_ID),
+                    AbsoluteOffset { x, y: 0.0 },
+                ));
             }
             tasks.push(self.home_wants());
             return Task::batch(tasks);

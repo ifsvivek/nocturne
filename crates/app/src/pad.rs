@@ -167,6 +167,31 @@ impl Repeater {
     }
 }
 
+/// Debug injection (`NOCTURNE_PAD`): `pads2` or a button name.
+#[cfg(debug_assertions)]
+pub fn parse(name: &str) -> Option<Ev> {
+    if let Some(n) = name.strip_prefix("pads") {
+        return Some(Ev::Pads(n.parse().ok()?));
+    }
+    Some(Ev::Press(match name {
+        "up" => Btn::Up,
+        "down" => Btn::Down,
+        "left" => Btn::Left,
+        "right" => Btn::Right,
+        "a" => Btn::A,
+        "b" => Btn::B,
+        "x" => Btn::X,
+        "y" => Btn::Y,
+        "start" => Btn::Start,
+        "select" => Btn::Select,
+        "lb" => Btn::LB,
+        "rb" => Btn::RB,
+        "lt" => Btn::LT,
+        "rt" => Btn::RT,
+        _ => return None,
+    }))
+}
+
 /// The subscription's stream: one thread owns `gilrs`; it ends when the stream is dropped.
 pub fn events() -> impl iced::futures::Stream<Item = Ev> {
     iced::stream::channel(64, async |mut out| {
@@ -297,6 +322,14 @@ mod tests {
         assert_eq!(k(Btn::LT, true, false), ("left".into(), true));
         assert_eq!(k(Btn::RT, true, false), ("right".into(), true));
         assert_eq!(k(Btn::RB, true, false).0, "n");
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn debug_injection_names() {
+        assert_eq!(parse("start"), Some(Ev::Press(Btn::Start)));
+        assert_eq!(parse("pads2"), Some(Ev::Pads(2)));
+        assert_eq!(parse("nope"), None);
     }
 
     #[test]

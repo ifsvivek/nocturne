@@ -98,25 +98,26 @@ impl App {
                 Link::Admin => nav_link("Admin", self.admin_open, focused, Message::OpenAdmin),
             });
         }
-        let left = row![
-            row![
-                hist_button(
+        // Couch mode drops the pointer-sized history buttons (B goes back) and keeps the big tabs.
+        let mut brand = row![].spacing(t::S1).align_y(Alignment::Center);
+        if !crate::couch::on() {
+            brand = brand
+                .push(hist_button(
                     "\u{2039}",
                     "Back (Alt+Left)",
                     self.stack.len() > 1,
-                    Message::Back
-                ),
-                hist_button(
+                    Message::Back,
+                ))
+                .push(hist_button(
                     "\u{203A}",
                     "Forward (Alt+Right)",
                     !self.fwd.is_empty(),
-                    Message::Forward
-                ),
-                space().width(t::S3),
-                wordmark(t::CAPTION + 1.0),
-            ]
-            .spacing(t::S1)
-            .align_y(Alignment::Center),
+                    Message::Forward,
+                ))
+                .push(space().width(t::S3));
+        }
+        let left = row![
+            brand.push(wordmark(t::CAPTION + 1.0)),
             // Many sources make a long link row: it scrolls sideways (wheel, chevrons, or the focus
             // on Home) instead of pushing the search and avatar out of the window.
             self.nav_strip(nav_row),
@@ -425,7 +426,9 @@ pub fn nav_target(widths: &[f32], col: usize, off: f32, vw: f32) -> Option<f32> 
 
 /// Whether there is more of the strip to the left / right of the visible part.
 pub fn nav_more(off: f32, vw: f32, content: f32) -> (bool, bool) {
-    (off > 1.0, off + vw < content - 1.0)
+    // Nothing is hidden when everything fits, whatever offset a scroll left behind.
+    let overflow = content > vw + 1.0;
+    (overflow && off > 1.0, overflow && off + vw < content - 1.0)
 }
 
 impl App {
@@ -641,6 +644,7 @@ mod tests {
     #[test]
     fn chevrons_only_where_links_are_hidden() {
         assert_eq!(nav_more(0.0, 400.0, 300.0), (false, false));
+        assert_eq!(nav_more(50.0, 400.0, 300.0), (false, false));
         assert_eq!(nav_more(0.0, 400.0, 1000.0), (false, true));
         assert_eq!(nav_more(300.0, 400.0, 1000.0), (true, true));
         assert_eq!(nav_more(600.0, 400.0, 1000.0), (true, false));

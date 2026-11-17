@@ -47,6 +47,8 @@ impl App {
                 self.refresh_couch()
             }
             pad::Ev::Press(b) => {
+                // A press proves a pad is there (hints switch to button names).
+                self.pads = self.pads.max(1);
                 let in_player = self.player.is_some();
                 let enter = self.player.as_ref().is_some_and(|p| p.wants_enter());
                 match pad::key(b, in_player, enter) {
