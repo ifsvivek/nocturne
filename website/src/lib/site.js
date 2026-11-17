@@ -60,7 +60,13 @@ const ALT = {
   "alternates-crop": "Versions and sources: one film on three sources, Living room, Local and Study, with quality, and Always prefer this source",
   "first-run": "Setup, step 2 of 5: Where is your media? Local folders, A Jellyfin server, or Both",
   sources: "Settings, Sources: This computer with one folder, and the servers Living room and Study, all online",
-  "local-folders": "Local folders: one indexed folder, counts of movies, shows and episodes, and one unmatched file to place by hand",
+  "local-folders": "Local folders: one indexed folder, Online details switched on for TVmaze and MusicBrainz with TMDB off, and the providers' credits",
+  couch: "Couch mode: Home in a larger layout with a thick focus ring on Play and a hint bar for the gamepad buttons",
+  smart: "The smart collection Added this week: a poster grid over every source, each card marked Local, Living room or Study",
+  "smart-menu-crop": "The Smart menu in the header: Unwatched 4K movies, Added this week, Unwatched shows, Continue watching, Top rated not watched, Manage smart collections",
+  "downloads-crop": "The Downloads panel: Northbound Lights downloading, 50 MB of 417 MB, with Pause and Cancel",
+  "hdr-crop": "The HDR question in the player: Play here in SDR, or Open in HDR pop-out window, with Remember my choice",
+  "trakt-crop": "The Trakt dialog, not signed in: what is sent, an empty Client ID field, Sign in with Trakt and Create a Trakt app",
 };
 // Image props for one screenshot: src (largest), srcset, intrinsic size and alt, so layout never shifts.
 export function shot(key) {

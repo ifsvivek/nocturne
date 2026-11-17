@@ -18,7 +18,7 @@ WIDTHS = (640, 1280, 1920, 2560, 3840)
 # The full-bleed stills are up to 1680 css px (3360 px at 2x), so they keep the native 3840.
 MAX_W = {"01-home": 3840, "06-playback": 3840}
 DEFAULT_MAX = 2560
-SKIP_FULL = {"picker", "05-search", "03-movie-detail"}  # only their close-ups are used on the page
+SKIP_FULL = {"picker", "05-search", "03-movie-detail", "smart-menu", "downloads", "hdr", "trakt"}  # close-ups only
 
 # Close-ups, as fractions (x0, y0, x1, y1) of the capture so they do not depend on its resolution, plus the widest
 # variant. Framed on the 3840x2160 captures; check by eye after a recapture (open sized/*-crop-*.webp).
@@ -35,6 +35,15 @@ CROPS = {
     "controls-crop": ("06-playback", (0.0, 0.905, 1.0, 0.994), 1280),
     # the Versions and sources picker on the movie detail page, 16:9 like the series still beside it
     "alternates-crop": ("03-movie-detail", (0.30, 0.30, 0.70, 0.70), 1920),
+    # 0.4 captures are 1920x1080 (window capture at scale 1, see README); their close-ups are framed on that size.
+    # the header's Smart menu with the five starter collections
+    "smart-menu-crop": ("smart-menu", (0.31, 0.0, 0.65, 0.34), 1280),
+    # the Downloads panel with one transfer in progress, 16:9
+    "downloads-crop": ("downloads", (0.30, 0.30, 0.70, 0.70), 1280),
+    # the HDR question in the player, 16:9
+    "hdr-crop": ("hdr", (0.30, 0.30, 0.70, 0.70), 1280),
+    # the Trakt dialog over Settings (not signed in)
+    "trakt-crop": ("trakt", (0.33, 0.25, 0.67, 0.75), 1280),
 }
 
 

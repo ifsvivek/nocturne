@@ -46,10 +46,11 @@
   const right = "(min-width: 1240px) 467px, (min-width: 768px) calc((100vw - 72px) * 0.4), calc(100vw - 40px)";
   const two = "(min-width: 1560px) 748px, (min-width: 768px) calc(50vw - 32px), calc(100vw - 40px)";
   const framed = "(min-width: 1360px) 1320px, calc(100vw - 40px)";
+  const narrow = "(min-width: 800px) 760px, calc(100vw - 40px)";
 </script>
 
 <!-- Nine scenes. The first is the story (many sources, one library); the others are large stills from the app with
-     their copy set as a subtitle. Living room and Across services are copy only until their 0.4 captures. -->
+     their copy set as a subtitle. 0.4 stills are 1920x1080 window captures (see README). -->
 <div id="tour">
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s0">
     <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 1</span><h2 id="s0" class="scene-title">One library</h2><Next class="mt-5 ml-0" /></header>
@@ -81,8 +82,13 @@
     <div class="reveal mx-auto mt-[clamp(56px,7vw,96px)] w-[min(1320px,100%-40px)]"><Shot name="first-run" sizes={framed} /></div>
     <div class="stagger mx-auto mt-6 grid w-[min(1520px,100%-40px)] gap-6 md:grid-cols-2">
       <figure class="m-0"><Shot name="sources" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Settings, Sources: the order is the priority when a title is in more than one place.</figcaption></figure>
-      <figure class="m-0"><Shot name="local-folders" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Local folders: indexed in place, with anything it cannot place left for you to match.</figcaption></figure>
+      <figure class="m-0"><Shot name="local-folders" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Local folders: indexed in place. Online details are optional, per provider, with their credits on the page.</figcaption></figure>
     </div>
+    <div class="stagger wrap mt-[clamp(56px,7vw,96px)] grid gap-x-8 gap-y-12 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] md:items-end">
+      <figure class="m-0"><Shot name="smart" sizes={left} /><figcaption class="mt-4 text-sm text-ink-2">A smart collection: a saved rule over every source, kept on this computer.</figcaption></figure>
+      <figure class="m-0"><Shot name="smart-menu-crop" sizes={right} /><figcaption class="mt-4 text-sm text-ink-2">Five starters in the header's Smart menu; make your own with a live match count.</figcaption></figure>
+    </div>
+    <figure class="reveal mx-auto mt-[clamp(56px,7vw,96px)] mb-0 w-[min(760px,100%-40px)]"><Shot name="downloads-crop" sizes={narrow} /><figcaption class="mt-4 text-center text-sm text-ink-2">Download to this computer: the copy lands in your local library as a second source. Plain reads, resumable, one at a time.</figcaption></figure>
     <div class="wrap mt-14">
       <ul class="tick stagger gap-x-12 sm:grid-cols-2 lg:grid-cols-3">{#each sources.map(tick) as [t, v]}<li>{t}{#if v} <Next {v} />{/if}</li>{/each}</ul>
       <p class="m-0 mt-10 max-w-[80ch] text-sm text-ink-3">Online details come from <a href="https://www.themoviedb.org" rel="noopener">TMDB</a>, <a href="https://www.tvmaze.com" rel="noopener">TVmaze</a>, MusicBrainz and the Cover Art Archive. This product uses the TMDB API but is not endorsed or certified by TMDB. TV data from TVmaze.com, licensed CC BY-SA 4.0.</p>
@@ -112,8 +118,10 @@
     <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 4</span><h2 id="s3" class="scene-title">Playback</h2></header>
     <Shot name="playback" bleed sizes={bleed} class="letterbox" />
     <p class="subtitle">The film plays inside the window, whether it streams from a server or sits on your disk. libmpv renders with hardware decoding into a Wayland subsurface, and the controls are drawn over the picture.</p>
-    <div class="reveal mx-auto mt-[clamp(56px,7vw,96px)] w-[min(1320px,100%-40px)]"><Shot name="loading" sizes={framed} /></div>
-    <p class="subtitle">While it loads, the film's backdrop fills the screen and its title fills with light as the buffer grows.</p>
+    <div class="stagger mx-auto mt-[clamp(56px,7vw,96px)] grid w-[min(1520px,100%-40px)] gap-6 md:grid-cols-2">
+      <figure class="m-0"><Shot name="loading" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">While it loads, the film's backdrop fills the screen and its title fills with light as the buffer grows.</figcaption></figure>
+      <figure class="m-0"><Shot name="hdr-crop" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">An HDR film asks: SDR in the window, or the HDR pop-out window. Real HDR needs an HDR display and mpv 0.42 or newer.</figcaption></figure>
+    </div>
     <div class="wrap mt-14">
       <ul class="tick stagger gap-x-12 sm:grid-cols-2 lg:grid-cols-3">{#each player.map(tick) as [t, v]}<li>{t}{#if v} <Next {v} />{/if}</li>{/each}</ul>
     </div>
@@ -121,6 +129,7 @@
 
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s7">
     <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 5</span><h2 id="s7" class="scene-title">Living room</h2><Next v="0.4.0" class="mt-5 ml-0" /></header>
+    <div class="reveal mx-auto w-[min(1320px,100%-40px)]"><Shot name="couch" sizes={framed} /></div>
     <p class="subtitle">Couch mode turns NOCTURNE into a ten-foot screen: a larger layout, a thicker focus ring and a hint bar, driven by a gamepad, a remote or the keyboard. Set it On, or Automatic to switch it on when a gamepad connects or on a large display.</p>
     <div class="wrap mt-14">
       <ul class="tick stagger gap-x-12 sm:grid-cols-2">{#each couch as c}<li>{c}</li>{/each}</ul>
@@ -136,6 +145,7 @@
         <div class="rule pt-5"><dt class="role">{t}</dt><dd class="m-0 mt-3 text-ink-2">{d}{#if credit}<span class="mt-3 block text-sm text-ink-3">{credit}</span>{/if}</dd></div>
       {/each}
     </dl>
+    <figure class="reveal mx-auto mt-14 mb-0 w-[min(760px,100%-40px)]"><Shot name="trakt-crop" sizes={narrow} /><figcaption class="mt-4 text-center text-sm text-ink-2">Trakt, before you connect it: your own Trakt app and a sign-in in your browser. NOCTURNE ships no Trakt credentials.</figcaption></figure>
   </section>
 
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s4">

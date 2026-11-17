@@ -76,13 +76,13 @@ test("RELEASED=true: download, repo and version", () => {
 });
 
 test("0.3 copy is marked while VERSION is older, and unmarked once it ships", () => {
-  const h = read(prev, "index.html"), n = read(on, "index.html");
+  const h = read(prev, "index.html"), n = read(v03, "index.html");
   // Each new-in-0.3 claim carries its mark: hero, scene, details, playback items, safety facts, specs, FAQ.
   assert.ok((h.match(/Coming in 0\.3/g) || []).length >= 12, "marks in the 0.2.0 build");
   assert.ok(h.includes("GPUI") && !h.includes(">Iced<"), "credits name the toolkit of the downloadable version");
   assert.doesNotMatch(n, /Coming in 0\.3|GPUI/);
   assert.ok(n.includes(">Iced<") && n.includes("Version 0.3.0"));
-  assert.doesNotMatch(read(on, "privacy.html"), /Coming in 0\.3/);
+  assert.doesNotMatch(read(v03, "privacy.html"), /Coming in 0\.3/);
   assert.match(read(prev, "privacy.html"), /Coming in 0\.3/);
 });
 
