@@ -45,4 +45,4 @@ exact meaning to be agreed when 0.5 starts); plus UI refresh and user customizat
 their order, density and scale, backdrops, per-library views). Wish list to be agreed with the maintainer first.
 
 ## Progress
-- [ ] W1  - [ ] W2  - [ ] W3  - [ ] Wave 2  - [ ] Wave 3  - [ ] polish  - [ ] 0.4 QA walkthrough
+- [ ] W1  - [x] W2 (merged; player hooks: play_info + multi-header -> W1)  - [ ] W3  - [ ] Wave 2  - [ ] Wave 3  - [ ] polish  - [ ] 0.4 QA walkthrough
