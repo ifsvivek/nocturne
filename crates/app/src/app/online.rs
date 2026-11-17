@@ -206,7 +206,7 @@ impl App {
                 }
             }
             Msg::TmdbKey(s) => {
-                self.online.tmdb_key = s;
+                self.online.tmdb_key = nocturne_core::secret::clean(&s);
                 self.online.note.remove("tmdb");
             }
             Msg::SaveTmdb => {
@@ -248,7 +248,7 @@ impl App {
                 );
             }
             Msg::SubsKey(s) => {
-                self.online.subs_key = s;
+                self.online.subs_key = nocturne_core::secret::clean(&s);
                 self.online.note.remove("subs");
             }
             Msg::SaveSubsKey => {
