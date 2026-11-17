@@ -4,6 +4,8 @@
 //! The list of known server URLs and the last used one (no secrets) live in
 //! `$XDG_CONFIG_HOME/nocturne/servers.toml`, written atomically.
 
+pub mod paths;
+
 use nocturne_jellyfin_user::Session;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -345,14 +347,12 @@ pub struct Servers {
 }
 
 impl Servers {
-    /// `$XDG_CONFIG_HOME/nocturne/servers.toml` (default `~/.config`).
+    /// `servers.toml` in [`paths::config_dir`] (`$XDG_CONFIG_HOME/nocturne` on Linux).
     pub fn default_path() -> Result<PathBuf> {
-        let base = std::env::var_os("XDG_CONFIG_HOME")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".config")))
-            .ok_or_else(|| Error::File("neither XDG_CONFIG_HOME nor HOME is set".into()))?;
-        Ok(base.join("nocturne").join("servers.toml"))
+        let dir = paths::config_dir().ok_or_else(|| {
+            Error::File("no per-user config directory (HOME / APPDATA unset)".into())
+        })?;
+        Ok(dir.join("servers.toml"))
     }
 
     pub fn load() -> Result<Self> {

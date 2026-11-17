@@ -442,6 +442,7 @@ pub fn ends_at(now_hm: (u32, u32), remaining: f64, speed: f64) -> String {
 }
 
 /// Local (hour, minute) now.
+#[cfg(unix)]
 pub fn local_hm() -> (u32, u32) {
     // SAFETY: plain libc time calls with a zeroed out-struct.
     unsafe {
@@ -450,6 +451,31 @@ pub fn local_hm() -> (u32, u32) {
         libc::localtime_r(&t, &mut tm);
         (tm.tm_hour as u32, tm.tm_min as u32)
     }
+}
+
+/// Local (hour, minute) now (Win32 `GetLocalTime`, declared by hand: no extra crate for one call).
+#[cfg(windows)]
+pub fn local_hm() -> (u32, u32) {
+    #[repr(C)]
+    #[derive(Default)]
+    struct SystemTime {
+        year: u16,
+        month: u16,
+        day_of_week: u16,
+        day: u16,
+        hour: u16,
+        minute: u16,
+        second: u16,
+        millis: u16,
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetLocalTime(t: *mut SystemTime);
+    }
+    let mut t = SystemTime::default();
+    // SAFETY: fills the struct we own.
+    unsafe { GetLocalTime(&mut t) };
+    (t.hour as u32, t.minute as u32)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

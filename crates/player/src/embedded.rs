@@ -211,15 +211,21 @@ impl EmbeddedPlayer {
                 ("vo", "libmpv".into()),
                 ("hwdec", "auto-safe".into()),
                 ("keep-open", "yes".into()),
-                ("background", "color".into()), // opaque black bars (default would be alpha 0)
-                ("background-color", "#FF000000".into()),
                 ("terminal", "no".into()),
                 ("input-default-bindings", "no".into()),
                 ("osc", "no".into()),
             ];
             opts.extend(buffering.mpv_options());
             let opts: Vec<(&str, &str)> = opts.iter().map(|(k, v)| (*k, v.as_str())).collect();
-            let mpv = Mpv::new(&opts).map_err(|er| Error::Mpv(format!("init: {er}")))?;
+            // Opaque black bars (the default would be alpha 0). Names differ by libmpv version:
+            // >= 0.40 `background=color` + `background-color`; older takes the colour as the
+            // value of `background`, and has no `background-color`. Rejections are not fatal.
+            let background: [&[(&str, &str)]; 2] = [
+                &[("background", "color"), ("background", "#FF000000")],
+                &[("background-color", "#FF000000")],
+            ];
+            let mpv = Mpv::new_with(&opts, &background)
+                .map_err(|er| Error::Mpv(format!("init: {er}")))?;
             let mpv = Arc::new(mpv);
             for (i, (n, flag)) in [
                 ("pause", true),

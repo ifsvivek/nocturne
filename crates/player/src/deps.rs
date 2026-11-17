@@ -1,24 +1,54 @@
 //! Runtime-dependency probes and install hints (no UI deps, so the app decides how to show them).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-/// `Ok` when `libmpv.so.2` can be loaded, else a short reason. The in-window player needs it;
+/// `Ok` when libmpv (`libmpv.so.2` / `libmpv.2.dylib` / `libmpv-2.dll`) can be loaded, else a short reason. The in-window player needs it;
 /// without it use the external-`mpv` [`crate::Player`] (see [`mpv_binary_available`]).
 pub fn libmpv_available() -> Result<(), String> {
     crate::mpv_ffi::available()
 }
 
-/// True when an executable `mpv` is on `PATH` (what the child-process [`crate::Player`] spawns).
+fn is_executable(p: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        p.metadata()
+            .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+    }
+    #[cfg(not(unix))]
+    p.is_file()
+}
+
+/// The `mpv` the child-process [`crate::Player`] runs. Linux: whatever `PATH` resolves (unchanged).
+/// macOS/Windows: a copy shipped next to the app first, then `PATH`, then (macOS GUI apps get a
+/// minimal `PATH`) the Homebrew prefixes.
+pub(crate) fn mpv_path() -> Option<PathBuf> {
+    let exe = if cfg!(windows) { "mpv.exe" } else { "mpv" };
+    let mut dirs: Vec<PathBuf> = vec![];
+    if !cfg!(target_os = "linux") {
+        dirs.extend(crate::mpv_ffi::exe_dir());
+    }
+    dirs.extend(
+        std::env::var_os("PATH")
+            .iter()
+            .flat_map(std::env::split_paths),
+    );
+    if cfg!(target_os = "macos") {
+        dirs.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from));
+    }
+    dirs.into_iter()
+        .map(|d| d.join(exe))
+        .find(|p| is_executable(p))
+}
+
+/// Program name or path to spawn; a bare `mpv` lets the OS report "not found" itself.
+pub(crate) fn mpv_program() -> PathBuf {
+    mpv_path().unwrap_or_else(|| "mpv".into())
+}
+
+/// True when an executable `mpv` was found (see [`mpv_path`]).
 pub fn mpv_binary_available() -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::env::var_os("PATH").is_some_and(|p| {
-        std::env::split_paths(&p).any(|d| {
-            Path::new(&d)
-                .join("mpv")
-                .metadata()
-                .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        })
-    })
+    mpv_path().is_some()
 }
 
 /// Install command for the mpv library/player, chosen from `/etc/os-release` contents (`ID`, `ID_LIKE`).
@@ -60,9 +90,18 @@ pub fn install_hint_for(os_release: &str) -> String {
     format!("Install it with: {cmd}")
 }
 
-/// [`install_hint_for`] applied to this machine's `/etc/os-release`.
+/// macOS and Windows ship libmpv inside the app, so a missing one means a damaged install.
+fn bundled_hint() -> String {
+    "The mpv library is bundled with NOCTURNE and could not be loaded; reinstall NOCTURNE.".into()
+}
+
+/// [`install_hint_for`] applied to this machine's `/etc/os-release` (Linux); macOS/Windows: reinstall.
 pub fn install_hint() -> String {
-    install_hint_for(&std::fs::read_to_string("/etc/os-release").unwrap_or_default())
+    if cfg!(target_os = "linux") {
+        install_hint_for(&std::fs::read_to_string("/etc/os-release").unwrap_or_default())
+    } else {
+        bundled_hint()
+    }
 }
 
 #[cfg(test)]
@@ -85,6 +124,11 @@ mod tests {
         );
         assert!(h("ID=nixos\n").contains("package manager"));
         assert!(h("").contains("package manager"));
+    }
+
+    #[test]
+    fn bundled_platforms_say_reinstall() {
+        assert!(bundled_hint().contains("reinstall"));
     }
 
     #[test]

@@ -85,13 +85,9 @@ pub enum WriteError {
     NotLocal,
 }
 
-/// `$XDG_DATA_HOME/nocturne` (default `~/.local/share/nocturne`).
+/// Per-user data dir (`$XDG_DATA_HOME/nocturne` on Linux).
 pub fn data_dir() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?;
-    Some(base.join("nocturne"))
+    nocturne_session::paths::data_dir()
 }
 
 /// Where a local source keeps its index, overrides and state (never next to the media).

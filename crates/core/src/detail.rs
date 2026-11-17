@@ -257,13 +257,8 @@ pub fn ends_at(now_min: u32, runtime_min: u32) -> String {
 
 /// Local minutes since midnight.
 pub fn local_minutes() -> u32 {
-    // SAFETY: localtime_r only writes into the zeroed tm we pass.
-    unsafe {
-        let t = libc::time(std::ptr::null_mut());
-        let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_r(&t, &mut tm);
-        (tm.tm_hour * 60 + tm.tm_min).max(0) as u32
-    }
+    let (h, m) = crate::video::local_hm();
+    h * 60 + m
 }
 
 #[cfg(test)]

@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- macOS and Windows code behind the platform seams (written and cross-compile-checked, never run; no installers yet):
+  per-OS config/data/cache paths, keyring backends, named-pipe mpv IPC, per-OS libmpv loading, single-instance guard,
+  and playback through the external mpv window. Linux behaviour is unchanged. `scripts/check-cross.sh` runs the
+  Windows/macOS compile checks in Docker ([PLATFORMS.md](docs/PLATFORMS.md)).
 - Couch mode (Settings > Living room: Off / On / Automatic): a 10-foot layout for the sofa and a TV. The whole UI grows
   (type, targets, spacing), the focus ring is thicker and glows, the header drops its pointer-sized buttons, and a hint bar
   names the buttons (pad buttons with a gamepad, key names otherwise). Gamepad support (`gilrs`, a background thread only

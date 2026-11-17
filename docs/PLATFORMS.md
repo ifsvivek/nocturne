@@ -6,18 +6,33 @@ after 0.3 ships for Arch. Nothing here may degrade playback quality, stability o
 
 ## Platform seams (keep everything platform-specific behind these; `#[cfg(target_os = ...)]` only inside them)
 
+Implemented state (0.4): Linux is built, run and tested. macOS and Windows are **written, cross-checked to compile,
+never run** (`scripts/check-cross.sh`); no installers yet. Windows: the whole app compiles (`x86_64-pc-windows-gnu`).
+macOS: only `nocturne-player` and `nocturne-local` can be checked on Linux; everything that depends on reqwest
+(jellyfin*, session, core, app) is blocked by `aws-lc-sys`, which compiles C against the Apple SDK's libc headers, so
+the macOS paths in those crates are **written, not built** until a real Mac is available.
+
 | Concern | Linux | macOS | Windows |
 |---|---|---|---|
-| In-window video | libmpv GL render API in a Wayland subsurface (X11: external mpv) | to investigate: libmpv render API into an offscreen GL/Metal target, or external mpv | to investigate: libmpv `wid` child window / render API, or external mpv |
-| External player IPC | unix socket | unix socket | named pipe |
-| libmpv at runtime | distro package (dlopen `libmpv.so.2`) | bundled `libmpv.2.dylib` in the .app | bundled `libmpv-2.dll` next to the exe |
+| In-window video | libmpv GL render API in a Wayland subsurface (X11: external mpv). `crates/player/src/embedded.rs` | **external mpv window for now** (`embedded_stub.rs`: `EmbeddedPlayer` cannot be built, the app falls back). Native embedding: later (libmpv render API into a Metal/GL view) | same: external mpv window; native embedding later (libmpv render API / `wid` child window) |
+| External player IPC | unix socket | unix socket | named pipe `\\.\pipe\nocturne-mpv-<pid>-<n>` (reader polls `PeekNamedPipe`, see `crates/player/src/ipc.rs`) |
+| libmpv at runtime | distro package (dlopen `libmpv.so.2`) | dlopen `libmpv.2.dylib`: `Contents/Frameworks` next to the exe first, then default paths and Homebrew | dlopen `libmpv-2.dll` next to the exe first, then the DLL search path |
+| external `mpv` binary | `PATH` | next to the app, `PATH`, Homebrew prefixes | `mpv.exe` next to the app, then `PATH` (no console window) |
 | Credentials | Secret Service (`keyring`) | Keychain (`keyring` apple-native) | Credential Manager (`keyring` windows-native) |
-| Media keys / now playing | MPRIS (zbus) | MPNowPlayingInfoCenter (later) | SMTC (later) |
-| Signals / quit | SIGTERM/SIGINT | same | console ctrl handler |
-| Paths | XDG | `~/Library/...` (`dirs`-style resolution) | `%APPDATA%` / `%LOCALAPPDATA%` |
+| Media keys / now playing | MPRIS + idle inhibit (zbus, `core/player_mpris/dbus.rs`) | none yet (no-op; MPNowPlayingInfoCenter later) | none yet (no-op; SMTC later) |
+| Signals / quit | SIGTERM/SIGINT | same | console ctrl handler (never fires in the GUI-subsystem build) |
+| Single instance | `flock` + unix socket in `$XDG_RUNTIME_DIR` | same, socket in `$TMPDIR` | named mutex + named pipe |
+| Paths | XDG | `~/Library/Application Support`, `~/Library/Caches` | `%APPDATA%` (config), `%LOCALAPPDATA%` (data, cache) |
+| Local library identity | `(dev, inode)` + size/mtime | same | no stable file index in `std`: directories by canonical-path hash, files by size + content hash only |
+| Window subsystem | n/a | n/a | `windows_subsystem = "windows"` in release builds |
 
-Code layout: `crates/player` keeps the per-OS video/IPC backends; a `platform` module in the UI crate holds
-signals, window-handle extraction and media-key integration; `crates/session` picks the keyring backend by target.
+One path helper: `nocturne_session::paths` (re-exported as `nocturne_core::paths`), pure `resolve(os, kind, env)`
+unit-tested for all three OSes. Code layout: `crates/player` keeps the per-OS IPC and libmpv loading; `platform.rs` and
+`single.rs` in the UI crate hold signals, window-handle extraction and the single-instance guard; `crates/session` picks
+the keyring backend by target.
+
+Remaining for macOS/Windows: installers (.dmg/.msi), bundling libmpv, native in-window video, media keys / now playing,
+reduced-motion detection, file picker and keyring behaviour verified on real machines, code signing.
 
 ## Packages
 

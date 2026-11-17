@@ -27,8 +27,8 @@ Release gate: `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo d
 
 ## Decisions
 
-- Linux first (Arch is the only tested platform). macOS and Windows, and .deb/.rpm/AppImage, are planned for 0.4 but not
-  started and never claimed as supported until they exist ([PLATFORMS.md](../PLATFORMS.md)). Platform-specific code stays
+- Linux first (Arch is the only tested platform). macOS and Windows code is written behind the seams and compile-checked (`scripts/check-cross.sh`) but never run, so
+  neither is claimed as supported; .deb/.rpm/AppImage are separate work ([PLATFORMS.md](../PLATFORMS.md)). Platform-specific code stays
   inside the seams listed there.
 - Iced replaced GPUI; the reasons are in [DECISIONS.md](../DECISIONS.md). `vendor/xattr` and the `[patch]` that only GPUI
   needed are gone.
