@@ -57,13 +57,16 @@ async fn connect(c: &UserClient) -> Result<Ws> {
             .expect("http url has a base")
             .pop_if_empty()
             .push(p);
-        let req = http
+        let mut req = http
             .get(url)
             .header(header::AUTHORIZATION, c.auth.clone())
             .header(header::CONNECTION, "Upgrade")
             .header(header::UPGRADE, "websocket")
             .header("Sec-WebSocket-Version", "13")
             .header("Sec-WebSocket-Key", random_key());
+        if let Some((n, v)) = nocturne_jellyfin::header::for_url(c.base.as_str()) {
+            req = req.header(n, v);
+        }
         let resp = match timeout(Duration::from_secs(15), req.send()).await {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => {

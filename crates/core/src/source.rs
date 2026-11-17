@@ -535,11 +535,20 @@ impl Source {
     }
 
     pub async fn latest(&self, parent: &Media) -> Result<Vec<Media>, Failed> {
-        self.media(
-            self.client
-                .items(&self.user, &latest_query(parent, 16))
-                .await,
-        )
+        // `Items/Latest` groups new episodes under their show; if a server refuses it, fall back
+        // to the plain newest-first query.
+        let r = match self.client.latest(&self.user, &parent.id, 16).await {
+            Ok(items) => Ok(jf::Items {
+                items,
+                ..Default::default()
+            }),
+            Err(_) => {
+                self.client
+                    .items(&self.user, &latest_query(parent, 16))
+                    .await
+            }
+        };
+        self.media(r)
     }
 
     pub async fn seasons(&self, series: &str) -> Result<Vec<Media>, Failed> {
@@ -692,6 +701,18 @@ impl Source {
         self.media(self.client.similar(&self.user, id, 16).await)
     }
 
+    /// Collections that include this item; empty on servers without the endpoint (older than 12).
+    pub async fn collections_of(&self, id: &str) -> Result<Vec<Media>, Failed> {
+        let v = self
+            .client
+            .collections_of(&self.user, id)
+            .await
+            .unwrap_or_default();
+        Ok(v.iter()
+            .map(|x| Media::from_item_in(self.origin, x))
+            .collect())
+    }
+
     /// Local trailers and special features.
     pub async fn extras(&self, id: &str) -> Result<Vec<Media>, Failed> {
         let v = self
@@ -811,6 +832,9 @@ impl Source {
 
     /// The episode "Play" should start for a series.
     pub async fn series_target(&self, series: &str) -> Result<Media, Failed> {
+        if let Some(e) = self.series_next_up(series).await?.into_iter().next() {
+            return Ok(e);
+        }
         let eps = self.all_episodes(series).await?;
         pick_episode(&eps).cloned().ok_or(Failed)
     }

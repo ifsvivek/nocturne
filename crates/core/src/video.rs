@@ -33,6 +33,9 @@ pub trait PlayerHooks: Send + Sync {
     fn started(&self, item_id: &str, position_ticks: i64);
     fn progress(&self, item_id: &str, position_ticks: i64, paused: bool);
     fn stopped(&self, item_id: &str, position_ticks: i64);
+    /// How the player delivers `item_id` (play method, media source, transcode session id). Call it
+    /// when an item starts, before its first report, so reports are truthful.
+    fn play_info(&self, _item_id: &str, _info: crate::sync::PlayInfo) {}
     fn set_favorite(&self, item_id: &str, fav: bool);
     fn is_favorite(&self, item_id: &str) -> bool;
     /// Server changes are allowed (master switch on, real login): the heart is live only then.

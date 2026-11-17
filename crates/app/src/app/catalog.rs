@@ -65,6 +65,7 @@ impl App {
                         .as_ref()
                         .map(|s| s.profiles.clone())
                         .unwrap_or_default();
+                    nocturne_core::profile::load_extra_headers(&profiles);
                     let token = |u: &str, id: &str| keyring_token(u, id);
                     let catalog = Catalog::from_profiles(
                         &profiles,
@@ -510,6 +511,7 @@ impl App {
         run(
             async move {
                 tokio::task::spawn_blocking(move || {
+                    nocturne_core::profile::load_extra_headers(std::slice::from_ref(&p));
                     let token = |u: &str, id: &str| keyring_token(u, id);
                     Slot::build(
                         &p,

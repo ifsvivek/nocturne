@@ -171,6 +171,8 @@ pub struct App {
     src_open: bool,
     /// Source whose removal waits for the confirmation dialog.
     confirm: Option<SourceId>,
+    /// The extra-header dialog of a server.
+    hdr: Option<sources::HeaderDlg>,
     folders: Option<folders::Folders>,
     setup: Option<FirstRun>,
     account_back: Option<AccountBack>,
@@ -280,6 +282,7 @@ impl App {
             launch_scan: false,
             src_open: false,
             confirm: None,
+            hdr: None,
             folders: None,
             setup: None,
             account_back: None,
@@ -562,6 +565,15 @@ impl App {
             Message::SessionLoaded(id, r) => self.session_loaded(id, r),
             Message::Scan(id, run_id, m) => self.scan_msg(id, run_id, m),
             Message::Src(a) => self.src_act(a),
+            Message::HeaderInput(v, s) => {
+                self.header_input(v, s);
+                Task::none()
+            }
+            Message::HeaderLoaded(id, l) => {
+                self.header_loaded(id, l);
+                Task::none()
+            }
+            Message::HeaderDone(id, r) => self.header_done(id, r),
             Message::Folder(m) => self.folder_msg(m),
             Message::CycleFilter => {
                 self.filter = self.filter.next(&self.catalog.priority());
@@ -1415,6 +1427,12 @@ impl App {
             }
             return Task::none();
         }
+        if self.hdr.is_some() {
+            if key == "escape" {
+                self.hdr = None;
+            }
+            return Task::none();
+        }
         if self.confirm.is_some() {
             if matches!(key, "escape" | "backspace") {
                 self.confirm = None;
@@ -1741,6 +1759,9 @@ impl App {
         }
         if let Some(id) = self.confirm {
             layers.push(self.confirm_dialog(id));
+        }
+        if self.hdr.is_some() {
+            layers.push(self.header_dialog());
         }
         if let Some((n, _)) = &self.note {
             layers.push(

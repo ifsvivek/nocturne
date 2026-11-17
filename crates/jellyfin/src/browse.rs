@@ -339,6 +339,15 @@ impl Client {
         Ok(all)
     }
 
+    /// Collections (box sets) that include an item (`GET /Items/{id}/Collections`, 12.x).
+    pub async fn collections_of(&self, user_id: &str, id: &str) -> Result<Vec<Item>> {
+        let q = [("userId", user_id.to_string())];
+        Ok(self
+            .get::<Items>(&["Items", id, "Collections"], &q)
+            .await?
+            .items)
+    }
+
     /// `GET /Playlists/{id}/Items` in playlist order.
     pub async fn playlist_items(&self, user_id: &str, id: &str) -> Result<Items> {
         self.get(

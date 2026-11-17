@@ -5,6 +5,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Home "Latest" rows use the server's `Items/Latest`, so new episodes of shows already in the library surface (grouped under
+  the show); Play on a show card starts its next unwatched episode (`Shows/NextUp`).
+- "Included in" strip on movie and show pages (collections the item belongs to, Jellyfin 12+).
+- Optional extra HTTP header per server (Settings > Sources > Header) for servers behind a gateway. The value is kept in the
+  system keyring, never in a file, and is sent with every request to that server.
+
+### Fixed
+- Playback reports now carry the play method, media source and play session id, and a failed report shows a quiet notice
+  (once per playback) instead of being swallowed; the final "stopped" report is retried once.
+
 ## [0.3.0] - 2026-11-16
 
 A new foundation: the interface is rebuilt on Iced, and NOCTURNE becomes a media center for local folders and several

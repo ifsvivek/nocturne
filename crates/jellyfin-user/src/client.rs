@@ -71,6 +71,9 @@ impl UserClient {
         auth.set_sensitive(true);
         let mut headers = header::HeaderMap::new();
         headers.insert(header::AUTHORIZATION, auth.clone());
+        if let Some((n, v)) = nocturne_jellyfin::header::for_url(base.as_str()) {
+            headers.insert(n, v);
+        }
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(20))
             .default_headers(headers)
@@ -527,7 +530,8 @@ fn report_body(r: &PlaybackReport) -> Value {
         "MediaSourceId": r.media_source_id,
         "PositionTicks": r.position_ticks,
         "IsPaused": r.is_paused,
-        "PlayMethod": "DirectPlay",
+        "PlayMethod": r.play_method.as_str(),
+        "PlaySessionId": r.play_session_id,
         "CanSeek": true,
         "AudioStreamIndex": r.audio_stream_index,
         "SubtitleStreamIndex": r.subtitle_stream_index,
@@ -683,14 +687,28 @@ mod tests {
 
     #[test]
     fn report_body_shape() {
-        let b = report_body(&PlaybackReport {
+        let mut r = PlaybackReport {
             item_id: "i".into(),
             position_ticks: 5,
             ..Default::default()
-        });
+        };
+        let b = report_body(&r);
         assert_eq!(
             (b["PlayMethod"].as_str(), b["PositionTicks"].as_u64()),
             (Some("DirectPlay"), Some(5))
+        );
+        assert!(b["PlaySessionId"].is_null());
+        r.play_method = PlayMethod::Transcode;
+        r.play_session_id = Some("ps".into());
+        r.media_source_id = Some("ms".into());
+        let b = report_body(&r);
+        assert_eq!(
+            (
+                b["PlayMethod"].as_str(),
+                b["PlaySessionId"].as_str(),
+                b["MediaSourceId"].as_str()
+            ),
+            (Some("Transcode"), Some("ps"), Some("ms"))
         );
     }
 }
