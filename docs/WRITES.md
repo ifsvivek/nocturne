@@ -47,6 +47,29 @@ mode, skipped silently otherwise), through that server's own hooks; a local copy
 setters it calls never start another cascade, and state that arrives from elsewhere (the Trakt import) is applied without
 spreading. Resume positions follow only with Sync watch progress on, scaled by runtime when the copies differ in length.
 
+**Playback report fields.** Start, progress and stop reports (`POST /Sessions/Playing`, `/Progress`, `/Stopped`) carry the item id,
+position, pause and mute state, volume, the play method (DirectPlay or Transcode), the media source id and the play session id,
+so the server can stop a transcode when you stop. A failed report shows a quiet notice once per playback and the final "stopped"
+is retried once. They are sent only with server changes and Sync watch progress on, to the item's own server. Local items send
+nothing.
+
+**What only reads.** Offline copies use `GET Items/{id}/Download` and write files only into your local folder. The Latest, Next
+Up, "Included in" and Smart collection views are reads. Online metadata and subtitle search talk to TMDB, TVmaze, MusicBrainz,
+Cover Art Archive and OpenSubtitles (never to your media server), send only titles, years and ids (never file names or paths),
+and need their own opt-in. Trakt talks to trakt.tv only.
+
+**Stored on this computer** (nothing here is sent to a server; all under `$XDG_DATA_HOME/nocturne/` unless noted; secrets are in the
+system keyring, never in these files):
+- `local/index.json`, `local/overrides.json`, `local/state.json`: local library index, your edits, resume and watched state
+- `local/online.json`, `local/online-art/`: online details and artwork for local media (below your own edits; TMDB data ages out after six months)
+- `local/subtitles/`: subtitles downloaded for local files
+- `languages.json`: audio / subtitle language remembered per show
+- `smart.json`: smart collection rules
+- `downloads.json`: the offline-copy queue (the files themselves go to the folder you chose)
+- `preferred.json`: source preference per title
+- `$XDG_CONFIG_HOME/nocturne/`: `settings.toml`, `sources.toml`, `accounts.toml`, `servers.toml` (no secrets)
+- keyring: server tokens, the per-server extra header value, TMDB / OpenSubtitles keys and logins, the Trakt client id and tokens
+
 Local media files are never modified, moved, renamed or deleted by NOCTURNE, whatever the setting says; scanning only reads.
 
 With the switch off, the controls above stay visible but dimmed with the tooltip "Turn on server
