@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::local::fixture::build;
+use crate::online::http;
 use crate::source::SourceId;
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -381,4 +382,10 @@ async fn subtitles_are_searched_downloaded_and_stored_in_the_data_dir() {
         reqs.contains("languages=en") && reqs.contains("query=heat") && reqs.contains("year=1995")
     );
     assert!(!reqs.contains(".mkv") && !reqs.contains("moviehash"));
+
+    // A key without a login: the app shows its "needs your login" note; nothing is requested.
+    let before = m.requests().len();
+    let r = e.download_subtitle("APIKEY", None, &hits[0]).await;
+    assert_eq!(r.err(), Some(http::Err::Auth));
+    assert_eq!(m.requests().len(), before);
 }

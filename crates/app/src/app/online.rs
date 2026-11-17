@@ -8,6 +8,8 @@ use crate::style;
 use crate::task::run;
 use crate::theme as t;
 use crate::widget::{action_button, mono, progress_bar, rule, switch};
+use iced::widget::scrollable::RelativeOffset;
+use iced::widget::{Id, operation};
 use iced::widget::{column, container, opaque, row, scrollable as scroll, space, text, text_input};
 use iced::{Alignment, Element, Length, Padding, Task};
 use nocturne_core::backend::Backend;
@@ -59,7 +61,30 @@ pub enum Msg {
     Download(usize),
     Downloaded(u64, Result<PathBuf, &'static str>),
     CloseFinder,
+    /// Arrow keys / pad d-pad: move the highlighted result.
+    Step(i32),
+    /// Enter / pad A: download the highlighted result.
+    Confirm,
 }
+
+const MAX_HITS: usize = 30;
+
+/// Move the highlight by `d` inside a list of `n` rows (stays put when empty).
+fn step(sel: usize, d: i32, n: usize) -> usize {
+    ((sel as i32 + d).max(0) as usize).min(n.saturating_sub(1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::step;
+
+    #[test]
+    fn finder_highlight_stays_in_the_list() {
+        assert_eq!((step(0, -1, 3), step(0, 1, 3), step(2, 1, 3)), (0, 1, 2));
+        assert_eq!(step(0, 1, 0), 0);
+    }
+}
+const FINDER_LIST: &str = "finder-list";
 
 /// Which secrets exist in the keyring (never their values).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -80,6 +105,8 @@ pub struct Finder {
     epoch: u64,
     hits: Option<Result<Vec<Hit>, &'static str>>,
     busy: bool,
+    /// The highlighted result (keyboard and pad).
+    sel: usize,
     note: Option<Result<String, &'static str>>,
 }
 
@@ -382,6 +409,28 @@ impl App {
                 }
             }
             Msg::CloseFinder => self.online.finder = None,
+            Msg::Step(d) => {
+                if let Some(f) = self.online.finder.as_mut() {
+                    let n = match &f.hits {
+                        Some(Ok(h)) => h.len().min(MAX_HITS),
+                        _ => 0,
+                    };
+                    f.sel = step(f.sel, d, n);
+                    if n > 1 {
+                        return operation::snap_to(
+                            Id::from(FINDER_LIST),
+                            RelativeOffset {
+                                x: 0.0,
+                                y: f.sel as f32 / (n - 1) as f32,
+                            },
+                        );
+                    }
+                }
+            }
+            Msg::Confirm => {
+                let i = self.online.finder.as_ref().map_or(0, |f| f.sel);
+                return self.download_sub(i);
+            }
         }
         Task::none()
     }
@@ -398,6 +447,7 @@ impl App {
             epoch,
             hits: None,
             busy: false,
+            sel: 0,
             note: None,
         });
         let Some(q) = q else {
@@ -503,7 +553,7 @@ impl App {
             }
             Some(Ok(hits)) => {
                 let mut list = column![].spacing(t::S2);
-                for (i, h) in hits.iter().take(30).enumerate() {
+                for (i, h) in hits.iter().take(MAX_HITS).enumerate() {
                     let name = if h.release.is_empty() {
                         h.file_name.clone()
                     } else {
@@ -527,7 +577,7 @@ impl App {
                                 "Download",
                                 false,
                                 false,
-                                false,
+                                i == f.sel,
                                 f.busy,
                                 Message::Online(Msg::Download(i))
                             ),
@@ -536,7 +586,12 @@ impl App {
                         .spacing(t::S3),
                     );
                 }
-                card = card.push(scroll(list).style(style::scroll).height(Length::Shrink));
+                card = card.push(
+                    scroll(list)
+                        .id(Id::from(FINDER_LIST))
+                        .style(style::scroll)
+                        .height(Length::Shrink),
+                );
             }
         }
         if f.busy {

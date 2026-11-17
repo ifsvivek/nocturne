@@ -58,6 +58,10 @@ pub struct OnlineEntry {
     /// Display name for the "Choose the right match" list.
     #[serde(default)]
     pub label: String,
+    /// For per-file keys (`i<id>`): the file this was fetched for (`path|size`). An entry whose file no longer
+    /// matches (an id re-issued after an interrupted scan, a replaced file) is ignored and dropped.
+    #[serde(default)]
+    pub ident: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -128,11 +132,70 @@ impl Library {
     }
 
     pub fn online_entry(&self, key: &str) -> Option<&OnlineEntry> {
-        self.online.entries.get(key)
+        self.online
+            .entries
+            .get(key)
+            .filter(|e| self.entry_matches(key, e))
     }
 
     pub(crate) fn online_meta(&self, key: &str) -> Option<&OnlineMeta> {
-        self.online.entries.get(key)?.meta.as_ref()
+        self.online_entry(key)?.meta.as_ref()
+    }
+
+    fn item_ident(&self, id: u64) -> Option<String> {
+        let it = self.index.items.iter().find(|i| i.id.0 == id)?;
+        Some(format!("{}|{}", it.path.display(), it.size))
+    }
+
+    /// Does the entry still describe the file behind its key? Show and album keys are names, always fine.
+    fn entry_matches(&self, key: &str, e: &OnlineEntry) -> bool {
+        let Some(id) = key.strip_prefix('i').and_then(|n| n.parse::<u64>().ok()) else {
+            return true;
+        };
+        match (&e.ident, self.item_ident(id)) {
+            (Some(a), Some(b)) => *a == b,
+            // Entries from before identities were stored: valid only if the file was already indexed then.
+            (None, Some(_)) => self
+                .index
+                .items
+                .iter()
+                .find(|i| i.id.0 == id)
+                .is_some_and(|i| i.first_seen <= e.tried),
+            (_, None) => false,
+        }
+    }
+
+    /// Drop entries (and their art) whose file is gone or replaced. Called after every scan and purge.
+    pub(crate) fn online_reconcile(&mut self) -> Result<(), crate::Error> {
+        let bad: Vec<String> = self
+            .online
+            .entries
+            .iter()
+            .filter(|(k, e)| !self.entry_matches(k, e))
+            .map(|(k, _)| k.clone())
+            .collect();
+        if bad.is_empty() {
+            return Ok(());
+        }
+        for k in bad {
+            self.online.entries.remove(&k);
+        }
+        self.save_online()?;
+        self.sweep_art();
+        Ok(())
+    }
+
+    /// Ids must never be reused: lift the counter above every id the online store has seen.
+    pub(crate) fn bump_next_id(&mut self) {
+        let max = self
+            .online
+            .entries
+            .keys()
+            .filter_map(|k| k.strip_prefix('i')?.parse::<u64>().ok())
+            .max();
+        if let Some(m) = max {
+            self.index.next_id = self.index.next_id.max(m + 1);
+        }
     }
 
     pub(crate) fn online_art_path(&self, name: &str) -> PathBuf {
@@ -144,9 +207,9 @@ impl Library {
     pub fn online_targets(&self, now: u64) -> Vec<Target> {
         let mut out = vec![];
         let mut seen = std::collections::HashSet::new();
-        let chosen = |k: &str| self.online.entries.get(k).and_then(|e| e.chosen.clone());
+        let chosen = |k: &str| self.online_entry(k).and_then(|e| e.chosen.clone());
         let mut push = |out: &mut Vec<Target>, t: Target| {
-            if stale(self.online.entries.get(&t.key), now) && seen.insert(t.key.clone()) {
+            if stale(self.online_entry(&t.key), now) && seen.insert(t.key.clone()) {
                 out.push(t);
             }
         };
@@ -213,6 +276,10 @@ impl Library {
             }
             store::write_atomic(&self.dir.join(ART_DIR).join(name), bytes)?;
         }
+        let ident = key
+            .strip_prefix('i')
+            .and_then(|n| n.parse().ok())
+            .and_then(|id| self.item_ident(id));
         self.online.entries.insert(
             key.to_string(),
             OnlineEntry {
@@ -221,6 +288,7 @@ impl Library {
                 candidates,
                 chosen: None,
                 label: label.to_string(),
+                ident,
             },
         );
         self.save_online()
@@ -245,7 +313,7 @@ impl Library {
         self.online
             .entries
             .iter()
-            .filter(|(_, e)| !e.candidates.is_empty())
+            .filter(|(k, e)| !e.candidates.is_empty() && self.entry_matches(k, e))
             .map(|(k, e)| (k.clone(), e.label.clone(), e.candidates.clone()))
             .collect()
     }
@@ -287,8 +355,17 @@ impl Library {
         store::remove_unused(&self.dir.join(ART_DIR), &used);
     }
 
-    pub(crate) fn forget_online_item(&mut self, id: crate::LocalId) {
-        self.online.entries.remove(&item_key(id));
+    /// Forget purged items' entries, persist, and sweep their art.
+    pub(crate) fn forget_online_items(
+        &mut self,
+        ids: &[crate::LocalId],
+    ) -> Result<(), crate::Error> {
+        for id in ids {
+            self.online.entries.remove(&item_key(*id));
+        }
+        self.save_online()?;
+        self.sweep_art();
+        Ok(())
     }
 }
 

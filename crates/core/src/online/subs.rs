@@ -205,12 +205,14 @@ impl Engine {
         login: Option<&(String, String)>,
         h: &Hit,
     ) -> Result<(String, Vec<u8>), Err> {
+        // OpenSubtitles hands out files only to a signed-in user: say so without a request that would fail.
+        let Some((u, p)) = login else {
+            return Err(Err::Auth);
+        };
         let mut rb = self
             .subs_req(self.http.post(&format!("{}/download", self.ep.subs)), key)
             .json(&json!({ "file_id": h.file_id }));
-        if let Some((u, p)) = login {
-            rb = rb.bearer_auth(self.subs_login(key, u, p).await?);
-        }
+        rb = rb.bearer_auth(self.subs_login(key, u, p).await?);
         let v = self.http.json(&self.subs, rb).await?;
         let link = v["link"].as_str().ok_or(Err::Failed)?;
         let bytes = self
