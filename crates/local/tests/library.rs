@@ -177,6 +177,7 @@ fn series_sidecars_and_episode_nfo() {
 }
 
 #[test]
+#[cfg(unix)]
 fn symlink_loop_terminates_and_outside_links_are_followed() {
     let f = fx();
     put(&f.media, "a/One (2001).mkv");
@@ -220,6 +221,7 @@ fn hidden_nomedia_ignore_and_extras_are_skipped() {
 }
 
 #[test]
+#[cfg(unix)]
 fn unreadable_dir_is_a_warning_not_fatal() {
     use std::os::unix::fs::PermissionsExt;
     let f = fx();

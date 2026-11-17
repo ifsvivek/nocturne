@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Build dist/NOCTURNE-<ver>-<arch>.dmg on a Mac.   WRITTEN, NOT BUILT: this has never run (no Mac available, and
-# macOS cannot be built or tested from Linux, see docs/PLATFORMS.md). Expect to fix small things on first run.
+# Build dist/NOCTURNE-<ver>-<arch>.dmg on a Mac.   Written without a Mac; its first run is the manual
+# CI workflow (docs/PACKAGING.md). macOS cannot be built or tested from Linux, see docs/PLATFORMS.md.
 #
 #   usage: scripts/package-macos.sh
+#   CI (.github/workflows/platforms.yml) runs it on a macOS runner, ad-hoc signed.
 #   needs: Xcode command line tools (iconutil, sips, hdiutil, codesign, install_name_tool), Rust, and
 #          `brew install mpv dylibbundler`; optional `brew install create-dmg`.
 #   signing (optional, needs the maintainer's Apple Developer ID; without it the app is ad-hoc signed and Gatekeeper
@@ -46,13 +47,18 @@ iconutil -c icns "$set" -o "$app/Contents/Resources/nocturne.icns"
 # for the external window (crates/player/src/deps.rs; macOS has no in-window video yet, so the binary is what plays).
 # dylibbundler copies each dependency (ffmpeg, libass, ...) into Frameworks/ and rewrites install names to
 # @executable_path/../Frameworks. Both are fixed in one run so shared dylibs are copied once.
+# libmpv is staged OUTSIDE Frameworks/ because -od empties the destination directory first; it is moved in afterwards.
 install -m755 "$MPV_BIN" "$app/Contents/MacOS/mpv"
-cp "$LIBMPV" "$app/Contents/Frameworks/libmpv.2.dylib"
-chmod u+w "$app/Contents/Frameworks/libmpv.2.dylib"
+stage=dist/macos/stage; mkdir -p "$stage"
+cp "$LIBMPV" "$stage/libmpv.2.dylib"
+chmod u+w "$stage/libmpv.2.dylib"
 dylibbundler -od -b -cd \
-  -x "$app/Contents/MacOS/mpv" -x "$app/Contents/Frameworks/libmpv.2.dylib" \
+  -x "$app/Contents/MacOS/mpv" -x "$stage/libmpv.2.dylib" \
   -d "$app/Contents/Frameworks" -p @executable_path/../Frameworks/ \
-  -s "$(brew --prefix)/lib"
+  -s "$(brew --prefix)/lib" -s "$(brew --prefix mpv)/lib"
+mv "$stage/libmpv.2.dylib" "$app/Contents/Frameworks/libmpv.2.dylib"
+# the dylib's own install name still points into Homebrew; the check below would (rightly) flag it
+install_name_tool -id @executable_path/../Frameworks/libmpv.2.dylib "$app/Contents/Frameworks/libmpv.2.dylib"
 # Fallback if dylibbundler fails: for each `otool -L` entry under the Homebrew prefix, copy it into Frameworks/ and run
 #   install_name_tool -change <old> @executable_path/../Frameworks/<name> <binary>
 # (and `-id @rpath/<name>` on the dylib itself), recursing through the copied dylibs.
@@ -74,11 +80,15 @@ codesign --verify --deep --strict "$app"
 
 # 6. dmg (with an /Applications link). create-dmg gives the drag-to-install window; hdiutil is the plain fallback.
 rm -f "$dmg"
-if command -v create-dmg >/dev/null; then
+if [ -z "${CI:-}" ] && command -v create-dmg >/dev/null; then   # create-dmg drives Finder via AppleScript: not on headless CI
   create-dmg --volname NOCTURNE --app-drop-link 450 120 --icon NOCTURNE.app 150 120 "$dmg" "$app"
 else
-  stage=dist/macos/dmg; mkdir -p "$stage"; cp -R "$app" "$stage/"; ln -s /Applications "$stage/Applications"
-  hdiutil create -volname NOCTURNE -srcfolder "$stage" -ov -format UDZO "$dmg"
+  dmgsrc=dist/macos/dmg; mkdir -p "$dmgsrc"; cp -R "$app" "$dmgsrc/"; ln -s /Applications "$dmgsrc/Applications"
+  for _ in 1 2 3; do   # hdiutil sometimes fails with "Resource busy" on CI runners
+    hdiutil create -volname NOCTURNE -srcfolder "$dmgsrc" -ov -format UDZO "$dmg" && break
+    sleep 5
+  done
+  [ -f "$dmg" ] || { echo "hdiutil failed" >&2; exit 1; }
 fi
 [ -n "${SIGN_ID:-}" ] && codesign --force --sign "$SIGN_ID" --timestamp "$dmg"
 
