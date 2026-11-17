@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Optional online details for local media (Local folders > Online details, off by default, per source). TMDB (movies and TV,
+  with your own free key kept in the system keyring), TVmaze (TV, no key) and MusicBrainz with the Cover Art Archive (music,
+  no key) can fill in posters, descriptions, genres, ratings and ids that your files do not have. Only the title, year, ids
+  and season / episode numbers (album and artist for music) are sent, never file names or paths. Unclear matches are listed
+  under "Choose the right match" instead of being guessed. Results and artwork are stored in NOCTURNE's own data folder, are
+  always below your own edits, `.nfo` files and sidecar art, and TMDB data is refreshed or dropped within six months. The
+  folders page shows each provider's credit and the TMDB notice; detail pages say which provider a description came from.
+- Optional subtitle download for local files: "Find subtitles online" in a title's menu searches OpenSubtitles with your own
+  API key (and, for downloads, your OpenSubtitles login; both in the keyring) and your subtitle language, and keeps the file
+  in NOCTURNE's own folder, never next to the media.
 - Home "Latest" rows use the server's `Items/Latest`, so new episodes of shows already in the library surface (grouped under
   the show); Play on a show card starts its next unwatched episode (`Shows/NextUp`).
 - "Included in" strip on movie and show pages (collections the item belongs to, Jellyfin 12+).
