@@ -89,6 +89,21 @@ impl Shared {
 struct SendBox<T>(T);
 unsafe impl<T> Send for SendBox<T> {}
 
+/// Does the compositor offer the colour-management protocol (`wp_color_manager_v1`)? Without it mpv
+/// cannot ask for an HDR output (docs/HDR.md). `display`: the UI window's raw `wl_display*`; call on
+/// the UI thread, like [`EmbeddedPlayer::new`]. Only the global list is read, nothing is bound.
+pub fn colour_management_available(display: *mut c_void) -> bool {
+    unsafe {
+        let backend = Backend::from_foreign_display(display as *mut _);
+        let conn = Connection::from_backend(backend);
+        registry_queue_init::<St>(&conn).is_ok_and(|(globals, _)| {
+            globals
+                .contents()
+                .with_list(|l| l.iter().any(|g| g.interface == "wp_color_manager_v1"))
+        })
+    }
+}
+
 /// Video rect in the parent window: logical position/size for the subsurface + viewport, and the
 /// physical pixel size of the EGL buffer. Pure, so it is unit-tested.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

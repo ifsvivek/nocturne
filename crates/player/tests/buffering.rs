@@ -133,6 +133,7 @@ fn run(url: &str, st: &Stats, b: Buffering, pre: &[(&str, &str)]) -> Report {
     let p = Player::new(Options {
         headless: true,
         buffering: b,
+        ..Default::default()
     })
     .unwrap();
     // (c) live values on the real child process, read back over IPC before anything loads.

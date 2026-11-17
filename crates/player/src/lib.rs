@@ -15,7 +15,7 @@ mod deps;
 mod embedded;
 mod mpv_ffi;
 pub use deps::{install_hint, install_hint_for, libmpv_available, mpv_binary_available};
-pub use embedded::{EmbeddedPlayer, Geometry, geometry};
+pub use embedded::{EmbeddedPlayer, Geometry, colour_management_available, geometry};
 
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -48,6 +48,11 @@ pub struct Options {
     pub headless: bool,
     /// Network read-ahead policy (both backends). See [`Buffering`].
     pub buffering: Buffering,
+    /// Ask the compositor for an HDR output (`target-colorspace-hint=yes`): the window shows HDR
+    /// content as HDR where the display path allows it (docs/HDR.md). Windowed backend only.
+    pub hdr_output: bool,
+    /// Start fullscreen (the HDR pop-out).
+    pub fullscreen: bool,
 }
 
 /// Watermark read-ahead: the demuxer reads until `high_secs` are buffered, then stops reading
@@ -336,6 +341,12 @@ impl Player {
             let vo = std::env::var("NOCTURNE_VO").unwrap_or_else(|_| "gpu-next".into());
             cmd.args([format!("--vo={vo}"), "--hwdec=auto-safe".into()])
                 .arg("--force-window=yes");
+            if self.opts.hdr_output {
+                cmd.arg("--target-colorspace-hint=yes");
+            }
+            if self.opts.fullscreen {
+                cmd.arg("--fullscreen");
+            }
         }
         let mut child = cmd
             .arg(format!("--volume={}", lock(&self.state).volume))

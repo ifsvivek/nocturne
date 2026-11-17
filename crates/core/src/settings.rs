@@ -1,6 +1,7 @@
 //! User settings: TOML at `$XDG_CONFIG_HOME/nocturne/settings.toml`, atomic write, versioned,
 //! never any secret (the login lives in the keyring). Every field has a default, so a missing,
 //! older or half-written file still loads.
+use crate::hdr::HdrMode;
 use crate::libview::LibPrefs;
 use crate::video::{LANGUAGES, PlayerPrefs, SubMode, language};
 use nocturne_player::Buffering;
@@ -120,6 +121,8 @@ pub struct Settings {
     pub sub_mode: SubPref,
     pub auto_skip_intro: bool,
     pub autoplay_next: bool,
+    /// What to do when an HDR video starts (docs/HDR.md).
+    pub hdr: HdrMode,
     /// Network read-ahead: fill to `buffer_ahead_secs`, refill once below `buffer_refill_secs`,
     /// never hold more than `buffer_max_mb` MiB in RAM.
     pub buffer_ahead_secs: u32,
@@ -151,6 +154,7 @@ impl Default for Settings {
             sub_mode: SubPref::Off,
             auto_skip_intro: false,
             autoplay_next: true,
+            hdr: HdrMode::Ask,
             buffer_ahead_secs: 300,
             buffer_refill_secs: 120,
             buffer_max_mb: 1536,
@@ -212,19 +216,19 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 17;
+pub const ROWS: usize = 18;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
-pub const PROFILE_ROW: usize = 16;
+pub const PROFILE_ROW: usize = 17;
 
 /// Section title shown above row `i`, if a section starts there.
 pub fn head(i: usize) -> Option<&'static str> {
     match i {
         0 => Some("Server changes"),
         2 => Some("Playback"),
-        10 => Some("Home"),
-        13 => Some("Appearance and storage"),
-        16 => Some("Profiles"),
+        11 => Some("Home"),
+        14 => Some("Appearance and storage"),
+        17 => Some("Profiles"),
         _ => None,
     }
 }
@@ -332,6 +336,11 @@ impl Settings {
                 onoff(self.autoplay_next),
             ),
             r(
+                "HDR video",
+                "In-window video is SDR (tone-mapped). An HDR pop-out opens mpv's own window and needs an HDR-capable display.",
+                self.hdr.label().into(),
+            ),
+            r(
                 "Buffer ahead",
                 "How much video to download ahead while playing.",
                 fmt_secs(self.buffer_ahead_secs),
@@ -415,15 +424,19 @@ impl Settings {
                 SUB_MODES.iter().map(|(_, n)| n.to_string()).collect(),
                 SUB_MODES.iter().position(|(m, _)| *m == self.sub_mode)?,
             ),
-            7 => nums(&AHEAD_S, self.buffer_ahead_secs, fmt_secs),
-            8 => nums(&REFILL_S, self.buffer_refill_secs, fmt_secs),
-            9 => nums(&BUF_MB, self.buffer_max_mb, fmt_gib),
-            13 => (
+            7 => (
+                HdrMode::ALL.iter().map(|m| m.label().to_string()).collect(),
+                HdrMode::ALL.iter().position(|m| *m == self.hdr)?,
+            ),
+            8 => nums(&AHEAD_S, self.buffer_ahead_secs, fmt_secs),
+            9 => nums(&REFILL_S, self.buffer_refill_secs, fmt_secs),
+            10 => nums(&BUF_MB, self.buffer_max_mb, fmt_gib),
+            14 => (
                 DENSITIES.iter().map(|d| format!("{d:?}")).collect(),
                 DENSITIES.iter().position(|d| *d == self.density)?,
             ),
-            14 => nums(&CACHE_MB, self.image_cache_mb, fmt_mb),
-            15 => (
+            15 => nums(&CACHE_MB, self.image_cache_mb, fmt_mb),
+            16 => (
                 MOTION.iter().map(|(_, n)| n.to_string()).collect(),
                 MOTION.iter().position(|(m, _)| *m == self.reduce_motion)?,
             ),
@@ -441,19 +454,20 @@ impl Settings {
             2 => self.audio_lang = lang_pick(idx).unwrap_or_else(|| self.audio_lang.take()),
             3 => self.sub_lang = lang_pick(idx).unwrap_or_else(|| self.sub_lang.take()),
             4 => self.sub_mode = SUB_MODES.get(idx).map_or(self.sub_mode, |(m, _)| *m),
-            7 => {
+            7 => self.hdr = HdrMode::ALL.get(idx).copied().unwrap_or(self.hdr),
+            8 => {
                 self.buffer_ahead_secs = AHEAD_S.get(idx).copied().unwrap_or(self.buffer_ahead_secs)
             }
-            8 => {
+            9 => {
                 self.buffer_refill_secs = REFILL_S
                     .get(idx)
                     .copied()
                     .unwrap_or(self.buffer_refill_secs)
             }
-            9 => self.buffer_max_mb = BUF_MB.get(idx).copied().unwrap_or(self.buffer_max_mb),
-            13 => self.density = DENSITIES.get(idx).copied().unwrap_or(self.density),
-            14 => self.image_cache_mb = CACHE_MB.get(idx).copied().unwrap_or(self.image_cache_mb),
-            15 => self.reduce_motion = MOTION.get(idx).map_or(self.reduce_motion, |(m, _)| *m),
+            10 => self.buffer_max_mb = BUF_MB.get(idx).copied().unwrap_or(self.buffer_max_mb),
+            14 => self.density = DENSITIES.get(idx).copied().unwrap_or(self.density),
+            15 => self.image_cache_mb = CACHE_MB.get(idx).copied().unwrap_or(self.image_cache_mb),
+            16 => self.reduce_motion = MOTION.get(idx).map_or(self.reduce_motion, |(m, _)| *m),
             _ => {}
         }
     }
@@ -477,13 +491,18 @@ impl Settings {
             }
             5 => self.auto_skip_intro ^= true,
             6 => self.autoplay_next ^= true,
-            7 => self.buffer_ahead_secs = step(&AHEAD_S, self.buffer_ahead_secs, 3, d),
-            8 => self.buffer_refill_secs = step(&REFILL_S, self.buffer_refill_secs, 2, d),
-            9 => self.buffer_max_mb = step(&BUF_MB, self.buffer_max_mb, 3, d),
-            10 => self.home_resume ^= true,
-            11 => self.home_next_up ^= true,
-            12 => self.home_latest ^= true,
-            13 => {
+            7 => {
+                let i = HdrMode::ALL.iter().position(|m| *m == self.hdr);
+                let i = (i.unwrap_or(0) as i32 + d).rem_euclid(HdrMode::ALL.len() as i32) as usize;
+                self.hdr = HdrMode::ALL[i];
+            }
+            8 => self.buffer_ahead_secs = step(&AHEAD_S, self.buffer_ahead_secs, 3, d),
+            9 => self.buffer_refill_secs = step(&REFILL_S, self.buffer_refill_secs, 2, d),
+            10 => self.buffer_max_mb = step(&BUF_MB, self.buffer_max_mb, 3, d),
+            11 => self.home_resume ^= true,
+            12 => self.home_next_up ^= true,
+            13 => self.home_latest ^= true,
+            14 => {
                 use Density::*;
                 self.density = match (self.density, d) {
                     (Compact, 1) | (Spacious, -1) => Comfortable,
@@ -491,8 +510,8 @@ impl Settings {
                     _ => Compact,
                 }
             }
-            14 => self.image_cache_mb = step(&CACHE_MB, self.image_cache_mb, 2, d),
-            15 => {
+            15 => self.image_cache_mb = step(&CACHE_MB, self.image_cache_mb, 2, d),
+            16 => {
                 let i = MOTION.iter().position(|(m, _)| *m == self.reduce_motion);
                 let i = (i.unwrap_or(0) as i32 + d).rem_euclid(MOTION.len() as i32) as usize;
                 self.reduce_motion = MOTION[i].0;
@@ -518,6 +537,7 @@ impl Settings {
             },
             auto_skip_intro: self.auto_skip_intro,
             autoplay_next: self.autoplay_next,
+            hdr: self.hdr,
         }
     }
 
@@ -620,8 +640,8 @@ mod tests {
         s.cycle(1, 1);
         s.choose(2, 6); // English
         s.cycle(4, 1);
-        s.cycle(13, -1);
-        s.cycle(7, 1);
+        s.cycle(14, -1);
+        s.cycle(8, 1);
         s.save_to(&p).unwrap();
         assert_eq!(Settings::load_from(&p), s);
         assert!(!p.with_extension("toml.tmp").exists());
@@ -659,12 +679,12 @@ mod tests {
             (b.high_secs, b.low_secs, b.max_bytes),
             (300.0, 120.0, 3 << 29)
         );
-        s.cycle(7, 1);
-        s.cycle(9, -1);
+        s.cycle(8, 1);
+        s.cycle(10, -1);
         let b = s.buffering();
         assert_eq!((b.high_secs, b.max_bytes), (600.0, 1024 << 20));
         s.buffer_ahead_secs = 77; // unknown value (hand-edited file) starts from the default slot
-        s.cycle(7, 1);
+        s.cycle(8, 1);
         assert_eq!(s.buffer_ahead_secs, 600);
     }
 
@@ -684,22 +704,22 @@ mod tests {
             s.cycle(4, 1);
         }
         assert_eq!(s.sub_mode, SubPref::Off);
-        s.cycle(13, 1);
+        s.cycle(14, 1);
         assert_eq!(s.density, Density::Spacious);
-        s.cycle(13, 1);
+        s.cycle(14, 1);
         assert_eq!(s.density, Density::Compact);
         s.cycle(99, 1); // out of range is a no-op
-        s.cycle(14, 1);
+        s.cycle(15, 1);
         assert_eq!(s.image_cache_mb, 1024);
-        s.cycle(14, -1);
-        s.cycle(14, -1);
+        s.cycle(15, -1);
+        s.cycle(15, -1);
         assert_eq!(s.image_cache_mb, 256);
     }
 
     #[test]
     fn choices_list_every_option_and_mark_the_current_one() {
         let mut s = Settings::default();
-        assert!(s.choices(0).is_none() && s.choices(12).is_none() && s.choices(99).is_none());
+        assert!(s.choices(0).is_none() && s.choices(13).is_none() && s.choices(99).is_none());
         let (l, at) = s.choices(2).unwrap();
         assert_eq!((l[0].as_str(), at, l.len()), ("Automatic", 0, 29));
         assert!(
@@ -721,13 +741,13 @@ mod tests {
         assert_eq!((l.len(), at), (3, 0));
         s.choose(4, 1);
         assert_eq!(s.sub_mode, SubPref::ForeignOnly);
-        s.choose(13, 2);
+        s.choose(14, 2);
         assert_eq!(s.density, Density::Spacious);
-        let (l, at) = s.choices(9).unwrap();
+        let (l, at) = s.choices(10).unwrap();
         assert_eq!((l[at].as_str(), l.len()), ("1.5 GiB", 7));
-        s.choose(7, 5);
+        s.choose(8, 5);
         assert_eq!(s.buffer_ahead_secs, 900);
-        s.choose(14, 99); // out of range: no change
+        s.choose(15, 99); // out of range: no change
         assert_eq!(s.image_cache_mb, 512);
     }
 
@@ -743,9 +763,9 @@ mod tests {
         assert_eq!(s.rows()[2].value, "xx-custom");
         s.choose(2, at); // picking the extra entry again keeps it
         assert_eq!(s.audio_lang.as_deref(), Some("xx-custom"));
-        let (l, at) = s.choices(7).unwrap();
+        let (l, at) = s.choices(8).unwrap();
         assert_eq!((l.len(), l[at].as_str()), (7, "77 s"));
-        s.choose(7, at);
+        s.choose(8, at);
         assert_eq!(s.buffer_ahead_secs, 77);
         // An alias a hand-edited file may hold is the known language, not a duplicate entry.
         s.audio_lang = Some("en".into());
@@ -794,27 +814,54 @@ mod tests {
         let mut s = Settings::default();
         assert_eq!(s.reduce_motion, ReduceMotion::System);
         assert!(s.reduce_motion.reduced(true) && !s.reduce_motion.reduced(false));
-        s.cycle(15, 1);
+        s.cycle(16, 1);
         assert!(s.reduce_motion.reduced(false), "On forces it");
-        s.cycle(15, 1);
+        s.cycle(16, 1);
         assert!(!s.reduce_motion.reduced(true), "Off forces motion");
-        s.cycle(15, 1);
+        s.cycle(16, 1);
         assert_eq!(s.reduce_motion, ReduceMotion::System);
-        s.choose(15, 1);
-        assert_eq!(s.rows()[15].value, "On");
-        assert_eq!(s.choices(15).unwrap().1, 1);
+        s.choose(16, 1);
+        assert_eq!(s.rows()[16].value, "On");
+        assert_eq!(s.choices(16).unwrap().1, 1);
         // Older files without the field load as System.
         let old: Settings = toml::from_str("version = 2\n").unwrap();
         assert_eq!(old.reduce_motion, ReduceMotion::System);
     }
 
     #[test]
+    fn hdr_video_row_cycles_and_persists() {
+        let mut s = Settings::default();
+        assert_eq!(s.hdr, HdrMode::Ask);
+        assert_eq!(s.rows()[7].label, "HDR video");
+        assert_eq!(s.rows()[7].value, "Ask");
+        s.cycle(7, 1);
+        assert_eq!(s.hdr, HdrMode::Window);
+        s.cycle(7, 1);
+        assert_eq!(s.prefs().hdr, HdrMode::Popout);
+        s.cycle(7, 1);
+        assert_eq!(s.hdr, HdrMode::Ask, "wraps");
+        s.cycle(7, -1);
+        assert_eq!(s.hdr, HdrMode::Popout);
+        let (l, at) = s.choices(7).unwrap();
+        assert_eq!((l.len(), at), (3, 2));
+        s.choose(7, 1);
+        assert_eq!(s.hdr, HdrMode::Window);
+        s.choose(7, 9); // out of range: no change
+        assert_eq!(s.hdr, HdrMode::Window);
+        // An older file has no such field: it loads as Ask.
+        let old: Settings = toml::from_str("version = 2\n").unwrap();
+        assert_eq!(old.hdr, HdrMode::Ask);
+        let text = toml::to_string(&s).unwrap();
+        assert!(text.contains("hdr = \"window\""));
+    }
+
+    #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 10, 13 and 16.
+        // Child 0 is the title; heads sit before rows 0, 2, 11, 14 and 17.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
-        assert_eq!(scroll_child(10), 14);
+        assert_eq!(scroll_child(11), 15);
         assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 5);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));

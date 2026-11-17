@@ -64,7 +64,7 @@ impl SeriesIds {
     }
 }
 
-fn id_keys(prefix: &str, ids: &ProviderIds) -> Vec<String> {
+pub(crate) fn id_keys(prefix: &str, ids: &ProviderIds) -> Vec<String> {
     [
         ("imdb", &ids.imdb),
         ("tmdb", &ids.tmdb),
