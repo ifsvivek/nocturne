@@ -118,6 +118,13 @@ pub struct Settings {
     /// (posts this app's capabilities, listens for play/pause/seek/volume commands). Never in
     /// developer-token mode. docs/WRITES.md.
     pub remote_control: bool,
+    /// Apply watched / unwatched (and, with `sync_progress`, resume positions) to the other copies of
+    /// a title on other sources. Server copies also need `allow_server_writes`. docs/WRITES.md.
+    pub sync_watched: bool,
+    /// Scrobble what plays to Trakt (needs the Trakt connection made in its dialog). docs/TRAKT.md.
+    pub trakt_scrobble: bool,
+    /// Import Trakt's watched history into local items (and server items when changes are allowed).
+    pub trakt_history: bool,
     /// Last first-run walkthrough the user finished or skipped (0 = never). Internal state, no Settings row.
     pub onboarding: u32,
     pub audio_lang: Option<String>,
@@ -153,6 +160,9 @@ impl Default for Settings {
             allow_server_writes: false,
             sync_progress: false,
             remote_control: false,
+            sync_watched: false,
+            trakt_scrobble: false,
+            trakt_history: false,
             onboarding: 0,
             audio_lang: None,
             sub_lang: None,
@@ -221,10 +231,13 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 19;
+pub const ROWS: usize = 23;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
-pub const PROFILE_ROW: usize = 18;
+pub const PROFILE_ROW: usize = 22;
+
+/// The "Trakt account" row: not a toggle, it opens the connect dialog.
+pub const TRAKT_ROW: usize = 19;
 
 /// Section title shown above row `i`, if a section starts there.
 pub fn head(i: usize) -> Option<&'static str> {
@@ -234,7 +247,9 @@ pub fn head(i: usize) -> Option<&'static str> {
         11 => Some("Home"),
         14 => Some("Appearance and storage"),
         17 => Some("Other devices"),
-        18 => Some("Profiles"),
+        18 => Some("Watched state"),
+        19 => Some("Trakt"),
+        22 => Some("Profiles"),
         _ => None,
     }
 }
@@ -401,6 +416,26 @@ impl Settings {
                 onoff(self.remote_control),
             ),
             r(
+                "Keep watched status in step across sources",
+                "Marking something watched, or finishing it, also marks its copies on your other sources (matched by IMDb / TMDB / TVDB id, never by title alone). Server copies only change when server changes are on; resume positions also need Sync watch progress. Off by default.",
+                onoff(self.sync_watched),
+            ),
+            r(
+                "Trakt account",
+                "Connect your own Trakt app: you create it at trakt.tv/oauth/applications and enter its client id, then sign in in your browser. NOCTURNE ships no Trakt credentials. Trakt is a trademark of Trakt, Inc.; NOCTURNE is not affiliated with Trakt.",
+                "Set up".into(),
+            ),
+            r(
+                "Trakt: scrobble what you watch",
+                "Tells Trakt when you start, pause and finish a movie or episode that has IMDb / TMDB / TVDB ids. Needs the account above.",
+                onoff(self.trakt_scrobble),
+            ),
+            r(
+                "Trakt: import watched history",
+                "Marks local items you have watched on Trakt as watched here (and server items, only when server changes are on). Runs when you connect and at launch. Needs the account above.",
+                onoff(self.trakt_history),
+            ),
+            r(
                 "Default profile",
                 "Opens at launch without asking. Ask every time shows Who's watching. Needs two or more profiles on this server.",
                 self.profiles.labels()[self.profiles.current()].clone(),
@@ -528,6 +563,10 @@ impl Settings {
                 self.reduce_motion = MOTION[i].0;
             }
             17 => self.remote_control ^= true,
+            18 => self.sync_watched ^= true,
+            19 => {} // opens the Trakt dialog (the app handles it)
+            20 => self.trakt_scrobble ^= true,
+            21 => self.trakt_history ^= true,
             _ => {}
         }
     }
@@ -624,8 +663,23 @@ mod tests {
     fn defaults_write_nothing() {
         let s = Settings::default();
         assert!(!s.allow_server_writes && !s.sync_progress && !s.remote_control);
+        assert!(!s.sync_watched && !s.trakt_scrobble && !s.trakt_history);
         assert!(s.autoplay_next && !s.auto_skip_intro);
         assert_eq!(s.rows().len(), ROWS);
+    }
+
+    #[test]
+    fn watched_and_trakt_rows_toggle_and_stay_off_by_default() {
+        let mut s = Settings::default();
+        let before = s.clone();
+        s.cycle(TRAKT_ROW, 1); // opens a dialog, changes nothing
+        assert_eq!(s, before);
+        s.cycle(18, 1);
+        s.cycle(20, 1);
+        s.cycle(21, 1);
+        assert!(s.sync_watched && s.trakt_scrobble && s.trakt_history);
+        assert_eq!(s.rows()[PROFILE_ROW].label, "Default profile");
+        assert_eq!(s.rows()[TRAKT_ROW].label, "Trakt account");
     }
 
     #[test]
@@ -869,17 +923,17 @@ mod tests {
 
     #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17 and 18.
+        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19 and 22.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
         assert_eq!(scroll_child(11), 15);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 6);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 8);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));
         assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));
         assert_eq!(nav_row(3, "pagedown"), Some(8));
-        assert_eq!(nav_row(15, "pagedown"), Some(ROWS - 1));
+        assert_eq!(nav_row(ROWS - 3, "pagedown"), Some(ROWS - 1));
         assert_eq!(nav_row(3, "pageup"), Some(0));
         assert_eq!(
             (nav_row(7, "home"), nav_row(7, "end")),

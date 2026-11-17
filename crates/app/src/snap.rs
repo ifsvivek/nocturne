@@ -16,6 +16,8 @@ pub fn on_boot() -> Task<Message> {
         let msg = match name {
             "open-admin" => Some(Message::OpenAdmin),
             "run-setup" => Some(Message::RunSetup),
+            "open-settings" => Some(Message::MenuAct(crate::app::message::AcctAct::Settings)),
+            "open-trakt" => Some(Message::Trakt(crate::app::trakt::Msg::Open)),
             _ => None,
         };
         if let Some(msg) = msg {

@@ -11,6 +11,7 @@ use nocturne_core::catalog::WriteError;
 use nocturne_core::source::{Kind, Media, SourceId};
 use nocturne_core::sync::SyncHooks;
 use nocturne_core::video::PlayerHooks;
+use nocturne_core::watched::Change;
 use std::sync::Arc;
 
 impl App {
@@ -137,10 +138,13 @@ impl App {
                 self.patch(m.origin, &m.id, set);
                 self.toast(done);
                 let (m2, origin, id) = (m.clone(), m.origin, m.id.clone());
-                run(
-                    async move { l.set_played(&m2, v).await.is_ok() },
-                    move |ok| Message::LocalWrite(origin, id, v, ok),
-                )
+                Task::batch([
+                    run(
+                        async move { l.set_played(&m2, v).await.is_ok() },
+                        move |ok| Message::LocalWrite(origin, id, v, ok),
+                    ),
+                    self.cascade(m, Change::Played(v)),
+                ])
             }
             _ => {
                 let Some(h) = self.hooks_for(m.origin).filter(|h| h.can_write()) else {
@@ -150,7 +154,7 @@ impl App {
                 self.patch(m.origin, &m.id, set);
                 h.set_played(&m.id, v);
                 self.toast(done);
-                Task::none()
+                self.cascade(m, Change::Played(v))
             }
         }
     }

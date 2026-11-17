@@ -206,6 +206,8 @@ pub enum Message {
     /// Local folders screen.
     Folder(super::folders::Msg),
     Online(super::online::Msg),
+    Trakt(super::trakt::Msg),
+    Cascade(super::cascade::Msg),
     CycleFilter,
     OpenSources,
     /// Debug builds only: a window capture for `NOCTURNE_SNAP`.

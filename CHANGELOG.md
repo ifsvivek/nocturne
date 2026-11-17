@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- One watched state across sources (Settings > Watched state, opt-in, off by default): marking a title watched or finishing
+  it also marks its copies on your other sources, found by IMDb / TMDB / TVDB id (episodes: series ids plus season and
+  episode number), never by title alone. Server copies only change when server changes are on (each write goes to that
+  copy's own server); local copies always follow. With Sync watch progress on, the stop position follows too. Changes that
+  arrive from elsewhere (Trakt import) never spread further ([WRITES.md](docs/WRITES.md)).
+- Trakt (Settings > Trakt, opt-in): connect your own Trakt API app with a browser sign-in (PKCE, loopback redirect; no
+  credentials are shipped and there is no client secret; the client id and the sign-in live in the system keyring), scrobble start / pause / stop for movies and episodes that
+  have provider ids, and optionally import your watched history into local items (server items only when server changes are
+  on). Details, limits and privacy: [docs/TRAKT.md](docs/TRAKT.md).
 - Remote control from other Jellyfin apps (opt-in, off by default, needs server changes on): this computer shows up as a
   controllable device; Play, pause, seek, next / previous, stop, volume, mute, audio and subtitle track and on-screen
   messages sent from another app are carried out ([WRITES.md](docs/WRITES.md)).

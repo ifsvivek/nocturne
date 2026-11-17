@@ -244,6 +244,8 @@ pub struct Player {
     mpris: Option<Mpris>,
     art_url: String,
     reporter: Reporter,
+    /// What the reporting path saw, for the root (Trakt, watched-state sync); see [`PlayEvent`].
+    events: Vec<PlayEvent>,
     closed: bool,
     outcome: Option<Outcome>,
     /// SyncPlay: transport controls become requests to the group (`outbox`) and the group's
@@ -378,6 +380,7 @@ impl Player {
             mpris: Some(Mpris::start()),
             art_url: String::new(),
             reporter: Reporter::default(),
+            events: vec![],
             closed: false,
             outcome: None,
             group: group.is_some(),
@@ -400,6 +403,11 @@ impl Player {
         };
         let first = me.begin(media, true);
         (me, Task::batch([window::oldest().map(Msg::Window), first]))
+    }
+
+    /// Reports made since the last call (start / progress / stop of an item), oldest first.
+    pub fn take_events(&mut self) -> Vec<PlayEvent> {
+        std::mem::take(&mut self.events)
     }
 
     pub fn take_outcome(&mut self) -> Option<Outcome> {
@@ -2069,7 +2077,7 @@ impl Player {
         }
     }
 
-    fn report(&self, what: Reported, id: &str, pos: f64, paused: bool) {
+    fn report(&mut self, what: Reported, id: &str, pos: f64, paused: bool) {
         let Some(m) = self
             .queue
             .iter()
@@ -2079,6 +2087,18 @@ impl Player {
         else {
             return;
         };
+        let dur = if m.id == self.media.id {
+            self.dur()
+        } else {
+            None
+        };
+        self.events.push(PlayEvent {
+            dur: dur.or(m.duration_s),
+            media: m.clone(),
+            what,
+            pos,
+            paused,
+        });
         match self.backend_of(&m) {
             Some(b @ Backend::Local(_)) => {
                 bridge_spawn(async move {
@@ -2660,8 +2680,17 @@ impl Player {
     }
 }
 
-#[derive(Clone, Copy)]
-enum Reported {
+/// One report of the playing item as the player made it, handed to the root unchanged.
+pub struct PlayEvent {
+    pub media: Media,
+    pub what: Reported,
+    pub pos: f64,
+    pub dur: Option<f64>,
+    pub paused: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Reported {
     Started,
     Progress,
     Stopped,

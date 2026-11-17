@@ -154,6 +154,12 @@ impl App {
 
     pub(super) fn after_player(&mut self, t: Task<player::Msg>) -> Task<Message> {
         let mut tasks = vec![t.map(Message::Player)];
+        if let Some(p) = self.player.as_mut() {
+            let evs = p.take_events();
+            if !evs.is_empty() {
+                tasks.push(self.handle_play_events(evs));
+            }
+        }
         // "Remember my choice" on the HDR prompt is the HDR video setting from now on.
         if let Some(m) = self.player.as_mut().and_then(|p| p.take_hdr_choice()) {
             self.settings.hdr = m;
@@ -210,6 +216,10 @@ impl App {
         self.sp.shutdown(self.player.as_mut());
         if let Some(p) = self.player.as_mut() {
             p.shutdown();
+            // The last "stopped" still reaches Trakt; the cascade needs the UI and is skipped on exit.
+            for ev in p.take_events() {
+                self.trakt_event(&ev);
+            }
         }
         self.player = None;
         crate::timing::report();
