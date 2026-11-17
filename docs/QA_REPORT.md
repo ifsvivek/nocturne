@@ -363,3 +363,29 @@ window, `window::screenshot`; the output was removed afterwards): 01-home, 02-li
 picker, account-menu, settings-dropdown. 06-playback is the only `grim` capture (that headless output only, window
 fullscreen, player showing, nothing else on it). Servers are labelled "Living room" / "Study" and the local source "This
 computer"; the demo library and a generated local fixture only; server changes OFF.
+
+## 0.4 Linux packages (W3, 2026-11-17)
+
+Built and tested in clean containers (docker, no sudo); details and package lists in [PACKAGING.md](PACKAGING.md).
+
+| Check | Result |
+|---|---|
+| .deb built in `debian:stable` (13), 9.4 MB | built |
+| .deb in clean debian:stable, ubuntu:24.04, ubuntu:latest (26.04): `apt install ./nocturne_*.deb`, `ldd`, headless start | installs; no missing library; start stops at "neither WAYLAND_DISPLAY nor WAYLAND_SOCKET nor DISPLAY is set" (a panic, not a loader error) |
+| .rpm built in `fedora:latest` (45), 10.0 MB | built |
+| .rpm in clean fedora:latest with RPM Fusion free: `dnf install ./nocturne-*.rpm`, `ldd`, headless start | same as the .deb |
+| AppImage (bookworm base) on the Arch host: starts; bundled libmpv 0.35.1 hwdec with `vo=null` | `vaapi-copy` and `nvdec-copy` work; but the app falls back to external mpv (libmpv too old for the app) |
+| AppImage (trixie libmpv 0.40, debug build) on the host: player preview, 1080p clip | embedded playback, `hwdec-current nvdec` (NVIDIA only; AMD iGPU not run) |
+| AppImage in clean ubuntu:24.04 | needs host libEGL; the bundled libmpv has about 20 unresolved host libraries on a minimal install |
+
+Not tested: a window or playback inside the deb/rpm containers, other distribution releases, in-window video on Ubuntu 24.04.
+
+Findings (not fixed here, need a code change in `crates/player`):
+
+- **In-window video needs libmpv >= 0.40.** `embedded.rs` sets `background=color`, rejected by mpv 0.35 and 0.37
+  (Ubuntu 24.04's libmpv2 is 0.37); the app then uses the external `mpv`. Setting that option after init and ignoring a
+  failure would make the embedded player work there.
+- The player links `libEGL` at build time (`#[link(name = "EGL")]`), so a missing `libEGL.so.1` is a loader error before the
+  app can show its message, unlike libmpv.
+- A friendly message instead of the winit panic when no display exists (already a 0.4 polish item).
+- An explicit libmpv path override (e.g. `NOCTURNE_LIBMPV`) would let an AppImage avoid `LD_LIBRARY_PATH`.
