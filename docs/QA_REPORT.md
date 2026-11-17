@@ -411,3 +411,82 @@ Credential Manager, mpv.exe playback, Add/Remove Programs UI). Details: [PACKAGI
 Not tested: real Windows (any version), the interactive wizard pages (licence page, directory page, finish page "run"),
 upgrade-over-existing install, installing with a custom `/D=`, running playback, code signing. Not done: the macOS
 `.dmg` script has never run (no Mac).
+
+## 0.4.0 walkthrough (unreleased), 2026-11-17
+
+Branch `v0.4-local` (HEAD `7db009e` plus the QA commits below), Arch Linux, Hyprland (Wayland), NVIDIA RTX 3060 + AMD iGPU,
+Jellyfin 12.4.0 throwaway servers (demo library from `scripts/make-demo-library.sh` on loopback 8108 / 8109, the guarded
+test server on 8097), libmpv / mpv 0.41. Every launch went through `scripts/run-isolated.sh` with a throwaway profile and
+keyring service; the apps were driven only by the debug hooks (`NOCTURNE_KEYS`, `NOCTURNE_PAD`, `NOCTURNE_PREVIEW*`) and
+inspected through their own window captures, the server's REST API (`/Sessions`, item state), mpv's private IPC socket and
+the stored data files. No global keystrokes, no real server, no personal media (fixtures: generated clips; the online test
+used public-domain film and show titles). Writes only reached the throwaway servers. The maintainer's TMDB and OpenSubtitles
+keys were loaded into the throwaway keyring and never printed or captured. Trakt was skipped (maintainer's sign-in).
+
+Gate: `scripts/ci-checks.sh` passed on `7db009e`. (The next master commit `b213603` left `crates/core/tests/trakt_live.rs`
+unformatted, so `cargo fmt --check` would have failed on it; fixed in `0f1bacc`.)
+
+| # | Check | Result | Evidence |
+|---|---|---|---|
+| 1 | Dual subtitles + language memory across restart | PASS | Local clip with `.en.srt` + `.fr.srt`: `c` then `Shift+C` gave mpv `sid=2 secondary-sid=1`; after quitting and replaying with no keys the same pair came back, and `languages.json` holds `sub: fr, sub2: en` for the item. Server episode (demo series): `c` picked the English track, `languages.json` keyed `show:<origin>:<series id>`; replay restored `sid=1` with `sub_mode = off`. Checked through mpv's IPC (video pixels are not in a capture) |
+| 2 | HDR: prompt, remember, pop-out | PASS (no HDR display) | Generated HDR10 clip, `NOCTURNE_HDR_DISPLAY=yes`: prompt shows "Play here in SDR / Open in HDR pop-out window / Remember"; with `no` it says the pop-out would be SDR too and recommends SDR. Enter on pop-out: external mpv with `--vo=gpu-next --target-colorspace-hint=yes --fullscreen`, `video-params/gamma=pq`; Space in the app paused and resumed it over IPC; `r` printed "remember hdr=Popout". Real HDR output untested |
+| 3 | Truthful playback reports | PASS (Transcode not exercised) | Writes + sync on: `GET /Sessions` showed `PlayMethod: DirectPlay`, the right `MediaSourceId`, position ticks; activity log "demo is playing ...". Server stopped mid-play: a calm toast "Couldn't reach the server to save watch progress. Playback is not affected." appeared once; playback continued. A transcoded stream was not forced (unit-tested only) |
+| 4 | Latest row, Play on a show, Included in | PASS | Added a new episode (S02E01) to an existing show and refreshed: "Latest in Shows" put that show first with its unwatched badge. Play on the series page started the next unwatched episode (server session showed S1E3). A movie in a collection shows "Included in: Cold Frequencies" |
+| 5 | Extra header behind a header-gated proxy | PASS (entry dialog not driven) | Loopback proxy answering 403 without `X-QA-Gate`: without the header the app shows "Your library couldn't be loaded" with Try again; with the header stored in the keyring every request (library, images, `/Videos/.../stream` for mpv) returned 200 / 206 and none 403. Typing the header into Sources > Header was not possible with the key hooks |
+| 6 | Remote control | PASS | Setting on (+ writes on): `/Sessions` showed `SupportsRemoteControl: true`; `Playing?PlayCommand=PlayNow`, `Pause`, `Unpause`, `Seek`, `Stop` through the server API each changed the app's playback (verified in `PlayState`). Setting off: no controllable session (commands 404) |
+| 7 | Online metadata (TMDB, TVmaze), subtitles search | PASS (two dialogs not clicked) | Fixture of public-domain titles with the real TMDB key: Night of the Living Dead (1968), Nosferatu (1922), His Girl Friday (1940) and The Cisco Kid S01E01 filled in with plot, genres, runtime, poster and backdrop; the detail page shows "DETAILS  TMDB". Misspelled titles ("Night Living Dead (1968)", "Girl Friday (1940)") were not guessed: the candidate list holds the right film for "Choose the right match". TVmaze alone: "Dragnet" with no year stored five candidates (1951, 1967, ...), "Dragnet (1951)" matched automatically. The Local folders page shows the TMDB sentence, TVmaze CC BY-SA credit and OpenSubtitles credit. Subtitle finder with the real OpenSubtitles key listed 10+ English results for His Girl Friday. Not exercised: the "Choose the right match" list itself (the page is taller than the window and cannot be scrolled with the key hooks) and the Download buttons (mouse only), so the no-login message is unchecked |
+| 8 | Download to this computer | PASS | Detail > More > "Download to this computer...": dialog with the folder choices, file and `.nfo` (with the server's IMDb/TMDB ids) written, queue shows "Saved". After a restart the title lists "3 SOURCES" (two servers + local); the versions picker offers the local copy, which plays with no server session. Interrupted at 280000 of 348158 bytes by SIGKILL: a `.part` file and an "active" job stayed; the next launch resumed (one `206` Range request) and ended at exactly the server's size. Server items without provider ids do not merge (by design: title alone never merges) |
+| 9 | Watched cascade | PASS | Throwaway server + a local copy of the same title: setting off, writes on: marking watched changed the server copy only, the local copy stayed unplayed. Setting on, writes on: both changed. Setting on, writes off: the action is refused (toast "Turn on server changes in Settings"), nothing changed. `core/tests/live_watched.rs` (identity match and gates) passes live |
+| 10 | Smart collections | PARTIAL | Menu lists the five built-ins; the manager lists them with Up / Down / Edit / Delete; "Added this week" shows 12 movies, "Unwatched 4K movies" correctly 0 on a 720p library; the editor opens with every rule field. A custom rule could not be created: the key hooks cannot type or press the editor's Save, so saving and persistence of a custom rule are only covered by the unit tests in `core/smart.rs` |
+| 11 | Couch mode | PASS (no real pad / TV) | Setting On: scaled layout with button hints; with `NOCTURNE_PAD` right / A / A: Home > detail > playing; X opens the Subtitles menu, Down moves the cursor. Automatic: normal layout until `pads1` (a simulated pad), then the 10-foot layout with the hint bar |
+| 12 | No display | PASS | `env -u WAYLAND_DISPLAY -u DISPLAY nocturne` (debug and release) prints "NOCTURNE needs a graphical session (Wayland or X11), but none was found." with a hint and exits 1 |
+| 13 | Linux packages after the libudev change | PASS after a fix | The first .deb build in a clean debian:stable container failed (`libudev-sys`: no `libudev.pc`): the build containers lacked `libudev-dev` / `systemd-devel`. Fixed in `9c7bffd`. Then: .deb built in debian:stable (full LTO), installed with `apt install ./nocturne_*.deb` in clean debian:stable (13) and ubuntu:24.04: apt resolves with libudev1 declared, `ldd` shows 0 missing, libmpv.so.2 present, headless start prints the friendly no-display message. .rpm built in fedora:latest (45) with **thin LTO / 16 codegen units** (fast QA setting at the maintainer's request), installed with RPM Fusion free: dnf resolves, 0 missing libraries, same friendly message. Arch PKGBUILD through `scripts/test-playback.sh` (full LTO): makepkg + install, ldd clean, libmpv decodes, a window from the container mapped on the host compositor and stayed up 10 s, no panic; its one FAIL was the script still expecting the old panic text for the headless start (script fixed to accept the new message) |
+| 14 | Footprint | PASS (no regression) | `scripts/perf.sh` on the 0.4 release build against 0.3.0: binary 32.24 MiB (+2.1), start to window 387 ms (same), idle RSS 285.9 / 298.8 MiB (same), idle CPU 1.5 / 1.8 % (same); row in [PERF.md](dev/PERF.md) |
+| 15 | 0.3 regression smoke | PASS (SyncPlay in the UI not driven) | See the list below |
+
+0.3 features re-checked (item 15):
+
+| Feature | Result | Evidence |
+|---|---|---|
+| First-run onboarding | PASS | A fresh profile shows Welcome > "Where is your media?" > "Connect a server" with the hint bar; Enter advances |
+| Two servers + local + duplicates + versions picker | PASS | Two demo servers and a local folder: Movies shows 23 items; the title present on all three with matching IMDb / TMDB ids is one cell marked "3 SOURCES" and the picker lists Living room, Study and Local; the rest stay per server (title alone never merges) |
+| Offline source | PASS | Second server stopped: banner "Can't reach Study. Showing what's already loaded. Retrying in 10s." with Retry now; the other server and local items keep working |
+| Search | PASS | Opened with `/`; a seeded recent search ran on Enter and listed the title once per source (Living room, Study, Local) plus music; Enter opened the chosen source's page. Typing into the box cannot be driven by the key hooks |
+| Admin read-only | PASS | Admin preview with server changes off: "View only" banner with "Open settings", Edit disabled |
+| Watch together (SyncPlay) | PARTIAL | Two preview instances signed in as alice and bob and showed the screen; creating a group needs typing, which the hooks cannot do. The two-member protocol suite (`syncplay_live`) passes against the guarded server after the test fix below |
+| Single instance | PASS | A second launch exits at once (0) and leaves one process and one window |
+
+Live suites run on the guarded throwaway server (8097): `nocturne-jellyfin-user` (7 + playlists + profile + sessions + syncplay)
+and `nocturne-core` `live_watched`: all pass.
+
+### Bugs fixed during the walkthrough
+
+| Commit | Bug | Severity |
+|---|---|---|
+| `a4fa8ac` | The subtitle finder dialog over a detail page was not modal for the keyboard: Down / Enter changed and activated things on the page underneath (it opened the "Crime" genre page while the dialog stayed up). Only the over-the-player case was handled; now it takes Esc and swallows the rest everywhere | minor |
+| `0f1bacc` | `crates/core/tests/trakt_live.rs` (commit `b213603`) was not `cargo fmt` clean, so `scripts/ci-checks.sh` would fail on HEAD | minor (gate) |
+| package commit | `scripts/package-deb.sh`, `package-rpm.sh`, `package-appimage.sh` and `nocturne.spec` did not install `libudev-dev` / `systemd-devel`; since `gilrs` links libudev the build in a clean Debian container failed in `libudev-sys` (`pkg-config ... libudev`) | major for packaging (the 0.4 .deb / .rpm could not be rebuilt) |
+| syncplay test | `syncplay_live::two_members_group_lifecycle` seeked to 60 s in a 2 s clip and failed because the server clamps the seek; it now seeks to 1 s | test only |
+| `8033df2` | Debug key hooks gained `shift+<key>`, `open-sources`, `open-folders-N` (QA only, debug builds) | none |
+
+### Open items
+
+| Severity | Item | Reproduction / note |
+|---|---|---|
+| minor (accessibility) | The subtitle finder's Download buttons are only reachable with the mouse; the dialog has no keyboard path besides Esc | Detail > More > Find subtitles online: Down / Enter / Tab do nothing. Same gap as the couch-mode goal that every dialog works with a pad |
+| minor | The Local folders page is taller than a small window and the "Choose the right match" list sits below the fold; no keyboard scroll reached it (QA could only confirm the candidates in `online.json`) | Local folders at 689 px window height |
+| low | After a scan that was killed (SIGTERM from `timeout`) the local index had re-issued ids 6 and 7 to new files while `online.json` still held per-id entries for the deleted ones, so the new files inherited "already tried" state and were not looked up until the stale entries were removed | Not reproduced on purpose; check that the index is saved before the online store is, or key online entries by path / file identity |
+| low (harness) | The `NOCTURNE_PREVIEW=syncplay` window ignores SIGTERM (`timeout`), a SIGKILL was needed | QA tooling only |
+| info | Home / Movies cell order for one title that exists on two servers without provider ids shows both (expected), so the demo library shows 23 movies for 12 titles | By design |
+
+### Not tested here, needs the maintainer
+
+- Trakt sign-in, scrobble and history import (the maintainer will do it with the master).
+- HDR output on a real HDR display (colours, fullscreen on the right monitor, the compositor's colour management).
+- A real gamepad and a TV (couch mode Automatic by display size, remote keys, the pad's analog stick repeat).
+- Windows and macOS machines (build, keyring, mpv IPC, installers; the macOS script has never run).
+- Remote control from a real Jellyfin Web / mobile client (QA sent the same commands through the REST API).
+- A transcoded stream's `PlayMethod`, a server that denies downloads, exFAT/FAT download targets.
+- Typing flows the key hooks cannot drive: the extra header field in Sources, the API key fields, a custom smart collection, the
+  subtitle Download button with an OpenSubtitles login, the SyncPlay group name.
+- .deb / .rpm on bare-metal Debian / Fedora installs.
