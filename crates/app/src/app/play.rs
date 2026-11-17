@@ -154,6 +154,11 @@ impl App {
 
     pub(super) fn after_player(&mut self, t: Task<player::Msg>) -> Task<Message> {
         let mut tasks = vec![t.map(Message::Player)];
+        // "Remember my choice" on the HDR prompt is the HDR video setting from now on.
+        if let Some(m) = self.player.as_mut().and_then(|p| p.take_hdr_choice()) {
+            self.settings.hdr = m;
+            self.settings.save();
+        }
         if let Some(Outcome::Closed { failed }) =
             self.player.as_mut().and_then(|p| p.take_outcome())
         {

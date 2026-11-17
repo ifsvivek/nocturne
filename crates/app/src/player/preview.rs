@@ -7,11 +7,14 @@
 //! the page after a delay (the exit path, for open/close cycling).
 //! `NOCTURNE_SNAP=/tmp/x.png` (+ `NOCTURNE_SNAP_AFTER_MS`, see snap.rs) writes screenshots of the app
 //! window (the video subsurface is not part of them) and quits after the last.
-//! `NOCTURNE_PREVIEW_KEYS="key@ms,key@ms"` injects named keys (`space@1000,i@2000`).
+//! `NOCTURNE_PREVIEW_KEYS="key@ms,key@ms"` injects named keys (`space@1000,i@2000`; `shift+c@500`).
+//! `NOCTURNE_PREVIEW_HDR=ask|window|popout` sets the HDR video setting; `NOCTURNE_HDR_DISPLAY=yes|no`
+//! stands in for the display's HDR capability (see `Player::hdr_capable`).
 use super::{Msg, Outcome, Player, PlayerCtx};
 use crate::{keys, theme};
 use iced::{Color, Element, Size, Subscription, Task, window};
 use nocturne_core::backend::PlayTarget;
+use nocturne_core::hdr::HdrMode;
 use nocturne_core::source::Media;
 use nocturne_core::video::PlayerPrefs;
 use nocturne_player::Buffering;
@@ -131,7 +134,14 @@ fn ctx() -> Option<PlayerCtx> {
         resume: None,
         backends: vec![],
         hooks: None,
-        prefs: PlayerPrefs::default(),
+        prefs: PlayerPrefs {
+            hdr: match env("NOCTURNE_PREVIEW_HDR").as_deref() {
+                Some("window") => HdrMode::Window,
+                Some("popout") => HdrMode::Popout,
+                _ => HdrMode::Ask,
+            },
+            ..Default::default()
+        },
         buffering: Buffering::default(),
     })
 }
@@ -209,9 +219,16 @@ impl Preview {
                     "pop:settings" => Msg::Act(Act::Pop(Pop::Settings)),
                     "ctx" => Msg::Act(Act::VideoRight),
                     "hover" => Msg::Seek(crate::widget::track::Ev::Hover(Some(0.4))),
-                    _ => Msg::Key(keys::Key {
-                        name: k,
-                        ..Default::default()
+                    _ => Msg::Key(match k.strip_prefix("shift+") {
+                        Some(n) => keys::Key {
+                            name: n.into(),
+                            shift: true,
+                            ..Default::default()
+                        },
+                        None => keys::Key {
+                            name: k,
+                            ..Default::default()
+                        },
                     }),
                 };
                 let t = self.player.update(msg);
@@ -249,11 +266,12 @@ impl Preview {
         let g = |n: &str| p.prop(n).map_or("-".into(), |v| v.to_string());
         let st = p.state();
         eprintln!(
-            "PROBE t={:.1} paused={} vol={:.0} sid={} aid={} hwdec={} fps={} vo-drops={} dec-drops={} params={} cache={:.1} speed={} fs={}",
+            "PROBE t={:.1} paused={} vol={:.0} sid={} sid2={} aid={} hwdec={} fps={} vo-drops={} dec-drops={} params={} cache={:.1} speed={} fs={} popout={} hdrprompt={} gamma={} target={}",
             st.position.unwrap_or(-1.0),
             st.paused,
             st.volume,
             g("sid"),
+            g("secondary-sid"),
             g("aid"),
             g("hwdec-current"),
             g("estimated-vf-fps"),
@@ -263,11 +281,18 @@ impl Preview {
             st.buffered,
             g("speed"),
             self.player.fullscreen,
+            self.player.popout,
+            self.player.hdr_prompt.is_some(),
+            g("video-params/gamma"),
+            g("video-target-params/gamma"),
         );
     }
 
     /// The player's task, or the exit when it reports the page is over.
     fn after(&mut self, t: Task<Msg>) -> Task<M> {
+        if let Some(m) = self.player.take_hdr_choice() {
+            eprintln!("PREVIEW remember hdr={m:?}");
+        }
         match self.player.take_outcome() {
             Some(Outcome::Closed { failed }) => {
                 eprintln!("PREVIEW closed failed={failed} rss_kb={}", rss_kb());

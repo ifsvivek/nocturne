@@ -89,6 +89,21 @@ impl Shared {
 struct SendBox<T>(T);
 unsafe impl<T> Send for SendBox<T> {}
 
+/// Does the compositor offer the colour-management protocol (`wp_color_manager_v1`)? Without it mpv
+/// cannot ask for an HDR output (docs/HDR.md). `display`: the UI window's raw `wl_display*`; call on
+/// the UI thread, like [`EmbeddedPlayer::new`]. Only the global list is read, nothing is bound.
+pub fn colour_management_available(display: *mut c_void) -> bool {
+    unsafe {
+        let backend = Backend::from_foreign_display(display as *mut _);
+        let conn = Connection::from_backend(backend);
+        registry_queue_init::<St>(&conn).is_ok_and(|(globals, _)| {
+            globals
+                .contents()
+                .with_list(|l| l.iter().any(|g| g.interface == "wp_color_manager_v1"))
+        })
+    }
+}
+
 /// Video rect in the parent window: logical position/size for the subsurface + viewport, and the
 /// physical pixel size of the EGL buffer. Pure, so it is unit-tested.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -297,12 +312,12 @@ impl EmbeddedPlayer {
         &self.rx
     }
 
-    /// Same contract as [`crate::Player::load`]: `headers` is a full header line, set through the
-    /// `http-header-fields` list (`change-list` appends verbatim, no splitting on ',').
-    pub fn load(&self, url: &str, headers: Option<&str>) -> Result<()> {
+    /// Same contract as [`crate::Player::load`]: each of `headers` is a full header line, appended to
+    /// the `http-header-fields` list (`change-list` appends verbatim, no splitting on ',').
+    pub fn load(&self, url: &str, headers: &[&str]) -> Result<()> {
         let c = |n: &str, a: &[&str]| self.mpv.command(n, a).map_err(e);
         c("change-list", &["http-header-fields", "clr", ""])?;
-        if let Some(h) = headers {
+        for h in headers {
             c("change-list", &["http-header-fields", "append", h])?;
         }
         c("loadfile", &[url, "replace"])

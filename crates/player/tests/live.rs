@@ -31,7 +31,7 @@ async fn plays_first_item_and_position_advances() {
     .unwrap();
     p.load(
         &c.stream_url(id),
-        Some(&format!("Authorization: {}", c.auth_header())),
+        &[&format!("Authorization: {}", c.auth_header())],
     )
     .unwrap();
 

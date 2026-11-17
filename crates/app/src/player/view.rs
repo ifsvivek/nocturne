@@ -2,17 +2,19 @@
 //! overlay, floating panels and the controls bar. The window is transparent: nothing opaque is
 //! drawn over the hole except the loading overlay (by design) and, before the first frame or with
 //! the external mpv, a solid black fill.
-use super::controls::bar;
+use super::controls::{bar, chip_button};
 use super::popovers::{
-    ctx_panel, floaters, overlays, popover, problem, queue_panel, resume_prompt, scrub_tip,
+    ctx_panel, floaters, hdr_prompt, overlays, popover, problem, queue_panel, resume_prompt,
+    scrub_tip,
 };
 use super::{Act, Msg, Player};
 use crate::motion;
 use crate::theme as t;
 use crate::widget::buffering::{self, Splash};
 use crate::widget::hole::hole;
-use iced::widget::{Stack, container, mouse_area, space, text};
-use iced::{Element, Length, mouse};
+use iced::widget::{Stack, column, container, mouse_area, space, text};
+use iced::{Alignment, Element, Length, mouse};
+use nocturne_core::video::MenuAct;
 
 impl Player {
     pub fn view(&self) -> Element<'_, Msg> {
@@ -31,7 +33,9 @@ impl Player {
         }
         layers.push(click.into());
 
-        if !self.video && self.playback.is_some() && self.problem.is_none() {
+        if self.popout && self.playback.is_some() && self.problem.is_none() {
+            layers.push(popout_panel());
+        } else if !self.video && self.playback.is_some() && self.problem.is_none() {
             layers.push(
                 container(
                     text("Playing in the mpv window")
@@ -70,6 +74,9 @@ impl Player {
         }
         if let Some(r) = resume_prompt(self) {
             layers.push(r);
+        }
+        if let Some(h) = hdr_prompt(self) {
+            layers.push(h);
         }
         if let Some(p) = problem(self) {
             layers.push(p);
@@ -114,4 +121,25 @@ impl Player {
             win: self.win,
         }))
     }
+}
+
+/// Shown in the app window while the picture is in the HDR pop-out: what is going on, the way back.
+fn popout_panel<'a>() -> Element<'a, Msg> {
+    container(
+        column![
+            text("Playing in HDR").size(t::HEADING).font(t::SEMIBOLD),
+            text("The picture is in mpv's own window. The controls below drive it from here.")
+                .size(t::BODY)
+                .color(t::TEXT_SECONDARY),
+            chip_button(
+                "Play in this window (SDR)",
+                false,
+                Msg::Act(Act::Menu(MenuAct::HdrSwitch)),
+            ),
+        ]
+        .spacing(t::S4)
+        .align_x(Alignment::Center),
+    )
+    .center(Length::Fill)
+    .into()
 }

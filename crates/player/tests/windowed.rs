@@ -19,7 +19,7 @@ fn windowed_cycles_exit_cleanly() {
     for i in 0..10 {
         let p = Player::new(Options::default()).unwrap();
         let pid = p.child_pid().unwrap();
-        p.load(clip.to_str().unwrap(), None).unwrap();
+        p.load(clip.to_str().unwrap(), &[]).unwrap();
         let t = Instant::now();
         while !p.state().position.is_some_and(|x| x > 0.3) {
             assert!(
