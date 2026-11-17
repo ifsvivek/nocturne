@@ -10,7 +10,7 @@ Summary:        Native media center for local folders and Jellyfin servers
 License:        GPL-3.0-or-later
 URL:            https://nocturne.ifsvivek.in
 Source0:        %{name}-%{version}.tar.gz
-BuildRequires:  gcc, gcc-c++, make, pkgconf-pkg-config, dbus-devel, libglvnd-devel, curl
+BuildRequires:  gcc, gcc-c++, make, pkgconf-pkg-config, dbus-devel, systemd-devel, libglvnd-devel, curl
 
 # mpv-libs provides libmpv.so.2; on Fedora it comes from RPM Fusion (free).
 Requires:       mpv-libs

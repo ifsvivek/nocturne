@@ -131,8 +131,8 @@ Both are built **inside a container of the target distribution** (docker, no sud
 against that distribution's glibc; the working tree is mounted read-only. rustup installs the stable toolchain inside
 the container; the cargo registry and target directory live in a docker volume (`nocturne-deb-cache`,
 `nocturne-rpm-cache`, removed at the end unless `KEEP_CACHE=1`). A cold build takes about 7 minutes on 16 cores, a
-cached relink about 2. Build dependencies: a C toolchain, `pkg-config`, `libdbus-1-dev`/`dbus-devel` and
-`libegl-dev`/`libglvnd-devel` (the player links `libEGL` at build time, `#[link(name = "EGL")]`, so it is a linked
+cached relink about 2. Build dependencies: a C toolchain, `pkg-config`, `libdbus-1-dev`/`dbus-devel`,
+`libudev-dev`/`systemd-devel` (the gamepad library `gilrs` links libudev) and `libegl-dev`/`libglvnd-devel` (the player links `libEGL` at build time, `#[link(name = "EGL")]`, so it is a linked
 dependency, not only a dlopen one; libmpv is not needed to build).
 
 | | `scripts/package-deb.sh` | `scripts/package-rpm.sh` (`packaging/nocturne.spec`) |

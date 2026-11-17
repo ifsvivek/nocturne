@@ -19,7 +19,7 @@ trap '[ -n "${KEEP_CACHE:-}" ] || docker volume rm -f "$VOL" >/dev/null 2>&1' EX
 docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -v "$VOL":/cache -e PKG="$PKG" -e VER="$ver" -e PROFILE="$PROFILE" -e HOST_UID="$(id -u)" "$IMG" bash -euc '
 export DEBIAN_FRONTEND=noninteractive CARGO_HOME=/cache/cargo CARGO_TARGET_DIR=/cache/target RUSTUP_HOME=/cache/rustup
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends build-essential pkg-config curl ca-certificates libdbus-1-dev libegl-dev libmpv2 file binutils >/dev/null
+apt-get install -y -qq --no-install-recommends build-essential pkg-config curl ca-certificates libdbus-1-dev libudev-dev libegl-dev libmpv2 file binutils >/dev/null
 [ -x /cache/cargo/bin/cargo ] || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable >/dev/null
 export PATH=/cache/cargo/bin:$PATH
 cd /src
