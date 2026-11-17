@@ -43,6 +43,13 @@ fn named(n: Named) -> Option<&'static str> {
         Named::End => "end",
         Named::PageUp => "pageup",
         Named::PageDown => "pagedown",
+        // Remote / media keys, in the keyboard vocabulary (players read them as Space, N, P, Esc and
+        // the settings menu; elsewhere Back goes back and Menu opens the account menu).
+        Named::MediaPlayPause | Named::MediaPlay | Named::MediaPause => "space",
+        Named::MediaTrackNext => "n",
+        Named::MediaTrackPrevious => "p",
+        Named::BrowserBack | Named::GoBack => "escape",
+        Named::ContextMenu => "menu",
         _ => return None,
     })
 }
@@ -106,6 +113,20 @@ mod tests {
         let k = from_event(&ev(K::Named(Named::Space), None, Modifiers::empty())).unwrap();
         assert_eq!((k.name.as_str(), k.typed()), ("space", Some(" ")));
         assert!(from_event(&ev(K::Named(Named::Shift), None, Modifiers::empty())).is_none());
+    }
+
+    #[test]
+    fn remote_keys_use_the_keyboard_names() {
+        let n = |k: Named| {
+            from_event(&ev(K::Named(k), None, Modifiers::empty()))
+                .unwrap()
+                .name
+        };
+        assert_eq!(n(Named::MediaPlayPause), "space");
+        assert_eq!(n(Named::MediaTrackNext), "n");
+        assert_eq!(n(Named::MediaTrackPrevious), "p");
+        assert_eq!(n(Named::BrowserBack), "escape");
+        assert_eq!(n(Named::ContextMenu), "menu");
     }
 
     #[test]

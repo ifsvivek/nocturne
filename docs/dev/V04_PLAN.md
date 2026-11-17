@@ -45,4 +45,4 @@ exact meaning to be agreed when 0.5 starts); plus UI refresh and user customizat
 their order, density and scale, backdrops, per-library views). Wish list to be agreed with the maintainer first.
 
 ## Progress
-- [x] W1 (merged; real HDR output unverified: no HDR display, mpv 0.41)  - [x] W2 (merged; player hooks wired)  - [ ] W3  - [~] Wave 2 (merged: online metadata + subtitles, remote control, watched sync + Trakt (Trakt live sign-in untested); download-to-local + subtitle hook; running: smart collections)  - [ ] Wave 3  - [ ] polish  - [ ] 0.4 QA walkthrough
+- [x] W1 (merged; real HDR output unverified: no HDR display, mpv 0.41)  - [x] W2 (merged; player hooks wired)  - [ ] W3  - [x] Wave 2 (merged: online metadata + subtitles, remote control, watched sync + Trakt (Trakt live sign-in untested), download-to-local + subtitle hook, smart collections)  - [~] Wave 3 (running: macOS/Windows code ports; couch mode done, real gamepad / TV untested; left: installers)  - [~] polish (menus by keyboard, key trimming, nav overflow done; no-display panic message and admin session label left)  - [ ] 0.4 QA walkthrough

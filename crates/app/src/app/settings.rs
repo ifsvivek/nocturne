@@ -273,7 +273,7 @@ impl App {
     }
 
     /// Settings row `i` stepped; applies at once and is saved.
-    fn cycle_setting(&mut self, i: usize, dir: i32) {
+    fn cycle_setting(&mut self, i: usize, dir: i32) -> Task<Message> {
         if i == s::PROFILE_ROW {
             let n = self.settings.profiles.list.len() + 1;
             if n > 2 {
@@ -282,19 +282,20 @@ impl App {
                     % n;
                 self.set_default_profile(at);
             }
-            return;
+            return Task::none();
         }
         self.settings.cycle(i, dir);
-        self.settings_changed();
+        self.settings_changed()
     }
 
     /// Entry `idx` of row `i`'s drop-down chosen.
-    pub(super) fn choose_setting(&mut self, i: usize, idx: usize) {
+    pub(super) fn choose_setting(&mut self, i: usize, idx: usize) -> Task<Message> {
         if i == s::PROFILE_ROW {
-            return self.set_default_profile(idx);
+            self.set_default_profile(idx);
+            return Task::none();
         }
         self.settings.choose(i, idx);
-        self.settings_changed();
+        self.settings_changed()
     }
 
     /// Remembered profiles of this server and the default one, for the Settings row.
@@ -324,7 +325,7 @@ impl App {
         self.refresh_profiles();
     }
 
-    fn settings_changed(&mut self) {
+    fn settings_changed(&mut self) -> Task<Message> {
         self.settings.save();
         crate::motion::set_reduced(
             self.settings
@@ -332,6 +333,7 @@ impl App {
                 .reduced(crate::platform::system_reduces_motion()),
         );
         self.apply_write_settings();
+        Task::batch([self.refresh_couch(), self.probe_monitor()])
     }
 
     /// Open the drop-down of a multi-choice row (a toggle row is flipped instead).
@@ -341,8 +343,7 @@ impl App {
             return self.trakt_msg(super::trakt::Msg::Open);
         }
         let Some((labels, cur)) = self.settings.choices(i) else {
-            self.cycle_setting(i, 1);
-            return Task::none();
+            return self.cycle_setting(i, 1);
         };
         self.dd = nocturne_core::dropdown::Dropdown::open(i, labels.len(), cur);
         self.reveal_menu(cur)
@@ -359,7 +360,7 @@ impl App {
                 Outcome::Pick(idx) => {
                     let row = d.row;
                     self.dd = None;
-                    self.choose_setting(row, idx);
+                    return self.choose_setting(row, idx);
                 }
             }
             return Task::none();
@@ -372,8 +373,8 @@ impl App {
                     return self.reveal_row(r);
                 }
             }
-            "left" => self.cycle_setting(self.settings_sel, -1),
-            "right" => self.cycle_setting(self.settings_sel, 1),
+            "left" => return self.cycle_setting(self.settings_sel, -1),
+            "right" => return self.cycle_setting(self.settings_sel, 1),
             "enter" | "space" => return self.open_setting(self.settings_sel),
             _ => {}
         }

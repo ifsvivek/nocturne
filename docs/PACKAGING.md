@@ -8,8 +8,17 @@ more. Debian/Fedora/openSUSE builds are UNVERIFIED.
 **One variable names the app package.** `scripts/package.sh`, `scripts/perf.sh` and `packaging/PKGBUILD` default to
 package `nocturne-app` (`crates/app`) / binary `nocturne`; `scripts/gen-notices.py` and `scripts/test-playback.sh` take the same `PKG`/`BIN`). The installed name is always `nocturne`.
 
-Planned, not available yet: .deb, .rpm, AppImage, macOS and Windows packages. Per-platform libmpv handling and the footprint budget are in
-[PLATFORMS.md](PLATFORMS.md).
+Linux formats: Arch package, tarball, **.deb** and **.rpm** (0.4, built in distro containers, see below). AppImage was
+evaluated and is not shipped (below). macOS and Windows packages are planned. Per-platform libmpv handling and the
+footprint budget are in [PLATFORMS.md](PLATFORMS.md).
+
+**libmpv version the app really needs: mpv 0.40 or newer.** The embedded player sets `background=color`
+(`crates/player/src/embedded.rs`), which mpv 0.35 and 0.37 reject (`mpv_set_option_string` returns -7, verified on
+Debian 12's 0.35.1 and Ubuntu 24.04's 0.37.0; accepted by Debian 13's 0.40.0 and Arch's 0.41). With an older libmpv the
+app does not crash: it logs `embedded unavailable (mpv: init: error setting option), using the external player` and plays
+through the external `mpv` binary (hence `mpv` is a Recommends in the .deb). A code change (set that option after init and
+ignore the error, or drop it when unsupported) would make in-window video work on Ubuntu 24.04; it is not part of the
+packaging.
 
 ## Install paths
 
@@ -51,8 +60,8 @@ from `/etc/os-release`. libmpv is not needed at build time, so `mpv` is not a ma
 | Distribution | Packages (all needed at run time) | Status |
 |---|---|---|
 | Arch / CachyOS / Manjaro | `mpv libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon-x11 libxcb libx11 libxcursor libxi dbus gcc-libs glibc` + `vulkan-driver`; optional `xdg-desktop-portal noto-fonts gnome-keyring` (PKGBUILD) | VERIFIED names (`pacman -Qo` on every soname); package built and launched in a clean container |
-| Debian / Ubuntu | `libmpv2 mpv libegl1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3 libx11-6 libx11-xcb1 libxcursor1 libxi6` + `mesa-vulkan-drivers`; optional `xdg-desktop-portal fonts-noto-core` | names exist in debian:stable (apt-cache); install not run end to end |
-| Fedora | `mpv-libs mpv libglvnd-egl vulkan-loader libwayland-client libwayland-egl libxkbcommon libxkbcommon-x11 libxcb dbus-libs libX11 libX11-xcb libXcursor libXi` + `mesa-vulkan-drivers`; optional `xdg-desktop-portal google-noto-sans-fonts` | names exist in fedora:latest (dnf repoquery); mpv itself comes from RPM Fusion |
+| Debian / Ubuntu | `libmpv2 libegl1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3 libx11-6 libx11-xcb1 libxcursor1 libxi6` + `mesa-vulkan-drivers \| vulkan-icd`; Recommends `mpv`; optional `xdg-desktop-portal fonts-noto-core` | VERIFIED: the .deb installs with `apt install ./nocturne_*.deb` in clean debian:stable (13), ubuntu:24.04 and ubuntu:latest (26.04); see "Linux packages" |
+| Fedora | `mpv-libs libglvnd-egl vulkan-loader libwayland-client libwayland-egl libxkbcommon libxkbcommon-x11 libxcb dbus-libs libX11 libX11-xcb libXcursor libXi`; Recommends `mesa-vulkan-drivers mpv`; optional `xdg-desktop-portal google-noto-sans-fonts` | VERIFIED: the .rpm installs with `dnf install ./nocturne-*.rpm` in clean fedora:latest (45) with RPM Fusion free enabled (mpv-libs lives there) |
 | openSUSE | `libmpv2 mpv libglvnd libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3 libX11-6 libX11-xcb1 libXcursor1 libXi6` + `libvulkan_intel`/`libvulkan_radeon`; optional `xdg-desktop-portal google-noto-sans-fonts` | names exist in Tumbleweed (zypper info); `libEGL.so.1` is provided by `libglvnd` (the old `libEGL1` name does not exist) |
 
 How each artifact handles them:
@@ -64,6 +73,8 @@ How each artifact handles them:
   `pkg_for` function at the top of the script, the single place to edit. `--no-deps` skips this; `NOCTURNE_YES=1`
   makes the package manager non-interactive; an unrecognised distribution fails with the list of what is missing;
   `DESTDIR` (staging) skips dependency handling.
+- **.deb / .rpm**: `Depends`/`Requires` list the dlopen()ed libraries by hand (the package tools only see the linked ones);
+  libmpv comes from the distribution (`libmpv2` / `mpv-libs`). See "Linux packages".
 - **AppImage**: not provided (see below).
 
 The tarball binary is built on a rolling distribution and is not an "any Linux" artifact.
@@ -77,6 +88,11 @@ scripts/package.sh tarball
 # Install from the extracted tarball (PREFIX default /usr/local, DESTDIR optional)
 sudo ./install.sh            # installs missing runtime libraries first (--no-deps to skip); or: DESTDIR=/tmp/root PREFIX=/usr ./install.sh
 sudo ./install.sh uninstall
+
+# .deb (debian:stable container), .rpm (fedora:latest container), AppImage (debian:bookworm container, evaluation only):
+scripts/package.sh deb        # -> dist/nocturne_<ver>_amd64.deb
+scripts/package.sh rpm        # -> dist/nocturne-<ver>-1.fc<N>.x86_64.rpm
+scripts/package.sh appimage   # -> dist/NOCTURNE-<ver>-x86_64.AppImage (not a release artifact, see below)
 
 # Arch package (set the real sha256 first; builds from the GitHub source archive of the v<version> tag)
 cd packaging && makepkg -si
@@ -108,12 +124,90 @@ Release procedure:
    runs `repo-add --sign --remove`, prunes to the newest two versions and verifies every signature.
 3. Deploy the website. The server never holds the key.
 
-## Not shipped
+## Linux packages (.deb, .rpm)
 
-AppImage: not provided yet (planned, to be evaluated: [PLATFORMS.md](PLATFORMS.md)). libmpv's closure is about 205 shared libraries (about 240 MB uncompressed) including GPL
-codecs, the GPU stack (libEGL/libvulkan and driver ICDs) must come from the host and cannot be bundled, and a
-binary built on a rolling glibc would not be self-contained on older systems. Use the tarball or the distribution
-package, which take libmpv from the system.
+Both are built **inside a container of the target distribution** (docker, no sudo, no hosted CI), so the binary links
+against that distribution's glibc; the working tree is mounted read-only. rustup installs the stable toolchain inside
+the container; the cargo registry and target directory live in a docker volume (`nocturne-deb-cache`,
+`nocturne-rpm-cache`, removed at the end unless `KEEP_CACHE=1`). A cold build takes about 7 minutes on 16 cores, a
+cached relink about 2. Build dependencies: a C toolchain, `pkg-config`, `libdbus-1-dev`/`dbus-devel` and
+`libegl-dev`/`libglvnd-devel` (the player links `libEGL` at build time, `#[link(name = "EGL")]`, so it is a linked
+dependency, not only a dlopen one; libmpv is not needed to build).
+
+| | `scripts/package-deb.sh` | `scripts/package-rpm.sh` (`packaging/nocturne.spec`) |
+|---|---|---|
+| Build image | `debian:stable` (13 "trixie", glibc 2.41) | `fedora:latest` (45) |
+| Artifact | `dist/nocturne_<ver>_amd64.deb`, 9.4 MB, installed 31.7 MB | `dist/nocturne-<ver>-1.fc45.x86_64.rpm`, 10.0 MB |
+| glibc floor | `libc6 (>= 2.39)` from `dpkg-shlibdeps`: Debian 13, Ubuntu 24.04 and newer. Debian 12 / Ubuntu 22.04 are not supported by this build | the Fedora release it was built on or newer (rpm adds the `libc.so.6(GLIBC_x)` requires itself) |
+| Linked libs (automatic) | `libc6 libdbus-1-3 libgcc-s1 libegl1` via `dpkg-shlibdeps` | rpm's soname requires |
+| dlopen()ed libs (by hand) | `libmpv2 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libx11-6 libx11-xcb1 libxcursor1 libxi6 libxcb1`, `mesa-vulkan-drivers \| vulkan-icd` | `mpv-libs vulkan-loader libwayland-client libwayland-egl libxkbcommon libxkbcommon-x11 libX11 libX11-xcb libXcursor libXi libxcb libglvnd-egl dbus-libs` |
+| Recommends | `mpv` (external fallback), `gnome-keyring \| kwalletmanager \| keepassxc`, `xdg-desktop-portal`, `fonts-noto-core` | `mesa-vulkan-drivers mpv xdg-desktop-portal google-noto-sans-fonts gnome-keyring` |
+| libmpv | distribution `libmpv2` (Debian 13: 0.40, Ubuntu 24.04: 0.37, Ubuntu 26.04: newer) | `mpv-libs` from RPM Fusion free (0.41 on Fedora 45); Fedora's own repositories have no mpv |
+
+Contents of both: `/usr/bin/nocturne`, the desktop file, icons (48, 128, 256, 512 PNG and the SVG), AppStream metainfo,
+`LICENSE` and `THIRD_PARTY_NOTICES.md` (deb: `/usr/share/doc/nocturne/`, `copyright` is the GPL text; rpm:
+`/usr/share/licenses/nocturne/`). No maintainer scripts. The rpm builds no debuginfo package (the binary is already
+stripped by the release profile).
+
+The GPU driver is a distribution choice, so it is soft: the .deb accepts any `vulkan-icd` provider, the .rpm only
+Recommends `mesa-vulkan-drivers` (Fedora has no virtual name), so NVIDIA users are not forced to pull Mesa.
+
+Tested (2026-11-17, clean images, packages installed with `apt install ./x.deb` / `dnf install ./x.rpm`, nothing else
+added): the dependencies resolve; `ldd /usr/bin/nocturne` reports no missing library; every dlopen()ed soname is in
+`ldconfig -p`; started without a display, the app reaches the windowing stage and stops with winit's "neither
+WAYLAND_DISPLAY nor WAYLAND_SOCKET nor DISPLAY is set" panic, not a loader error (a panic instead of a friendly message
+is the known polish item).
+
+| Image | Package | Result |
+|---|---|---|
+| debian:stable (13, glibc 2.41) | deb | installs, ldd clean, reaches the no-display stage |
+| ubuntu:latest (26.04, glibc 2.43) | deb | same |
+| ubuntu:24.04 (glibc 2.39) | deb | same; its libmpv2 is 0.37, so video uses the external `mpv` (see the 0.40 note above) |
+| fedora:latest (45, glibc 2.44) + RPM Fusion free | rpm | installs, ldd clean, reaches the no-display stage |
+
+Not tested: a window or playback inside these containers (the Arch gate `scripts/test-playback.sh` does that for the
+Arch package), other Fedora releases, RHEL/Alma (no RPM Fusion mpv), openSUSE.
+
+## AppImage: evaluated, not shipped
+
+`scripts/package-appimage.sh` builds it (debian:bookworm container, hand-assembled AppDir plus `appimagetool`, which is
+downloaded unverified at build time) so the experiment is reproducible. It bundles the app and the `libmpv.so.2` closure
+(201 libraries: ffmpeg, libass, libplacebo, ...) and leaves glibc, libstdc++, the libGL/libEGL/libvulkan loaders, every GPU
+driver, libdrm/libgbm, libwayland-*, libX11, libxcb, libva/libvdpau and libxkbcommon to the host. `PROFILE=debug` makes a
+debug-binary variant (the player preview exists only in debug builds; testing only).
+
+Measured (2026-11-17): **107 MB** release AppImage (squashfs), 263 MB unpacked, against 9.4 MB for the .deb, which uses the
+distribution's libmpv. It starts on the Arch host.
+
+Findings:
+
+1. **No base is both glibc-old and libmpv-new.** The app needs libmpv >= 0.40 for in-window video (see above). Bookworm
+   (glibc 2.36) ships 0.35: the bookworm AppImage on the Arch host logs `embedded unavailable (mpv: init: error setting
+   option), using the external player` and uses the host `mpv` instead of its bundled libmpv. A base with mpv 0.40 is
+   trixie (glibc 2.41); its AppImage would run only on glibc >= 2.41 hosts, the ones that already have native packages.
+   The portability argument disappears.
+2. **Decoder hardware acceleration through the bundled libmpv works**: on the host (NVIDIA RTX 3060 + AMD Vega) the bundled
+   mpv 0.35.1 reports `hwdec-current = vaapi-copy` and `nvdec-copy` for a 1080p H.264 clip with `vo=null`, like the host
+   libmpv 0.41 (host libva and NVDEC are found). In-window rendering (render API + EGL, the app's real path) was tested
+   with a trixie-based debug AppImage (bundled libmpv 0.40, `IMG=debian:stable PROFILE=debug`, player preview on a 1080p clip,
+   `scripts/run-isolated.sh`): it logs `hwdec-current nvdec` on the NVIDIA GPU. The AMD iGPU path was not run.
+3. **The "from the host" libraries are a real requirement.** In a clean ubuntu:24.04 image the bundled libmpv has about
+   20 unresolved libraries (`libva*`, `libvdpau`, `libXv`, `libXrandr`, `libXss`, `libXinerama`, `libXpresent`,
+   `libwayland-cursor`, `libxcb-shape`, `libGL`, `libdrm`, `libgbm`); the app itself needs `libEGL` before it starts at
+   all. A desktop install has them, a minimal one does not, and libmpv then fails to load. The script bundles the X11
+   extension libraries after this finding and keeps libva/libvdpau on the host on purpose (a bundled old libva can reject
+   a newer host VA-API driver).
+4. **`LD_LIBRARY_PATH` leaks.** `AppRun` has to put the bundled libraries on `LD_LIBRARY_PATH` because the app opens
+   `libmpv.so.2` by soname; the external `mpv` fallback and any child process inherit it and may load the bundled ffmpeg
+   instead of the host's. A code change (an explicit libmpv path, e.g. `NOCTURNE_LIBMPV`) would avoid it.
+5. The bundled `libfontconfig` (Debian 12) warns about the host's newer `fonts.conf` (`invalid constant used : math`):
+   harmless, typical of mixing bundled and host data.
+
+**Recommendation: do not ship an AppImage in 0.4.** Cost: about 100 MB per release plus a downloaded build tool; benefit:
+nothing the .deb, .rpm, Arch package and tarball do not give, because the app needs a libmpv newer than any glibc-old
+distribution carries and the GPU stack must come from the host anyway. Revisit if the libmpv requirement is relaxed and
+the maintainer wants a one-file download for distributions without a native package; a Flatpak (the runtime supplies
+mpv-compatible ffmpeg and the GL/Vulkan stack) is the better "any distribution" format and is the one to evaluate next.
 
 ## Checks
 

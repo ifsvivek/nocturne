@@ -118,6 +118,8 @@ pub enum Key {
     AbLoop,
     Mini,
     Favorite,
+    /// Open (or close) a menu from the keyboard or a gamepad button.
+    Menu(Pop),
 }
 
 /// Player-page key map. `k` is the UI's key name; `shift`/`ctrl` are the held modifiers.
@@ -126,6 +128,8 @@ pub fn key(k: &str, shift: bool, ctrl: bool) -> Option<Key> {
         ("s", true) => Key::Screenshot,
         (_, true) => return None,
         ("space", _) => Key::Toggle,
+        ("left", _) if shift => Key::Seek(-30.0),
+        ("right", _) if shift => Key::Seek(30.0),
         ("left", _) => Key::Seek(-10.0),
         ("right", _) => Key::Seek(10.0),
         ("up", _) => Key::Volume(5.0),
@@ -135,6 +139,10 @@ pub fn key(k: &str, shift: bool, ctrl: bool) -> Option<Key> {
         ("p", _) => Key::Prev,
         ("u", _) => Key::Queue,
         ("a", _) => Key::AbLoop,
+        ("t", _) => Key::Menu(Pop::Subs),
+        ("v", _) => Key::Menu(Pop::Audio),
+        ("o" | "menu", _) => Key::Menu(Pop::Settings),
+        ("q", _) => Key::Menu(Pop::Quality),
         ("h", _) => Key::Favorite,
         ("s", _) => Key::Stop,
         ("f", _) => Key::Fullscreen,
@@ -1010,7 +1018,7 @@ mod tests {
         assert_eq!(key("right", false, false), Some(Key::Seek(10.0)));
         assert_eq!(key("f", false, false), Some(Key::Fullscreen));
         assert_eq!(key("escape", false, false), Some(Key::Back));
-        assert_eq!(key("q", false, false), None);
+        assert_eq!(key("j", false, false), None);
         assert_eq!(bump_volume(128.0, 5.0), 130.0);
         assert_eq!(bump_volume(2.0, -5.0), 0.0);
     }
@@ -1233,6 +1241,13 @@ mod tests {
             "ctrl+s is not stop"
         );
         assert_eq!(key("/", true, false), Some(Key::Help));
+        assert_eq!(key("left", true, false), Some(Key::Seek(-30.0)));
+        assert_eq!(key("right", true, false), Some(Key::Seek(30.0)));
+        assert_eq!(key("t", false, false), Some(Key::Menu(Pop::Subs)));
+        assert_eq!(key("v", false, false), Some(Key::Menu(Pop::Audio)));
+        assert_eq!(key("o", false, false), Some(Key::Menu(Pop::Settings)));
+        assert_eq!(key("menu", false, false), Some(Key::Menu(Pop::Settings)));
+        assert_eq!(key("q", false, false), Some(Key::Menu(Pop::Quality)));
         assert_eq!(key("/", false, false), None);
         assert_eq!(key("pagedown", false, false), Some(Key::Chapter(1)));
         assert_eq!(key("a", false, true), None);

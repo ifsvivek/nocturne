@@ -228,6 +228,7 @@ impl Player {
             Key::AbLoop => return self.pop_act(MenuAct::AbLoop),
             Key::Mini => return self.toggle_mini(),
             Key::Favorite => self.toggle_favorite(),
+            Key::Menu(p) => self.toggle_pop(p),
         }
         Task::none()
     }

@@ -158,7 +158,7 @@ impl App {
                 self.trakt.open = false;
                 self.trakt.abort();
             }
-            Msg::Id(s) => self.trakt.id = s,
+            Msg::Id(s) => self.trakt.id = nocturne_core::secret::clean(&s),
             Msg::Connect => return self.trakt_connect(),
             Msg::Reopen => {
                 if let Stage::Browser(u) = &self.trakt.stage {

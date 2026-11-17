@@ -10,6 +10,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
   per-OS config/data/cache paths, keyring backends, named-pipe mpv IPC, per-OS libmpv loading, single-instance guard,
   and playback through the external mpv window. Linux behaviour is unchanged. `scripts/check-cross.sh` runs the
   Windows/macOS compile checks in Docker ([PLATFORMS.md](docs/PLATFORMS.md)).
+- Couch mode (Settings > Living room: Off / On / Automatic): a 10-foot layout for the sofa and a TV. The whole UI grows
+  (type, targets, spacing), the focus ring is thicker and glows, the header drops its pointer-sized buttons, and a hint bar
+  names the buttons (pad buttons with a gamepad, key names otherwise). Gamepad support (`gilrs`, a background thread only
+  while the mode is not Off): D-pad or left stick move (with repeat), A selects (play / pause in the player), B goes back,
+  Y searches (audio menu in the player), X favourites (subtitles menu in the player), Start opens the account menu
+  (settings menu in the player), LB / RB page (previous / next item in the player), LT / RT seek 30 s. Automatic turns on
+  while a gamepad is connected or the window fills a 1900 px+ display. Remote / media keys (play-pause, next, previous,
+  back, menu) use the same key path as the keyboard.
+- Player menus by keyboard: T Subtitles, V Audio, O (or Menu) Settings, Q Quality; Shift+Left / Right seeks 30 s.
+- Header links that scroll sideways show a fade and chevron at the hidden end (click to page) and the strip follows the
+  focused link.
+- Pasted API keys (TMDB, OpenSubtitles, Trakt client id) and the extra-header value lose surrounding whitespace and one pair
+  of quotes.
+- Smart collections (header: Smart): saved rules over everything from every source, e.g. unwatched 4K movies, added this week,
+  rated 8+ dramas from the 90s. Rules: kind, watched / unwatched / in progress, genres, year range, rating, added within N
+  days, resolution (servers only), runtime, sources, order and limit. Five starters, then create, edit, delete and reorder
+  your own with a live match count. Stored only in `smart.json` on this computer; nothing is sent to a server. Limits:
+  resolution needs a server (local folders sit those rules out); "not watched in a year" and "new episodes" need data the
+  list queries do not return and are not offered.
 - One watched state across sources (Settings > Watched state, opt-in, off by default): marking a title watched or finishing
   it also marks its copies on your other sources, found by IMDb / TMDB / TVDB id (episodes: series ids plus season and
   episode number), never by title alone. Server copies only change when server changes are on (each write goes to that

@@ -142,6 +142,16 @@ pub enum Message {
     /// A decoded image for cache `key` (`bool`: the hero cache).
     Image(String, bool, Option<Handle>),
     Scale(f32),
+    /// Re-read the window scale (after Couch mode changed the app scale).
+    Rescale,
+    /// The header link strip scrolled: offset, viewport width, content width.
+    NavScrolled(f32, f32, f32),
+    /// A chevron on the link strip: page it left (-1) or right (+1).
+    NavPage(f32),
+    /// Gamepad: connected count / a button press.
+    Pad(crate::pad::Ev),
+    /// Logical size of the monitor under the window (Automatic couch mode).
+    Monitor(Option<Size>),
     /// Something done to a cell of the page in view.
     Cell(At, CellAct),
     /// Play this item (a series resolves to its next episode first).
@@ -208,6 +218,7 @@ pub enum Message {
     Folder(super::folders::Msg),
     Online(super::online::Msg),
     Trakt(super::trakt::Msg),
+    Smart(super::smart::Msg),
     Cascade(super::cascade::Msg),
     Downloads(super::downloads::Msg),
     CycleFilter,

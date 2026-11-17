@@ -17,6 +17,13 @@ pub fn on_boot() -> Task<Message> {
             "open-admin" => Some(Message::OpenAdmin),
             "run-setup" => Some(Message::RunSetup),
             "open-settings" => Some(Message::MenuAct(crate::app::message::AcctAct::Settings)),
+            "smart-menu" => Some(Message::Smart(crate::app::smart::Msg::Menu)),
+            "smart-manage" => Some(Message::Smart(crate::app::smart::Msg::Manage)),
+            "smart-new" => Some(Message::Smart(crate::app::smart::Msg::New)),
+            n if n.starts_with("smart-open-") => n[11..]
+                .parse()
+                .ok()
+                .map(|i| Message::Smart(crate::app::smart::Msg::Open(i))),
             "open-trakt" => Some(Message::Trakt(crate::app::trakt::Msg::Open)),
             // `open-global-0`: the header's n-th merged link (Movies, Shows, ...).
             "open-movies" => Some(Message::OpenKind(nocturne_core::unified::UKind::Movies)),
@@ -41,6 +48,16 @@ pub fn on_boot() -> Task<Message> {
             Message::Key(key),
         ))
     });
+    // `NOCTURNE_PAD="pads1@500,down@2000,a@3000"`: gamepad events injected the same way (a pad is not
+    // guaranteed on the test machine): `pads<N>` = N connected, else a button name (see pad::parse).
+    let pad = std::env::var("NOCTURNE_PAD").unwrap_or_default();
+    let pad = pad.split(',').filter_map(|k| {
+        let (name, ms) = k.split_once('@')?;
+        Some(crate::task::after(
+            Duration::from_millis(ms.parse().ok()?),
+            Message::Pad(crate::pad::parse(name)?),
+        ))
+    });
     let snaps = std::env::var_os("NOCTURNE_SNAP").is_some().then(|| {
         delays().into_iter().enumerate().map(|(n, ms)| {
             crate::task::after(Duration::from_millis(ms), n).then(|n| {
@@ -50,7 +67,7 @@ pub fn on_boot() -> Task<Message> {
             })
         })
     });
-    Task::batch(keys.chain(snaps.into_iter().flatten()))
+    Task::batch(keys.chain(pad).chain(snaps.into_iter().flatten()))
 }
 
 #[cfg(not(debug_assertions))]
