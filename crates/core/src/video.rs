@@ -173,8 +173,9 @@ macro_rules! both {
 }
 
 impl Playback {
-    pub fn load(&self, url: &str, headers: Option<&str>) -> Result<()> {
-        both!(self, p => p.load(url, headers))
+    pub fn load(&self, url: &str, headers: &[String]) -> Result<()> {
+        let h: Vec<&str> = headers.iter().map(String::as_str).collect();
+        both!(self, p => p.load(url, &h))
     }
     pub fn toggle(&self) -> Result<()> {
         both!(self, p => p.toggle())

@@ -158,7 +158,7 @@ fn run(url: &str, st: &Stats, b: Buffering, pre: &[(&str, &str)]) -> Report {
         p.command(&["set", k, v]).unwrap();
     }
     p.command(&["set", "speed", "4"]).unwrap();
-    p.load(url, None).unwrap();
+    p.load(url, &[]).unwrap();
 
     let t0 = Instant::now();
     let (mut max_buf, mut last_bytes, mut read_events, mut samples) = (0f64, 0u64, 0, 0);

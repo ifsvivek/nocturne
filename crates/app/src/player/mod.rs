@@ -39,7 +39,7 @@ use nocturne_core::player_logic::{
 };
 use nocturne_core::player_mpris::{Cmd, Mpris, Snap};
 use nocturne_core::source::{Art, Kind, Media, ProviderIds, SourceId};
-use nocturne_core::sync::{Reporter, Tick as SyncTick, ticks};
+use nocturne_core::sync::{PlayInfo, PlayMethod, Reporter, Tick as SyncTick, ticks};
 use nocturne_core::syncplay::GroupReq;
 use nocturne_core::video::{
     self, Aspect, AutoHide, MenuAct, Playback, PlayerHooks, PlayerPrefs, Pop, Repeat, Settings,
@@ -164,7 +164,7 @@ pub struct Player {
     pub qi: usize,
     pub playback: Option<Playback>,
     /// Stream waiting for the backend to exist (the window handles arrive asynchronously).
-    pending: Option<(String, Option<String>)>,
+    pending: Option<(String, Vec<String>)>,
     /// The target of the current item as the backend resolved it.
     target: Option<PlayTarget>,
     pub embed: bool,
@@ -564,11 +564,11 @@ impl Player {
                 }
             }
         }
-        if let Some((url, header)) = self.pending.take() {
+        if let Some((url, headers)) = self.pending.take() {
             if self.group {
                 self.setp("pause", "yes");
             }
-            if self.start(&url, header.as_deref()).is_err() {
+            if self.start(&url, &headers).is_err() {
                 self.outcome_failed_soon();
             }
         }
@@ -603,9 +603,9 @@ impl Player {
         }
     }
 
-    fn start(&self, url: &str, header: Option<&str>) -> Result<(), ()> {
+    fn start(&self, url: &str, headers: &[String]) -> Result<(), ()> {
         match &self.playback {
-            Some(p) => p.load(url, header).map_err(|_| ()),
+            Some(p) => p.load(url, headers).map_err(|_| ()),
             None => Err(()),
         }
     }
@@ -637,37 +637,37 @@ impl Player {
     }
 
     /// (url, header) of the current item at the current quality.
-    fn stream(&self) -> Option<(String, Option<String>)> {
+    fn stream(&self) -> Option<(String, Vec<String>)> {
         if let Some((c, _)) = self.jf()
             && let Some(t) = self
                 .set
                 .quality
                 .transcode(&self.source_id(), &self.play_session)
         {
-            return Some((
-                c.transcode_url(&self.media.id, &t),
-                Some(format!("Authorization: {}", c.auth_header())),
-            ));
+            // Same headers as the direct stream: the token first, then the server's extra one.
+            let mut headers = vec![format!("Authorization: {}", c.auth_header())];
+            headers.extend(c.extra_header_line());
+            return Some((c.transcode_url(&self.media.id, &t), headers));
         }
         match self.target.as_ref()? {
-            PlayTarget::Url { url, headers } => Some((url.clone(), headers.first().cloned())),
-            PlayTarget::File(p) => Some((p.to_string_lossy().into_owned(), None)),
+            PlayTarget::Url { url, headers } => Some((url.clone(), headers.clone())),
+            PlayTarget::File(p) => Some((p.to_string_lossy().into_owned(), vec![])),
         }
     }
 
     /// Hands the current item's stream to the backend (or parks it until the backend exists).
     fn load_current(&mut self) -> Task<Msg> {
-        let Some((url, header)) = self.stream() else {
+        let Some((url, headers)) = self.stream() else {
             return self.close(true);
         };
         if self.playback.is_none() {
-            self.pending = Some((url, header));
+            self.pending = Some((url, headers));
             return Task::none();
         }
         if self.group {
             self.setp("pause", "yes"); // held until the group says go
         }
-        if self.start(&url, header.as_deref()).is_err() {
+        if self.start(&url, &headers).is_err() {
             return self.fail();
         }
         Task::none()
@@ -734,6 +734,7 @@ impl Player {
             self.source_override = None;
             self.target = None;
         }
+        self.report_info();
         let mut tasks = vec![];
         let backend = self.backend_of(&m);
         if first {
@@ -841,11 +842,30 @@ impl Player {
             };
         }
         self.play_item = Some(p);
+        self.report_info();
         self.set.can_quality = true;
         self.name_and_ext_subs();
     }
 
     // ---- state helpers ----
+
+    /// Tells the account hooks how this item is delivered, so progress reports are truthful.
+    fn report_info(&self) {
+        let Some(h) = &self.ctx.hooks else { return };
+        let method = match self.set.method {
+            m if m == Method::DirectPlay.label() => PlayMethod::DirectPlay,
+            m if m == Method::DirectStream.label() => PlayMethod::DirectStream,
+            _ => PlayMethod::Transcode,
+        };
+        h.play_info(
+            &self.media.id,
+            PlayInfo {
+                method,
+                media_source_id: Some(self.source_id()),
+                play_session_id: self.transcoding.then(|| self.play_session.clone()),
+            },
+        );
+    }
 
     pub fn osd(&mut self, text: impl Into<String>) {
         self.osd = Some((text.into(), Instant::now()));
@@ -1422,6 +1442,7 @@ impl Player {
             None => self.set.quality.method(None, None),
         }
         .label();
+        self.report_info();
         self.seek_on_load = Some(pos);
         self.loaded = false;
         self.ext_added = false;

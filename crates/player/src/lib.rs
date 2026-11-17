@@ -208,12 +208,13 @@ impl Player {
         &self.rx
     }
 
-    /// Replace the current file. `headers` is a full header line (e.g. `Authorization: ...`)
-    /// sent over IPC as `http-header-fields`, so credentials never reach the command line or URL.
+    /// Replace the current file. Each of `headers` is a full header line (e.g. `Authorization: ...`)
+    /// sent over IPC as `http-header-fields`, so credentials never reach the command line, the URL
+    /// or any log (nothing here prints them).
     /// Respawns mpv if it died.
-    pub fn load(&self, url: &str, headers: Option<&str>) -> Result<()> {
+    pub fn load(&self, url: &str, headers: &[&str]) -> Result<()> {
         let mut cmds = vec![json!(["change-list", "http-header-fields", "clr", ""])];
-        if let Some(h) = headers {
+        for h in headers {
             // `append` adds one list item verbatim (no splitting on ',').
             cmds.push(json!(["change-list", "http-header-fields", "append", h]));
         }

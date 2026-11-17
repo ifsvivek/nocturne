@@ -312,12 +312,12 @@ impl EmbeddedPlayer {
         &self.rx
     }
 
-    /// Same contract as [`crate::Player::load`]: `headers` is a full header line, set through the
-    /// `http-header-fields` list (`change-list` appends verbatim, no splitting on ',').
-    pub fn load(&self, url: &str, headers: Option<&str>) -> Result<()> {
+    /// Same contract as [`crate::Player::load`]: each of `headers` is a full header line, appended to
+    /// the `http-header-fields` list (`change-list` appends verbatim, no splitting on ',').
+    pub fn load(&self, url: &str, headers: &[&str]) -> Result<()> {
         let c = |n: &str, a: &[&str]| self.mpv.command(n, a).map_err(e);
         c("change-list", &["http-header-fields", "clr", ""])?;
-        if let Some(h) = headers {
+        for h in headers {
             c("change-list", &["http-header-fields", "append", h])?;
         }
         c("loadfile", &[url, "replace"])
