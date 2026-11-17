@@ -1494,8 +1494,9 @@ impl App {
                 _ => Task::none(),
             };
         }
-        // The player page takes every key first (the subtitle finder over it takes Esc).
-        if self.player.is_some() && self.online.finder_open() {
+        // The subtitle finder is modal on every page (over the player and over a detail page): it takes Esc and
+        // swallows the rest, so keys never act on the page underneath.
+        if self.online.finder_open() {
             if k.name == "escape" {
                 return self.online_msg(online::Msg::CloseFinder);
             }
