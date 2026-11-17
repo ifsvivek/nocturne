@@ -275,6 +275,18 @@ impl UserClient {
 
     // ---- PLAYBACK REPORTING (all WRITE) ----
 
+    /// WRITE `POST /Sessions/Capabilities/Full`: what this session can do (remote control on or
+    /// off). Session-level; no library data changes. Body from `nocturne_core::remote::capabilities`.
+    pub async fn post_capabilities(&self, body: Value) -> Result<()> {
+        self.run(
+            Method::POST,
+            &["Sessions", "Capabilities", "Full"],
+            &[],
+            Some(body),
+        )
+        .await
+    }
+
     /// WRITE `POST /Sessions/Playing`.
     pub async fn report_playback_start(&self, r: &PlaybackReport) -> Result<()> {
         self.run(

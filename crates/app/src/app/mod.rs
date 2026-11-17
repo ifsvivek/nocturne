@@ -15,6 +15,7 @@ pub mod message;
 mod onboard;
 mod play;
 mod preview;
+mod remote;
 mod search;
 mod settings;
 mod sources;
@@ -207,6 +208,8 @@ pub struct App {
     /// Sources the SyncPlay targets were built for, and the writes switch it was last given.
     sp_ids: Vec<SourceId>,
     sp_writes: bool,
+    /// Remote-control sockets, one per signed-in server (empty unless the setting is on).
+    remote: HashMap<SourceId, remote::RemoteLink>,
     queue: crate::queue::AudioQueue,
     queue_open: bool,
     /// The next player opened restores the kept music queue.
@@ -309,6 +312,7 @@ impl App {
             sp: crate::syncplay::SyncPlay::new(vec![], false),
             sp_ids: vec![],
             sp_writes: false,
+            remote: HashMap::new(),
             queue: Default::default(),
             queue_open: false,
             restore_q: false,
@@ -426,7 +430,12 @@ impl App {
                 self.now = now;
                 self.sync_detail();
                 self.sync_ob();
-                Task::batch([self.tick(), self.sync_extras(), crate::snap::poll()])
+                Task::batch([
+                    self.tick(),
+                    self.sync_extras(),
+                    self.sync_remote(),
+                    crate::snap::poll(),
+                ])
             }
             Message::Frame(now) => {
                 self.now = now;
@@ -637,6 +646,8 @@ impl App {
             Message::OpenAdmin => self.open_admin(),
             Message::Admin(m) => self.admin_msg(m),
             Message::SyncPlay(m) => self.sp_msg(m),
+            Message::RemoteItems(l, i, s, q) => self.remote_items(l, i, s, q),
+            Message::RemoteTarget(l, i, s, r) => self.remote_target(l, i, s, r),
             Message::Queue(m) => self.queue_msg(m),
             Message::Devices(m) => {
                 if self.devices.as_mut().is_some_and(|d| d.update(m)) {
