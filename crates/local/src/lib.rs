@@ -368,13 +368,15 @@ impl Library {
             Some(v) => serde_json::from_value(store::migrate(v)?)?,
             None => Index::default(),
         };
-        Ok(Library {
+        let mut lib = Library {
             overrides: store::load(&dir.join("overrides.json"))?.unwrap_or_default(),
             state: store::load(&dir.join("state.json"))?.unwrap_or_default(),
             online: Library::load_online(&dir)?,
             dir,
             index,
-        })
+        };
+        lib.bump_next_id();
+        Ok(lib)
     }
 
     /// Scan `roots` (the complete current list of folders), update the index and save it. Auto-purges entries
@@ -390,7 +392,9 @@ impl Library {
         if !rep.cancelled {
             self.purge(|m| now.saturating_sub(m) > PURGE_AFTER_SECS)?;
         }
+        // Index first: it holds the id counter, which must be on disk before anything refers to new ids.
         self.save_index()?;
+        self.online_reconcile()?;
         Ok(rep)
     }
 
@@ -398,6 +402,7 @@ impl Library {
     pub fn purge_missing(&mut self) -> Result<usize, Error> {
         let n = self.purge(|_| true)?;
         self.save_index()?;
+        self.online_reconcile()?;
         Ok(n)
     }
 
@@ -416,10 +421,10 @@ impl Library {
         for id in &gone {
             self.overrides.items.remove(id);
             self.state.items.remove(id);
-            self.forget_online_item(*id);
         }
         self.save_overrides()?;
         self.save_state()?;
+        self.forget_online_items(&gone)?;
         Ok(gone.len())
     }
 

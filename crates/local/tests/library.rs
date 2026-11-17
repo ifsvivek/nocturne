@@ -640,3 +640,63 @@ fn online_layer_sits_between_filename_and_nfo() {
     assert!(!f.data.join("online-art/h.jpg").exists());
     assert!(!f.media.join("online-art").exists());
 }
+
+#[test]
+fn stale_online_entries_never_attach_to_new_files() {
+    use nocturne_local::{OnlineMeta, online};
+    let f = fx();
+    let a = put(&f.media, "Movies/Heat (1995)/Heat (1995).mkv");
+    let b = put(&f.media, "Movies/Alien (1979)/Alien (1979).mkv");
+    put(&f.media, "Movies/Keep (2000)/Keep (2000).mkv"); // a root that is not empty counts as mounted
+    let mut lib = Library::open(&f.data).unwrap();
+    scan(&mut lib, &[&f.media]);
+    let old = [id_of(&lib, "Heat"), id_of(&lib, "Alien")];
+    for id in old {
+        let m = OnlineMeta {
+            provider: "tmdb".into(),
+            fetched: 10,
+            title: Some("Stale".into()),
+            poster: Some(format!("p{}.jpg", id.0)),
+            ..Default::default()
+        };
+        let art = [(format!("p{}.jpg", id.0), vec![1])];
+        lib.put_online(&online::item_key(id), "x", Some(m), vec![], &art)
+            .unwrap();
+    }
+    fs::remove_file(a).unwrap();
+    fs::remove_file(b).unwrap();
+    scan(&mut lib, &[&f.media]);
+    lib.purge_missing().unwrap();
+    assert!(
+        !f.data
+            .join(format!("online-art/p{}.jpg", old[0].0))
+            .exists(),
+        "art of purged items is swept"
+    );
+    // A scan killed before its index save leaves the old counter on disk while online.json has the ids.
+    let mut ix: serde_json::Value =
+        serde_json::from_slice(&fs::read(f.data.join("index.json")).unwrap()).unwrap();
+    ix["next_id"] = 1.into();
+    fs::write(f.data.join("index.json"), serde_json::to_vec(&ix).unwrap()).unwrap();
+    // The stale entries come back (as if the purge was lost too).
+    let mut lib = Library::open(&f.data).unwrap();
+    for id in old {
+        lib.put_online(&online::item_key(id), "x", None, vec![], &[])
+            .unwrap();
+    }
+    let mut lib = Library::open(&f.data).unwrap();
+    put(&f.media, "Movies/Ronin (1998)/Ronin (1998).mkv");
+    put(&f.media, "Movies/Fargo (1996)/Fargo (1996).mkv");
+    scan(&mut lib, &[&f.media]);
+    for t in ["Ronin", "Fargo"] {
+        let id = id_of(&lib, t);
+        assert!(!old.contains(&id), "ids are never reused");
+        assert!(lib.online_entry(&online::item_key(id)).is_none());
+        assert_eq!(lib.view(id).unwrap().details_from, None);
+    }
+    assert_eq!(
+        lib.online_targets(0).len(),
+        2,
+        "new files get a real lookup"
+    );
+}
