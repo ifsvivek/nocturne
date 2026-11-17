@@ -6,6 +6,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Remote control from other Jellyfin apps (opt-in, off by default, needs server changes on): this computer shows up as a
+  controllable device; Play, pause, seek, next / previous, stop, volume, mute, audio and subtitle track and on-screen
+  messages sent from another app are carried out ([WRITES.md](docs/WRITES.md)).
 - Player: a secondary subtitle (Subtitles menu, "Secondary" section; Shift+C cycles it; top by default).
 - Player: audio and subtitle language are remembered per show (and per movie) across restarts in a local file under
   `$XDG_DATA_HOME/nocturne/`, never on a server; "Original audio" is a choice in the Audio menu.

@@ -166,6 +166,14 @@ pub enum Message {
         f64,
         Result<nocturne_core::backend::PlayTarget, nocturne_core::backend::PlayError>,
     ),
+    /// Remote control: a `Play` from another app resolved to items (list, index, start seconds, queue only).
+    RemoteItems(Vec<Media>, usize, f64, bool),
+    RemoteTarget(
+        Vec<Media>,
+        usize,
+        f64,
+        Result<nocturne_core::backend::PlayTarget, nocturne_core::backend::PlayError>,
+    ),
     /// A message of detail page `pid`.
     Detail(u64, crate::detail::Msg),
     /// A write the detail page asked for finished.

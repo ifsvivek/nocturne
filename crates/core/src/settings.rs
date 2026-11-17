@@ -114,6 +114,10 @@ pub struct Settings {
     pub allow_server_writes: bool,
     /// Report playback progress to the server (only counts while `allow_server_writes` is on).
     pub sync_progress: bool,
+    /// Let other Jellyfin apps of the same account see and control playback on this computer
+    /// (posts this app's capabilities, listens for play/pause/seek/volume commands). Never in
+    /// developer-token mode. docs/WRITES.md.
+    pub remote_control: bool,
     /// Last first-run walkthrough the user finished or skipped (0 = never). Internal state, no Settings row.
     pub onboarding: u32,
     pub audio_lang: Option<String>,
@@ -148,6 +152,7 @@ impl Default for Settings {
             version: VERSION,
             allow_server_writes: false,
             sync_progress: false,
+            remote_control: false,
             onboarding: 0,
             audio_lang: None,
             sub_lang: None,
@@ -216,10 +221,10 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 18;
+pub const ROWS: usize = 19;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
-pub const PROFILE_ROW: usize = 17;
+pub const PROFILE_ROW: usize = 18;
 
 /// Section title shown above row `i`, if a section starts there.
 pub fn head(i: usize) -> Option<&'static str> {
@@ -228,7 +233,8 @@ pub fn head(i: usize) -> Option<&'static str> {
         2 => Some("Playback"),
         11 => Some("Home"),
         14 => Some("Appearance and storage"),
-        17 => Some("Profiles"),
+        17 => Some("Other devices"),
+        18 => Some("Profiles"),
         _ => None,
     }
 }
@@ -390,6 +396,11 @@ impl Settings {
                     .into(),
             ),
             r(
+                "Allow remote control from other devices",
+                "Other Jellyfin apps signed in as you can then see this computer and control playback on it. Off by default; needs server changes on.",
+                onoff(self.remote_control),
+            ),
+            r(
                 "Default profile",
                 "Opens at launch without asking. Ask every time shows Who's watching. Needs two or more profiles on this server.",
                 self.profiles.labels()[self.profiles.current()].clone(),
@@ -516,6 +527,7 @@ impl Settings {
                 let i = (i.unwrap_or(0) as i32 + d).rem_euclid(MOTION.len() as i32) as usize;
                 self.reduce_motion = MOTION[i].0;
             }
+            17 => self.remote_control ^= true,
             _ => {}
         }
     }
@@ -611,7 +623,7 @@ mod tests {
     #[test]
     fn defaults_write_nothing() {
         let s = Settings::default();
-        assert!(!s.allow_server_writes && !s.sync_progress);
+        assert!(!s.allow_server_writes && !s.sync_progress && !s.remote_control);
         assert!(s.autoplay_next && !s.auto_skip_intro);
         assert_eq!(s.rows().len(), ROWS);
     }
@@ -857,17 +869,17 @@ mod tests {
 
     #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 11, 14 and 17.
+        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17 and 18.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
         assert_eq!(scroll_child(11), 15);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 5);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 6);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));
         assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));
         assert_eq!(nav_row(3, "pagedown"), Some(8));
-        assert_eq!(nav_row(12, "pagedown"), Some(ROWS - 1));
+        assert_eq!(nav_row(15, "pagedown"), Some(ROWS - 1));
         assert_eq!(nav_row(3, "pageup"), Some(0));
         assert_eq!(
             (nav_row(7, "home"), nav_row(7, "end")),

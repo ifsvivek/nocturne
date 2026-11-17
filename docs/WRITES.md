@@ -17,12 +17,24 @@ the item came from (its **origin**) and uses that server's own account; no chang
 | Playlists you own: create, add items, remove, reorder, rename, delete | yes | a confirmation dialog; delete needs the typed name |
 | Authorize another device with a Quick Connect code | yes | the code shown on that device |
 | Watch together (SyncPlay): create a group, join one, start something for the group, play / pause / seek / skip, Ready and Buffering reports, latency Ping | yes | an explicit click or key (create, join); the rest only happens while in a group. Leaving is always allowed. Details in [syncplay.md](syncplay.md) |
+| Remote control from other Jellyfin apps (control this computer's playback) | yes | **Allow remote control from other devices** on (default off). A session-level call: it posts this app's capabilities (`POST /Sessions/Capabilities/Full`) and listens on the session WebSocket; it changes no library data. Details below |
 | Admin: scan library, run/stop tasks, users, sessions, server settings, transcoding settings, restart, API keys | yes | an administrator account and a confirmation dialog per action |
 | Admin: branding, task triggers, trickplay settings, libraries (add, remove, folders, options), plugins (enable, disable, uninstall, install) | yes | an administrator account and a confirmation dialog per action |
 | Admin: plugin repositories (add, enable, disable, remove), library rename, metadata / image fetcher order and enabling, local readers, per-user access and limits, user profile image (upload, remove) | yes | an administrator account and a confirmation dialog per action |
 | Admin: networking (ports, bind addresses, LAN networks, remote access, UPnP, discovery, IPv4 / IPv6) | yes | an administrator account, a confirmation dialog and the typed word NETWORK; wrong values can lock everyone out |
 | Admin: dashboards, activity, devices, logs, libraries (with display/NFO/trickplay flags), plugins and the plugin catalog, backups list, transcoding, trickplay and networking views, own sessions list | no (view only) | an administrator account |
 | Local library: mark watched, resume position, manual match, source preference, folders and sources list | no | nothing leaves your computer: stored in NOCTURNE's own files (`$XDG_DATA_HOME/nocturne/local/`, `sources.toml`) |
+
+**Remote control** (`remote_control`, default off; needs server changes on; never in developer API-key mode). When on, each
+signed-in server gets `POST /Sessions/Capabilities/Full` (`SupportsMediaControl`, playable types Video and Audio, the
+commands below), re-posted whenever the socket reconnects, and one WebSocket per server (separate from SyncPlay's). Other
+Jellyfin apps of the same account then see this computer as a device. They can send: Play (PlayNow / PlayNext / PlayLast
+with item ids, resolved through that server's own catalog), Playstate (PlayPause, Pause, Unpause, Stop, Seek, NextTrack,
+PreviousTrack, Rewind, FastForward) and GeneralCommand (SetVolume, Mute, Unmute, ToggleMute, SetAudioStreamIndex,
+SetSubtitleStreamIndex, DisplayMessage shown as a notice). Everything else is ignored. A command only drives the player: it
+never writes, never runs an admin action and never answers a confirmation dialog. Switching the setting off posts
+"not controllable" again (when server changes are on), closes the socket and ignores commands. With it off nothing is posted at
+all: the app does not announce itself as controllable.
 
 Local media files are never modified, moved, renamed or deleted by NOCTURNE, whatever the setting says; scanning only reads.
 

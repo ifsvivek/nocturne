@@ -38,6 +38,7 @@ use nocturne_core::player_logic::{
     self as pl, AudioPick, Method, Quality, Seg, SubPick, TrackChoice,
 };
 use nocturne_core::player_mpris::{Cmd, Mpris, Snap};
+use nocturne_core::remote;
 use nocturne_core::source::{Art, Kind, Media, ProviderIds, SourceId};
 use nocturne_core::sync::{PlayInfo, PlayMethod, Reporter, Tick as SyncTick, ticks};
 use nocturne_core::syncplay::GroupReq;
@@ -1566,6 +1567,70 @@ impl Player {
             }
             self.setp("pause", "no");
         }
+    }
+
+    // ---- remote control (another Jellyfin app; docs/WRITES.md) ----
+
+    /// Replace the queue and load `idx` from `start` seconds.
+    pub fn remote_load(&mut self, queue: Vec<Media>, idx: usize, start: f64) -> Task<Msg> {
+        let Some(m) = queue.get(idx).cloned() else {
+            return Task::none();
+        };
+        self.report_stop();
+        self.queue = queue;
+        self.qi = idx;
+        self.queue_open = false;
+        self.seek_on_load = Some(start);
+        self.setp("pause", "no"); // the last file may have ended paused
+        self.begin(m, false)
+    }
+
+    /// Start position for a player that was just opened by a remote Play.
+    pub fn remote_start(&mut self, start: f64) {
+        self.seek_on_load = Some(start);
+    }
+
+    pub fn remote_pause(&mut self, want_paused: bool) {
+        if self.paused() != want_paused {
+            self.toggle();
+        }
+    }
+
+    pub fn remote_volume(&mut self, pct: f64) {
+        self.muted_from = None;
+        if let Some(p) = &self.playback {
+            let _ = p.set_volume(pct);
+        }
+        self.osd(format!("Volume {}%", pct.round()));
+    }
+
+    /// `Some(b)`: set muted to `b`; `None`: toggle.
+    pub fn remote_mute(&mut self, want: Option<bool>) {
+        let muted = self.state.as_ref().is_some_and(|s| s.volume <= 0.0);
+        if want.is_none_or(|w| w != muted) {
+            self.mute();
+            let muted = !muted;
+            self.osd(if muted { "Muted" } else { "Unmuted" });
+        }
+    }
+
+    /// A Jellyfin stream index from the other app, mapped onto mpv's track list (when it can be).
+    pub fn remote_stream(&mut self, index: i64, kind: video::TrackKind) {
+        let streams = self
+            .play_item
+            .as_ref()
+            .and_then(|p| p.media_sources.first())
+            .map(|s| s.media_streams.as_slice())
+            .unwrap_or_default();
+        let Some(id) = remote::mpv_track(index, kind, streams, &self.tracks) else {
+            return;
+        };
+        let prop = if kind == video::TrackKind::Audio {
+            "aid"
+        } else {
+            "sid"
+        };
+        self.set_track(prop, id, "Changed from another device");
     }
 
     pub fn mute(&mut self) {
