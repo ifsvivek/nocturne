@@ -197,6 +197,15 @@ impl App {
     /// The value chip of Settings row `i`; for a multi-choice row it carries a caret and, while
     /// open, its drop-down menu (an overlay, so the page's scroll never clips it).
     fn setting_chip(&self, i: usize, value: &str, on: bool) -> El<'_> {
+        if i == s::TRAKT_ROW {
+            return value_chip(
+                &self.trakt_chip_label(),
+                false,
+                on,
+                false,
+                Message::SetRow(i),
+            );
+        }
         let Some((labels, cur)) = self.settings.choices(i) else {
             return switch(value == "On", on, Message::SetRow(i));
         };
@@ -328,6 +337,9 @@ impl App {
     /// Open the drop-down of a multi-choice row (a toggle row is flipped instead).
     pub(super) fn open_setting(&mut self, i: usize) -> Task<Message> {
         self.settings_sel = i;
+        if i == s::TRAKT_ROW {
+            return self.trakt_msg(super::trakt::Msg::Open);
+        }
         let Some((labels, cur)) = self.settings.choices(i) else {
             self.cycle_setting(i, 1);
             return Task::none();

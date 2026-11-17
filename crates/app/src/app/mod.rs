@@ -2,6 +2,7 @@
 //! (`crates/app/src/app.rs`).
 mod actions;
 mod browse;
+mod cascade;
 mod catalog;
 mod cells;
 mod details;
@@ -20,6 +21,7 @@ mod remote;
 mod search;
 mod settings;
 mod sources;
+mod trakt;
 
 use crate::account::{self, Accounts, Event as AcctEvent, devices, picker};
 use crate::keys::Key;
@@ -177,6 +179,7 @@ pub struct App {
     hdr: Option<sources::HeaderDlg>,
     folders: Option<folders::Folders>,
     online: online::State,
+    trakt: trakt::State,
     setup: Option<FirstRun>,
     account_back: Option<AccountBack>,
     phase: Phase,
@@ -290,6 +293,7 @@ impl App {
             hdr: None,
             folders: None,
             online: Default::default(),
+            trakt: Default::default(),
             setup: None,
             account_back: None,
             phase: Phase::Connecting,
@@ -588,6 +592,8 @@ impl App {
             Message::HeaderDone(id, r) => self.header_done(id, r),
             Message::Folder(m) => self.folder_msg(m),
             Message::Online(m) => self.online_msg(m),
+            Message::Trakt(m) => self.trakt_msg(m),
+            Message::Cascade(m) => self.cascade_msg(m),
             Message::CycleFilter => {
                 self.filter = self.filter.next(&self.catalog.priority());
                 self.stack.truncate(1);
@@ -708,7 +714,7 @@ impl App {
             Message::DiskReady(d) => {
                 self.disk = d;
                 self.apply_disk();
-                Task::none()
+                self.trakt_load()
             }
             Message::Noop => Task::none(),
         }
@@ -1463,6 +1469,12 @@ impl App {
             }
             return Task::none();
         }
+        if self.trakt.is_open() {
+            if key == "escape" {
+                return self.trakt_msg(trakt::Msg::Close);
+            }
+            return Task::none();
+        }
         if self.settings_open {
             return self.settings_key(key);
         }
@@ -1780,6 +1792,9 @@ impl App {
         }
         if self.online.finder_open() {
             layers.push(self.finder_dialog());
+        }
+        if self.trakt.is_open() {
+            layers.push(self.trakt_dialog());
         }
         if let Some((n, _)) = &self.note {
             layers.push(
