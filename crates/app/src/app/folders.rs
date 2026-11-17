@@ -114,7 +114,7 @@ fn check_folder(p: &Path) -> Result<(), &'static str> {
 
 impl App {
     /// The local library's profile and slot, created when it does not exist yet.
-    fn ensure_local_slot(&mut self) -> SourceId {
+    pub(super) fn ensure_local_slot(&mut self) -> SourceId {
         let id = self.sources.ensure_local();
         if self.catalog.slot(id).is_none() {
             let none = |_: &str, _: &str| None;

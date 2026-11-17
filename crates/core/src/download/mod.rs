@@ -218,6 +218,16 @@ impl Queue {
     }
 }
 
+/// `1.4 GB`, `820 MB`, `12 KB`.
+pub fn bytes(n: u64) -> String {
+    let n = n as f64;
+    match n {
+        n if n >= 1e9 => format!("{:.1} GB", n / 1e9),
+        n if n >= 1e6 => format!("{:.0} MB", n / 1e6),
+        n => format!("{:.0} KB", n / 1e3),
+    }
+}
+
 /// The episodes under a season or series (a movie or episode is just itself), in order.
 pub async fn expand(b: &Backend, m: &Media) -> Vec<Media> {
     match m.kind {
@@ -380,6 +390,13 @@ mod tests {
         let back = nocturne_local::nfo::parse(&x);
         assert_eq!(back.ids.imdb.as_deref(), Some("tt0104940"));
         assert_eq!(back.year, Some(1992));
+    }
+
+    #[test]
+    fn sizes_read_plainly() {
+        assert_eq!(bytes(18_400_000_000), "18.4 GB");
+        assert_eq!(bytes(820_000_000), "820 MB");
+        assert_eq!(bytes(12_000), "12 KB");
     }
 
     #[test]

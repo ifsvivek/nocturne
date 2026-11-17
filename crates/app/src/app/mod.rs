@@ -5,6 +5,7 @@ mod browse;
 mod catalog;
 mod cells;
 mod details;
+mod downloads;
 mod extras;
 mod folders;
 mod header;
@@ -177,6 +178,7 @@ pub struct App {
     hdr: Option<sources::HeaderDlg>,
     folders: Option<folders::Folders>,
     online: online::State,
+    dl: downloads::State,
     setup: Option<FirstRun>,
     account_back: Option<AccountBack>,
     phase: Phase,
@@ -290,6 +292,7 @@ impl App {
             hdr: None,
             folders: None,
             online: Default::default(),
+            dl: downloads::State::new(&catalog::app_data_dir()),
             setup: None,
             account_back: None,
             phase: Phase::Connecting,
@@ -437,6 +440,7 @@ impl App {
                     self.tick(),
                     self.sync_extras(),
                     self.sync_remote(),
+                    self.dl_tick(),
                     crate::snap::poll(),
                 ])
             }
@@ -588,6 +592,7 @@ impl App {
             Message::HeaderDone(id, r) => self.header_done(id, r),
             Message::Folder(m) => self.folder_msg(m),
             Message::Online(m) => self.online_msg(m),
+            Message::Downloads(m) => self.dl_msg(m),
             Message::CycleFilter => {
                 self.filter = self.filter.next(&self.catalog.priority());
                 self.stack.truncate(1);
@@ -967,6 +972,13 @@ impl App {
         let mut v = vec![
             ("Settings".to_string(), AcctAct::Settings),
             ("Sources".to_string(), AcctAct::Sources),
+            (
+                match self.dl.pending() {
+                    0 => "Downloads".to_string(),
+                    n => format!("Downloads ({n})"),
+                },
+                AcctAct::Downloads,
+            ),
         ];
         // The header's Admin link can sit past the edge of a narrow window; the menu always shows it.
         if self.admin && !self.dev {
@@ -1240,6 +1252,7 @@ impl App {
                 self.dd = None;
                 self.set_off = 0.0;
             }
+            AcctAct::Downloads => return self.dl_msg(downloads::Msg::Open),
             AcctAct::Devices => return self.open_devices(),
             AcctAct::Together => return self.sp_msg(crate::syncplay::Msg::OpenScreen),
             AcctAct::PlayQueue => self.queue_open = true,
@@ -1409,7 +1422,19 @@ impl App {
     // ---- keyboard ----
 
     fn on_key(&mut self, k: Key) -> Task<Message> {
-        // The player page takes every key first.
+        if self.dl.visible() {
+            if matches!(k.name.as_str(), "escape" | "backspace") {
+                self.dl.escape();
+            }
+            return Task::none();
+        }
+        // The player page takes every key first (the subtitle finder over it takes Esc).
+        if self.player.is_some() && self.online.finder_open() {
+            if k.name == "escape" {
+                return self.online_msg(online::Msg::CloseFinder);
+            }
+            return Task::none();
+        }
         if self.player.is_some() {
             return self.player_msg(player::Msg::Key(k));
         }
@@ -1783,6 +1808,9 @@ impl App {
         }
         if self.online.finder_open() {
             layers.push(self.finder_dialog());
+        }
+        if self.dl.visible() {
+            layers.push(self.downloads_dialog());
         }
         if let Some((n, _)) = &self.note {
             layers.push(

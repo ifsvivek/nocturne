@@ -249,6 +249,7 @@ impl Preview {
                 Outcome::Queue { tracks, next } => format!("queue {} next={next}", tracks.len()),
                 Outcome::OpenUrl(_) => "open-url".into(),
                 Outcome::FindSubs(_) => "find-subs".into(),
+                Outcome::Download(_) => "download".into(),
                 Outcome::Back => "back".into(),
             };
             eprintln!("OUTCOME {what}");

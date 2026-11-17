@@ -58,6 +58,7 @@ pub enum AcctAct {
     RemoveImage,
     Language,
     Sources,
+    Downloads,
     Admin,
 }
 
@@ -206,6 +207,7 @@ pub enum Message {
     /// Local folders screen.
     Folder(super::folders::Msg),
     Online(super::online::Msg),
+    Downloads(super::downloads::Msg),
     CycleFilter,
     OpenSources,
     /// Debug builds only: a window capture for `NOCTURNE_SNAP`.

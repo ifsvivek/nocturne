@@ -108,6 +108,7 @@ pub enum MoreAct {
     PlayNext,
     AddToQueue,
     FindSubs,
+    Download,
 }
 
 #[derive(Clone, Debug, PartialEq)]
