@@ -40,7 +40,8 @@ hint; admin dashboard session label.
 
 ## After 0.4 (not this release)
 
-0.5: UI refresh and user customization comparable to Jellyfin's display settings (themes / accent, home sections and
+0.5: per-server choice of interface: NOCTURNE's own UI or the server's own web UI (jellyfin-web in a web view, with
+playback handed to NOCTURNE's native mpv player); plus UI refresh and user customization comparable to Jellyfin's display settings (themes / accent, home sections and
 their order, density and scale, backdrops, per-library views). Wish list to be agreed with the maintainer first.
 
 ## Progress
