@@ -50,6 +50,10 @@ jobs:
             Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\NASM'
           }
       - name: Build (release, MSVC)
+        # Static CRT: a clean Windows PC without the Visual C++ redistributable must still start nocturne.exe
+        # (the runner has the redistributable installed, so CI alone would not catch a VCRUNTIME140.dll error).
+        env:
+          CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
         run: cargo build --release --locked -p nocturne-app --target x86_64-pc-windows-msvc
       - name: Fetch and verify mpv
         run: |
