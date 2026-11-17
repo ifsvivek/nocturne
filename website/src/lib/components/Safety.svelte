@@ -8,7 +8,9 @@
     ["Several servers", "Each server keeps its own sign-in, and a change goes only to the server the item came from.", "0.3.0"],
     ["Admin actions", "Also need an administrator account and a confirmation dialog."],
     ["Sign-in", "Every server token lives in the system keyring (Secret Service), never in a file."],
-    ["Telemetry", "None. No analytics, no crash reports. The app talks only to the servers you add."],
+    ["Online services", "Online details, subtitle search, Trakt and remote control are each off until you turn them on. For details only the title, year and ids are sent, never file names or paths; your keys stay in the keyring.", "0.4.0"],
+    ["Downloads", "An offline copy is fetched with plain reads from its server, resumes after an interruption and never overwrites a file.", "0.4.0"],
+    ["Telemetry", "None. No analytics, no crash reports. The app talks only to the servers you add and the services you turn on."],
   ];
 </script>
 

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const ALLOWED = new Set(["nocturne.ifsvivek.in", "jellyfin.org", "www.gpui.rs", "iced.rs", "github.com", "mpv.io", "www.rust-lang.org", "www.w3.org", "www.sitemaps.org"]);
+const ALLOWED = new Set(["nocturne.ifsvivek.in", "jellyfin.org", "www.gpui.rs", "iced.rs", "www.themoviedb.org", "www.tvmaze.com", "mirrors.rpmfusion.org", "github.com", "mpv.io", "www.rust-lang.org", "www.w3.org", "www.sitemaps.org"]);
 
 function build(released, version) {
   const out = join(mkdtempSync(join(tmpdir(), "nocturne-site-")), "site");
@@ -21,9 +21,10 @@ function build(released, version) {
 }
 const files = (d) => readdirSync(d).flatMap((f) => (statSync(join(d, f)).isDirectory() ? files(join(d, f)) : [join(d, f)]));
 const read = (dir, f) => readFileSync(join(dir, f), "utf8");
-let off, on, prev;
+let off, on, prev, v03, v04;
 // prev: the same site while VERSION was 0.2.0, when every new-in-0.3 claim must carry its "Coming in 0.3" mark.
-before(() => { off = build(false); on = build(true); prev = build(true, "0.2.0"); });
+// v03 / v04: the page just before and just after 0.4.0 ships, for the 0.4 marks.
+before(() => { off = build(false); on = build(true); prev = build(true, "0.2.0"); v03 = build(true, "0.3.0"); v04 = build(true, "0.4.0"); });
 
 test("RELEASED=false: no repo or release links, coming soon", () => {
   for (const f of ["index.html", "privacy.html", "404.html", "repo.html"]) {
@@ -47,10 +48,17 @@ test("package repository page: exact pacman steps, signing key, other formats pl
     "printf '%s\\n' '' '[nocturne]' 'SigLevel = Required TrustedOnly' 'Server = https://nocturne.ifsvivek.in/repo/arch/$arch' | sudo tee -a /etc/pacman.conf",
     "sudo pacman -Syu nocturne", "sudo pacman -Syu",
     "5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B", "ed25519, valid until 2029-11-15",
-    "CachyOS, EndeavourOS and Manjaro", "Planned with 0.4", 'rel="canonical" href="https://nocturne.ifsvivek.in/repo"',
+    "CachyOS, EndeavourOS and Manjaro", 'rel="canonical" href="https://nocturne.ifsvivek.in/repo"', "macOS and Windows are planned, not available",
   ]) assert.ok(h.includes(s), s);
-  assert.equal((h.match(/Planned with 0\.4/g) || []).length, 2, ".deb and .rpm, no instructions");
-  assert.doesNotMatch(h, /apt |dnf |\/etc\/apt|\.repo\b/);
+  // .deb and .rpm: download from the release, install with the distribution's tool; the file names follow the version.
+  for (const [d, ver] of [[v03, "0.4.0"], [v04, "0.4.0"]]) {
+    const t = read(d, "repo.html").replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+    const rel = `https://github.com/ifsvivek/nocturne/releases/download/v${ver}`;
+    for (const x of [`curl -LO ${rel}/nocturne_${ver}_amd64.deb`, `sudo apt install ./nocturne_${ver}_amd64.deb`,
+      "sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm",
+      `curl -LO ${rel}/nocturne-${ver}-1.fc45.x86_64.rpm`, `sudo dnf install ./nocturne-${ver}-1.fc45.x86_64.rpm`, "Debian 13, Ubuntu 24.04 and newer"]) assert.ok(t.includes(x), x);
+  }
+  assert.doesNotMatch(h, /\.exe|\.msi|\.dmg/, "no Windows or macOS build offered");
   assert.ok(read(on, "index.html").includes('href="/repo"'), "Install and footer link the page");
   assert.ok(read(on, "sitemap.xml").includes("https://nocturne.ifsvivek.in/repo"));
 });
@@ -74,12 +82,26 @@ test("0.3 copy is marked while VERSION is older, and unmarked once it ships", ()
   assert.ok(h.includes("GPUI") && !h.includes(">Iced<"), "credits name the toolkit of the downloadable version");
   assert.doesNotMatch(n, /Coming in 0\.3|GPUI/);
   assert.ok(n.includes(">Iced<") && n.includes("Version 0.3.0"));
-  assert.doesNotMatch(read(on, "privacy.html"), /Coming in/);
+  assert.doesNotMatch(read(on, "privacy.html"), /Coming in 0\.3/);
   assert.match(read(prev, "privacy.html"), /Coming in 0\.3/);
 });
 
+test("0.4 copy is marked before 0.4.0 and unmarked from it; credits wherever a service is named", () => {
+  const h = read(v03, "index.html"), n = read(v04, "index.html");
+  assert.ok((h.match(/Coming in 0\.4/g) || []).length >= 15, "marks in the 0.3.0 build");
+  for (const s of ["Living room", "Across services", "HDR pop-out window", "mpv 0.42 or newer", "Smart collections", "second source", "Included in".toLowerCase()]) assert.ok(h.toLowerCase().includes(s.toLowerCase()), s);
+  for (const f of ["index.html", "repo.html", "privacy.html"]) assert.doesNotMatch(read(v04, f), /Coming in/, f);
+  assert.ok(n.includes("Version 0.4.0"));
+  for (const d of [v03, v04, on]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
+    const t = readFileSync(f, "utf8").replace(/<head>[\s\S]*<\/head>/, "");
+    if (/TMDB/.test(t)) assert.ok(t.includes("This product uses the TMDB API but is not endorsed or certified by TMDB."), `${f}: TMDB notice`);
+    if (/TVmaze/.test(t)) assert.ok(t.includes("TV data from TVmaze.com, licensed CC BY-SA 4.0."), `${f}: TVmaze credit`);
+    if (/Trakt/.test(t)) assert.ok(t.includes("Trakt is a trademark of Trakt, Inc. NOCTURNE uses the Trakt API but is not affiliated with or endorsed by Trakt."), `${f}: Trakt credit`);
+  }
+});
+
 test("content hygiene: no em dashes, no GPU model or compositor advice, every img has alt and size", () => {
-  for (const d of [off, on, prev]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
+  for (const d of [off, on, prev, v04]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
     const h = readFileSync(f, "utf8");
     assert.doesNotMatch(h, /\u2014|\u2013/, f);
     assert.doesNotMatch(h, /nvidia|nvdec|hyprland|geforce|radeon|\bRTX\b/i, f);
@@ -95,11 +117,11 @@ test("required copy, no JS, no inline style", () => {
   const h = read(off, "index.html");
   for (const s of ["YOUR MEDIA. YOUR NIGHT.", "not affiliated with or endorsed by Jellyfin", "GPL-3.0-or-later", "Copyright (C) 2026 ifsvivek", 'rel="canonical" href="https://nocturne.ifsvivek.in/"', "og:image", "og.jpg", "twitter:card"])
     assert.ok(h.includes(s), s);
-  for (const d of [off, on, prev]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
+  for (const d of [off, on, prev, v04]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
     assert.doesNotMatch(readFileSync(f, "utf8"), /<script\b|<style\b|\sstyle=/i, f);
   }
   // Other platforms may only be named as planned, never as available.
-  for (const m of h.matchAll(/\b(Windows|macOS)\b/g)) assert.match(h.slice(m.index, m.index + 160), /planned/, `${m[0]} named without "planned"`);
+  for (const t of [h, read(on, "repo.html"), read(v04, "index.html")]) for (const m of t.matchAll(/\b(Windows|macOS)\b/g)) assert.match(t.slice(m.index, m.index + 160), /planned/, `${m[0]} named without "planned"`);
   // One self-hosted font, preloaded, and the stylesheet points at the same hashed file.
   const font = h.match(/<link rel="preload" href="([^"]+\.woff2)" as="font"/)?.[1];
   assert.ok(font && existsSync(join(off, font)), "preloaded font file");
@@ -107,7 +129,7 @@ test("required copy, no JS, no inline style", () => {
 });
 
 test("no external origins except upstream credit links", () => {
-  for (const d of [off, on, prev]) for (const f of files(d).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) {
+  for (const d of [off, on, prev, v04]) for (const f of files(d).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) {
     for (const m of readFileSync(f, "utf8").replace(/\/\*![\s\S]*?\*\//g, "").matchAll(/https?:\/\/([^\s"'<>)\\/]+)/g)) assert.ok(ALLOWED.has(m[1]), `${f}: ${m[1]}`);
   }
 });

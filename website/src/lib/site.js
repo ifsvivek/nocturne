@@ -14,6 +14,12 @@ export function shipped(v) {
   for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
   return true;
 }
+// .deb and .rpm assets on the GitHub release (names from scripts/package.sh: confirm them at each release; fc45 is the
+// Fedora release the .rpm is built on). Before 0.4.0 ships they name 0.4.0 and the copy around them is marked.
+const PKG_VER = shipped("0.4.0") ? VERSION : "0.4.0";
+export const DEB = `nocturne_${PKG_VER}_amd64.deb`;
+export const RPM = `nocturne-${PKG_VER}-1.fc45.x86_64.rpm`;
+export const asset = (file) => `${REPO}/releases/download/v${PKG_VER}/${file}`;
 // The interface toolkit changed in 0.3 (GPUI -> Iced); credits name the one in the version you can download.
 export const UI = shipped("0.3.0") ? ["Iced", "https://iced.rs"] : ["GPUI, from Zed", "https://www.gpui.rs"];
 export const SITE = "https://nocturne.ifsvivek.in";

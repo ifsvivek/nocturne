@@ -1,6 +1,7 @@
 <script>
   import Seo from "#lib/components/Seo.svelte";
-  import { RELEASED, SITE } from "#lib/site.js";
+  import { RELEASED, SITE, DEB, RPM, asset } from "#lib/site.js";
+  import Next from "#lib/components/Next.svelte";
   // The signing key and the pacman.conf block, exactly as the repository is published (website/static/repo/ at deploy).
   const KEY_URL = `${SITE}/repo/ARCH-GPG-KEY`;
   const KEY_ID = "5204B42AF768DE210D4979E397FA02EFCF1A4E3B";
@@ -11,16 +12,24 @@
     ["Add the repository to /etc/pacman.conf", `printf '%s\\n' '' '[nocturne]' 'SigLevel = Required TrustedOnly' 'Server = ${SITE}/repo/arch/$arch' | sudo tee -a /etc/pacman.conf`],
     ["Install NOCTURNE (also refreshes the package databases)", "sudo pacman -Syu nocturne"],
   ];
-  const later = [["Debian and Ubuntu", ".deb"], ["Fedora", ".rpm"]];
+  // .deb and .rpm: single files from the release page, no repository (yet), so updates mean installing the next file.
+  const other = [
+    { id: "deb", name: "Debian and Ubuntu", who: "Debian 13, Ubuntu 24.04 and newer. Debian 12 and Ubuntu 22.04 are too old for this build.",
+      steps: [["Download the package", `curl -LO ${asset(DEB)}`], ["Install it with its dependencies", `sudo apt install ./${DEB}`]],
+      note: "Ubuntu 24.04 ships libmpv 0.37, which in-window video cannot use yet, so video plays in an external mpv window there." },
+    { id: "rpm", name: "Fedora", who: "The Fedora release it was built on (45) and newer. mpv-libs comes from RPM Fusion, so that is enabled first.",
+      steps: [["Enable RPM Fusion free (skip if it is already on)", "sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"], ["Download the package", `curl -LO ${asset(RPM)}`], ["Install it with its dependencies", `sudo dnf install ./${RPM}`]],
+      note: "" },
+  ];
 </script>
 
-<Seo title="Package repository: NOCTURNE" description="Install NOCTURNE from its signed pacman repository on Arch Linux, CachyOS, EndeavourOS or Manjaro, and get updates with the rest of your system." path="/repo" />
+<Seo title="Package repository: NOCTURNE" description="Install NOCTURNE from its signed pacman repository on Arch Linux, CachyOS, EndeavourOS or Manjaro, or from the .deb and .rpm packages for Debian, Ubuntu and Fedora." path="/repo" />
 <div class="wrap max-w-[880px] pt-[clamp(140px,18vh,200px)] pb-[clamp(64px,9vw,120px)]">
   <span class="role">Install</span>
   <h1 class="scene-title">Package repository</h1>
 
   {#if RELEASED}
-    <p class="lede mt-6">Signed packages for pacman. Add the repository once, and NOCTURNE updates with the rest of your system.</p>
+    <p class="lede mt-6">Signed packages for pacman: add the repository once, and NOCTURNE updates with the rest of your system. Debian, Ubuntu and Fedora get a .deb and an .rpm further down.</p>
 
     <section class="rule mt-14 pt-10" aria-labelledby="pacman">
       <h2 id="pacman" class="h2">Pacman</h2>
@@ -48,16 +57,18 @@
       </aside>
     </section>
 
-    <section class="rule mt-16 pt-10" aria-labelledby="later">
-      <h2 id="later" class="h2">Other formats</h2>
-      <dl class="m-0 mt-8 grid gap-y-4">
-        {#each later as [name, ext]}
-          <div class="grid gap-x-6 sm:grid-cols-[14rem_minmax(0,1fr)]"><dt class="text-ink">{name} <span class="text-ink-3">({ext})</span></dt><dd class="m-0 text-ink-2">Planned with 0.4.</dd></div>
-        {/each}
-      </dl>
-    </section>
+    {#each other as f}
+      <section class="rule mt-16 pt-10" aria-labelledby={f.id}>
+        <h2 id={f.id} class="h2">{f.name}</h2>
+        <p class="m-0 mt-3 text-ink-2">{f.who} <Next v="0.4.0" /></p>
+        <ol class="steps mt-10">
+          {#each f.steps as [title, cmd]}<li><h3 class="m-0 text-[1.02rem] font-semibold text-ink">{title}</h3><pre class="code"><code>{cmd}</code></pre></li>{/each}
+        </ol>
+        <p class="m-0 mt-6 text-sm text-ink-2">{f.note ? `${f.note} ` : ""}There is no repository for this format yet: to update, install the next release's file the same way.</p>
+      </section>
+    {/each}
 
-    <p class="mt-16 text-sm text-ink-2">Rather not add a repository? The PKGBUILD, the tarball and the source build are under <a href="/#install">Install</a>.</p>
+    <p class="mt-16 text-sm text-ink-2">macOS and Windows are planned, not available. The PKGBUILD, the tarball and the source build are under <a href="/#install">Install</a>.</p>
   {:else}
     <p class="lede mt-6">The package repository opens with the first release.</p>
   {/if}
