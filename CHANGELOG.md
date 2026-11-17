@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Smart collections (header: Smart): saved rules over everything from every source, e.g. unwatched 4K movies, added this week,
+  rated 8+ dramas from the 90s. Rules: kind, watched / unwatched / in progress, genres, year range, rating, added within N
+  days, resolution (servers only), runtime, sources, order and limit. Five starters, then create, edit, delete and reorder
+  your own with a live match count. Stored only in `smart.json` on this computer; nothing is sent to a server. Limits:
+  resolution needs a server (local folders sit those rules out); "not watched in a year" and "new episodes" need data the
+  list queries do not return and are not offered.
 - One watched state across sources (Settings > Watched state, opt-in, off by default): marking a title watched or finishing
   it also marks its copies on your other sources, found by IMDb / TMDB / TVDB id (episodes: series ids plus season and
   episode number), never by title alone. Server copies only change when server changes are on (each write goes to that
