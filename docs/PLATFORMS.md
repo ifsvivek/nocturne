@@ -7,7 +7,7 @@ after 0.3 ships for Arch. Nothing here may degrade playback quality, stability o
 ## Platform seams (keep everything platform-specific behind these; `#[cfg(target_os = ...)]` only inside them)
 
 Implemented state (0.4): Linux is built, run and tested. macOS and Windows are **written, cross-checked to compile,
-never run** (`scripts/check-cross.sh`); no installers yet. Windows: the whole app compiles (`x86_64-pc-windows-gnu`).
+never run** (`scripts/check-cross.sh`); installers: Windows built and wine-tested, macOS script written not built ([PACKAGING.md](PACKAGING.md)). Windows: the whole app compiles (`x86_64-pc-windows-gnu`).
 macOS: only `nocturne-player` and `nocturne-local` can be checked on Linux; everything that depends on reqwest
 (jellyfin*, session, core, app) is blocked by `aws-lc-sys`, which compiles C against the Apple SDK's libc headers, so
 the macOS paths in those crates are **written, not built** until a real Mac is available.
@@ -31,7 +31,7 @@ unit-tested for all three OSes. Code layout: `crates/player` keeps the per-OS IP
 `single.rs` in the UI crate hold signals, window-handle extraction and the single-instance guard; `crates/session` picks
 the keyring backend by target.
 
-Remaining for macOS/Windows: installers (.dmg/.msi), bundling libmpv, native in-window video, media keys / now playing,
+Remaining for macOS/Windows: running the installers on real machines, native in-window video, media keys / now playing,
 reduced-motion detection, file picker and keyring behaviour verified on real machines, code signing.
 
 ## Packages
@@ -43,8 +43,8 @@ reduced-motion detection, file picker and keyring behaviour verified on real mac
 | `.deb` (Debian/Ubuntu) | planned | `Depends: libmpv2` (verify per release) |
 | `.rpm` (Fedora/RHEL) | planned | `Requires: mpv-libs` (verify repo: Fedora vs RPM Fusion) |
 | AppImage | planned, evaluate | bundling libmpv + ffmpeg is possible but large and fragile with hw decoding (VA-API/NVDEC driver ABI); never bundle GPU drivers/libGL/libvulkan. Decide after a size and hwdec test. |
-| macOS `.dmg` | later | bundled, signed/notarised if the maintainer has an Apple Developer ID |
-| Windows `.msi`/`.exe` | later | bundled DLL; code signing needs a certificate |
+| macOS `.dmg` | script written, **not built** (`scripts/package-macos.sh`) | bundled libmpv + mpv (dylibbundler); signed/notarised only with the maintainer's Apple Developer ID |
+| Windows NSIS `.exe` + portable `.zip` | built (`scripts/package-windows.sh`); wine-tested only | bundles pinned `mpv.exe` (external window; no libmpv DLL until in-window video); unsigned, signing needs a certificate |
 
 Builds run locally (maintainer decision 2026-11-16: no hosted CI runs): Linux formats in Docker containers of each
 distribution; Windows as a cross-compile check only; macOS cannot be built on Linux and needs a real Mac. Verification
