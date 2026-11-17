@@ -47,7 +47,7 @@ pub fn parse_group(v: &Value) -> Option<Fetched> {
             ))
         })
         .collect();
-    tags.sort_by(|a, b| b.0.cmp(&a.0));
+    tags.sort_by_key(|a| std::cmp::Reverse(a.0));
     Some(Fetched {
         meta: OnlineMeta {
             provider: NAME.into(),

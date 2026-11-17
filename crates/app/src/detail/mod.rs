@@ -130,6 +130,8 @@ pub enum Outcome {
         next: bool,
     },
     OpenUrl(String),
+    /// "Find subtitles online" for this local item (the root opens the finder).
+    FindSubs(Media),
     Back,
 }
 
@@ -246,6 +248,8 @@ pub struct Detail {
     /// The photos of the grid the page was opened from (for the viewer's arrows).
     siblings: Vec<Media>,
     pub outcomes: Vec<Outcome>,
+    /// The "Find subtitles online" entry is offered (local source with the switch on).
+    pub subs_ok: bool,
 }
 
 pub fn pic_key(m: &Media, art: Art, w: u32) -> String {
@@ -299,6 +303,7 @@ impl Detail {
             photo: None,
             siblings: vec![],
             outcomes: vec![],
+            subs_ok: false,
         };
         let t = d.load();
         (d, t)
@@ -814,6 +819,9 @@ impl Detail {
         if self.full.as_ref().is_some_and(|f| !f.info.is_empty()) {
             v.push(("Media info", MoreAct::Info));
         }
+        if self.subs_ok && matches!(m.kind, Kind::Movie | Kind::Episode) {
+            v.push(("Find subtitles online\u{2026}", MoreAct::FindSubs));
+        }
         v
     }
 
@@ -1150,6 +1158,7 @@ impl Detail {
             MoreAct::Watched => self.toggle_played(m),
             MoreAct::Fav => self.toggle_fav(m),
             MoreAct::Info => self.info_open = true,
+            MoreAct::FindSubs => self.outcomes.push(Outcome::FindSubs(m)),
             MoreAct::AddToPlaylist => {
                 if self.playables().is_empty() {
                     self.toast("Nothing to add here.");

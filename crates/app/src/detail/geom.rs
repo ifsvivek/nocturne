@@ -134,6 +134,8 @@ pub fn facts(m: &Media, f: &Full) -> Vec<(&'static str, String)> {
         "Added",
         m.added.as_deref().map(|d| d.chars().take(10).collect()),
     );
+    // Only on local items whose details came from an online provider.
+    put("Details", m.details_from.clone());
     v
 }
 

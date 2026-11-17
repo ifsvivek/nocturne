@@ -181,7 +181,7 @@ pub struct Report {
 }
 
 enum Out {
-    Found(OnlineMeta, Vec<(String, Vec<u8>)>),
+    Found(Box<OnlineMeta>, Vec<(String, Vec<u8>)>),
     Ask(Vec<Candidate>),
     Nothing,
     /// Not decidable now (e.g. an episode whose show is not looked up yet): record nothing.
@@ -295,7 +295,7 @@ impl Engine {
                 Out::Found(m, art) => {
                     rep.matched += 1;
                     let _ =
-                        write(b, move |l| l.put_online(&key, &lab, Some(m), vec![], &art)).await;
+                        write(b, move |l| l.put_online(&key, &lab, Some(*m), vec![], &art)).await;
                 }
                 Out::Ask(c) => {
                     rep.asked += 1;
@@ -369,7 +369,7 @@ impl Engine {
                 art.push((name, bytes));
             }
         }
-        Out::Found(meta, art)
+        Out::Found(Box::new(meta), art)
     }
 
     async fn tmdb_title(&self, key: &str, tv: bool, t: &Target) -> Result<Out, Err> {
@@ -473,7 +473,7 @@ impl Engine {
             _ => return Ok(Out::Skip),
         };
         match r {
-            Ok(f) => Ok(Out::Found(f.meta, vec![])),
+            Ok(f) => Ok(Out::Found(Box::new(f.meta), vec![])),
             Err(Err::NotFound) => Ok(Out::Nothing),
             Err(e) => Err(e),
         }
@@ -502,7 +502,7 @@ impl Engine {
         }
         // The album title stays what the user's files say; MusicBrainz only adds year, tags and cover.
         f.meta.title = None;
-        Ok(Out::Found(f.meta, art))
+        Ok(Out::Found(Box::new(f.meta), art))
     }
 }
 

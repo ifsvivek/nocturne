@@ -23,7 +23,9 @@ impl Mock {
 
 /// `(path prefix, [(status, body)])`: first matching prefix answers; its list is consumed front to back and the
 /// last entry repeats. Anything else is a 404.
-async fn serve(routes: Vec<(&'static str, Vec<(u16, Vec<u8>)>)>) -> Mock {
+type Reply = Vec<(u16, Vec<u8>)>;
+
+async fn serve(routes: Vec<(&'static str, Reply)>) -> Mock {
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", l.local_addr().unwrap());
     let log = Arc::new(Mutex::new(vec![]));

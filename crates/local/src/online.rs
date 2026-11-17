@@ -35,7 +35,7 @@ pub struct OnlineMeta {
 }
 
 /// One possible match offered to the user when the search was not clear enough.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Candidate {
     pub provider: String,
     pub id: String,

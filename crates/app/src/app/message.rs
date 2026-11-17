@@ -197,6 +197,7 @@ pub enum Message {
     Src(SrcAct),
     /// Local folders screen.
     Folder(super::folders::Msg),
+    Online(super::online::Msg),
     CycleFilter,
     OpenSources,
     /// Debug builds only: a window capture for `NOCTURNE_SNAP`.

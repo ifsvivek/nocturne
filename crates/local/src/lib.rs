@@ -892,11 +892,9 @@ impl Library {
             })
             .collect();
         let name = name.trim_start_matches('.');
-        let path = self.dir.join("subtitles").join(id.0.to_string()).join(name);
-        store::write_atomic(
-            &self.dir.join("subtitles").join(id.0.to_string()).join(name),
-            bytes,
-        )?;
+        let sub = format!("{}/{name}", id.0);
+        let path = self.dir.join("subtitles").join(&sub);
+        store::write_atomic(&self.dir.join("subtitles").join(&sub), bytes)?;
         Ok(path)
     }
 

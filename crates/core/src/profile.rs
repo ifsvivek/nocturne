@@ -176,6 +176,17 @@ impl Sources {
         true
     }
 
+    /// Change a source's online switches; false if there is no such source.
+    pub fn set_online(&mut self, id: SourceId, f: impl FnOnce(&mut crate::online::Flags)) -> bool {
+        match self.profiles.iter_mut().find(|p| p.id == id) {
+            Some(p) => {
+                f(&mut p.online);
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn set_enabled(&mut self, id: SourceId, on: bool) {
         if let Some(p) = self.profiles.iter_mut().find(|p| p.id == id) {
             p.enabled = on;
