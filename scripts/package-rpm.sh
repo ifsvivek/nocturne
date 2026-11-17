@@ -11,7 +11,7 @@ VOL=nocturne-rpm-cache
 mkdir -p dist
 trap '[ -n "${KEEP_CACHE:-}" ] || docker volume rm -f "$VOL" >/dev/null 2>&1' EXIT
 
-docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -v "$VOL":/cache -e VER="$ver" -e HOST_UID="$(id -u)" "$IMG" bash -euc '
+docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -v "$VOL":/cache -e VER="$ver" -e CARGO_PROFILE_RELEASE_LTO -e CARGO_PROFILE_RELEASE_CODEGEN_UNITS -e HOST_UID="$(id -u)" "$IMG" bash -euc '
 export CARGO_HOME=/cache/cargo CARGO_TARGET_DIR=/cache/target RUSTUP_HOME=/cache/rustup
 dnf install -y -q rpm-build gcc gcc-c++ make pkgconf-pkg-config dbus-devel systemd-devel libglvnd-devel curl tar gzip >/dev/null
 [ -x /cache/cargo/bin/cargo ] || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable >/dev/null
