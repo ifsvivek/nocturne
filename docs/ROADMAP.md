@@ -43,46 +43,46 @@ group, resume positions, and testing with more than two members and with transco
 
 Not finished in 0.3 and carried forward: screen-reader support (limited by Iced).
 
-## Then: 0.4, right after 0.3
+## 0.4 (in development)
 
-Chosen by the maintainer from the research backlog: dual subtitles; audio and subtitle language remembered per show
-across restarts (including original audio); a Latest row with new episodes and Play on a show card starting the next
-unwatched episode; truthful playback reports with visible errors and a retried final report; an optional extra HTTP
-header per server (reverse proxies); "Included in" collections on detail pages; **HDR playback mode** on Linux: for HDR
-videos the viewer chooses between SDR in the window and an HDR pop-out window ([HDR.md](HDR.md)); **more packages and platforms**: .deb, .rpm and an AppImage (only if it can be honest about
-system libraries), then macOS (.dmg) and Windows (.msi/.exe) with bundled libmpv ([PLATFORMS.md](PLATFORMS.md));
-**online metadata for local media**, opt-in, with the user's own TMDB key, plus MusicBrainz / Cover Art Archive and
-TVmaze ([METADATA.md](METADATA.md)). The compatibility items below are folded into the same release where they overlap.
+Local branch, not released. Contents: dual (secondary) subtitles; audio and subtitle language remembered per show; truthful
+playback reports with visible errors; Latest row with new episodes, Play on a show card = next unwatched episode, "Included in"
+collections; optional extra HTTP header per server; **HDR pop-out window** ([HDR.md](HDR.md)); online metadata and subtitle
+download for local media ([METADATA.md](METADATA.md)); offline copies from a server; one watched state across sources and Trakt
+([TRAKT.md](TRAKT.md)); smart collections; remote control from other Jellyfin apps; couch mode with gamepad support; player
+menus by keyboard; .deb and .rpm packages; and macOS / Windows code behind the platform seams ([PLATFORMS.md](PLATFORMS.md)).
+Not yet verified: live Trakt sign-in, HDR on an HDR display, a real gamepad and TV, anything on real Windows or macOS (the
+macOS code has never even been built). Status and the release checklist: [dev/STATUS.md](dev/STATUS.md).
+
+## Next: 0.5
+
+Headline: a per-server choice of interface. For each server you pick NOCTURNE's own interface or a native rendering of the
+server's own UI (its home sections, display settings and custom CSS interpreted by NOCTURNE; no web view), so people who have
+tuned their Jellyfin look keep it. The exact meaning is agreed with the maintainer when 0.5 starts. Around it: interface
+refresh and customization comparable to Jellyfin's display settings (themes and accent, home sections and their order, density
+and scale, backdrops, per-library views). Also: evaluate Flatpak (sandbox permissions for GPU, Wayland, keyring and local
+folders), and decide on a macOS / Windows installer path once real-machine testing exists.
 
 ## Then: compatibility and correctness
 
 A review of the Jellyfin ecosystem (server, web and other official clients: issues, pull requests, API changes) found no
 critical problems in NOCTURNE. It did find a set of small fixes worth doing before new features.
 
-- Playback reports that describe the stream truthfully (direct play or transcode, media source, play session), so the
-  server can stop a transcode when you stop watching; visible, non-modal errors when a report fails, and one retry of
-  the final "stopped" report
-- A Latest row on Home that shows new episodes of shows already in your library, and Play on a show card that starts
-  the next unwatched episode
 - Trickplay hover previews that stay correct on libraries scanned before Jellyfin 12
 - Admin Users: stop showing a password status that Jellyfin 12 no longer reports reliably
 - Remove an unused helper that builds URLs with the removed `api_key` parameter
 - Tests ready for Jellyfin 13.0 changes once they are released (route casing, user lookup rules, new SyncPlay fields)
 - A hardware check of HDR HEVC with text subtitles on NVIDIA, after an open upstream mpv report
 
-## Then: playback depth (0.5)
+## Then: playback depth (0.6)
 
-- Two subtitle tracks at once (mpv supports it; Jellyfin Web already has it)
-- Audio and subtitle language choices remembered per show across restarts, including "original audio" where the
-  server provides it; stored locally, never on the server
 - Intro and credits prompts that stay visible for the whole segment and cope with overlapping segments from two
   providers
 - Optional per-server trust for a private or self-signed certificate, if a real need appears (the mpv 0.42 check found none)
 
-## Then: library depth (0.6)
+## Then: library depth (0.7)
 
 - Library filters for audio and subtitle language
-- "Included in" collections on item pages
 - An optional combined Continue Watching and Next Up row
 - Display language sent to the server so library and genre names follow it
 - Lyrics for music, and audiobook playback with chapters, together with the music items under "Later"
@@ -94,13 +94,11 @@ critical problems in NOCTURNE. It did find a set of small fixes worth doing befo
 - Music: album-art views, a queue that survives closing the app, queue editing while browsing, multi-disc grouping
 - Collections: create, add, remove, reorder
 - Sharing playlists with other users
-- Flatpak and other distribution packages; a verified AppImage only if it can be honest about system libraries
-- Offline downloads: undecided, because it conflicts with the read-only default
+- Flatpak (to be evaluated in 0.5) and other distribution packages; no AppImage (see [PACKAGING.md](PACKAGING.md))
 
 **Accounts and settings**
 - A user picker on the sign-in screen (switching already works from the account menu)
 - A local PIN for profiles (it would protect the profile picker only, not the server)
-- Optional extra HTTP header per server for use behind a reverse proxy
 - Quick Connect authorization on behalf of another user (administrators)
 - Theme and accent choice, subtitle appearance presets
 - Ending your other sessions (the server only allows it for administrators)
@@ -112,12 +110,11 @@ critical problems in NOCTURNE. It did find a set of small fixes worth doing befo
   safely needs a lock-out guard that can be tested
 
 **Platform**
-- Packages are tested on Arch Linux only; .deb, .rpm and AppImage are scheduled for 0.4 ([PLATFORMS.md](PLATFORMS.md))
+- Packages: Arch is the only distribution tested on a real install; .deb and .rpm (0.4) are install-tested in containers only ([PLATFORMS.md](PLATFORMS.md))
 - Screen-reader support: re-evaluated on Iced once the migration ships (Iced's accessibility support is still limited)
 - HDR in the window depends on libmpv gaining a modern render API; until then it is tone-mapped to SDR, with an HDR
-  pop-out window in 0.4 ([HDR.md](HDR.md))
-- macOS (.dmg) and Windows (.msi/.exe): scheduled for 0.4, after 0.3 ships for Arch; in-window video there needs its
-  own investigation ([PLATFORMS.md](PLATFORMS.md))
+  pop-out window in 0.4, untested on an HDR display ([HDR.md](HDR.md))
+- macOS (.dmg) and Windows (.msi/.exe) installers, bundled libmpv, native in-window video and real-machine testing: code exists since 0.4, nothing has been run ([PLATFORMS.md](PLATFORMS.md))
 
 ## Dropped (will not be built)
 

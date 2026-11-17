@@ -14,6 +14,12 @@ through libmpv with hardware decoding on Wayland; on X11 it plays in an external
 Status: version 0.3, early software, Linux x86_64 (tested on Arch only); macOS and Windows are planned, not available
 yet ([docs/PLATFORMS.md](docs/PLATFORMS.md)). See [docs/ROADMAP.md](docs/ROADMAP.md) for what is coming and what is missing.
 
+Coming in 0.4 (unreleased, not installable yet; 0.3.0 is what the install steps below give you): a secondary subtitle and
+per-show language memory, an HDR pop-out window, online details and subtitles for local media, offline copies from a server,
+smart collections, one watched state across sources, Trakt, remote control from other Jellyfin apps, a couch mode with gamepad
+support, .deb / .rpm packages, and first (untested) macOS and Windows code. See [docs/FEATURES.md](docs/FEATURES.md) for what is
+verified.
+
 ## Screenshots
 
 Captured from 0.3.0 at 3840x2160 against a generated demo library (two demo servers and a demo folder), not personal media.

@@ -119,6 +119,20 @@ the player, so one code path handles every report. The player page (`player/`) i
 trickplay and key handling; it closes by dropping the player before the window closes (`exit_on_close_request(false)`).
 Playback targets are a stream URL plus header lines (credentials never go in the URL or argv) or a local file path.
 
+## 0.4 modules (unreleased)
+
+All pure logic is in `crates/core`, with the UI glue in `crates/app/src/app/`.
+- `remote.rs` + `app/remote.rs`: session capabilities and the WebSocket command stream from other Jellyfin apps; commands only drive the player.
+- `watched.rs` + `app/cascade.rs`: the watched cascade (strong-id matching of copies, one hop only so changes never echo).
+- `trakt.rs` + `app/trakt.rs`: PKCE sign-in, scrobbling, history import. Tokens in the keyring.
+- `smart.rs` + `app/smart.rs`: smart-collection rules evaluated over the merged catalog; store in `smart.json`.
+- `online/` (TMDB, TVmaze, MusicBrainz, matching, subtitles) + `app/online.rs`, with the stored layer in `crates/local/src/online.rs`.
+- `download/` (queue, resumable fetch, Jellyfin-style naming) + `app/downloads.rs`: offline copies; GET only.
+- `hdr.rs`: HDR detection and the SDR / pop-out decision; the pop-out is the external `Player` (`vo=gpu-next`).
+- `lang_memory.rs`: per-show language memory in `languages.json`.
+- `app/src/couch.rs`, `pad.rs`, `app/couch.rs`: couch-mode scale and focus, the gamepad thread (`gilrs`), remote keys.
+- `session::paths` (re-exported as `core::paths`): per-OS config / data / cache directories, one pure `resolve()`.
+
 ## Watch together (SyncPlay)
 
 `jellyfin-user/src/syncplay/` holds everything that is not UI: `model.rs` (typed messages), `time.rs` (clock offset),
