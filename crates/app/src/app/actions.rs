@@ -210,6 +210,13 @@ impl App {
         for (o, h) in &self.hooks_by {
             all.push((*o, h.drain()));
         }
+        let failed = self.hooks.take_report_failure()
+            || self.hooks_by.values().any(|h| h.take_report_failure());
+        if failed {
+            self.toast(
+                "Couldn't reach the server to save watch progress. Playback is not affected.",
+            );
+        }
         for (origin, rs) in all {
             for r in rs {
                 self.patch(origin, &r.id, |m| {

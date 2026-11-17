@@ -3,11 +3,39 @@
 //! a playing item is reported (pure; the caller owns the clock).
 use crate::bridge;
 use crate::video::PlayerHooks;
+pub use nocturne_jellyfin_user::PlayMethod;
 use nocturne_jellyfin_user::{PlaybackReport, UserClient};
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+/// How an item is being delivered, as the player knows it. Sent with every report of that item.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PlayInfo {
+    pub method: PlayMethod,
+    pub media_source_id: Option<String>,
+    /// The `PlaySessionId` of the transcode URL (`None` for direct play).
+    pub play_session_id: Option<String>,
+}
+
+/// Run `op` (true = delivered). Only the final "stopped" report gets a second try, after `wait`:
+/// nothing replaces it the way the next progress report replaces a missed one.
+async fn deliver<F, Fut>(kind: Kind, wait: Duration, mut op: F) -> bool
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = bool>,
+{
+    if op().await {
+        return true;
+    }
+    if kind != Kind::Stop {
+        return false;
+    }
+    tokio::time::sleep(wait).await;
+    op().await
+}
 
 /// Seconds to wait before reconnect attempt `n` (0-based): 2, 4, 8, 16, then every 30.
 pub fn backoff_secs(n: u32) -> u64 {
@@ -54,6 +82,10 @@ pub struct SyncHooks {
     pub sync: AtomicBool,
     favs: Arc<Mutex<HashMap<String, bool>>>,
     notes: Arc<Mutex<Vec<Revert>>>,
+    info: Mutex<HashMap<String, PlayInfo>>,
+    /// A report failed (set from the bridge) / the user was told about it this playback session.
+    report_failed: Arc<AtomicBool>,
+    warned: AtomicBool,
 }
 
 impl SyncHooks {
@@ -64,7 +96,23 @@ impl SyncHooks {
             sync: AtomicBool::new(sync),
             favs: Default::default(),
             notes: Default::default(),
+            info: Default::default(),
+            report_failed: Default::default(),
+            warned: AtomicBool::new(false),
         }
+    }
+
+    /// The player tells how it is delivering `item` (call right after it starts the item, before
+    /// the first report). Also opens a new session for the failure notice.
+    pub fn set_play_info(&self, item: &str, info: PlayInfo) {
+        self.info.lock().unwrap().insert(item.into(), info);
+        self.warned.store(false, Ordering::Relaxed);
+    }
+
+    /// True once per playback session after a report failed: show a quiet notice, not one per tick.
+    pub fn take_report_failure(&self) -> bool {
+        self.report_failed.swap(false, Ordering::Relaxed)
+            && !self.warned.swap(true, Ordering::Relaxed)
     }
 
     pub fn can_write(&self) -> bool {
@@ -96,8 +144,18 @@ impl SyncHooks {
         if !self.sync_on() {
             return None;
         }
+        let info = self
+            .info
+            .lock()
+            .unwrap()
+            .get(item)
+            .cloned()
+            .unwrap_or_default();
         let report = PlaybackReport {
             item_id: item.into(),
+            media_source_id: info.media_source_id,
+            play_method: info.method,
+            play_session_id: info.play_session_id,
             position_ticks: ticks.max(0) as u64,
             is_paused: paused,
             ..Default::default()
@@ -107,13 +165,20 @@ impl SyncHooks {
 
     fn send(&self, kind: Kind, item: &str, ticks: i64, paused: bool) {
         if let Some((c, k, r)) = self.plan(kind, item, ticks, paused) {
+            let failed = self.report_failed.clone();
             bridge::spawn(async move {
-                // Progress reports are best effort; a missed one is replaced by the next.
-                let _ = match k {
-                    Kind::Start => c.report_playback_start(&r).await,
-                    Kind::Progress => c.report_playback_progress(&r).await,
-                    Kind::Stop => c.report_playback_stopped(&r).await,
-                };
+                let ok = deliver(k, Duration::from_secs(2), || async {
+                    match k {
+                        Kind::Start => c.report_playback_start(&r).await,
+                        Kind::Progress => c.report_playback_progress(&r).await,
+                        Kind::Stop => c.report_playback_stopped(&r).await,
+                    }
+                    .is_ok()
+                })
+                .await;
+                if !ok {
+                    failed.store(true, Ordering::Relaxed);
+                }
             });
         }
     }
@@ -155,6 +220,9 @@ impl SyncHooks {
 }
 
 impl PlayerHooks for SyncHooks {
+    fn play_info(&self, item_id: &str, info: PlayInfo) {
+        self.set_play_info(item_id, info);
+    }
     fn started(&self, item_id: &str, position_ticks: i64) {
         self.send(Kind::Start, item_id, position_ticks, false);
     }
@@ -286,6 +354,74 @@ mod tests {
             is_admin: false,
         };
         UserClient::from_session("http://127.0.0.1:1", &s).unwrap()
+    }
+
+    #[test]
+    fn reports_carry_play_info() {
+        let h = SyncHooks::new(Some(client()), true, true);
+        h.set_play_info(
+            "i",
+            PlayInfo {
+                method: PlayMethod::Transcode,
+                media_source_id: Some("ms".into()),
+                play_session_id: Some("ps".into()),
+            },
+        );
+        let (_, _, r) = h.plan(Kind::Stop, "i", 0, false).unwrap();
+        assert_eq!(r.play_method, PlayMethod::Transcode);
+        assert_eq!(r.media_source_id.as_deref(), Some("ms"));
+        assert_eq!(r.play_session_id.as_deref(), Some("ps"));
+        // An item the player never described is plain direct play.
+        let (_, _, r) = h.plan(Kind::Start, "other", 0, false).unwrap();
+        assert_eq!(r.play_method, PlayMethod::DirectPlay);
+        assert!(r.play_session_id.is_none());
+    }
+
+    #[test]
+    fn failure_notice_once_per_session() {
+        let h = SyncHooks::new(Some(client()), true, true);
+        assert!(!h.take_report_failure(), "nothing failed yet");
+        h.report_failed.store(true, Ordering::Relaxed);
+        assert!(h.take_report_failure());
+        h.report_failed.store(true, Ordering::Relaxed);
+        assert!(!h.take_report_failure(), "same session: not again");
+        h.set_play_info("next", PlayInfo::default());
+        h.report_failed.store(true, Ordering::Relaxed);
+        assert!(h.take_report_failure(), "a new session may tell again");
+    }
+
+    #[tokio::test]
+    async fn only_stopped_is_retried() {
+        use std::sync::atomic::AtomicU32;
+        for (kind, calls, ok) in [
+            (Kind::Progress, 1, false),
+            (Kind::Start, 1, false),
+            (Kind::Stop, 2, false),
+        ] {
+            let n = AtomicU32::new(0);
+            let r = deliver(kind, Duration::ZERO, || async {
+                n.fetch_add(1, Ordering::Relaxed);
+                false
+            })
+            .await;
+            assert_eq!((n.load(Ordering::Relaxed), r), (calls, ok), "{kind:?}");
+        }
+        // The retry rescues a stop that failed once, and a success is never repeated.
+        let n = AtomicU32::new(0);
+        let r = deliver(Kind::Stop, Duration::ZERO, || async {
+            n.fetch_add(1, Ordering::Relaxed) > 0
+        })
+        .await;
+        assert!(r && n.load(Ordering::Relaxed) == 2);
+        let n = AtomicU32::new(0);
+        assert!(
+            deliver(Kind::Stop, Duration::ZERO, || async {
+                n.fetch_add(1, Ordering::Relaxed);
+                true
+            })
+            .await
+                && n.load(Ordering::Relaxed) == 1
+        );
     }
 
     #[test]

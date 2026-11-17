@@ -368,6 +368,38 @@ pub fn keyring_token(url: &str, user_id: &str) -> Option<String> {
         .map(|s| s.access_token)
 }
 
+/// Read each server's extra header from the keyring into the clients' registry. Run (off the UI
+/// thread) before a slot's clients are built.
+pub fn load_extra_headers(profiles: &[Profile]) {
+    for p in profiles {
+        if let ProfileKind::Jellyfin { url, .. } = &p.kind {
+            let line = nocturne_session::load_header(url).ok().flatten();
+            let _ = nocturne_jellyfin::header::set(url, line.as_deref());
+        }
+    }
+}
+
+/// The saved extra header of `url` (`Name: value`), for the edit dialog. Blocking keyring read.
+pub fn extra_header(url: &str) -> Option<String> {
+    nocturne_session::load_header(url).ok().flatten()
+}
+
+/// Validate, store (keyring only) and activate the extra header of `url`; `None` or blank removes it.
+/// Clients built afterwards send it. Blocking keyring call.
+pub fn set_extra_header(url: &str, line: Option<&str>) -> Result<(), String> {
+    let line = line.map(str::trim).filter(|l| !l.is_empty());
+    match line {
+        Some(l) => {
+            nocturne_jellyfin::header::parse(l).map_err(str::to_string)?;
+            nocturne_session::save_header(url, l)
+                .map_err(|_| "No system keyring is available to keep the header".to_string())?;
+        }
+        None => nocturne_session::delete_header(url)
+            .map_err(|_| "Couldn't remove the saved header".to_string())?,
+    }
+    nocturne_jellyfin::header::set(url, line).map_err(str::to_string)
+}
+
 #[cfg(test)]
 mod name_tests {
     use super::*;

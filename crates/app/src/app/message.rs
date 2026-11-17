@@ -77,6 +77,11 @@ pub enum SrcAct {
     AskRemove(SourceId),
     ConfirmRemove,
     CancelRemove,
+    /// Edit the server's extra HTTP header.
+    Header(SourceId),
+    HeaderSave,
+    HeaderClear,
+    HeaderCancel,
 }
 
 /// A local scan's report to the root.
@@ -119,6 +124,12 @@ pub enum Message {
         default: DefaultChange,
         r: Result<Session, SwitchFail>,
     },
+    /// Typed into the header dialog: (is the value field, text).
+    HeaderInput(bool, String),
+    /// The saved header of a server, read from the keyring for the dialog.
+    HeaderLoaded(SourceId, Option<String>),
+    /// A header save / removal finished.
+    HeaderDone(SourceId, Result<(), String>),
     /// The saved sources and the catalog built from them (keyring and index reads, off the UI thread).
     Loaded(Handoff<super::catalog::Loaded>),
     /// One source's answer for Home page `pid` (libraries, continue watching, next up), to request `epoch`.

@@ -132,6 +132,24 @@ pub fn delete_account(server_url: &str, user_id: &str) -> Result<()> {
     Keyring(service()).delete(&account_key(server_url, user_id))
 }
 
+/// The optional extra HTTP header of `server_url` (`Name: value`; the value may be a secret, so it
+/// lives in the keyring and never in a file).
+pub fn save_header(server_url: &str, line: &str) -> Result<()> {
+    Keyring(service()).set(&header_key(server_url), line)
+}
+
+pub fn load_header(server_url: &str) -> Result<Option<String>> {
+    Keyring(service()).get(&header_key(server_url))
+}
+
+pub fn delete_header(server_url: &str) -> Result<()> {
+    Keyring(service()).delete(&header_key(server_url))
+}
+
+fn header_key(server_url: &str) -> String {
+    format!("{}|extra-header", key(server_url))
+}
+
 /// Make `session` the active login for `server_url` AND a remembered account (keyring writes),
 /// and list it in `accounts.toml`. Called after every sign-in, restore and switch.
 pub fn remember_login(server_url: &str, session: &Session) -> Result<()> {

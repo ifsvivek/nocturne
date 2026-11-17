@@ -38,5 +38,11 @@ every test launch, throwaway servers only). Workers use worktrees off `v0.4-loca
 **Polish carried from 0.3**: friendly message instead of a panic when no display is available; header nav overflow
 hint; admin dashboard session label.
 
+## After 0.4 (not this release)
+
+0.5: per-server choice of interface: NOCTURNE's own UI or a native rendering of the server's UI (no web view, by maintainer decision;
+exact meaning to be agreed when 0.5 starts); plus UI refresh and user customization comparable to Jellyfin's display settings (themes / accent, home sections and
+their order, density and scale, backdrops, per-library views). Wish list to be agreed with the maintainer first.
+
 ## Progress
-- [ ] W1  - [ ] W2  - [ ] W3  - [ ] Wave 2  - [ ] Wave 3  - [ ] polish  - [ ] 0.4 QA walkthrough
+- [ ] W1  - [x] W2 (merged; player hooks: play_info + multi-header -> W1)  - [ ] W3  - [ ] Wave 2  - [ ] Wave 3  - [ ] polish  - [ ] 0.4 QA walkthrough

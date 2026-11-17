@@ -174,6 +174,7 @@ pub enum Msg {
     Full(u64, Result<Box<(Media, Full)>, Failed>),
     Similar(u64, Result<Vec<Media>, Failed>),
     Extras(u64, Result<Vec<Media>, Failed>),
+    Colls(u64, Result<Vec<Media>, Failed>),
     NextUp(u64, Result<Vec<Media>, Failed>),
     Seasons(u64, Result<Vec<Media>, Failed>),
     Episodes(u64, String, Result<Vec<Media>, Failed>),
@@ -222,6 +223,7 @@ pub struct Detail {
     full: Option<Full>,
     similar: Load<Vec<Media>>,
     extras: Load<Vec<Media>>,
+    colls: Load<Vec<Media>>,
     kids: Load<Vec<Media>>,
     kids2: Load<Vec<Media>>,
     nextup: Load<Vec<Media>>,
@@ -276,6 +278,7 @@ impl Detail {
             full: None,
             similar: Load::Loading,
             extras: Load::Loading,
+            colls: Load::Loading,
             kids: Load::Loading,
             kids2: Load::Loading,
             nextup: Load::Loading,
@@ -371,6 +374,7 @@ impl Detail {
         for l in [
             &mut self.similar,
             &mut self.extras,
+            &mut self.colls,
             &mut self.kids,
             &mut self.kids2,
             &mut self.nextup,
@@ -449,6 +453,14 @@ impl Detail {
             );
         } else {
             self.extras = Load::Ready(vec![]);
+        }
+        if matches!(m.kind, Kind::Movie | Kind::Series) {
+            list!(
+                |b: Backend, i: String| async move { b.collections_of(&i).await },
+                Msg::Colls
+            );
+        } else {
+            self.colls = Load::Ready(vec![]);
         }
         match m.kind {
             Kind::Series => {
@@ -639,6 +651,7 @@ impl Detail {
             Sec::Chapters => self.full.as_ref().map_or(&[], |f| &f.chapters),
             Sec::Similar => self.similar.items(),
             Sec::Extras => self.extras.items(),
+            Sec::Collections => self.colls.items(),
             Sec::Kids => self.kids.items(),
             Sec::Kids2 => self.kids2.items(),
             Sec::Next => self.nextup.items(),
@@ -821,6 +834,7 @@ impl Detail {
             }
             Msg::Similar(e, r) if e == cur => self.similar = Load::of(r),
             Msg::Extras(e, r) if e == cur => self.extras = Load::of(r),
+            Msg::Colls(e, r) if e == cur => self.colls = Load::of(r),
             Msg::NextUp(e, r) if e == cur => self.nextup = Load::of(r),
             Msg::Kids(e, r) if e == cur => self.kids = Load::of(r),
             Msg::Kids2(e, r) if e == cur => self.kids2 = Load::of(r),
@@ -864,6 +878,7 @@ impl Detail {
             Msg::Full(..)
             | Msg::Similar(..)
             | Msg::Extras(..)
+            | Msg::Colls(..)
             | Msg::NextUp(..)
             | Msg::Kids(..)
             | Msg::Kids2(..)

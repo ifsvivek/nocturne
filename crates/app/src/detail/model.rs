@@ -12,6 +12,7 @@ pub enum Sec {
     Chapters,
     Similar,
     Extras,
+    Collections,
     Kids,
     Kids2,
     Seasons,
@@ -19,7 +20,7 @@ pub enum Sec {
 
 impl Sec {
     /// Display order, top to bottom.
-    pub const ALL: [Sec; 8] = [
+    pub const ALL: [Sec; 9] = [
         Sec::Next,
         Sec::Seasons,
         Sec::Kids,
@@ -27,6 +28,7 @@ impl Sec {
         Sec::Chapters,
         Sec::Cast,
         Sec::Extras,
+        Sec::Collections,
         Sec::Similar,
     ];
 
@@ -40,6 +42,7 @@ impl Sec {
             Sec::Kids2 => 5,
             Sec::Next => 6,
             Sec::Seasons => 7,
+            Sec::Collections => 8,
         }
     }
 
@@ -53,6 +56,7 @@ impl Sec {
                 "More like this",
                 "Chosen by the server from what this resembles.",
             ),
+            (Sec::Collections, _) => ("Included in", "Collections this belongs to."),
             (Sec::Extras, _) => ("Extras", "Trailers and special features."),
             (Sec::Kids, Kind::Person) => ("Movies", "Films with this person."),
             (Sec::Kids2, Kind::Person) => ("Shows", "Series with this person."),

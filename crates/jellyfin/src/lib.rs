@@ -12,6 +12,7 @@
 mod browse;
 mod client;
 mod config;
+pub mod header;
 mod model;
 mod play;
 

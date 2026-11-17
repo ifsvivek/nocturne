@@ -45,6 +45,9 @@ impl AdminClient {
         auth.set_sensitive(true);
         let mut headers = header::HeaderMap::new();
         headers.insert(header::AUTHORIZATION, auth);
+        if let Some((n, v)) = nocturne_jellyfin::header::for_url(base.as_str()) {
+            headers.insert(n, v);
+        }
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(20))
             .default_headers(headers)
