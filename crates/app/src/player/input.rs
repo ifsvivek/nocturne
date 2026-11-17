@@ -17,6 +17,24 @@ impl Player {
                 _ => Task::none(),
             });
         }
+        if let Some(p) = self.hdr_prompt.as_mut() {
+            // Esc answers "Play here in SDR" without remembering anything.
+            let t = match name {
+                "enter" => {
+                    let popout = p.sel == 1;
+                    self.hdr_choose(popout)
+                }
+                "escape" | "s" => {
+                    p.remember = false;
+                    self.hdr_choose(false)
+                }
+                _ => {
+                    p.key(name);
+                    Task::none()
+                }
+            };
+            return Some(t);
+        }
         if self.resume_prompt.is_some() {
             match name {
                 "enter" => self.resume_choice(true),
@@ -87,7 +105,13 @@ impl Player {
         let items = video::items(pop, &self.tracks, &self.set);
         let mut t = Task::none();
         match name {
-            "up" | "down" => self.pop_sel = logic::list_nav(name, self.pop_sel, items.len()),
+            "up" | "down" => {
+                self.pop_sel = logic::list_nav(name, self.pop_sel, items.len());
+                // Headings are not choices: step over them.
+                if items.get(self.pop_sel).is_some_and(|i| i.head) {
+                    self.pop_sel = logic::list_nav(name, self.pop_sel, items.len());
+                }
+            }
             "left" => {
                 if let Some(a) = items.get(self.pop_sel).and_then(|i| i.dec.clone()) {
                     t = self.pop_act(a);
@@ -178,6 +202,17 @@ impl Player {
                     "Subtitles on"
                 };
                 self.set_track("sid", next, l);
+            }
+            Key::CycleSecondary => {
+                self.refresh_meta();
+                let cur = self.shown_sub(true);
+                let next = video::next_sub_except(&self.tracks, cur, self.shown_sub(false));
+                let l = if next == 0 {
+                    "Secondary subtitles off"
+                } else {
+                    "Secondary subtitles on"
+                };
+                self.set_track("secondary-sid", next, l);
             }
             Key::Stats => self.stats = !self.stats,
             Key::Help => self.help = !self.help,

@@ -25,15 +25,20 @@ mod view;
 
 use crate::keys::Key;
 use crate::motion;
+use crate::platform::Handles;
 use crate::task;
 use crate::widget::buffering::{self, Progress};
 use crate::widget::track::Ev;
 use iced::widget::image::Handle;
 use iced::{Point, Rectangle, Size, Subscription, Task, event, mouse, window};
 use nocturne_core::backend::{Backend, PlayError, PlayTarget};
-use nocturne_core::player_logic::{self as pl, Method, Quality, Seg, TrackChoice};
+use nocturne_core::hdr::{self, HdrMode};
+use nocturne_core::lang_memory;
+use nocturne_core::player_logic::{
+    self as pl, AudioPick, Method, Quality, Seg, SubPick, TrackChoice,
+};
 use nocturne_core::player_mpris::{Cmd, Mpris, Snap};
-use nocturne_core::source::{Art, Kind, Media, SourceId};
+use nocturne_core::source::{Art, Kind, Media, ProviderIds, SourceId};
 use nocturne_core::sync::{Reporter, Tick as SyncTick, ticks};
 use nocturne_core::syncplay::GroupReq;
 use nocturne_core::video::{
@@ -42,7 +47,7 @@ use nocturne_core::video::{
 use nocturne_jellyfin as jf;
 use nocturne_player::{Buffering, EmbeddedPlayer, Event, Options, Player as ExternalPlayer};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Height of the two-row controls bar.
@@ -116,6 +121,9 @@ pub enum Act {
     NextPlay,
     NextCancel,
     Resume(bool),
+    /// Answer to the HDR prompt (true = pop-out), and its remember box.
+    Hdr(bool),
+    HdrRemember,
     ShowTotal,
     Ctx(CtxAct),
     BarHover(bool),
@@ -145,16 +153,8 @@ pub enum Msg {
     Poster(u64, Option<Vec<u8>>),
     Episodes(u64, Vec<Media>),
     Sheet(u64, u32, Option<Handle>),
-}
-
-/// Track choices remembered per series/season for the rest of the app session.
-static MEMORY: Mutex<Option<HashMap<String, TrackChoice>>> = Mutex::new(None);
-
-fn mem_key(m: &Media) -> String {
-    match &m.series_id {
-        Some(s) => format!("{s}:{}", m.season_number.unwrap_or(0)),
-        None => m.id.clone(),
-    }
+    /// Provider ids of the playing episode's series (for the language memory key).
+    Series(u64, Option<(SourceId, String, ProviderIds)>),
 }
 
 pub struct Player {
@@ -252,6 +252,22 @@ pub struct Player {
     pub(crate) ready_due: Option<f64>,
     eof_sent: bool,
     pub group_diff: Option<f64>,
+    // HDR (docs/HDR.md)
+    /// The window handles, kept so the pop-out can hand the video back to the window.
+    handles: Option<Handles>,
+    /// The compositor offers the colour-management protocol.
+    compositor_cm: bool,
+    /// The video plays in the HDR pop-out (an external mpv window) instead of the window.
+    pub popout: bool,
+    hdr_checked: bool,
+    hdr_since: Option<Instant>,
+    pub hdr_prompt: Option<hdr::Prompt>,
+    /// "Remember my choice" ticked: the root stores it as the setting.
+    hdr_choice: Option<HdrMode>,
+    /// The playback object was swapped: per-session settings are applied again on load.
+    switched: bool,
+    target_checked: bool,
+    series_ids: Option<(SourceId, String, ProviderIds)>,
 }
 
 impl Player {
@@ -367,6 +383,16 @@ impl Player {
             ready_due: None,
             eof_sent: false,
             group_diff: None,
+            handles: None,
+            compositor_cm: false,
+            popout: false,
+            hdr_checked: false,
+            hdr_since: None,
+            hdr_prompt: None,
+            hdr_choice: None,
+            switched: false,
+            target_checked: false,
+            series_ids: None,
             ctx,
         };
         let first = me.begin(media, true);
@@ -485,6 +511,7 @@ impl Player {
                 self.sheets
                     .insert(sheet, h.map_or(Sheet::Failed, Sheet::Ready));
             }
+            Msg::Series(epoch, Some(r)) if epoch == self.epoch => self.series_ids = Some(r),
             _ => {} // a stale response: the user moved on
         }
         Task::none()
@@ -492,24 +519,16 @@ impl Player {
 
     // ---- backends ----
 
-    fn make_backend(&mut self, h: crate::platform::Handles) {
+    fn make_backend(&mut self, h: Handles) {
         if self.playback.is_some() {
             return;
         }
-        use crate::platform::Handles;
+        self.handles = Some(h);
         let libmpv = nocturne_player::libmpv_available();
         if let (true, Handles::Wayland { display, surface }, Ok(())) = (self.embed, h, &libmpv) {
-            match EmbeddedPlayer::with_buffering(
-                display as *mut _,
-                surface as *mut _,
-                self.ctx.buffering,
-            ) {
-                Ok(mut p) => {
-                    let _ = p.set_volume(self.volume);
-                    let r = self.hole;
-                    p.set_bounds(r.x, r.y, r.width, r.height, self.scale);
-                    self.playback = Some(Playback::Embedded(Box::new(p)));
-                }
+            self.compositor_cm = nocturne_player::colour_management_available(display as *mut _);
+            match self.new_embedded(display, surface) {
+                Ok(p) => self.playback = Some(Playback::Embedded(p)),
                 Err(e) => eprintln!("video: embedded unavailable ({e}), using the external player"),
             }
         } else if self.embed {
@@ -529,8 +548,10 @@ impl Player {
                 self.pending = None;
                 return;
             }
+            // mpv's own window plays HDR itself (gpu-next); ask the compositor for an HDR output.
             match ExternalPlayer::new(Options {
                 buffering: self.ctx.buffering,
+                hdr_output: true,
                 ..Default::default()
             }) {
                 Ok(p) => self.playback = Some(Playback::External(p)),
@@ -549,6 +570,23 @@ impl Player {
                 self.outcome_failed_soon();
             }
         }
+    }
+
+    /// The in-window player on the window's video surface, sized to the hole.
+    fn new_embedded(
+        &self,
+        display: usize,
+        surface: usize,
+    ) -> nocturne_player::Result<Box<EmbeddedPlayer>> {
+        let mut p = EmbeddedPlayer::with_buffering(
+            display as *mut _,
+            surface as *mut _,
+            self.ctx.buffering,
+        )?;
+        let _ = p.set_volume(self.volume);
+        let r = self.hole;
+        p.set_bounds(r.x, r.y, r.width, r.height, self.scale);
+        Ok(Box::new(p))
     }
 
     /// A load error right at the start: handled in the next tick like any other failure.
@@ -659,6 +697,11 @@ impl Player {
         self.backdrop = None;
         self.logo = None;
         self.hwdec_logged = false;
+        self.hdr_checked = false;
+        self.hdr_since = None;
+        self.hdr_prompt = None;
+        self.target_checked = false;
+        self.set.hdr_popout = None;
         self.splash = true;
         self.leaving = None;
         self.light = false;
@@ -725,6 +768,22 @@ impl Player {
             async move { b2.image(&m2, Art::Poster, 300).await },
             move |r| Msg::Poster(epoch, r),
         ));
+        if let Some(series) = m.series_id.clone()
+            && self
+                .series_ids
+                .as_ref()
+                .is_none_or(|(o, id, _)| (*o, id) != (m.origin, &series))
+        {
+            // Read-only; the ids only widen the language memory's key (same show on two sources).
+            let (b2, origin) = (b.clone(), m.origin);
+            tasks.push(task::run(
+                async move {
+                    let (s, _) = b2.full(&series).await.ok()?;
+                    (!s.ids.is_empty()).then_some((origin, series, s.ids))
+                },
+                move |r| Msg::Series(epoch, r),
+            ));
+        }
         if let Some(s) = b.jellyfin() {
             let (c, user) = s.client();
             let id = m.id.clone();
@@ -847,7 +906,8 @@ impl Player {
                     || self.pop.is_some()
                     || self.queue_open
                     || self.ctx_menu.is_some()
-                    || self.resume_prompt.is_some(),
+                    || self.resume_prompt.is_some()
+                    || self.hdr_prompt.is_some(),
             )
     }
 
@@ -911,22 +971,31 @@ impl Player {
         {
             pl::name_tracks(&mut self.tracks, &s.media_streams);
         }
+        let second = p.prop("secondary-sid").and_then(|v| v.as_i64());
+        for t in &mut self.tracks {
+            if second == Some(t.id) && t.kind == video::TrackKind::Sub {
+                (t.secondary, t.selected) = (true, false);
+            }
+        }
+    }
+
+    /// Keys of this item's show (or movie) in the language memory.
+    fn lang_keys(&self) -> Vec<String> {
+        let m = &self.media;
+        let ids = self
+            .series_ids
+            .as_ref()
+            .filter(|(o, id, _)| *o == m.origin && Some(id) == m.series_id.as_ref())
+            .map(|(_, _, ids)| ids);
+        lang_memory::keys(m, ids)
     }
 
     fn choice(&self) -> TrackChoice {
-        MEMORY
-            .lock()
-            .ok()
-            .and_then(|m| m.as_ref()?.get(&mem_key(&self.media)).cloned())
-            .unwrap_or_default()
+        lang_memory::recall(&self.lang_keys())
     }
 
     fn remember(&self, f: impl FnOnce(&mut TrackChoice)) {
-        if let Ok(mut m) = MEMORY.lock() {
-            f(m.get_or_insert_with(HashMap::new)
-                .entry(mem_key(&self.media))
-                .or_default());
-        }
+        lang_memory::remember(&self.lang_keys(), f);
     }
 
     /// Once per item, after the file is loaded: preferred audio/subtitle tracks.
@@ -947,14 +1016,11 @@ impl Player {
             .map(|t| t.lang.clone())
             .unwrap_or_default();
         let sid = pl::pick_sub(&self.tracks, &audio, &prefs, &mem);
-        self.setp(
-            "sid",
-            &if sid == 0 {
-                "no".into()
-            } else {
-                sid.to_string()
-            },
-        );
+        self.setp("sid", &track_arg(sid));
+        let sid2 = pl::pick_sub2(&self.tracks, sid, &mem);
+        self.setp("secondary-sid", &track_arg(sid2));
+        self.set.audio_original = mem.audio == Some(AudioPick::Original);
+        self.apply_sub2_pos();
         self.refresh_meta();
     }
 
@@ -994,26 +1060,61 @@ impl Player {
         self.refresh_meta();
     }
 
+    /// Select a track of `prop` (`sid`, `secondary-sid` or `aid`; 0 = off) and remember its language
+    /// for this show. A track with no language tag changes the selection only.
     pub fn set_track(&mut self, prop: &str, id: i64, label: &str) {
-        self.setp(prop, &if id == 0 { "no".into() } else { id.to_string() });
+        self.setp(prop, &track_arg(id));
         self.refresh_meta();
-        let want = if prop == "sid" {
-            video::TrackKind::Sub
-        } else {
-            video::TrackKind::Audio
+        let (kind, second) = match prop {
+            "aid" => (video::TrackKind::Audio, false),
+            "secondary-sid" => (video::TrackKind::Sub, true),
+            _ => (video::TrackKind::Sub, false),
         };
         let lang = self
             .tracks
             .iter()
-            .find(|t| t.selected && t.kind == want)
+            .find(|t| t.kind == kind && if second { t.secondary } else { t.selected })
             .map(|t| t.lang.clone())
             .filter(|l| !l.is_empty());
-        if prop == "sid" {
-            self.remember(|c| c.sub = Some(lang));
-        } else {
-            self.remember(|c| c.audio_lang = lang);
+        match prop {
+            "aid" => {
+                self.set.audio_original = false;
+                if let Some(l) = lang {
+                    self.remember(|c| c.audio = Some(AudioPick::Lang(l)));
+                }
+            }
+            _ if id == 0 || lang.is_some() => {
+                let pick = if id == 0 {
+                    SubPick::Off
+                } else {
+                    SubPick::of(lang)
+                };
+                self.remember(|c| {
+                    if second {
+                        c.sub2 = Some(pick)
+                    } else {
+                        c.sub = Some(pick)
+                    }
+                });
+            }
+            _ => {}
         }
         self.osd(label.to_string());
+    }
+
+    /// The secondary subtitle stays where the viewer put it (top by default).
+    pub fn apply_sub2_pos(&self) {
+        self.setp("secondary-sub-pos", &self.set.sub2_pos.to_string());
+    }
+
+    /// Id of the track shown as the main (`secondary` false) or secondary subtitle, 0 if none.
+    fn shown_sub(&self, secondary: bool) -> i64 {
+        self.tracks
+            .iter()
+            .find(|t| {
+                t.kind == video::TrackKind::Sub && if secondary { t.secondary } else { t.selected }
+            })
+            .map_or(0, |t| t.id)
     }
 
     // ---- settings ----
@@ -1115,6 +1216,9 @@ impl Player {
         let mut task = Task::none();
         match act {
             MenuAct::Sub(id) => {
+                if id != 0 && id == self.shown_sub(true) {
+                    self.set_track("secondary-sid", 0, "Secondary subtitles off");
+                }
                 let l = if id == 0 {
                     "Subtitles off"
                 } else {
@@ -1122,6 +1226,38 @@ impl Player {
                 };
                 self.set_track("sid", id, l);
                 self.pop = None;
+            }
+            MenuAct::Sub2(id) => {
+                if id != 0 && id == self.shown_sub(false) {
+                    self.set_track("sid", 0, "Subtitles off");
+                }
+                let l = if id == 0 {
+                    "Secondary subtitles off"
+                } else {
+                    "Secondary subtitles on"
+                };
+                self.set_track("secondary-sid", id, l);
+                self.pop = None;
+            }
+            MenuAct::Sub2Pos(d) => {
+                self.set.sub2_pos = (self.set.sub2_pos + d).clamp(0, 100);
+                self.apply_sub2_pos();
+            }
+            MenuAct::AudioOriginal => {
+                self.refresh_meta();
+                if let Some(id) = pl::original_audio(&self.tracks) {
+                    self.setp("aid", &id.to_string());
+                    self.refresh_meta();
+                }
+                self.set.audio_original = true;
+                self.remember(|c| c.audio = Some(AudioPick::Original));
+                self.osd("Original audio");
+                self.pop = None;
+            }
+            MenuAct::Nop => {}
+            MenuAct::HdrSwitch => {
+                self.pop = None;
+                task = self.switch_playback(!self.popout, self.paused());
             }
             MenuAct::Audio(id) => {
                 self.set_track("aid", id, "Audio track changed");
@@ -1563,6 +1699,13 @@ impl Player {
     }
 
     pub fn toggle_fullscreen(&mut self) -> Task<Msg> {
+        if self.popout {
+            // The window with the picture is mpv's.
+            if let Some(p) = &self.playback {
+                let _ = p.command(&["cycle", "fullscreen"]);
+            }
+            return Task::none();
+        }
         let Some(id) = self.win_id else {
             return Task::none();
         };
@@ -1597,6 +1740,223 @@ impl Player {
         } else {
             "Screenshot failed"
         });
+    }
+
+    // ---- HDR (docs/HDR.md) ----
+
+    pub fn take_hdr_choice(&mut self) -> Option<HdrMode> {
+        self.hdr_choice.take()
+    }
+
+    fn prop_str(&self, name: &str) -> Option<String> {
+        self.playback
+            .as_ref()?
+            .prop(name)?
+            .as_str()
+            .map(str::to_string)
+    }
+
+    /// Can the display path show HDR: the compositor's colour management plus an mpv that uses it.
+    fn hdr_capable(&self) -> bool {
+        // Debug builds: NOCTURNE_HDR_DISPLAY=yes|no stands in for the display (pop-out testing on an SDR display).
+        #[cfg(debug_assertions)]
+        if let Ok(v) = std::env::var("NOCTURNE_HDR_DISPLAY") {
+            return v == "yes";
+        }
+        let ver = self.prop_str("mpv-version").unwrap_or_default();
+        hdr::display_ok(self.compositor_cm, &ver)
+    }
+
+    /// Once per item, when mpv knows the picture's colour parameters: is it HDR, and what now.
+    /// Only the in-window path (and its pop-out) is asked; the plain mpv window plays HDR itself.
+    fn check_hdr(&mut self) -> Task<Msg> {
+        if !self.embed || self.playback.is_none() || self.resume_prompt.is_some() {
+            return Task::none();
+        }
+        if self.popout && !self.target_checked && self.pos() > 2.0 {
+            self.target_checked = true;
+            let target = self
+                .prop_str("video-target-params/gamma")
+                .unwrap_or_default();
+            if self.hdr_checked && self.set.hdr_popout == Some(true) && !hdr::target_is_hdr(&target)
+            {
+                self.toast(
+                    "The display did not report HDR, so the pop-out is showing SDR. Settings, HDR switches back to the window.",
+                );
+            }
+        }
+        if self.hdr_checked {
+            return Task::none();
+        }
+        let gamma = self.prop_str("video-params/gamma");
+        let prim = self.prop_str("video-params/primaries");
+        if gamma.is_none() && prim.is_none() {
+            // mpv has not decoded a frame yet; give up after a few seconds (treated as SDR).
+            if self.hdr_since.get_or_insert(Instant::now()).elapsed() > Duration::from_secs(5) {
+                self.hdr_checked = true;
+            }
+            return Task::none();
+        }
+        self.hdr_checked = true;
+        if !hdr::is_hdr(
+            gamma.as_deref().unwrap_or_default(),
+            prim.as_deref().unwrap_or_default(),
+        ) {
+            // An SDR item after an HDR one: back to the window.
+            return if self.popout {
+                self.switch_playback(false, self.paused())
+            } else {
+                Task::none()
+            };
+        }
+        self.set.hdr_popout = Some(self.popout);
+        if self.popout {
+            return Task::none();
+        }
+        let capable = self.hdr_capable();
+        match hdr::decide(self.ctx.prefs.hdr, self.group, capable) {
+            hdr::Decision::Window => Task::none(),
+            hdr::Decision::Popout => self.switch_playback(true, self.paused()),
+            hdr::Decision::Prompt { capable } => {
+                let was_paused = self.paused();
+                self.setp("pause", "yes");
+                self.hdr_prompt = Some(hdr::Prompt::new(capable, was_paused));
+                self.pop = None;
+                self.queue_open = false;
+                self.ctx_menu = None;
+                Task::none()
+            }
+        }
+    }
+
+    /// The answer to the HDR prompt.
+    pub fn hdr_choose(&mut self, popout: bool) -> Task<Msg> {
+        let Some(p) = self.hdr_prompt.take() else {
+            return Task::none();
+        };
+        if let Some(m) = p.remembered(popout) {
+            self.ctx.prefs.hdr = m;
+            self.hdr_choice = Some(m);
+        }
+        if popout {
+            return self.switch_playback(true, p.was_paused);
+        }
+        if !p.was_paused {
+            self.setp("pause", "no");
+        }
+        Task::none()
+    }
+
+    /// Moves the video between the window and the HDR pop-out (a separate mpv process driven over
+    /// IPC), keeping position, volume and per-session settings. The same item and play session:
+    /// progress reporting carries on untouched.
+    fn switch_playback(&mut self, popout: bool, keep_paused: bool) -> Task<Msg> {
+        if self.popout == popout || self.closed {
+            return Task::none();
+        }
+        let pos = self.pos();
+        self.hdr_prompt = None;
+        // Release the old one first: the embedded player owns the window's video surface, the
+        // external one a child process (and the pop-out's fullscreen window).
+        self.playback = None;
+        let made = if popout {
+            self.new_popout()
+        } else {
+            self.new_window()
+        };
+        let pb = match made {
+            Ok(p) => p,
+            Err(e) => {
+                // Put the other kind back so playback is not lost.
+                eprintln!("video: switching failed ({e})");
+                match if popout {
+                    self.new_window()
+                } else {
+                    self.new_popout()
+                } {
+                    Ok(p) => {
+                        self.playback = Some(p);
+                        self.toast(format!("Could not switch: {e}"));
+                        return self.reload_at(pos);
+                    }
+                    Err(_) => {
+                        self.problem = Some(format!("Could not continue playback: {e}"));
+                        return Task::none();
+                    }
+                }
+            }
+        };
+        self.popout = popout;
+        self.video = !popout;
+        self.playback = Some(pb);
+        self.switched = true;
+        self.target_checked = false;
+        self.set.hdr_popout = Some(popout);
+        let vol = self.state.as_ref().map_or(self.volume, |s| s.volume);
+        if let Some(p) = &self.playback {
+            let _ = p.set_volume(vol);
+        }
+        if keep_paused {
+            self.setp("pause", "yes");
+        }
+        self.osd(if popout {
+            "HDR pop-out window"
+        } else {
+            "Back in the window (SDR)"
+        });
+        self.reload_at(pos)
+    }
+
+    fn new_popout(&self) -> Result<Playback, String> {
+        if !nocturne_player::mpv_binary_available() {
+            return Err(format!(
+                "the HDR pop-out needs the mpv program. {}",
+                nocturne_player::install_hint()
+            ));
+        }
+        ExternalPlayer::new(Options {
+            buffering: self.ctx.buffering,
+            hdr_output: true,
+            fullscreen: true,
+            ..Default::default()
+        })
+        .map(Playback::External)
+        .map_err(|e| e.to_string())
+    }
+
+    fn new_window(&self) -> Result<Playback, String> {
+        let Some(Handles::Wayland { display, surface }) = self.handles else {
+            return Err("no window to play in".into());
+        };
+        self.new_embedded(display, surface)
+            .map(Playback::Embedded)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Per-session settings a fresh playback object lacks (it starts from mpv's defaults).
+    fn reapply(&mut self) {
+        let s = self.set.clone();
+        if (s.speed - 1.0).abs() > f64::EPSILON {
+            self.setp("speed", &s.speed.to_string());
+        }
+        for (k, v) in s.aspect.props() {
+            self.setp(k, v);
+        }
+        self.setp("tone-mapping", video::TONES[s.tone % video::TONES.len()]);
+        if s.deint {
+            self.setp("deinterlace", "yes");
+        }
+        if s.normalize {
+            self.setp("af", "lavfi=[dynaudnorm=f=250:g=15]");
+        }
+        if s.downmix {
+            self.setp("audio-channels", "stereo");
+        }
+        if s.repeat == Repeat::One {
+            self.setp("loop-file", "inf");
+        }
+        self.apply_pic();
+        self.apply_sub_style();
     }
 
     // ---- reporting ----
@@ -1727,6 +2087,7 @@ impl Player {
         if self.loaded {
             self.report_tick();
             tasks.push(self.run_rules());
+            tasks.push(self.check_hdr());
         }
         self.publish();
         if failed {
@@ -1796,6 +2157,9 @@ impl Player {
 
     fn on_loaded(&mut self) {
         self.loaded = true;
+        if std::mem::take(&mut self.switched) {
+            self.reapply();
+        }
         self.refresh_meta();
         self.apply_tracks();
         self.name_and_ext_subs();
@@ -2141,6 +2505,12 @@ impl Player {
                 self.next_since = None;
             }
             Act::Resume(r) => self.resume_choice(r),
+            Act::Hdr(popout) => return self.hdr_choose(popout),
+            Act::HdrRemember => {
+                if let Some(p) = self.hdr_prompt.as_mut() {
+                    p.remember ^= true;
+                }
+            }
             Act::ShowTotal => self.show_total = !self.show_total,
             Act::Ctx(c) => {
                 self.ctx_menu = None;
@@ -2162,7 +2532,7 @@ impl Player {
                 self.ctx_menu = None;
                 self.pop = None;
                 self.queue_open = false;
-                if self.resume_prompt.is_none() {
+                if self.resume_prompt.is_none() && self.hdr_prompt.is_none() {
                     self.toggle();
                 }
             }
@@ -2189,6 +2559,11 @@ enum Reported {
     Started,
     Progress,
     Stopped,
+}
+
+/// mpv's value for a track property: the id, or `no` for 0.
+fn track_arg(id: i64) -> String {
+    if id == 0 { "no".into() } else { id.to_string() }
 }
 
 fn bridge_spawn(fut: impl std::future::Future<Output = ()> + Send + 'static) {

@@ -12,6 +12,7 @@ use crate::widget::text::mono;
 use iced::widget::button::{Status, Style};
 use iced::widget::{column, container, image, opaque, pin, row, scrollable, space, text};
 use iced::{Alignment, Background, Color, Element, Length, Padding, Rectangle, Shadow};
+use nocturne_core::hdr;
 use nocturne_core::player_logic as pl;
 use nocturne_core::source::fmt_clock;
 use nocturne_core::video::{self, MenuAct, Repeat};
@@ -95,6 +96,10 @@ pub fn popover(p: &Player, pop: video::Pop) -> Element<'_, Msg> {
     let mut col =
         column![container(mono(pop.title().to_uppercase())).padding([t::S2, t::S3])].spacing(2);
     for (i, it) in rows.into_iter().enumerate() {
+        if it.head {
+            col = col.push(container(mono(it.label.to_uppercase())).padding([t::S3, t::S3]));
+            continue;
+        }
         let kb = i == p.pop_sel;
         let value_ink = if it.on {
             t::ON_ACCENT
@@ -338,7 +343,7 @@ pub fn overlays(p: &Player) -> Vec<Element<'_, Msg>> {
         ));
     }
     if p.help {
-        const KEYS: [(&str, &str); 24] = [
+        const KEYS: [(&str, &str); 25] = [
             ("Space / click", "Play / pause"),
             ("Left / Right", "Seek 10 s"),
             ("Up / Down", "Volume"),
@@ -352,6 +357,7 @@ pub fn overlays(p: &Player) -> Vec<Element<'_, Msg>> {
             (", .", "Frame back / forward"),
             ("PgUp / PgDn", "Previous / next chapter"),
             ("c", "Cycle subtitles"),
+            ("Shift+C", "Cycle the secondary subtitle"),
             ("z x", "Subtitle delay -/+ 100 ms"),
             ("- =", "Audio delay -/+ 100 ms"),
             ("a", "A-B loop"),
@@ -463,6 +469,63 @@ pub fn resume_prompt(p: &Player) -> Option<Element<'_, Msg>> {
             ]
             .spacing(t::S3),
             mono("Enter to resume, Esc to start over"),
+        ]
+        .spacing(t::S4)
+        .align_x(Alignment::Center),
+    )
+    .padding(t::S6);
+    Some(placed(opaque(body), H::Center, V::Center, Padding::ZERO))
+}
+
+/// The HDR question (docs/HDR.md): same calm panel as the resume prompt.
+pub fn hdr_prompt(p: &Player) -> Option<Element<'_, Msg>> {
+    let q = p.hdr_prompt?;
+    let body = panel(
+        column![
+            text(hdr::PROMPT_TITLE).size(t::BODY_LG).font(t::SEMIBOLD),
+            text(hdr::PROMPT_BODY)
+                .size(t::BODY)
+                .color(t::TEXT_SECONDARY)
+                .width(460),
+            if q.capable {
+                Element::from(space())
+            } else {
+                text(hdr::PROMPT_NO_DISPLAY)
+                    .size(t::BODY)
+                    .color(t::ACCENT_TEXT)
+                    .width(460)
+                    .into()
+            },
+            row![
+                chip_button("Play here in SDR", q.sel == 0, Msg::Act(Act::Hdr(false))),
+                chip_button(
+                    "Open in HDR pop-out window",
+                    q.sel == 1,
+                    Msg::Act(Act::Hdr(true))
+                ),
+            ]
+            .spacing(t::S3),
+            Press::new(
+                text(format!(
+                    "{}  Remember my choice",
+                    if q.remember { "[x]" } else { "[ ]" }
+                ))
+                .size(t::BODY)
+                .font(t::MONO)
+            )
+            .padding([t::S1, t::S2])
+            .on_press(Msg::Act(Act::HdrRemember))
+            .style(|s| {
+                let hot = matches!(s, Status::Hovered | Status::Pressed);
+                Style {
+                    background: hot.then_some(Background::Color(t::GLASS)),
+                    text_color: t::TEXT,
+                    border: border(Color::TRANSPARENT, 0.0, 6.0),
+                    shadow: Shadow::default(),
+                    snap: false,
+                }
+            }),
+            mono("Left / Right choose, Enter confirm, R remember, Esc plays here"),
         ]
         .spacing(t::S4)
         .align_x(Alignment::Center),
