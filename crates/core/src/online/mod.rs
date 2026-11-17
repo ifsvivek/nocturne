@@ -534,4 +534,6 @@ pub fn has_secret(name: &str) -> bool {
 }
 
 #[cfg(test)]
+mod live;
+#[cfg(test)]
 mod tests;
