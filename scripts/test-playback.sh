@@ -59,7 +59,7 @@ dx sh -c 'ldconfig -p | grep -q "libmpv.so.2"' && pass "installed libmpv.so.2 (l
 
 echo "== loader check without a display"
 out=$(dx sh -c 'unset WAYLAND_DISPLAY DISPLAY; timeout 15 /usr/bin/nocturne 2>&1 | head -20')
-if grep -qE 'neither DISPLAY nor WAYLAND_DISPLAY|neither WAYLAND_DISPLAY nor|open window' <<<"$out" && ! grep -qE 'error while loading shared libraries|cannot open shared object|GLIBC_[0-9.]+. not found' <<<"$out"; then
+if grep -qE 'neither DISPLAY nor WAYLAND_DISPLAY|neither WAYLAND_DISPLAY nor|open window|needs a graphical session' <<<"$out" && ! grep -qE 'error while loading shared libraries|cannot open shared object|GLIBC_[0-9.]+. not found' <<<"$out"; then
   pass "headless start reaches the windowing stage, no loader error"
 else fail "headless start: $(head -3 <<<"$out" | tr '\n' '|')"; fi
 info "headless output: $(head -3 <<<"$out" | tr '\n' '|')"
