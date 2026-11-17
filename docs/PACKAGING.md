@@ -33,7 +33,8 @@ packaging.
 ## Runtime dependencies
 
 How this was derived (all from the release binary, not from memory): `readelf -d` NEEDED shows only `libdbus-1.so.3`,
-`libgcc_s.so.1`, `libm.so.6`, `libc.so.6`. Everything else is opened with `dlopen` (invisible to `readelf`/namcap): the
+`libEGL.so.1` (player's EGL glue), `libudev.so.1` (gamepad input, `gilrs`, since 0.4), `libgcc_s.so.1`, `libm.so.6`,
+`libc.so.6`; these three are load-time requirements (missing = loader error). Everything else is opened with `dlopen` (invisible to `readelf`/namcap): the
 names are visible in the binary (`libEGL.so.1`, `libwayland-client.so.0`, `libwayland-egl.so.1`, `libX11.so.6`,
 `libX11-xcb.so.1`, `libXcursor.so.1`, `libXi.so.6`, `libxkbcommon.so.0`, `libxkbcommon-x11.so.0`) or are assembled from
 immediates by the compiler (`libvulkan.so.1` from `ash::Entry::load`, `libxcb.so.1` from x11rb's `dl-libxcb`; found as
@@ -59,10 +60,10 @@ from `/etc/os-release`. libmpv is not needed at build time, so `mpv` is not a ma
 
 | Distribution | Packages (all needed at run time) | Status |
 |---|---|---|
-| Arch / CachyOS / Manjaro | `mpv libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon-x11 libxcb libx11 libxcursor libxi dbus gcc-libs glibc` + `vulkan-driver`; optional `xdg-desktop-portal noto-fonts gnome-keyring` (PKGBUILD) | VERIFIED names (`pacman -Qo` on every soname); package built and launched in a clean container |
-| Debian / Ubuntu | `libmpv2 libegl1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3 libx11-6 libx11-xcb1 libxcursor1 libxi6` + `mesa-vulkan-drivers \| vulkan-icd`; Recommends `mpv`; optional `xdg-desktop-portal fonts-noto-core` | VERIFIED: the .deb installs with `apt install ./nocturne_*.deb` in clean debian:stable (13), ubuntu:24.04 and ubuntu:latest (26.04); see "Linux packages" |
-| Fedora | `mpv-libs libglvnd-egl vulkan-loader libwayland-client libwayland-egl libxkbcommon libxkbcommon-x11 libxcb dbus-libs libX11 libX11-xcb libXcursor libXi`; Recommends `mesa-vulkan-drivers mpv`; optional `xdg-desktop-portal google-noto-sans-fonts` | VERIFIED: the .rpm installs with `dnf install ./nocturne-*.rpm` in clean fedora:latest (45) with RPM Fusion free enabled (mpv-libs lives there) |
-| openSUSE | `libmpv2 mpv libglvnd libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3 libX11-6 libX11-xcb1 libXcursor1 libXi6` + `libvulkan_intel`/`libvulkan_radeon`; optional `xdg-desktop-portal google-noto-sans-fonts` | names exist in Tumbleweed (zypper info); `libEGL.so.1` is provided by `libglvnd` (the old `libEGL1` name does not exist) |
+| Arch / CachyOS / Manjaro | `systemd-libs mpv libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon-x11 libxcb libx11 libxcursor libxi dbus gcc-libs glibc` + `vulkan-driver`; optional `xdg-desktop-portal noto-fonts gnome-keyring` (PKGBUILD) | VERIFIED names (`pacman -Qo` on every soname); package built and launched in a clean container |
+| Debian / Ubuntu | `libudev1 libmpv2 libegl1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3 libx11-6 libx11-xcb1 libxcursor1 libxi6` + `mesa-vulkan-drivers \| vulkan-icd`; Recommends `mpv`; optional `xdg-desktop-portal fonts-noto-core` | VERIFIED: the .deb installs with `apt install ./nocturne_*.deb` in clean debian:stable (13), ubuntu:24.04 and ubuntu:latest (26.04); see "Linux packages" |
+| Fedora | `systemd-libs mpv-libs libglvnd-egl vulkan-loader libwayland-client libwayland-egl libxkbcommon libxkbcommon-x11 libxcb dbus-libs libX11 libX11-xcb libXcursor libXi`; Recommends `mesa-vulkan-drivers mpv`; optional `xdg-desktop-portal google-noto-sans-fonts` | VERIFIED: the .rpm installs with `dnf install ./nocturne-*.rpm` in clean fedora:latest (45) with RPM Fusion free enabled (mpv-libs lives there) |
+| openSUSE | `libudev1 libmpv2 mpv libglvnd libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3 libX11-6 libX11-xcb1 libXcursor1 libXi6` + `libvulkan_intel`/`libvulkan_radeon`; optional `xdg-desktop-portal google-noto-sans-fonts` | names exist in Tumbleweed (zypper info); `libEGL.so.1` is provided by `libglvnd` (the old `libEGL1` name does not exist) |
 
 How each artifact handles them:
 

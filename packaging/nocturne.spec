@@ -14,6 +14,7 @@ BuildRequires:  gcc, gcc-c++, make, pkgconf-pkg-config, dbus-devel, libglvnd-dev
 
 # mpv-libs provides libmpv.so.2; on Fedora it comes from RPM Fusion (free).
 Requires:       mpv-libs
+Requires:       systemd-libs
 Requires:       libglvnd-egl
 Requires:       vulkan-loader
 Requires:       libwayland-client
