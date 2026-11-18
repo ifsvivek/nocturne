@@ -23,7 +23,7 @@ pub fn pill(sp: &SyncPlay) -> Option<El<'_>> {
     let body = Press::new(
         row![
             container(space().width(6).height(6)).style(|_| iced::widget::container::Style {
-                background: Some(t::ACCENT.into()),
+                background: Some(t::accent().into()),
                 border: border(t::NONE, 0.0, 3.0),
                 ..Default::default()
             }),
@@ -39,7 +39,7 @@ pub fn pill(sp: &SyncPlay) -> Option<El<'_>> {
     .on_press(Msg::OpenScreen)
     .style(|_| Style {
         background: None,
-        text_color: t::TEXT,
+        text_color: t::text(),
         border: border(t::NONE, 0.0, 0.0),
         shadow: Shadow::default(),
         snap: false,
@@ -56,8 +56,8 @@ pub fn pill(sp: &SyncPlay) -> Option<El<'_>> {
         .max_width(380)
         .padding([0.0, t::S1])
         .style(|_| iced::widget::container::Style {
-            background: Some(t::ACCENT_TINT.into()),
-            border: border(t::ACCENT, 1.0, 6.0),
+            background: Some(t::accent_tint().into()),
+            border: border(t::accent(), 1.0, 6.0),
             ..Default::default()
         })
         .into(),
@@ -73,7 +73,7 @@ pub fn screen(sp: &SyncPlay, win: Size) -> El<'_> {
     let mut body: Vec<El> = vec![
         text("Play, pause, seek and skip stay in step for everyone in the group.")
             .size(t::BODY)
-            .color(t::TEXT_SECONDARY)
+            .color(t::text_secondary())
             .into(),
     ];
     if let Some(p) = server_row(sp) {
@@ -98,7 +98,7 @@ pub fn screen(sp: &SyncPlay, win: Size) -> El<'_> {
                 .padding(t::S3)
                 .style(|_| iced::widget::container::Style {
                     background: None,
-                    border: border(t::HAIRLINE_STRONG, 1.0, t::R_PANEL),
+                    border: border(t::hairline_strong(), 1.0, t::r_panel()),
                     ..Default::default()
                 })
                 .into(),
@@ -141,7 +141,7 @@ fn server_row(sp: &SyncPlay) -> Option<El<'_>> {
         }
         r = r.push(mono("[ ] switch"));
     } else if let Some(t) = sp.targets.get(sp.chosen) {
-        r = r.push(text(t.label.clone()).size(t::BODY).font(t::SEMIBOLD));
+        r = r.push(text(t.label.clone()).size(t::BODY).font(t::semibold()));
     }
     Some(r.into())
 }
@@ -174,7 +174,7 @@ fn in_group<'a>(sp: &'a SyncPlay, g: &GroupInfo) -> El<'a> {
     column![
         text(g.group_name.clone())
             .size(t::HEADING)
-            .font(t::SEMIBOLD),
+            .font(t::semibold()),
         mono(format!(
             "{} \u{00B7} {link} \u{00B7} {} watching",
             state_word(g),
@@ -182,10 +182,10 @@ fn in_group<'a>(sp: &'a SyncPlay, g: &GroupInfo) -> El<'a> {
         )),
         text(g.participants.join(", "))
             .size(t::BODY)
-            .color(t::TEXT_SECONDARY),
+            .color(t::text_secondary()),
         text("Pick anything to play: it starts for everyone.")
             .size(t::BODY)
-            .color(t::TEXT_SECONDARY),
+            .color(t::text_secondary()),
         btns,
     ]
     .spacing(t::S3)
@@ -212,7 +212,7 @@ fn browse(sp: &SyncPlay, gate: Gate) -> El<'_> {
                 let id = g.group_id.clone();
                 let line = row![
                     column![
-                        text(g.group_name.clone()).size(t::BODY).font(t::SEMIBOLD),
+                        text(g.group_name.clone()).size(t::BODY).font(t::semibold()),
                         mono(format!(
                             "{} \u{00B7} {}",
                             state_word(g),
@@ -238,12 +238,12 @@ fn browse(sp: &SyncPlay, gate: Gate) -> El<'_> {
                         .padding([t::S2, t::S3])
                         .on_press(Msg::Select(i))
                         .style(move |_| Style {
-                            background: sel.then_some(t::ACCENT_TINT.into()),
-                            text_color: t::TEXT,
+                            background: sel.then_some(t::accent_tint().into()),
+                            text_color: t::text(),
                             border: border(
-                                if sel { t::ACCENT } else { t::HAIRLINE },
+                                if sel { t::accent() } else { t::hairline() },
                                 1.0,
-                                t::R_PANEL,
+                                t::r_panel(),
                             ),
                             shadow: Shadow::default(),
                             snap: false,

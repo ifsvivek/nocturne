@@ -232,7 +232,7 @@ impl Preview {
             container(space())
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .style(crate::style::fill(theme::FRAME)),
+                .style(crate::style::fill(theme::frame())),
             image(crate::widget::tex::dots())
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -254,10 +254,10 @@ pub fn run() -> iced::Result {
         .subscription(Preview::subscription)
         .style(|_, _| iced::theme::Style {
             background_color: iced::Color::TRANSPARENT,
-            text_color: theme::TEXT,
+            text_color: theme::text(),
         })
         .theme(|_: &Preview| iced::Theme::Dark)
-        .default_font(theme::FONT)
+        .default_font(theme::base())
         .exit_on_close_request(false)
         .window(window::Settings {
             size: size(),

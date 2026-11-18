@@ -42,16 +42,16 @@ impl App {
                 Press::new(
                     row![
                         column![
-                            text("Sources").size(t::BODY).font(t::SEMIBOLD),
+                            text("Sources").size(t::BODY).font(t::semibold()),
                             text("Servers and local folders, their order, and which are on.")
                                 .size(t::CONTROL_TEXT)
-                                .color(t::TEXT_SECONDARY),
+                                .color(t::text_secondary()),
                         ]
                         .spacing(2)
                         .width(Length::Fill),
                         text(format!("{}", self.sources.profiles.len()))
                             .size(t::CONTROL_TEXT)
-                            .color(t::TEXT_SECONDARY),
+                            .color(t::text_secondary()),
                         text("\u{203A}").size(t::BODY_LG),
                     ]
                     .spacing(t::S4)
@@ -63,7 +63,7 @@ impl App {
                 .style(|st| Style {
                     background: matches!(st, Status::Hovered | Status::Pressed)
                         .then_some(t::GLASS.into()),
-                    text_color: t::TEXT,
+                    text_color: t::text(),
                     ..Default::default()
                 }),
                 rule(),
@@ -75,10 +75,10 @@ impl App {
                 Press::new(
                     row![
                         column![
-                            text("Run setup again").size(t::BODY).font(t::SEMIBOLD),
+                            text("Run setup again").size(t::BODY).font(t::semibold()),
                             text("Walk through where your media lives and how NOCTURNE behaves.")
                                 .size(t::CONTROL_TEXT)
-                                .color(t::TEXT_SECONDARY),
+                                .color(t::text_secondary()),
                         ]
                         .spacing(2)
                         .width(Length::Fill),
@@ -93,7 +93,7 @@ impl App {
                 .style(|st| Style {
                     background: matches!(st, Status::Hovered | Status::Pressed)
                         .then_some(t::GLASS.into()),
-                    text_color: t::TEXT,
+                    text_color: t::text(),
                     ..Default::default()
                 }),
                 rule(),
@@ -107,8 +107,8 @@ impl App {
                     text(tracked(h))
                         .shaping(iced::widget::text::Shaping::Advanced)
                         .size(t::CONTROL_TEXT)
-                        .font(t::BOLD)
-                        .color(t::TEXT_SECONDARY)
+                        .font(t::bold())
+                        .color(t::text_secondary())
                 ]
                 .spacing(t::S2);
                 if i == 0 {
@@ -117,7 +117,7 @@ impl App {
                             text(s::WRITES_NOTE)
                                 .size(t::BODY)
                                 .line_height(1.5)
-                                .color(t::TEXT_SECONDARY),
+                                .color(t::text_secondary()),
                         )
                         .max_width(720),
                     );
@@ -136,12 +136,12 @@ impl App {
                 );
             }
             let text_col = column![
-                text(r.label).size(t::BODY).font(t::SEMIBOLD),
+                text(r.label).size(t::BODY).font(t::semibold()),
                 container(
                     text(r.hint)
                         .size(t::CONTROL_TEXT)
                         .line_height(1.45)
-                        .color(t::TEXT_SECONDARY)
+                        .color(t::text_secondary())
                 )
                 .max_width(640),
             ]
@@ -161,17 +161,17 @@ impl App {
                     background: if matches!(st, Status::Hovered | Status::Pressed) {
                         Some(t::GLASS.into())
                     } else if on {
-                        Some(t::ACCENT_TINT.into())
+                        Some(t::accent_tint().into())
                     } else {
                         None
                     },
-                    text_color: t::TEXT,
+                    text_color: t::text(),
                     ..Default::default()
                 });
             let bar: El = if on {
                 container(space().width(3).height(Length::Fill))
                     .height(Length::Fill)
-                    .style(fill(t::ACCENT))
+                    .style(fill(t::accent()))
                     .into()
             } else {
                 space().into()
@@ -220,9 +220,9 @@ impl App {
                     menu_row(
                         row![
                             text(name).size(t::BODY).color(if k == cur {
-                                t::ACCENT_TEXT
+                                t::accent_text()
                             } else {
-                                t::TEXT
+                                t::text()
                             }),
                             space().width(Length::Fill),
                             mono(if k == cur { "\u{2713}" } else { "" }),

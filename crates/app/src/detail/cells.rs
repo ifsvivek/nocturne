@@ -41,7 +41,7 @@ pub(super) fn tile<'a>(
         .width(Length::Fill)
         .height(Length::Fill)
         .style(move |_| container::Style {
-            background: Some(t::RAISED.into()),
+            background: Some(t::raised().into()),
             border: border(t::NONE, 0.0, radius),
             ..Default::default()
         });
@@ -96,7 +96,7 @@ pub(super) struct Cell<'a> {
 /// Poster or still with its title and caption (home rows, strips).
 pub(super) fn poster_cell<'a>(c: Cell<'a>) -> El<'a> {
     let focused = c.focused;
-    let mut layers: Vec<El<'a>> = vec![tile(c.img, c.blur, c.title, t::R_XS)];
+    let mut layers: Vec<El<'a>> = vec![tile(c.img, c.blur, c.title, t::r_card())];
     if !focused {
         layers.push(
             container(space())
@@ -114,10 +114,10 @@ pub(super) fn poster_cell<'a>(c: Cell<'a>) -> El<'a> {
     if let Some(b) = c.badge {
         layers.push(
             container(
-                container(text(b).font(t::MONO).size(t::MICRO).color(t::ON_ACCENT))
+                container(text(b).font(t::MONO).size(t::MICRO).color(t::on_accent()))
                     .padding([0.0, t::S2])
                     .style(|_| container::Style {
-                        background: Some(t::ACCENT.into()),
+                        background: Some(t::accent().into()),
                         border: border(t::NONE, 0.0, 4.0),
                         ..Default::default()
                     }),
@@ -140,8 +140,12 @@ pub(super) fn poster_cell<'a>(c: Cell<'a>) -> El<'a> {
             column![
                 g(c.title.to_string())
                     .size(t::BODY)
-                    .font(t::SEMIBOLD)
-                    .color(if focused { t::TEXT } else { t::TEXT_SECONDARY })
+                    .font(t::semibold())
+                    .color(if focused {
+                        t::text()
+                    } else {
+                        t::text_secondary()
+                    })
                     .wrapping(text::Wrapping::None),
                 container(mono(c.meta).wrapping(text::Wrapping::None)).height(16),
             ]
@@ -154,8 +158,8 @@ pub(super) fn poster_cell<'a>(c: Cell<'a>) -> El<'a> {
     let cell = container(body)
         .padding(t::S3)
         .style(move |_| container::Style {
-            background: focused.then_some(t::ACCENT_TINT.into()),
-            border: border(if focused { t::ACCENT } else { t::NONE }, 1.0, 0.0),
+            background: focused.then_some(t::accent_tint().into()),
+            border: border(if focused { t::accent() } else { t::NONE }, 1.0, 0.0),
             shadow: if focused {
                 glow_shadow(0.5)
             } else {
@@ -165,7 +169,7 @@ pub(super) fn poster_cell<'a>(c: Cell<'a>) -> El<'a> {
         });
     let pressable = Press::new(cell)
         .on_press(c.on_press)
-        .style(|_| flat(None, t::TEXT, None, 0.0));
+        .style(|_| flat(None, t::text(), None, 0.0));
     row![
         mouse_area(pressable).on_enter(c.on_enter),
         container(space().width(1).height(Length::Fill)).style(style::rule)
@@ -184,14 +188,14 @@ fn round<'a>(glyph: &'static str, active: bool, off: bool, hint: &'static str, m
             .style(move |s| {
                 let hot = matches!(s, Status::Hovered | Status::Pressed);
                 let edge = if active || hot {
-                    t::ACCENT
+                    t::accent()
                 } else {
-                    t::HAIRLINE
+                    t::hairline()
                 };
                 let ink = if active {
-                    t::ACCENT_TEXT
+                    t::accent_text()
                 } else {
-                    t::TEXT_SECONDARY
+                    t::text_secondary()
                 };
                 let mut x = flat(None, ink, Some(edge), 13.0);
                 x.text_color.a *= dim;
@@ -235,9 +239,9 @@ pub(super) fn episode_card<'a>(
         meta.insert(meta.len().min(1), format!("\u{2605} {r:.1}"));
     }
     let mut layers: Vec<El<'a>> = vec![
-        tile(img, blur, &e.title, t::R_XS),
+        tile(img, blur, &e.title, t::r_card()),
         container(
-            container(g("\u{25B6}").size(16).color(t::ON_ACCENT))
+            container(g("\u{25B6}").size(16).color(t::on_accent()))
                 .width(44)
                 .height(44)
                 .center(44)
@@ -245,7 +249,7 @@ pub(super) fn episode_card<'a>(
                     background: Some(
                         Color {
                             a: if on { 1.0 } else { 0.6 },
-                            ..t::ACCENT
+                            ..t::accent()
                         }
                         .into(),
                     ),
@@ -259,12 +263,12 @@ pub(super) fn episode_card<'a>(
     if e.played {
         layers.push(
             container(
-                container(g("\u{2713}").size(12).color(t::ON_ACCENT))
+                container(g("\u{2713}").size(12).color(t::on_accent()))
                     .width(22)
                     .height(22)
                     .center(22)
                     .style(|_| container::Style {
-                        background: Some(t::ACCENT.into()),
+                        background: Some(t::accent().into()),
                         border: border(t::NONE, 0.0, 11.0),
                         ..Default::default()
                     }),
@@ -280,7 +284,7 @@ pub(super) fn episode_card<'a>(
     }
     let thumb = container(Stack::with_children(layers).width(w).height(h)).style(move |_| {
         container::Style {
-            border: border(if on { t::ACCENT } else { t::NONE }, 1.0, t::R_XS),
+            border: border(if on { t::accent() } else { t::NONE }, 1.0, t::r_card()),
             ..Default::default()
         }
     });
@@ -289,8 +293,8 @@ pub(super) fn episode_card<'a>(
         container(
             g(title)
                 .size(14)
-                .font(t::SEMIBOLD)
-                .color(t::TEXT)
+                .font(t::semibold())
+                .color(t::text())
                 .wrapping(text::Wrapping::None)
         )
         .clip(true),
@@ -299,7 +303,7 @@ pub(super) fn episode_card<'a>(
             g(overview)
                 .size(t::CAPTION + 1.0)
                 .line_height(1.5)
-                .color(t::TEXT_TERTIARY)
+                .color(t::text_tertiary())
         )
         .height(3.0 * (t::CAPTION + 1.0) * 1.5)
         .clip(true)
@@ -325,7 +329,7 @@ pub(super) fn episode_card<'a>(
         .height(h + t::S2 + super::geom::CARD_TEXT);
     let body = Press::new(container(card).padding(t::S3))
         .on_press(Msg::ListOpen(idx))
-        .style(|_| flat(None, t::TEXT, None, 0.0));
+        .style(|_| flat(None, t::text(), None, 0.0));
     mouse_area(body)
         .on_enter(Msg::Hover(super::DRow::List, idx))
         .into()
@@ -358,7 +362,7 @@ pub(super) fn list_row<'a>(
         sub.push("watched \u{2713}".into());
     }
     sub.retain(|s| !s.is_empty());
-    let mut still: Vec<El<'a>> = vec![tile(img, blur, &e.title, t::R_XS)];
+    let mut still: Vec<El<'a>> = vec![tile(img, blur, &e.title, t::r_card())];
     if let Some(p) = e.progress() {
         still.push(progress_over(p));
     }
@@ -366,8 +370,8 @@ pub(super) fn list_row<'a>(
         container(
             g(e.title.clone())
                 .size(t::BODY)
-                .font(t::SEMIBOLD)
-                .color(if on { t::TEXT } else { t::TEXT_SECONDARY })
+                .font(t::semibold())
+                .color(if on { t::text() } else { t::text_secondary() })
                 .wrapping(text::Wrapping::None)
         )
         .clip(true),
@@ -377,7 +381,7 @@ pub(super) fn list_row<'a>(
     .width(Length::Fill);
     if let Some(o) = e.overview.clone().filter(|_| e.kind == Kind::Episode) {
         info = info.push(
-            container(g(o).size(t::CAPTION + 1.0).color(t::TEXT_TERTIARY))
+            container(g(o).size(t::CAPTION + 1.0).color(t::text_tertiary()))
                 .height(2.0 * (t::CAPTION + 1.0) * 1.3)
                 .clip(true),
         );
@@ -396,13 +400,13 @@ pub(super) fn list_row<'a>(
         .on_press(Msg::ListOpen(idx))
         .style(move |s| {
             let bg = if on {
-                Some(t::ACCENT_TINT)
+                Some(t::accent_tint())
             } else if matches!(s, Status::Hovered | Status::Pressed) {
                 Some(t::GLASS)
             } else {
                 None
             };
-            flat(bg, t::TEXT, None, 0.0)
+            flat(bg, t::text(), None, 0.0)
         });
     mouse_area(r)
         .on_enter(Msg::Hover(super::DRow::List, idx))

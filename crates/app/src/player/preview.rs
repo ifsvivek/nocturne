@@ -353,10 +353,10 @@ pub fn run() -> iced::Result {
         .subscription(Preview::subscription)
         .style(|_, _| iced::theme::Style {
             background_color: Color::TRANSPARENT,
-            text_color: theme::TEXT,
+            text_color: theme::text(),
         })
         .theme(|_: &Preview| iced::Theme::Dark)
-        .default_font(theme::FONT)
+        .default_font(theme::base())
         .exit_on_close_request(false)
         .window(window::Settings {
             size: Size::new(1280.0, 800.0),

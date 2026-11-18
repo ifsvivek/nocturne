@@ -120,7 +120,7 @@ fn local_setup(mode: &str) -> Option<Setup> {
         media: m,
         alts: vec![],
         backends: vec![(SourceId(9), b)],
-        marks: vec![mark(9, "LOCAL", theme::ACCENT_TEXT)],
+        marks: vec![mark(9, "LOCAL", theme::accent_text())],
     })
 }
 
@@ -161,12 +161,12 @@ fn server_setup() -> Option<Setup> {
         let (m, _) = b1.full(&item).await.ok()?;
         let mut alts = vec![];
         let mut backends = vec![(SourceId(1), b1)];
-        let mut marks = vec![mark(1, "HOME", theme::ACCENT_TEXT)];
+        let mut marks = vec![mark(1, "HOME", theme::accent_text())];
         if let Some(alt) = env("NOCTURNE_PREVIEW_ALT_ITEM") {
             let (a, _) = b2.full(&alt).await.ok()?;
             alts.push(a);
             backends.push((SourceId(2), b2));
-            marks.push(mark(2, "ARCHIVE", theme::WARN));
+            marks.push(mark(2, "ARCHIVE", theme::warn()));
         }
         Some(Setup {
             media: m,
@@ -318,7 +318,7 @@ impl Preview {
             iced::widget::container(iced::widget::space())
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill)
-                .style(crate::style::fill(theme::FRAME)),
+                .style(crate::style::fill(theme::frame())),
             iced::widget::image(crate::widget::tex::glow())
                 .width(iced::Length::Fill)
                 .height(iced::Length::Fill)
@@ -329,12 +329,12 @@ impl Preview {
                 iced::widget::text("HEADER  /  Home / Movies / ...")
                     .font(theme::MONO)
                     .size(theme::MICRO)
-                    .color(theme::TEXT_TERTIARY)
+                    .color(theme::text_tertiary())
             )
             .width(iced::Length::Fill)
             .height(theme::HEADER_H + 29.0)
             .padding([20.0, theme::PAGE_PAD])
-            .style(crate::style::fill(theme::HEADER_BG)),
+            .style(crate::style::fill(theme::header_bg())),
         ]
         .into()
     }
@@ -377,10 +377,10 @@ pub fn run() -> iced::Result {
         .subscription(Preview::subscription)
         .style(|_, _| iced::theme::Style {
             background_color: Color::TRANSPARENT,
-            text_color: theme::TEXT,
+            text_color: theme::text(),
         })
         .theme(|_: &Preview| iced::Theme::Dark)
-        .default_font(theme::FONT)
+        .default_font(theme::base())
         .exit_on_close_request(false)
         .window(window::Settings {
             size: size(),

@@ -374,12 +374,12 @@ impl Preview {
                 iced::widget::text("Watch together preview")
                     .font(theme::MONO)
                     .size(theme::MICRO)
-                    .color(theme::TEXT_TERTIARY),
+                    .color(theme::text_tertiary()),
             )
             .width(iced::Length::Fill)
             .height(iced::Length::Fill)
             .padding(theme::S6)
-            .style(crate::style::fill(theme::FRAME))
+            .style(crate::style::fill(theme::frame()))
             .into(),
         };
         let mut layers = vec![base];
@@ -433,10 +433,10 @@ pub fn run() -> iced::Result {
         .subscription(Preview::subscription)
         .style(|_, _| iced::theme::Style {
             background_color: Color::TRANSPARENT,
-            text_color: theme::TEXT,
+            text_color: theme::text(),
         })
         .theme(|_: &Preview| iced::Theme::Dark)
-        .default_font(theme::FONT)
+        .default_font(theme::base())
         .exit_on_close_request(false)
         .window(window::Settings {
             size: Size::new(1280.0, 800.0),

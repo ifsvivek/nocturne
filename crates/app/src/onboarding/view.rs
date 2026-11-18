@@ -33,7 +33,7 @@ impl Onboarding {
                     .height(Length::Fill)
                     .style(fill(Color {
                         a: (1.0 - e) * 0.9,
-                        ..t::FRAME
+                        ..t::frame()
                     })),
             ]
             .width(Length::Fill)
@@ -76,12 +76,12 @@ impl Onboarding {
         column![
             self.mark(),
             label(&format!("Step {} of {}", self.index() + 1, self.total())),
-            text(title).size(34).font(t::BOLD),
+            text(title).size(34).font(t::bold()),
             container(
                 text(sub)
                     .size(t::BODY_LG)
                     .line_height(1.5)
-                    .color(t::TEXT_SECONDARY)
+                    .color(t::text_secondary())
                     .align_x(Alignment::Center)
             )
             .max_width(COPY_W),
@@ -151,7 +151,7 @@ impl Onboarding {
                 text("A native media center for your local folders and Jellyfin servers, in one library.")
                     .size(t::BODY_LG + 2.0)
                     .line_height(1.55)
-                    .color(t::TEXT_SECONDARY)
+                    .color(t::text_secondary())
                     .align_x(Alignment::Center)
             )
             .max_width(460),
@@ -195,16 +195,16 @@ impl Onboarding {
                 ]
                 .align_y(Alignment::Start),
                 space().height(t::S3),
-                text(*title).size(20).font(t::SEMIBOLD),
+                text(*title).size(20).font(t::semibold()),
                 text(*body)
                     .size(t::BODY)
                     .line_height(1.45)
-                    .color(t::TEXT_SECONDARY),
+                    .color(t::text_secondary()),
                 space().height(Length::Fill),
                 row![
                     space().width(Length::Fill),
                     text("\u{2192}").size(t::BODY_LG).color(if active {
-                        t::ACCENT_TEXT
+                        t::accent_text()
                     } else {
                         t::NONE
                     })
@@ -221,11 +221,11 @@ impl Onboarding {
         let head = column![
             self.mark(),
             label(&format!("Step {} of {}", self.index() + 1, self.total())),
-            text("Where is your media?").size(34).font(t::BOLD),
+            text("Where is your media?").size(34).font(t::bold()),
             container(
                 text("Start with one; you can add the others at any time.")
                     .size(t::BODY_LG)
-                    .color(t::TEXT_SECONDARY)
+                    .color(t::text_secondary())
             )
             .max_width(COPY_W),
         ]
@@ -293,12 +293,12 @@ impl Onboarding {
         let mut lines = column![].spacing(t::S2);
         if folders {
             if self.world.folders.is_empty() {
-                lines = lines.push(text("No folders yet.").color(t::TEXT_TERTIARY));
+                lines = lines.push(text("No folders yet.").color(t::text_tertiary()));
             }
             for f in self.world.folders.iter().take(4) {
                 lines = lines.push(
                     row![
-                        icon("folder", 15.0, t::TEXT_SECONDARY),
+                        icon("folder", 15.0, t::text_secondary()),
                         text(f.clone()).size(t::BODY).wrapping(text::Wrapping::None)
                     ]
                     .spacing(t::S2)
@@ -318,10 +318,10 @@ impl Onboarding {
                     row![
                         text("\u{25CF}")
                             .size(t::CAPTION)
-                            .color(Color { a, ..t::ACCENT }),
+                            .color(Color { a, ..t::accent() }),
                         text(format!("Indexing\u{2026} {} files", count(n)))
                             .size(t::BODY)
-                            .color(t::ACCENT_TEXT),
+                            .color(t::accent_text()),
                     ]
                     .spacing(t::S2)
                     .align_y(Alignment::Center),
@@ -331,17 +331,17 @@ impl Onboarding {
                 lines = lines.push(
                     text(format!("{} files found", count(self.world.files)))
                         .size(t::BODY)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                 );
             }
         } else {
             if self.world.servers.is_empty() {
-                lines = lines.push(text("Not connected yet.").color(t::TEXT_TERTIARY));
+                lines = lines.push(text("Not connected yet.").color(t::text_tertiary()));
             }
             for s in self.world.servers.iter().take(4) {
                 lines = lines.push(
                     row![
-                        icon("check", 15.0, t::ACCENT_TEXT),
+                        icon("check", 15.0, t::accent_text()),
                         text(format!("Connected to {} as {}", s.name, s.user))
                             .size(t::BODY)
                             .wrapping(text::Wrapping::None)
@@ -379,7 +379,7 @@ impl Onboarding {
         let inner = column![
             row![
                 badge(ic, focused || done),
-                text(name).size(18).font(t::SEMIBOLD)
+                text(name).size(18).font(t::semibold())
             ]
             .spacing(t::S3)
             .align_y(Alignment::Center),
@@ -415,11 +415,11 @@ impl Onboarding {
             let inner = column![
                 badge(ic, false),
                 space().height(t::S3),
-                text(title).size(18).font(t::SEMIBOLD),
+                text(title).size(18).font(t::semibold()),
                 text(body)
                     .size(t::BODY)
                     .line_height(1.45)
-                    .color(t::TEXT_SECONDARY),
+                    .color(t::text_secondary()),
             ]
             .spacing(t::S2);
             r = r.push(plate(
@@ -447,15 +447,15 @@ impl Onboarding {
             let i = self.at(item);
             row![
                 column![
-                    text(title).size(t::BODY).font(t::SEMIBOLD).color(if dim {
-                        t::TEXT_TERTIARY
+                    text(title).size(t::BODY).font(t::semibold()).color(if dim {
+                        t::text_tertiary()
                     } else {
-                        t::TEXT
+                        t::text()
                     }),
                     text(hint)
                         .size(t::CAPTION + 1.0)
                         .line_height(1.4)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                 ]
                 .spacing(2)
                 .width(Length::Fill),
@@ -525,7 +525,7 @@ impl Onboarding {
                 let mut ks = row![].spacing(t::S2).align_y(Alignment::Center);
                 for (n, k) in keys.iter().enumerate() {
                     if n > 0 && keys.len() == 2 && keys[0] == "Settings" {
-                        ks = ks.push(text("\u{203A}").color(t::TEXT_TERTIARY));
+                        ks = ks.push(text("\u{203A}").color(t::text_tertiary()));
                     } else if n > 0 {
                         ks = ks.push(mono("or"));
                     }
@@ -534,11 +534,11 @@ impl Onboarding {
                 let inner = column![
                     ks,
                     space().height(t::S3),
-                    text(*title).size(t::BODY_LG).font(t::SEMIBOLD),
+                    text(*title).size(t::BODY_LG).font(t::semibold()),
                     text(*body)
                         .size(t::BODY)
                         .line_height(1.45)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                 ]
                 .spacing(t::S2);
                 r = r.push(plate(inner, w.into(), 196.0.into(), false));
@@ -559,12 +559,12 @@ impl Onboarding {
         column![
             self.mark(),
             label("What\u{2019}s new in 0.3"),
-            text(title).size(34).font(t::BOLD),
+            text(title).size(34).font(t::bold()),
             container(
                 text(sub)
                     .size(t::BODY_LG)
                     .line_height(1.5)
-                    .color(t::TEXT_SECONDARY)
+                    .color(t::text_secondary())
                     .align_x(Alignment::Center)
             )
             .max_width(COPY_W),
@@ -593,11 +593,11 @@ impl Onboarding {
             let inner = column![
                 mono(n),
                 space().height(t::S3),
-                text(title).size(20).font(t::SEMIBOLD),
+                text(title).size(20).font(t::semibold()),
                 text(body)
                     .size(t::BODY)
                     .line_height(1.45)
-                    .color(t::TEXT_SECONDARY),
+                    .color(t::text_secondary()),
             ]
             .spacing(t::S2);
             r = r.push(plate(inner, w.into(), 250.0.into(), false));
@@ -621,11 +621,11 @@ impl Onboarding {
         let inner = row![
             badge("layers", false),
             column![
-                text("One entry, every copy").size(20).font(t::SEMIBOLD),
+                text("One entry, every copy").size(20).font(t::semibold()),
                 text("When the same film or episode lives in more than one place, it shows up once. Open it to see every copy and choose which one plays.")
                     .size(t::BODY)
                     .line_height(1.45)
-                    .color(t::TEXT_SECONDARY),
+                    .color(t::text_secondary()),
             ]
             .spacing(t::S2)
         ]
@@ -676,9 +676,9 @@ impl Onboarding {
         let mut dots = row![].spacing(t::S2).align_y(Alignment::Center);
         for i in 0..self.total() {
             let (w, c) = match i.cmp(&self.index()) {
-                std::cmp::Ordering::Equal => (22.0, t::ACCENT),
-                std::cmp::Ordering::Less => (6.0, t::TEXT_TERTIARY),
-                std::cmp::Ordering::Greater => (6.0, t::HAIRLINE_STRONG),
+                std::cmp::Ordering::Equal => (22.0, t::accent()),
+                std::cmp::Ordering::Less => (6.0, t::text_tertiary()),
+                std::cmp::Ordering::Greater => (6.0, t::hairline_strong()),
             };
             dots =
                 dots.push(
@@ -711,19 +711,19 @@ fn badge<'a, M: 'a>(name: &str, active: bool) -> Container<'a, M> {
         name,
         22.0,
         if active {
-            t::ACCENT_TEXT
+            t::accent_text()
         } else {
-            t::TEXT_SECONDARY
+            t::text_secondary()
         },
     ))
     .center(44)
     .style(move |_| container::Style {
-        background: Some(if active { t::ACCENT_TINT } else { t::GLASS }.into()),
+        background: Some(if active { t::accent_tint() } else { t::GLASS }.into()),
         border: border(
             if active {
-                t::ACCENT
+                t::accent()
             } else {
-                t::HAIRLINE_STRONG
+                t::hairline_strong()
             },
             1.0,
             22.0,
@@ -745,14 +745,18 @@ fn plate<'a, M: 'a>(
         .height(Length::Fill)
         .style(move |_| container::Style {
             background: Some(Background::Color(if active {
-                t::RAISED
+                t::raised()
             } else {
-                t::SURFACE
+                t::surface()
             })),
             border: border(
-                if active { t::ACCENT_TINT } else { t::HAIRLINE },
+                if active {
+                    t::accent_tint()
+                } else {
+                    t::hairline()
+                },
                 1.0,
-                t::R_PANEL,
+                t::r_panel(),
             ),
             ..Default::default()
         });
@@ -764,12 +768,12 @@ fn plate<'a, M: 'a>(
             background: Some(t::GLASS.into()),
             border: border(
                 if active {
-                    t::ACCENT
+                    t::accent()
                 } else {
-                    t::HAIRLINE_STRONG
+                    t::hairline_strong()
                 },
                 1.0,
-                t::R_PANEL + 4.0,
+                t::r_panel() + 4.0,
             ),
             shadow: if active {
                 glow_shadow(0.5)
@@ -785,12 +789,12 @@ fn keycap<'a, M: 'a>(s: &str) -> Element<'a, M> {
         text(s.to_string())
             .font(t::MONO)
             .size(t::CAPTION)
-            .color(t::TEXT),
+            .color(t::text()),
     )
     .padding([3.0, t::S2])
     .style(|_| container::Style {
-        background: Some(t::CONTROL.into()),
-        border: border(t::EDGE, 1.0, t::R_XS + 1.0),
+        background: Some(t::control().into()),
+        border: border(t::edge(), 1.0, t::r_xs() + 1.0),
         ..Default::default()
     })
     .into()
@@ -798,7 +802,7 @@ fn keycap<'a, M: 'a>(s: &str) -> Element<'a, M> {
 
 /// The big pill with its arrow in a nested circle.
 fn cta<'a>(label: &str, primary: bool, focused: bool, msg: Msg) -> Element<'a, Msg> {
-    let ink = if primary { t::ON_ACCENT } else { t::TEXT };
+    let ink = if primary { t::on_accent() } else { t::text() };
     let ring = container(icon("arrow_right", 14.0, ink))
         .center(28)
         .style(move |_| container::Style {
@@ -810,7 +814,7 @@ fn cta<'a>(label: &str, primary: bool, focused: bool, msg: Msg) -> Element<'a, M
         text(label.to_string())
             .shaping(iced::widget::text::Shaping::Advanced)
             .size(t::BODY)
-            .font(t::SEMIBOLD),
+            .font(t::semibold()),
         ring
     ]
     .spacing(t::S4)
@@ -829,27 +833,27 @@ fn cta<'a>(label: &str, primary: bool, focused: bool, msg: Msg) -> Element<'a, M
             let (bg, edge) = if primary {
                 (
                     Some(if focused || hot {
-                        t::ACCENT_HOVER
+                        t::accent_hover()
                     } else {
-                        t::ACCENT
+                        t::accent()
                     }),
-                    t::ACCENT,
+                    t::accent(),
                 )
             } else {
                 (
                     if hot {
                         Some(t::GLASS)
                     } else if focused {
-                        Some(t::ACCENT_TINT)
+                        Some(t::accent_tint())
                     } else {
                         None
                     },
                     if focused {
-                        t::ACCENT
+                        t::accent()
                     } else if hot {
-                        t::TEXT_TERTIARY
+                        t::text_tertiary()
                     } else {
-                        t::EDGE
+                        t::edge()
                     },
                 )
             };
@@ -871,7 +875,7 @@ fn cta<'a>(label: &str, primary: bool, focused: bool, msg: Msg) -> Element<'a, M
 /// Back / Skip: no outline, brightens on hover.
 fn quiet<'a>(s: &str, msg: Msg) -> Element<'a, Msg> {
     Press::new(
-        container(text(s.to_string()).size(t::CAPTION + 1.0).font(t::MEDIUM))
+        container(text(s.to_string()).size(t::CAPTION + 1.0).font(t::medium()))
             .center_y(Length::Fill),
     )
     .width(Length::Shrink)
@@ -881,9 +885,9 @@ fn quiet<'a>(s: &str, msg: Msg) -> Element<'a, Msg> {
     .style(|s| Style {
         background: None,
         text_color: if matches!(s, Status::Hovered | Status::Pressed) {
-            t::TEXT
+            t::text()
         } else {
-            t::TEXT_TERTIARY
+            t::text_tertiary()
         },
         border: border(t::NONE, 0.0, 6.0),
         shadow: Shadow::default(),

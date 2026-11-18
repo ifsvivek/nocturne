@@ -15,7 +15,7 @@ pub fn border(color: Color, width: f32, radius: f32) -> Border {
 /// Soft focus glow; the GPUI app replaced the token's alpha with `a`.
 pub fn glow_shadow(a: f32) -> Shadow {
     Shadow {
-        color: Color { a, ..t::GLOW },
+        color: Color { a, ..t::glow() },
         offset: Vector::ZERO,
         blur_radius: 24.0,
     }
@@ -29,11 +29,19 @@ pub fn fill(c: Color) -> impl Fn(&iced::Theme) -> container::Style {
     }
 }
 
+/// The window background of the active theme (a colour or a gradient).
+pub fn page(_: &iced::Theme) -> container::Style {
+    container::Style {
+        background: Some(t::bg()),
+        ..Default::default()
+    }
+}
+
 /// Panel on the surface colour with the strong hairline (dialogs, menus, account panel).
 pub fn panel(_: &iced::Theme) -> container::Style {
     container::Style {
-        background: Some(t::SURFACE.into()),
-        border: border(t::HAIRLINE_STRONG, 1.0, t::R_PANEL),
+        background: Some(t::surface().into()),
+        border: border(t::hairline_strong(), 1.0, t::r_panel()),
         ..Default::default()
     }
 }
@@ -41,30 +49,30 @@ pub fn panel(_: &iced::Theme) -> container::Style {
 /// Raised card: toasts, the offline banner.
 pub fn raised_card(_: &iced::Theme) -> container::Style {
     container::Style {
-        background: Some(t::RAISED.into()),
-        border: border(t::HAIRLINE_STRONG, 1.0, t::R_PANEL),
-        text_color: Some(t::TEXT),
+        background: Some(t::raised().into()),
+        border: border(t::hairline_strong(), 1.0, t::r_panel()),
+        text_color: Some(t::text()),
         ..Default::default()
     }
 }
 
 pub fn scrim(_: &iced::Theme) -> container::Style {
-    fill(t::SCRIM)(&iced::Theme::Dark)
+    fill(t::scrim())(&iced::Theme::Dark)
 }
 
 /// Tooltip bubble for icon-only buttons.
 pub fn tip(_: &iced::Theme) -> container::Style {
     container::Style {
-        background: Some(t::RAISED.into()),
-        border: border(t::HAIRLINE_STRONG, 1.0, t::R_XS),
-        text_color: Some(t::TEXT),
+        background: Some(t::raised().into()),
+        border: border(t::hairline_strong(), 1.0, t::r_xs()),
+        text_color: Some(t::text()),
         ..Default::default()
     }
 }
 
 /// One hairline rule (1 px).
 pub fn rule(_: &iced::Theme) -> container::Style {
-    fill(t::HAIRLINE)(&iced::Theme::Dark)
+    fill(t::hairline())(&iced::Theme::Dark)
 }
 
 /// Tint an icon.
@@ -82,7 +90,7 @@ pub fn scroll(_: &iced::Theme, status: scrollable::Status) -> scrollable::Style 
         background: None,
         border: Border::default(),
         scroller: scrollable::Scroller {
-            background: Background::Color(if hot { t::EDGE } else { t::HAIRLINE_STRONG }),
+            background: Background::Color(if hot { t::edge() } else { t::hairline_strong() }),
             border: border(t::NONE, 0.0, 3.0),
         },
     };
@@ -92,10 +100,10 @@ pub fn scroll(_: &iced::Theme, status: scrollable::Status) -> scrollable::Style 
         horizontal_rail: rail,
         gap: None,
         auto_scroll: scrollable::AutoScroll {
-            background: t::RAISED.into(),
-            border: border(t::HAIRLINE_STRONG, 1.0, 12.0),
+            background: t::raised().into(),
+            border: border(t::hairline_strong(), 1.0, 12.0),
             shadow: Shadow::default(),
-            icon: t::TEXT,
+            icon: t::text(),
         },
     }
 }
@@ -103,17 +111,17 @@ pub fn scroll(_: &iced::Theme, status: scrollable::Status) -> scrollable::Style 
 /// Hairline-outlined input, accent ring while focused (used from step 4b on).
 pub fn input(_: &iced::Theme, status: text_input::Status) -> text_input::Style {
     let ring = match status {
-        text_input::Status::Focused { .. } => t::ACCENT,
-        text_input::Status::Hovered => t::TEXT_SECONDARY,
-        _ => t::EDGE,
+        text_input::Status::Focused { .. } => t::accent(),
+        text_input::Status::Hovered => t::text_secondary(),
+        _ => t::edge(),
     };
     text_input::Style {
         background: Background::Color(t::NONE),
         border: border(ring, 1.0, 6.0),
-        icon: t::TEXT_SECONDARY,
-        placeholder: t::TEXT_TERTIARY,
-        value: t::TEXT,
-        selection: t::ACCENT_TINT,
+        icon: t::text_secondary(),
+        placeholder: t::text_tertiary(),
+        value: t::text(),
+        selection: t::accent_tint(),
     }
 }
 

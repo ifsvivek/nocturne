@@ -221,7 +221,7 @@ impl AudioQueue {
             body.push(
                 text("The queue is empty. Use \"Play next\" or \"Add to queue\" on a track or album.")
                     .size(t::BODY)
-                    .color(t::TEXT_SECONDARY)
+                    .color(t::text_secondary())
                     .into(),
             );
         }
@@ -232,7 +232,7 @@ impl AudioQueue {
                 mono(format!("{:>2}", i + 1)).width(24),
                 text(m.title.clone())
                     .size(t::BODY)
-                    .font(if now { t::SEMIBOLD } else { t::MEDIUM })
+                    .font(if now { t::semibold() } else { t::medium() })
                     .width(Length::Fill)
                     .wrapping(text::Wrapping::None),
                 mono(if now { "NEXT UP" } else { "" }),
@@ -246,13 +246,13 @@ impl AudioQueue {
                     .on_press(Msg::Sel(i))
                     .style(move |s| Style {
                         background: if on {
-                            Some(t::ACCENT_TINT.into())
+                            Some(t::accent_tint().into())
                         } else if matches!(s, Status::Hovered) {
                             Some(t::GLASS.into())
                         } else {
                             None
                         },
-                        text_color: if on { t::ACCENT_TEXT } else { t::TEXT },
+                        text_color: if on { t::accent_text() } else { t::text() },
                         border: crate::style::border(t::NONE, 0.0, 6.0),
                         shadow: Shadow::default(),
                         snap: false,

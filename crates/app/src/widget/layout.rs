@@ -22,12 +22,12 @@ pub fn section<'a, M: 'a>(title: &str, body: &str, meta: String) -> Element<'a, 
     container(
         row![
             column![
-                text(title.to_string()).size(28).font(t::BOLD),
+                text(title.to_string()).size(28).font(t::bold()),
                 container(
                     text(body.to_string())
                         .size(t::BODY)
                         .line_height(1.55)
-                        .color(t::TEXT_SECONDARY)
+                        .color(t::text_secondary())
                 )
                 .max_width(520),
             ]

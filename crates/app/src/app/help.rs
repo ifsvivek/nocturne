@@ -19,11 +19,11 @@ impl App {
                         text(*k)
                             .font(t::MONO)
                             .size(t::BODY)
-                            .color(t::ACCENT_TEXT)
+                            .color(t::accent_text())
                             .width(170),
                         text(*d)
                             .size(t::BODY)
-                            .color(t::TEXT_SECONDARY)
+                            .color(t::text_secondary())
                             .width(Length::Fill),
                     ]
                     .spacing(t::S4),
@@ -35,7 +35,7 @@ impl App {
         let panel = container(
             scrollable(
                 column![
-                    text("Keyboard shortcuts").size(t::HEADING).font(t::BOLD),
+                    text("Keyboard shortcuts").size(t::HEADING).font(t::bold()),
                     cols,
                     mono("Press Esc or ? to close"),
                 ]

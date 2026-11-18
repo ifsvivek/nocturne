@@ -31,10 +31,10 @@ fn base_fill(_: &iced::Theme) -> container::Style {
     container::Style {
         background: Some(Background::Gradient(Gradient::Linear(
             gradient::Linear::new(std::f32::consts::PI * 0.9)
-                .add_stop(0.0, t::RAISED)
-                .add_stop(1.0, t::SURFACE),
+                .add_stop(0.0, t::raised())
+                .add_stop(1.0, t::surface()),
         ))),
-        border: border(t::NONE, 0.0, t::R_XS),
+        border: border(t::NONE, 0.0, t::r_card()),
         ..Default::default()
     }
 }
@@ -47,13 +47,13 @@ pub fn tile<'a, M: 'a>(pic: &Pic, title: &str, w: Length, h: Length) -> Element<
             .width(Length::Fill)
             .height(Length::Fill)
             .content_fit(ContentFit::Cover)
-            .border_radius(t::R_XS)
+            .border_radius(t::r_card())
             .into(),
         Pic::Loading => space().into(),
         Pic::Missing => container(
             text(initial(title))
                 .size(48)
-                .font(t::BOLD)
+                .font(t::bold())
                 .color(t::INITIAL_TINT),
         )
         .center(Length::Fill)
@@ -100,9 +100,9 @@ fn chip_button<'a, M: Clone + 'a>(
         .on_press(m)
         .style(move |s| {
             let ink = if on {
-                t::ACCENT_TEXT
+                t::accent_text()
             } else {
-                t::TEXT_SECONDARY
+                t::text_secondary()
             };
             Style {
                 background: Some(Color::from_rgba8(0x07, 0x08, 0x0c, 0.8).into()),
@@ -112,9 +112,9 @@ fn chip_button<'a, M: Clone + 'a>(
                 },
                 border: border(
                     if on || matches!(s, Status::Hovered | Status::Pressed) {
-                        t::ACCENT
+                        t::accent()
                     } else {
-                        t::EDGE
+                        t::edge()
                     },
                     1.0,
                     12.0,
@@ -144,7 +144,7 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
                 .height(Length::Fill)
                 .style(|_| container::Style {
                     background: Some(t::POSTER_DIM.into()),
-                    border: border(t::NONE, 0.0, t::R_XS),
+                    border: border(t::NONE, 0.0, t::r_card()),
                     ..Default::default()
                 })
                 .into(),
@@ -160,11 +160,11 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
     ));
     if let Some(mk) = c.mark {
         layers.push(corner(
-            container(mono(mk).color(t::TEXT))
+            container(mono(mk).color(t::text()))
                 .padding([1.0, t::S1 + 1.0])
                 .style(|_| container::Style {
                     background: Some(Color::from_rgba8(0x07, 0x08, 0x0c, 0.8).into()),
-                    border: border(t::HAIRLINE_STRONG, 1.0, 4.0),
+                    border: border(t::hairline_strong(), 1.0, 4.0),
                     ..Default::default()
                 })
                 .into(),
@@ -175,10 +175,10 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
     }
     if let Some(b) = c.badge {
         layers.push(corner(
-            container(mono(b).color(t::ON_ACCENT))
+            container(mono(b).color(t::on_accent()))
                 .padding([0.0, t::S2])
                 .style(|_| container::Style {
-                    background: Some(t::ACCENT.into()),
+                    background: Some(t::accent().into()),
                     border: border(t::NONE, 0.0, 4.0),
                     ..Default::default()
                 })
@@ -220,12 +220,12 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
     let caption = column![
         text(c.title)
             .size(t::BODY)
-            .font(t::SEMIBOLD)
+            .font(t::semibold())
             .wrapping(text::Wrapping::None)
             .color(if c.focused {
-                t::TEXT
+                t::text()
             } else {
-                t::TEXT_SECONDARY
+                t::text_secondary()
             }),
         container(mono(c.meta).wrapping(text::Wrapping::None))
             .height(16)
@@ -249,8 +249,8 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .style(|_| container::Style {
-                    background: Some(t::ACCENT_TINT.into()),
-                    border: border(t::ACCENT, crate::couch::ring(), 0.0),
+                    background: Some(t::accent_tint().into()),
+                    border: border(t::accent(), crate::couch::ring(), 0.0),
                     shadow: glow_shadow(if crate::couch::on() { 1.0 } else { 0.5 }),
                     ..Default::default()
                 })

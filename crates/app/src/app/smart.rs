@@ -478,7 +478,7 @@ impl App {
             items.push(menu_row(
                 text("Manage smart collections\u{2026}")
                     .size(t::BODY)
-                    .color(t::TEXT_SECONDARY),
+                    .color(t::text_secondary()),
                 false,
                 false,
                 Message::Smart(Msg::Manage),
@@ -512,7 +512,7 @@ impl App {
         let mut v: Vec<El> = vec![
             text("Saved rules over everything you have, from every source. They live on this computer and are never sent to a server.")
                 .size(t::CONTROL_TEXT)
-                .color(t::TEXT_SECONDARY)
+                .color(t::text_secondary())
                 .into(),
         ];
         for (i, s) in self.smart.store.items.iter().enumerate() {

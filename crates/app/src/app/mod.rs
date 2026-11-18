@@ -1737,7 +1737,9 @@ impl App {
     fn failed_view(&self, msg: &str) -> Element<'_, Message> {
         container(
             column![
-                text(msg.to_string()).size(t::BODY).color(t::TEXT_SECONDARY),
+                text(msg.to_string())
+                    .size(t::BODY)
+                    .color(t::text_secondary()),
                 container(widget::pill_button(
                     "Try again",
                     false,
@@ -1769,7 +1771,7 @@ impl App {
                 container(space())
                     .width(Length::Fill)
                     .height(Length::Fill)
-                    .style(crate::style::fill(t::FRAME))
+                    .style(crate::style::page)
                     .into(),
                 layer(&self.glow, 1.0),
                 layer(&self.dots, 0.09),
@@ -1779,7 +1781,7 @@ impl App {
             if let Some((n, _)) = &self.note {
                 layers.push(
                     container(
-                        container(text(n.clone()).size(t::BODY).color(t::TEXT))
+                        container(text(n.clone()).size(t::BODY).color(t::text()))
                             .padding([t::S3, t::S4])
                             .style(crate::style::raised_card),
                     )
@@ -1845,7 +1847,7 @@ impl App {
             if let Some((n, _)) = &self.note {
                 layers.push(
                     container(
-                        container(text(n.clone()).size(t::BODY).color(t::TEXT))
+                        container(text(n.clone()).size(t::BODY).color(t::text()))
                             .padding([t::S3, t::S4])
                             .style(crate::style::raised_card),
                     )
@@ -1878,7 +1880,7 @@ impl App {
             container(space())
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .style(crate::style::fill(t::FRAME))
+                .style(crate::style::page)
                 .into(),
             layer(&self.glow, 1.0),
             layer(&self.dots, 0.09),
@@ -1949,7 +1951,7 @@ impl App {
         if let Some((n, _)) = &self.note {
             layers.push(
                 container(
-                    container(text(n.clone()).size(t::BODY).color(t::TEXT))
+                    container(text(n.clone()).size(t::BODY).color(t::text()))
                         .padding([t::S3, t::S4])
                         .style(crate::style::raised_card),
                 )
@@ -1993,12 +1995,12 @@ impl App {
             space().height(t::S6).into(),
             text(title.to_string())
                 .size(t::HEADING)
-                .font(t::BOLD)
+                .font(t::bold())
                 .into(),
             container(
                 text(body.to_string())
                     .size(t::BODY)
-                    .color(t::TEXT_SECONDARY)
+                    .color(t::text_secondary())
                     .align_x(Alignment::Center),
             )
             .max_width(460)
@@ -2026,7 +2028,7 @@ impl App {
             label("Connecting")
                 .color(iced::Color {
                     a: pulse(self.now, 1600),
-                    ..t::TEXT_TERTIARY
+                    ..t::text_tertiary()
                 })
                 .into(),
         ])

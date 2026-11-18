@@ -389,7 +389,7 @@ impl App {
         ]
         .spacing(t::S2);
         if let Some(e) = f.path_err {
-            add = add.push(text(e).size(t::CONTROL_TEXT).color(t::DANGER));
+            add = add.push(text(e).size(t::CONTROL_TEXT).color(t::danger()));
         }
         page = page.push(container(add).padding(Padding {
             top: t::S6,
@@ -409,7 +409,7 @@ impl App {
                 container(
                     text("No folders yet. Choose one above or type its path.")
                         .size(t::BODY)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                 )
                 .padding([t::S6, t::PAGE_PAD]),
             );
@@ -419,27 +419,27 @@ impl App {
             let (ok, items) = info.map_or((true, 0), |i| (i.available, i.items));
             let state = if ok {
                 row![
-                    dot(t::ACCENT_TEXT),
+                    dot(t::accent_text()),
                     text(format!("{items} files"))
                         .size(t::CONTROL_TEXT)
-                        .color(t::TEXT_SECONDARY)
+                        .color(t::text_secondary())
                 ]
             } else {
                 row![
-                    dot(t::WARN),
+                    dot(t::warn()),
                     text("Not available. Is the drive mounted?")
                         .size(t::CONTROL_TEXT)
-                        .color(t::WARN)
+                        .color(t::warn())
                 ]
             }
             .spacing(t::S2)
             .align_y(Alignment::Center);
             let line = row![
-                container(icon("folder", 18.0, t::TEXT_SECONDARY))
+                container(icon("folder", 18.0, t::text_secondary()))
                     .center(38)
                     .style(|_| container::Style {
                         background: Some(t::GLASS.into()),
-                        border: border(t::HAIRLINE_STRONG, 1.0, 19.0),
+                        border: border(t::hairline_strong(), 1.0, 19.0),
                         ..Default::default()
                     }),
                 text(r.display().to_string())
@@ -501,7 +501,7 @@ impl App {
                             "Up to date.".into()
                         })
                         .size(t::BODY)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                         space().width(Length::Fill),
                         action_button(
                             "Rescan now",
@@ -518,10 +518,13 @@ impl App {
         }
         let c = &f.overview.counts;
         let stat = |n: usize, l: &'static str| -> El<'static> {
-            column![text(n.to_string()).size(t::HEADING).font(t::BOLD), mono(l)]
-                .spacing(2)
-                .width(110)
-                .into()
+            column![
+                text(n.to_string()).size(t::HEADING).font(t::bold()),
+                mono(l)
+            ]
+            .spacing(2)
+            .width(110)
+            .into()
         };
         idx = idx.push(
             row![
@@ -544,10 +547,10 @@ impl App {
             page = page.push(
                 container(
                     column![
-                        text("Unmatched").size(t::BODY_LG).font(t::BOLD),
+                        text("Unmatched").size(t::BODY_LG).font(t::bold()),
                         text("Files NOCTURNE could not place from their names. Tell it what each one is; the file itself is never changed.")
                             .size(t::CONTROL_TEXT)
-                            .color(t::TEXT_SECONDARY),
+                            .color(t::text_secondary()),
                     ]
                     .spacing(2),
                 )
@@ -595,7 +598,7 @@ impl App {
                             c.unmatched - UNMATCHED_SHOWN
                         ))
                         .size(t::CONTROL_TEXT)
-                        .color(t::TEXT_TERTIARY),
+                        .color(t::text_tertiary()),
                     )
                     .padding([t::S4, t::PAGE_PAD]),
                 );
@@ -735,7 +738,7 @@ fn edit_form(e: &Edit) -> El<'_> {
             ),
             text(e.err.unwrap_or(""))
                 .size(t::CONTROL_TEXT)
-                .color(t::DANGER),
+                .color(t::danger()),
         ]
         .spacing(t::S3)
         .align_y(Alignment::Center),
