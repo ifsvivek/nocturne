@@ -59,6 +59,14 @@ dylibbundler -od -b -cd \
 mv "$stage/libmpv.2.dylib" "$app/Contents/Frameworks/libmpv.2.dylib"
 # the dylib's own install name still points into Homebrew; the check below would (rightly) flag it
 install_name_tool -id @executable_path/../Frameworks/libmpv.2.dylib "$app/Contents/Frameworks/libmpv.2.dylib"
+# Libraries in Frameworks/ must find their siblings no matter which program loads them (a dlopen from anything but
+# Contents/MacOS failed on CI: "Library not loaded: @executable_path/../Frameworks/libass.9.dylib"). Rewrite
+# dylib-to-dylib references to @loader_path (same folder); the programs in Contents/MacOS keep @executable_path.
+for f in "$app/Contents/Frameworks/"*.dylib; do
+  otool -L "$f" | awk 'NR>1{print $1}' | grep '^@executable_path/../Frameworks/' | while read -r dep; do
+    install_name_tool -change "$dep" "@loader_path/${dep##*/}" "$f"
+  done
+done
 # dylibbundler can add an LC_RPATH the binary already has; dyld on current macOS aborts on a duplicate
 # ("duplicate LC_RPATH", found by the first CI run). Drop repeats so each rpath appears once.
 for f in "$app/Contents/MacOS/"* "$app/Contents/Frameworks/"*.dylib; do
