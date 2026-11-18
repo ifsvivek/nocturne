@@ -123,8 +123,8 @@ impl Dialog {
         }
     }
 
-    /// Key press (`key` as the UI names it, `ch` the typed character, if any).
-    pub fn key(&mut self, key: &str, ch: Option<&str>) -> Out {
+    /// Navigation key (`key` as the UI names it); typing belongs to the text inputs, see [`Self::input`].
+    pub fn key(&mut self, key: &str) -> Out {
         let n = self.fields.len() + 2;
         match key {
             "escape" => return Out::Cancel,
@@ -138,21 +138,21 @@ impl Dialog {
                     self.cancel_ix()
                 }
             }
-            "backspace" => {
-                if let Some(f) = self.fields.get_mut(self.focus) {
-                    f.value.pop();
-                }
-            }
-            _ => {
-                if let (Some(f), Some(c)) = (self.fields.get_mut(self.focus), ch)
-                    && !c.chars().any(char::is_control)
-                    && (!f.numeric || c.chars().all(|x| x.is_ascii_digit()))
-                {
-                    f.value.push_str(c);
-                }
-            }
+            _ => {}
         }
         Out::Stay
+    }
+
+    /// Input `i` now holds `text`. Control characters are dropped, and a numeric input keeps digits only.
+    pub fn input(&mut self, i: usize, text: &str) {
+        let Some(f) = self.fields.get_mut(i) else {
+            return;
+        };
+        self.focus = i;
+        f.value = text
+            .chars()
+            .filter(|c| !c.is_control() && (!f.numeric || c.is_ascii_digit()))
+            .collect();
     }
 
     pub fn values(&self) -> Vec<String> {
@@ -183,45 +183,37 @@ mod tests {
     fn cancel_is_default_and_enter_never_confirms_at_once() {
         let mut d = plain();
         assert_eq!(d.focus, d.cancel_ix());
-        assert_eq!(d.key("enter", None), Out::Cancel);
-        assert_eq!(plain().key("escape", None), Out::Cancel);
+        assert_eq!(d.key("enter"), Out::Cancel);
+        assert_eq!(plain().key("escape"), Out::Cancel);
     }
 
     #[test]
     fn confirm_needs_focus_on_confirm() {
         let mut d = plain();
-        assert_eq!(d.key("right", None), Out::Stay);
+        assert_eq!(d.key("right"), Out::Stay);
         assert_eq!(d.focus, d.confirm_ix());
-        assert_eq!(d.key("enter", None), Out::Confirm);
+        assert_eq!(d.key("enter"), Out::Confirm);
         // moving back re-arms cancel
         let mut d = plain();
-        d.key("right", None);
-        d.key("left", None);
-        assert_eq!(d.key("enter", None), Out::Cancel);
+        d.key("right");
+        d.key("left");
+        assert_eq!(d.key("enter"), Out::Cancel);
     }
 
     #[test]
     fn typed_name_gates_confirm() {
         let mut d = del();
-        assert_eq!(
-            d.key("enter", None),
-            Out::Stay,
-            "enter on an input just advances"
-        );
-        d.key("right", None);
+        assert_eq!(d.key("enter"), Out::Stay, "enter on an input just advances");
+        d.key("right");
         assert_eq!(d.focus, d.confirm_ix());
-        assert_eq!(d.key("enter", None), Out::Stay, "empty name blocks");
+        assert_eq!(d.key("enter"), Out::Stay, "empty name blocks");
         d.focus = 0;
-        for c in ["b", "o", "x"] {
-            d.key(c, Some(c));
-        }
+        d.input(0, "box");
         d.focus = d.confirm_ix();
-        assert_eq!(d.key("enter", None), Out::Stay, "wrong name blocks");
-        d.focus = 0;
-        d.key("backspace", None);
-        d.key("b", Some("b"));
+        assert_eq!(d.key("enter"), Out::Stay, "wrong name blocks");
+        d.input(0, "bob");
         d.focus = d.confirm_ix();
-        assert_eq!(d.key("enter", None), Out::Confirm);
+        assert_eq!(d.key("enter"), Out::Confirm);
     }
 
     #[test]
@@ -245,9 +237,11 @@ mod tests {
         let mut d = Dialog::new(Act::RefreshAll, "t".into(), "b".into(), "Save", false)
             .field(f)
             .start();
-        d.key("a", Some("a"));
-        d.key("7", Some("7"));
-        d.key("x", Some("\u{7f}"));
-        assert_eq!(d.fields[0].value, "7");
+        d.input(0, "7");
+        d.input(0, "7a");
+        d.input(0, "7\u{7f}");
+        assert_eq!(d.fields[0].value, "7", "only digits stay");
+        d.input(0, "42");
+        assert_eq!(d.fields[0].value, "42");
     }
 }

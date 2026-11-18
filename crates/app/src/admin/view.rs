@@ -11,6 +11,7 @@ use crate::widget::{
 use iced::widget::button::{Status, Style};
 use iced::widget::{
     Column, Space, column, container, mouse_area, opaque, row, scrollable, space, stack, text,
+    text_input,
 };
 use iced::{Alignment, Color, Element, Length, Padding, Shadow};
 use nocturne_core::admin::act::Act;
@@ -642,47 +643,25 @@ fn dialog<'a>(a: &Admin) -> Option<El<'a>> {
             .into(),
     ];
     for (i, f) in d.fields.iter().enumerate() {
-        let on = d.focus == i;
-        let shown = if f.secret {
-            "\u{2022}".repeat(f.value.chars().count())
-        } else {
-            f.value.clone()
-        };
         let bad = !f.value.is_empty() && !f.ok();
         items.push(
             column![
                 mono(f.label.to_string()),
-                Press::new(
-                    container(
-                        text(format!("{shown}{}", if on { "\u{2595}" } else { "" }))
-                            .font(t::MONO)
-                            .size(t::BODY)
-                            .wrapping(text::Wrapping::None),
-                    )
-                    .center_y(Length::Fill)
-                    .clip(true),
-                )
-                .width(Length::Fill)
-                .height(36)
-                .padding([0.0, t::S3])
-                .on_press(Msg::DialogClick(i))
-                .style(move |_| Style {
-                    background: None,
-                    text_color: t::TEXT,
-                    border: border(
-                        if on {
-                            t::ACCENT
-                        } else if bad {
-                            t::DANGER
-                        } else {
-                            t::HAIRLINE_STRONG
-                        },
-                        1.0,
-                        6.0,
-                    ),
-                    shadow: Shadow::default(),
-                    snap: false,
-                }),
+                text_input("", &f.value)
+                    .id(super::field_id(i))
+                    .on_input(move |s| Msg::DialogInput(i, s))
+                    .on_submit(Msg::DialogSubmit(i))
+                    .secure(f.secret)
+                    .font(t::MONO)
+                    .size(t::BODY)
+                    .padding([t::S2, t::S3])
+                    .style(move |th, st| {
+                        let mut s = style::input(th, st);
+                        if bad && !matches!(st, text_input::Status::Focused { .. }) {
+                            s.border.color = t::DANGER;
+                        }
+                        s
+                    }),
             ]
             .spacing(t::S1)
             .into(),

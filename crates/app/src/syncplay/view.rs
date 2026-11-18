@@ -6,7 +6,7 @@ use crate::theme as t;
 use crate::widget::press::Press;
 use crate::widget::{action_button, mono, overlay, tip, tracked};
 use iced::widget::button::Style;
-use iced::widget::{column, container, row, space, text};
+use iced::widget::{column, container, row, space, text, text_input};
 use iced::{Alignment, Element, Length, Shadow, Size};
 use nocturne_core::syncplay::Gate;
 use nocturne_jellyfin_user::syncplay::GroupInfo;
@@ -253,31 +253,13 @@ fn browse(sp: &SyncPlay, gate: Gate) -> El<'_> {
         }
     }
     if gate == Gate::Create || gate == Gate::NeedWrites {
-        let focus = sp.name_focus;
-        let (shown, ink) = if sp.name.is_empty() && !focus {
-            ("Name a new group".to_string(), t::TEXT_TERTIARY)
-        } else {
-            (
-                format!("{}{}", sp.name, if focus { "\u{2502}" } else { "" }),
-                t::TEXT,
-            )
-        };
-        let field = Press::new(
-            container(text(shown).size(t::BODY).wrapping(text::Wrapping::None))
-                .center_y(Length::Fill)
-                .clip(true),
-        )
-        .width(Length::Fill)
-        .height(32)
-        .padding([0.0, t::S3])
-        .on_press(Msg::NameFocus(true))
-        .style(move |_| Style {
-            background: None,
-            text_color: ink,
-            border: border(if focus { t::ACCENT } else { t::EDGE }, 1.0, 6.0),
-            shadow: Shadow::default(),
-            snap: false,
-        });
+        let field = text_input("Name a new group", &sp.name)
+            .id(super::NAME_ID)
+            .on_input(Msg::NameInput)
+            .on_submit(Msg::Create)
+            .size(t::BODY)
+            .padding([t::S2, t::S3])
+            .style(style::input);
         d = d.push(
             container(
                 row![

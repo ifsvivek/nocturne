@@ -85,13 +85,13 @@ fn dialog_needs_the_confirm_button_and_writes_only_then() {
     assert!(a.dialog_open(), "a write opens its dialog first");
     assert!(!a.writing);
     // Enter on the default focus (Cancel) closes without writing.
-    let _ = a.key(&key("enter"));
+    let _ = a.update(Msg::DialogNav("enter", None));
     assert!(!a.dialog_open() && !a.writing);
     // Right moves to Confirm; only the next Enter confirms.
     let _ = a.do_act(Act::RefreshAll);
     let _ = a.key(&key("right"));
     assert!(a.dialog_open() && !a.writing, "focus alone does not write");
-    let _ = a.key(&key("enter"));
+    let _ = a.update(Msg::DialogNav("enter", None));
     assert!(
         !a.dialog_open() && a.writing,
         "confirmed: the write started"
@@ -132,9 +132,9 @@ fn invalid_input_blocks_the_write() {
             ))
             .start(),
     );
-    let _ = a.key(&key("down")); // Cancel
+    let _ = a.update(Msg::DialogNav("down", None)); // Cancel
     let _ = a.key(&key("right")); // Confirm
-    let _ = a.key(&key("enter"));
+    let _ = a.update(Msg::DialogNav("enter", None));
     assert!(!a.writing, "the typed word is missing");
 }
 

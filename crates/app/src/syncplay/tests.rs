@@ -78,11 +78,7 @@ fn keys_do_what_the_gpui_screen_did() {
         "no list or name while in a group"
     );
     assert_eq!(k("r", false, false), Refresh);
-    assert_eq!(
-        k("r", false, true),
-        Type("r".into()),
-        "typing in the name field"
-    );
+    assert_eq!(k("r", false, true), None, "the name field takes typed keys");
     assert_eq!(
         k("r", true, true),
         Refresh,
@@ -95,14 +91,12 @@ fn keys_do_what_the_gpui_screen_did() {
     assert_eq!(k("enter", false, false), JoinSelected);
     assert_eq!(k("down", false, false), Down);
     assert_eq!(k("down", true, false), None);
-    assert_eq!(k("backspace", false, true), Backspace);
     assert_eq!(k("]", false, false), Server(true));
-    assert_eq!(k("[", false, true), Type("[".into()));
+    assert_eq!(k("[", false, true), None);
     let ctrl = |n: &str| Key {
         ctrl: true,
         ..key(n)
     };
-    assert_eq!(key_act(&ctrl("v"), false, true), Paste);
     assert_eq!(
         key_act(&ctrl("l"), false, true),
         None,
@@ -217,20 +211,10 @@ fn name_entry_is_limited_and_controls_are_ignored() {
     let rt = rt();
     let _g = rt.enter();
     let mut sp = SyncPlay::new(vec![target(1, "A")], false);
-    sp.name_focus = true;
-    for c in "Fri\u{7}day".chars() {
-        let _ = sp.key(
-            &Key {
-                text: Some(c.to_string()),
-                ..key(&c.to_string())
-            },
-            None,
-        );
-    }
+    let _ = sp.update(Msg::NameInput("Fri\u{7}day".into()), None);
     assert_eq!(sp.name, "Friday");
-    let _ = sp.key(&key("backspace"), None);
-    assert_eq!(sp.name, "Frida");
-    sp.type_text(&"x".repeat(300));
+    assert!(sp.name_focus);
+    sp.set_name(&"x".repeat(300));
     assert_eq!(sp.name.len(), 100);
     // The screen has no name field in a group.
     sp.engine.join(group(), now_ms());
