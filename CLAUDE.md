@@ -88,7 +88,7 @@ To run the app for testing, ALWAYS use `scripts/run-isolated.sh target/debug/noc
 ## Agent workflow (maintainer's setup)
 
 - **Master agent: Claude Opus.** Owns architecture and technical decisions, planning, delegation, integration, code review and final verification. It does not routinely implement features.
-- **Workers: Claude Sonnet**, at most three active (maintainer raised the cap from two on 2026-11-16). Each gets a bounded task with explicit file ownership (no overlapping files; parallel workers use separate git worktrees), implements and tests it, and reports results. Workers do not change the architecture; they report architectural problems to the master.
+- **Workers: Claude Sonnet**, at most two active (maintainer setting, 2026-11-18). Each gets a bounded task with explicit file ownership (no overlapping files; parallel workers use separate git worktrees), implements and tests it, and reports results. Workers do not change the architecture; they report architectural problems to the master.
 - The master reviews and validates every worker change before it is committed to the shared branch. Keep usage economical: no redundant research (reuse `docs/dev/*`), narrow tasks, no agents for trivial work.
 
 ## Documentation map
