@@ -95,26 +95,29 @@ sudo ./install.sh              # installs to /usr/local; `sudo ./install.sh unin
 
 The installer checks every runtime library and installs missing ones with your package manager (pacman, apt, dnf or zypper; it prints the command first, `--no-deps` skips this). The binary is built on current Arch and needs a recent glibc, so on older distributions it may refuse to start: use the .deb / .rpm below or build from source there.
 
-### Debian 13 / Ubuntu 24.04 and newer: .deb
+### Debian 13 / Ubuntu 24.04 and newer: apt repository
+
+Signed packages; NOCTURNE then updates with `apt upgrade` and the Software Updater.
 
 ```sh
-curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.4.0/nocturne_0.4.0_amd64.deb
-sudo apt install ./nocturne_0.4.0_amd64.deb
+curl -fsSL https://nocturne.ifsvivek.in/repo/NOCTURNE-GPG-KEY.gpg | sudo tee /usr/share/keyrings/nocturne.gpg >/dev/null
+echo 'deb [signed-by=/usr/share/keyrings/nocturne.gpg] https://nocturne.ifsvivek.in/repo/deb stable main' | sudo tee /etc/apt/sources.list.d/nocturne.list
+sudo apt update && sudo apt install nocturne
 ```
 
-On Ubuntu 24.04 (libmpv 0.37) video plays in a separate mpv window; newer libmpv plays it inside the app window.
+Check that the key fingerprint is `5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B` (`gpg --show-keys /usr/share/keyrings/nocturne.gpg`). On Ubuntu 24.04 (libmpv 0.37) video plays in a separate mpv window; newer libmpv plays it inside the app window. To install a single file instead: download the `.deb` from the [releases](https://github.com/ifsvivek/nocturne/releases) page and `sudo apt install ./nocturne_*_amd64.deb`.
 
-### Fedora: .rpm
+### Fedora: dnf repository
 
-mpv's library comes from RPM Fusion (free), so enable it first:
+mpv's library comes from RPM Fusion (free), so enable it first. NOCTURNE then updates with `dnf upgrade` and GNOME Software.
 
 ```sh
 sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm
-curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.4.0/nocturne-0.4.0-1.fc45.x86_64.rpm
-sudo dnf install ./nocturne-0.4.0-1.fc45.x86_64.rpm
+sudo dnf config-manager addrepo --from-repofile=https://nocturne.ifsvivek.in/repo/rpm/nocturne.repo
+sudo dnf install nocturne
 ```
 
-There is no apt or dnf repository yet: update by installing the next release's file.
+`dnf` asks once to import the signing key (fingerprint `5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B`); answer `y` after comparing it. The `addrepo` form is dnf5 (Fedora 41 and newer); on dnf4 use `sudo dnf config-manager --add-repo https://nocturne.ifsvivek.in/repo/rpm/nocturne.repo` (package `dnf-plugins-core`) or save the file to `/etc/yum.repos.d/` yourself. To install a single file instead: download the `.rpm` from the releases page and `sudo dnf install ./nocturne-*.rpm`.
 
 ### From source
 

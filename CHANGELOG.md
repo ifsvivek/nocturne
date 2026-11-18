@@ -2,6 +2,11 @@
 
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- apt and dnf repositories next to the pacman one (`https://nocturne.ifsvivek.in/repo/deb` and `/repo/rpm`, signed with the same key): Debian/Ubuntu and Fedora users get NOCTURNE updates through `apt upgrade` / `dnf upgrade` and their software centres. Built by `scripts/publish-repo-deb-rpm.sh` (called by `scripts/publish-repo.sh`); the key is also published as `repo/NOCTURNE-GPG-KEY` (armored) and `repo/NOCTURNE-GPG-KEY.gpg` (binary).
+
 ## [0.4.0] - 2026-11-18
 
 What is verified and what is not is listed per feature in [FEATURES.md](docs/FEATURES.md).
