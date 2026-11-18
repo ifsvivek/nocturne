@@ -2,6 +2,11 @@
 
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- **Linux is Wayland-only.** X11 support is removed: Iced is built without its X11 backend (no X11 libraries are loaded) and on a session with only `DISPLAY` set NOCTURNE prints that X11 is not supported and exits. The external mpv player remains the fallback when in-window video cannot start and for the HDR pop-out.
+
 ## [0.4.0] - 2026-11-18
 
 What is verified and what is not is listed per feature in [FEATURES.md](docs/FEATURES.md).

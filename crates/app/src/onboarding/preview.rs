@@ -7,7 +7,7 @@
 //! - `NOCTURNE_PREVIEW_STEP=where|setup|behave|ready|news2` and `NOCTURNE_PREVIEW_CHOICE=local|server|both`:
 //!   start on that step.
 //! - `NOCTURNE_PREVIEW_WORLD=demo`: three folders (indexing), one connected server.
-//! - `NOCTURNE_PREVIEW_X11=1`: show the external-mpv playback line.
+//! - `NOCTURNE_PREVIEW_EXTERNAL_VIDEO=1`: show the external-mpv playback line.
 //! - `NOCTURNE_PREVIEW_KEYS="right@600,enter@900"` injects named keys; `NOCTURNE_PREVIEW_SIZE=1280x800`.
 //!
 //! Outcomes are answered the way the root will: AddFolders / AddServer add a stand-in folder / server
@@ -55,7 +55,7 @@ struct Preview {
 
 fn boot() -> (Preview, Task<M>) {
     let mut world = World {
-        embedded_video: env("NOCTURNE_PREVIEW_X11").is_none(),
+        embedded_video: env("NOCTURNE_PREVIEW_EXTERNAL_VIDEO").is_none(),
         ..World::default()
     };
     if env("NOCTURNE_PREVIEW_WORLD").as_deref() == Some("demo") {

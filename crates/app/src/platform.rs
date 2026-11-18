@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub enum Handles {
     /// Raw `wl_display*` / `wl_surface*` (as addresses, so the value is `Send`).
     Wayland { display: usize, surface: usize },
-    /// X11 / XWayland / anything else: the in-window video cannot attach, use the external mpv.
+    /// No Wayland handles (macOS, Windows): the in-window video cannot attach, use the external mpv.
     Other,
 }
 
@@ -36,20 +36,30 @@ pub fn handles(id: window::Id) -> Task<Handles> {
     .map(|h| h.unwrap_or(Handles::Other))
 }
 
-/// Linux/BSD: is there no display server to connect to (no `WAYLAND_DISPLAY`, `WAYLAND_SOCKET`
-/// or `DISPLAY`)? Other OSes always have one.
-pub fn no_graphical_session() -> bool {
-    !cfg!(any(target_os = "macos", windows))
-        && no_session_in(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()))
+/// Why the app cannot start on this session, if it cannot. Linux/BSD only: Wayland is required
+/// (X11 is not supported); other OSes always have a window system.
+pub fn session_problem() -> Option<&'static str> {
+    if cfg!(any(target_os = "macos", windows)) {
+        return None;
+    }
+    session_problem_in(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()))
 }
 
-fn no_session_in(set: impl Fn(&str) -> bool) -> bool {
-    !["WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY"]
-        .iter()
-        .any(|k| set(k))
+fn session_problem_in(set: impl Fn(&str) -> bool) -> Option<&'static str> {
+    if set("WAYLAND_DISPLAY") || set("WAYLAND_SOCKET") {
+        None
+    } else if set("DISPLAY") {
+        Some(
+            "NOCTURNE needs a Wayland session (GNOME, KDE Plasma, Sway, Hyprland, ...). X11 sessions are not supported.",
+        )
+    } else {
+        Some(
+            "NOCTURNE needs a graphical Wayland session, but none was found.\nStart it from your desktop (GNOME, KDE Plasma, Sway, Hyprland, ...), or set WAYLAND_DISPLAY.",
+        )
+    }
 }
 
-/// Per-OS window options: on Linux the Wayland app id / X11 class (matches the .desktop file).
+/// Per-OS window options: on Linux the Wayland app id (matches the .desktop file).
 pub fn window_settings() -> window::settings::PlatformSpecific {
     #[cfg(target_os = "linux")]
     return window::settings::PlatformSpecific {
@@ -202,10 +212,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn display_detection() {
-        assert!(no_session_in(|_| false));
-        assert!(!no_session_in(|k| k == "DISPLAY"));
-        assert!(!no_session_in(|k| k == "WAYLAND_DISPLAY"));
+    fn session_check() {
+        assert!(session_problem_in(|_| false).is_some_and(|m| m.contains("none was found")));
+        assert!(
+            session_problem_in(|k| k == "DISPLAY")
+                .is_some_and(|m| m.contains("X11 sessions are not supported"))
+        );
+        assert!(session_problem_in(|k| k == "WAYLAND_DISPLAY").is_none());
+        assert!(session_problem_in(|k| k == "WAYLAND_SOCKET").is_none());
+        assert!(session_problem_in(|_| true).is_none());
     }
 
     #[test]

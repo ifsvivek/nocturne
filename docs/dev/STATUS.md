@@ -9,7 +9,7 @@ Maintainer working notes for the public tree. User-facing status is in
 
 0.3.0 release checklist (the maintainer tests an Arch build first; nothing is published before that):
 - [ ] `scripts/ci-checks.sh` green on the final tree.
-- [ ] Run on Wayland and on X11 (Xwayland): sign in, local folder, play from each, versions and sources picker, quit while playing.
+- [ ] Run on Wayland: sign in, local folder, play from each, versions and sources picker, quit while playing.
 - [ ] Clean-container install of the tarball and the PKGBUILD (`scripts/test-install.sh`); play a video after install.
 - [ ] Re-derive the runtime library list for the final binary (winit and wgpu dlopen libX11, libXcursor, libXrandr, libXi, libX11-xcb, libwayland-*, libxkbcommon) and keep `packaging/install.sh`, the PKGBUILD and
       [PACKAGING.md](../PACKAGING.md) in step.

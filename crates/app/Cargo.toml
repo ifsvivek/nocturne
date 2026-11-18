@@ -17,7 +17,8 @@ name = "nocturne"
 path = "src/main.rs"
 
 [dependencies]
-iced = { version = "0.14", features = ["tokio", "image", "svg", "advanced", "lazy", "canvas"] }
+# Iced default features minus `x11`: Linux is Wayland-only, no X11 crates in the build.
+iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "crisp", "web-colors", "thread-pool", "linux-theme-detection", "wayland", "tokio", "image", "svg", "advanced", "lazy", "canvas"] }
 nocturne-core = { path = "../core" }
 nocturne-local = { path = "../local" }
 nocturne-jellyfin = { path = "../jellyfin" }

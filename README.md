@@ -6,7 +6,7 @@
 
 A native media center for Linux: local folders and Jellyfin servers in one cinematic library.
 
-Built with Rust, [Iced](https://iced.rs/), libmpv, Tokio and the Jellyfin REST API. Video plays inside the app window through libmpv with hardware decoding on Wayland; on X11 it plays in an external mpv window.
+Built with Rust, [Iced](https://iced.rs/), libmpv, Tokio and the Jellyfin REST API. Video plays inside the app window through libmpv with hardware decoding. Linux needs a Wayland session.
 
 [Website](https://nocturne.ifsvivek.in) · [Install](#install) · [Package repository](https://nocturne.ifsvivek.in/repo) · [Releases](https://github.com/ifsvivek/nocturne/releases/latest) · [Features](docs/FEATURES.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
 
@@ -41,7 +41,7 @@ The full checklist is [docs/FEATURES.md](docs/FEATURES.md); verification notes a
 - **Versions and sources**: one picker lists the versions a server offers (for example 4K and 1080p) and the copies on other servers or in local folders; choose one, and optionally always prefer it.
 - **Browse**: home with Continue Watching and Next Up, libraries with sort, filters, A-Z and poster / thumb / list views, genres, studios, years, tags, collections, playlists and favourites, global search (Ctrl+K or `/`), people pages.
 - **Details**: movie, series, season and episode pages with cast, chapters, similar items, extras and media info.
-- **Playback**: in-window video via libmpv with hardware decoding on Wayland (external mpv window on X11), a loading splash that fills as the stream buffers, chapters and trickplay on the seek bar, audio and subtitle menus with delays and styling, speed and picture controls, skip intro and credits, next-episode autoplay, queue, quality selector with transcode fallback, mini player, MPRIS and idle inhibit.
+- **Playback**: in-window video via libmpv with hardware decoding, a loading splash that fills as the stream buffers, chapters and trickplay on the seek bar, audio and subtitle menus with delays and styling, speed and picture controls, skip intro and credits, next-episode autoplay, queue, quality selector with transcode fallback, mini player, MPRIS and idle inhibit.
 - **Accounts**: username and password or Quick Connect (and authorizing other devices); switch between remembered accounts without a password, with a "Who's watching?" profile picker at launch; tokens live in your system keyring.
 - **Watch together**: SyncPlay groups on a server; play, pause, seek and skip stay in step for everyone (press `g`).
 - **Playlists and music**: create, edit, reorder and delete your playlists; a music queue with play next, shuffle and repeat.
@@ -121,8 +121,8 @@ There is no apt or dnf repository yet: update by installing the next release's f
 No libmpv development files are needed: libmpv is loaded at run time.
 
 ```sh
-# Arch: sudo pacman -S rust pkgconf mpv vulkan-icd-loader libxkbcommon-x11
-# Debian/Ubuntu (names may differ): pkg-config libvulkan1 libxkbcommon-x11-0 libwayland-client0 libdbus-1-dev libmpv2
+# Arch: sudo pacman -S rust pkgconf mpv vulkan-icd-loader libxkbcommon
+# Debian/Ubuntu (names may differ): pkg-config libvulkan1 libxkbcommon0 libwayland-client0 libdbus-1-dev libmpv2
 git clone https://github.com/ifsvivek/nocturne && cd nocturne
 cargo build --release --locked      # stable Rust 1.89+; a clean release build takes several minutes (fat LTO)
 ./target/release/nocturne
@@ -131,6 +131,7 @@ cargo build --release --locked      # stable Rust 1.89+; a clean release build t
 ### Requirements
 
 - **libmpv** for playback (`mpv` on Arch, `libmpv2` on Debian/Ubuntu, `mpv-libs` on Fedora). It is loaded when needed: without it the app still starts and browses, plays through the `mpv` program if that is installed, or tells you what to install.
+- A **Wayland** session (GNOME, KDE Plasma, Sway, Hyprland, ...). X11 sessions are not supported.
 - A **Vulkan** driver (Mesa or NVIDIA) and **EGL**, as provided by your graphics stack.
 - A **Secret Service** provider (gnome-keyring, KWallet or KeePassXC) to remember sign-ins; without one you sign in each time. Tokens are never written to a file.
 - Packages are tested on Arch Linux only. Full dependency list: [docs/PACKAGING.md](docs/PACKAGING.md).
@@ -141,17 +142,18 @@ cargo build --release --locked      # stable Rust 1.89+; a clean release build t
 |---|---|
 | OS and architecture | Linux, x86_64. macOS and Windows are planned, not available yet ([docs/PLATFORMS.md](docs/PLATFORMS.md)). |
 | Packages | Tested on Arch Linux only (see [docs/PACKAGING.md](docs/PACKAGING.md)). Other distributions should build from source but are unverified. |
-| Wayland | In-window video (libmpv in a subsurface, hardware decoding). Developed and tested here, on NVIDIA proprietary drivers; AMD and Intel GPUs are untested. |
-| X11 | The interface works; video plays in an external mpv window that closes with the app. Tested through Xwayland. |
+| Wayland (required) | In-window video (libmpv in a subsurface, hardware decoding). Developed and tested here, on NVIDIA proprietary drivers; AMD and Intel GPUs are untested. |
+| X11 | Not supported: NOCTURNE prints a message and exits. |
 | Servers | Jellyfin 12.4 (a real server and a throwaway one); several servers at once. Other versions are untested; other media servers are not supported. |
 | Local media | Folders on this computer; video, audio and image files. |
 | Needed at run time | A Vulkan driver, EGL, a Secret Service provider to remember logins; libmpv (or the `mpv` program) to play video |
 
 ## Troubleshooting
 
+- **"NOCTURNE needs a Wayland session".** You are on an X11 session (only `DISPLAY` is set). Log in to the Wayland session of your desktop (GNOME, KDE Plasma, Sway, Hyprland, ...); X11 is not supported.
 - **The window does not open or is blank.** The interface renders with Vulkan: check that a Vulkan driver is installed (`vulkaninfo --summary`). Run `nocturne` from a terminal to see its messages.
 - **Playing says libmpv is missing.** The app falls back to the `mpv` program if it is installed, and otherwise shows what to install for your distribution (`mpv` on Arch, `libmpv2` on Debian/Ubuntu, `mpv-libs` on Fedora). Browsing keeps working.
-- **Video opens in a separate mpv window.** That is the behaviour on X11, with `NOCTURNE_VIDEO=external`, or when the Wayland surface cannot be set up (the terminal says `video: embedded unavailable`). `NOCTURNE_VO` picks that window's video output.
+- **Video opens in a separate mpv window.** That is the behaviour with `NOCTURNE_VIDEO=external` or when the Wayland surface cannot be set up (the terminal says `video: embedded unavailable`). `NOCTURNE_VO` picks that window's video output.
 - **HDR video looks like SDR.** Video inside the window is tone-mapped to SDR (mpv's embedding API cannot output HDR). For HDR videos NOCTURNE asks whether to play in the window or open an HDR pop-out window; real HDR needs an HDR display, a compositor with colour management and mpv 0.42 or newer ([docs/HDR.md](docs/HDR.md)).
 - **"No system keyring found".** No Secret Service provider is running, so you will sign in again next time. Start gnome-keyring, KWallet or KeePassXC with the Secret Service integration enabled; NOCTURNE never writes tokens to a file.
 - **A source shows "Signed out".** That server revoked the login; use *Sign in again* in Settings > Sources. Other sources are not affected. A server that does not answer shows "Offline" and is retried with backoff.

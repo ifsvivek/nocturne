@@ -28,12 +28,9 @@ use app::App;
 use iced::{Color, Size, window};
 
 fn main() -> std::process::ExitCode {
-    // winit would panic (backtrace and all) without a display server: say it plainly instead.
-    if platform::no_graphical_session() {
-        eprintln!(
-            "NOCTURNE needs a graphical session (Wayland or X11), but none was found.\n\
-             Start it from your desktop, or set WAYLAND_DISPLAY or DISPLAY."
-        );
+    // winit would panic (backtrace and all) without a Wayland server: say it plainly instead.
+    if let Some(msg) = platform::session_problem() {
+        eprintln!("{msg}");
         return std::process::ExitCode::FAILURE;
     }
     match run() {

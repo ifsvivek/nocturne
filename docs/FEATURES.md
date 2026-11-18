@@ -47,7 +47,7 @@ What NOCTURNE does: 0.3.0 is released; entries marked **(0.4)** are on the unrel
 - [ ] HDR filter (the server exposes none)
 
 ## Playback
-- [x] In-window GPU video through libmpv with hardware decoding (Wayland); external mpv window on X11 and as a fallback
+- [x] In-window GPU video through libmpv with hardware decoding (Wayland); external mpv window as a fallback. Linux is Wayland-only (X11 sessions are refused with a message)
 - [x] libmpv is loaded at run time: without it the app still starts and falls back to the `mpv` program or shows what to install
 - [x] Player loading overlay (Stremio-style: backdrop, logo filling with the buffer) when a stream opens, a lighter version on stalls
 - [~] HDR video is tone-mapped to SDR in the window. (0.4) HDR pop-out window (mpv `gpu-next`, fullscreen, driven from the app) with an Ask / SDR / Pop-out setting: needs HDR hardware, **no HDR display has been tested** ([HDR.md](HDR.md))
