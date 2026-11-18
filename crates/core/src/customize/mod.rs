@@ -3,8 +3,10 @@
 //! that was not understood. No browser engine, no network, no code execution; see
 //! `docs/dev/CUSTOMIZATION_PLAN.md` for the token model, selector vocabulary and mapping table.
 mod css;
+mod store;
 mod value;
 
+pub use store::{Saved, Store, content_type_ok, fetch, validate_url};
 pub use value::{Color, Fill};
 
 use serde::{Deserialize, Serialize};
