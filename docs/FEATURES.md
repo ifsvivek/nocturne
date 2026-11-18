@@ -1,6 +1,7 @@
 # Features
 
-What NOCTURNE 0.3 does. `[x]` implemented, `[~]` partial, `[ ]` not implemented.
+What NOCTURNE does: 0.3.0 is released; entries marked **(0.4)** are on the unreleased local 0.4 branch. `[x]` implemented, `[~]` partial, `[ ]` not implemented.
+Verification tags on 0.4 items: *verified* (run against a real or throwaway server / real data), *mock-tested* (unit tests and loopback mocks only), *needs hardware / account* (cannot be checked here).
 Verification detail per feature is in [QA_REPORT.md](QA_REPORT.md); remaining work is in [ROADMAP.md](ROADMAP.md).
 Which features change data on your server is in [WRITES.md](WRITES.md).
 
@@ -15,7 +16,12 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] Local folders: add by portal chooser or typed path, scan with live progress and cancel, availability of unplugged drives, counts
 - [x] Local metadata from names, `.nfo`, sidecar art and `ffprobe` (if installed); Unmatched list with manual match; your files are never modified
 - [x] Local playback with resume position and watched state kept in NOCTURNE's own data
-- [ ] Online metadata lookup for local media (planned for 0.4, opt-in; [METADATA.md](METADATA.md))
+- [x] (0.4) Online details for local media, opt-in per source: TMDB (your own key), TVmaze, MusicBrainz + Cover Art Archive; unclear matches listed, never guessed; provider credits shown ([METADATA.md](METADATA.md)). Live-tested with TMDB; MusicBrainz and TVmaze against mocks
+- [x] (0.4) Subtitle download for local files (OpenSubtitles, your own key, opt-in), stored in NOCTURNE's folder. Search live-tested; actual download needs an OpenSubtitles login and is mock-tested
+- [x] (0.4) Offline copies: "Download to this computer" for a server movie, episode, season or show; GET only, resumable, shows up as a second local source. Verified on a throwaway server; exFAT/FAT targets and servers that deny downloads untested live
+- [x] (0.4) Smart collections: saved rules (watched state, genres, years, rating, added within N days, resolution, runtime, sources) over every source; local only. Unit-tested; resolution rules apply to servers only
+- [x] (0.4) One watched state across sources (opt-in, write-gated), matched by provider ids only. Verified on a throwaway server with a local copy of the same title (setting off: nothing follows; on with server changes: the server copy follows; on without: only local copies; unrelated titles never touched). Not yet tried with two real servers
+- [x] (0.4) Optional extra HTTP header per server (keyring). Verified on a throwaway server
 
 ## Accounts and connection
 - [x] Sign in with username and password, Quick Connect, sign out, change own password
@@ -30,6 +36,7 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 
 ## Browsing
 - [x] Home: hero, Continue Watching, Next Up, latest per library
+- [x] (0.4) Latest rows include new episodes of existing shows; Play on a show card starts the next unwatched episode; "Included in" collections on movie and show pages (Jellyfin 12+)
 - [x] Library views: paged virtualised grid, sort, filters, A-Z jump, poster / thumb / list views
 - [x] Genres, Studios, Years, Tags tabs; Collections, Playlists, Favourites pages (read only)
 - [x] Search (Ctrl+K or /), grouped results, recent searches
@@ -46,7 +53,12 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] In-window GPU video through libmpv with hardware decoding (Wayland); external mpv window on X11 and as a fallback
 - [x] libmpv is loaded at run time: without it the app still starts and falls back to the `mpv` program or shows what to install
 - [x] Player loading overlay (Stremio-style: backdrop, logo filling with the buffer) when a stream opens, a lighter version on stalls
-- [~] HDR video is tone-mapped to SDR in the window; an HDR pop-out window is planned for 0.4 ([HDR.md](HDR.md))
+- [~] HDR video is tone-mapped to SDR in the window. (0.4) HDR pop-out window (mpv `gpu-next`, fullscreen, driven from the app) with an Ask / SDR / Pop-out setting: needs HDR hardware, **no HDR display has been tested** ([HDR.md](HDR.md))
+- [x] (0.4) Secondary subtitle; audio and subtitle language remembered per show across restarts (local file, "Original audio" option); player menus by keyboard (T, V, O, Q). Built and unit-tested; not checked against a long real series
+- [x] (0.4) Truthful playback reports (play method, media source, session id), visible notice on failure, final "stopped" retried once
+- [x] (0.4) Trakt (opt-in, your own Trakt app): scrobble and watched-history import. Verified live against a real Trakt account (2026-11-17): browser sign-in with PKCE through the local redirect `http://127.0.0.1:38917/callback`, username, history read, scrobble start/stop ([TRAKT.md](TRAKT.md))
+- [~] (0.4) Remote control from other Jellyfin apps (opt-in, needs server changes on). Verified on a throwaway 12.x server: the session shows as controllable, and Play, Pause, Unpause, Seek, Next and Stop sent through the server's API took effect; with the setting off the session is not controllable. Not yet tried from a phone app ([WRITES.md](WRITES.md))
+- [~] (0.4) Couch mode: 10-foot layout, keyboard / remote-key navigation, gamepad (`gilrs`). Layout and key paths checked; **no real gamepad or TV tested**
 - [x] Seek bar with chapters and trickplay hover thumbnails, volume, fullscreen, mini player
 - [x] Audio and subtitle menus, subtitle styling and delay, audio delay, speed, aspect and picture controls
 - [x] Skip intro / credits, next-episode autoplay, queue panel
@@ -78,11 +90,13 @@ Which features change data on your server is in [WRITES.md](WRITES.md).
 - [x] Access and limits per user: library access, feature switches (remote access, playback, transcoding, remuxing, downloads, deletion, collections, subtitles, public sharing, hidden), maximum parental rating, blocked and allowed tags, remote bitrate limit, session limit, failed-sign-in lockout, profile image upload / remove, display preferences (read only). Jellyfin has no password length or expiry rules, so none are offered
 
 ## Not planned
-Live TV / DVR, DLNA, acting as a cast target, gapless music playback. macOS and Windows builds are scheduled for 0.4 ([PLATFORMS.md](PLATFORMS.md)).
+Live TV / DVR, DLNA, acting as a cast target, gapless music playback.
 
 ## Platform and quality
 - [x] Full-window responsive layout, keyboard-first navigation, loading / empty / error states
 - [x] Settings in TOML under `$XDG_CONFIG_HOME/nocturne/`, no secrets on disk
 - [x] Tarball and Arch PKGBUILD packaging, desktop entry, icon, AppStream metadata; the tarball installer installs missing runtime libraries
 - [x] Keyboard shortcut reference: `?` on any browsing screen (the player has its own `?` with playback keys)
+- [~] (0.4) .deb and .rpm packages: built and install-tested in clean distro containers; not run on a bare-metal Debian / Fedora install. AppImage is not shipped (107 MB, libmpv / glibc conflicts); Flatpak to be evaluated ([PLATFORMS.md](PLATFORMS.md))
+- [~] (0.4) Windows and macOS: code behind the platform seams. Windows compiles for `x86_64-pc-windows-gnu`; macOS is written but not built (needs a real Mac). Never run; no installer or bundled libmpv; playback uses the external mpv window ([PLATFORMS.md](PLATFORMS.md))
 - [~] Accessibility: keyboard navigation and visible focus on controls yes; screen-reader support is limited by what Iced exposes today

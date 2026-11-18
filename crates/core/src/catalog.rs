@@ -85,13 +85,9 @@ pub enum WriteError {
     NotLocal,
 }
 
-/// `$XDG_DATA_HOME/nocturne` (default `~/.local/share/nocturne`).
+/// Per-user data dir (`$XDG_DATA_HOME/nocturne` on Linux).
 pub fn data_dir() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))?;
-    Some(base.join("nocturne"))
+    nocturne_session::paths::data_dir()
 }
 
 /// Where a local source keeps its index, overrides and state (never next to the media).
@@ -285,6 +281,7 @@ mod tests {
             id: SourceId(id),
             label: format!("s{id}"),
             enabled: true,
+            online: Default::default(),
             kind: ProfileKind::Jellyfin {
                 url: url.into(),
                 user_id: format!("u{id}"),
@@ -315,6 +312,7 @@ mod tests {
                 id: SourceId(4),
                 label: "disk".into(),
                 enabled: true,
+                online: Default::default(),
                 kind: ProfileKind::Local {
                     roots: vec!["/x".into()],
                 },
@@ -475,6 +473,7 @@ mod tests {
                         id: SourceId(id),
                         label: "disk".into(),
                         enabled: true,
+                        online: Default::default(),
                         kind: ProfileKind::Local { roots: vec![] },
                     },
                     backend: Some(Backend::Local(l)),

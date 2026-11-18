@@ -58,6 +58,7 @@ pub enum AcctAct {
     RemoveImage,
     Language,
     Sources,
+    Downloads,
     Admin,
 }
 
@@ -77,6 +78,11 @@ pub enum SrcAct {
     AskRemove(SourceId),
     ConfirmRemove,
     CancelRemove,
+    /// Edit the server's extra HTTP header.
+    Header(SourceId),
+    HeaderSave,
+    HeaderClear,
+    HeaderCancel,
 }
 
 /// A local scan's report to the root.
@@ -119,6 +125,12 @@ pub enum Message {
         default: DefaultChange,
         r: Result<Session, SwitchFail>,
     },
+    /// Typed into the header dialog: (is the value field, text).
+    HeaderInput(bool, String),
+    /// The saved header of a server, read from the keyring for the dialog.
+    HeaderLoaded(SourceId, Option<String>),
+    /// A header save / removal finished.
+    HeaderDone(SourceId, Result<(), String>),
     /// The saved sources and the catalog built from them (keyring and index reads, off the UI thread).
     Loaded(Handoff<super::catalog::Loaded>),
     /// One source's answer for Home page `pid` (libraries, continue watching, next up), to request `epoch`.
@@ -130,6 +142,16 @@ pub enum Message {
     /// A decoded image for cache `key` (`bool`: the hero cache).
     Image(String, bool, Option<Handle>),
     Scale(f32),
+    /// Re-read the window scale (after Couch mode changed the app scale).
+    Rescale,
+    /// The header link strip scrolled: offset, viewport width, content width.
+    NavScrolled(f32, f32, f32),
+    /// A chevron on the link strip: page it left (-1) or right (+1).
+    NavPage(f32),
+    /// Gamepad: connected count / a button press.
+    Pad(crate::pad::Ev),
+    /// Logical size of the monitor under the window (Automatic couch mode).
+    Monitor(Option<Size>),
     /// Something done to a cell of the page in view.
     Cell(At, CellAct),
     /// Play this item (a series resolves to its next episode first).
@@ -150,6 +172,14 @@ pub enum Message {
     /// A SyncPlay group wants its item played: (source, list, index, start seconds, target).
     GroupPlay(
         SourceId,
+        Vec<Media>,
+        usize,
+        f64,
+        Result<nocturne_core::backend::PlayTarget, nocturne_core::backend::PlayError>,
+    ),
+    /// Remote control: a `Play` from another app resolved to items (list, index, start seconds, queue only).
+    RemoteItems(Vec<Media>, usize, f64, bool),
+    RemoteTarget(
         Vec<Media>,
         usize,
         f64,
@@ -186,6 +216,11 @@ pub enum Message {
     Src(SrcAct),
     /// Local folders screen.
     Folder(super::folders::Msg),
+    Online(super::online::Msg),
+    Trakt(super::trakt::Msg),
+    Smart(super::smart::Msg),
+    Cascade(super::cascade::Msg),
+    Downloads(super::downloads::Msg),
     CycleFilter,
     OpenSources,
     /// Debug builds only: a window capture for `NOCTURNE_SNAP`.

@@ -2,9 +2,12 @@
 //! (`crates/app/src/app.rs`).
 mod actions;
 mod browse;
+mod cascade;
 mod catalog;
 mod cells;
+mod couch;
 mod details;
+mod downloads;
 mod extras;
 mod folders;
 mod header;
@@ -13,11 +16,15 @@ mod home;
 mod images;
 pub mod message;
 mod onboard;
+mod online;
 mod play;
 mod preview;
+mod remote;
 mod search;
 mod settings;
+pub(crate) mod smart;
 mod sources;
+pub(crate) mod trakt;
 
 use crate::account::{self, Accounts, Event as AcctEvent, devices, picker};
 use crate::keys::Key;
@@ -171,7 +178,13 @@ pub struct App {
     src_open: bool,
     /// Source whose removal waits for the confirmation dialog.
     confirm: Option<SourceId>,
+    /// The extra-header dialog of a server.
+    hdr: Option<sources::HeaderDlg>,
     folders: Option<folders::Folders>,
+    online: online::State,
+    trakt: trakt::State,
+    dl: downloads::State,
+    smart: smart::State,
     setup: Option<FirstRun>,
     account_back: Option<AccountBack>,
     phase: Phase,
@@ -183,6 +196,11 @@ pub struct App {
     /// Big backdrops, kept apart so they cannot push posters out of `images`.
     heroes: Cache<String, Img>,
     scale: f32,
+    /// Gamepads connected now, and the monitor under the window (Automatic couch mode).
+    pads: usize,
+    /// Measured offset / viewport / content width of the header link strip.
+    nav_vp: Option<(f32, f32, f32)>,
+    monitor: Option<Size>,
     /// Write hooks of the servers that are not the active login.
     hooks_by: HashMap<SourceId, Arc<SyncHooks>>,
     player: Option<Player>,
@@ -205,6 +223,8 @@ pub struct App {
     /// Sources the SyncPlay targets were built for, and the writes switch it was last given.
     sp_ids: Vec<SourceId>,
     sp_writes: bool,
+    /// Remote-control sockets, one per signed-in server (empty unless the setting is on).
+    remote: HashMap<SourceId, remote::RemoteLink>,
     queue: crate::queue::AudioQueue,
     queue_open: bool,
     /// The next player opened restores the kept music queue.
@@ -248,6 +268,7 @@ impl App {
                 .reduce_motion
                 .reduced(crate::platform::system_reduces_motion()),
         );
+        crate::couch::set(settings.couch == nocturne_core::settings::CouchMode::On);
         // Opening the image cache scans its directory; that happens after the first frame.
         let cache_max = u64::from(settings.image_cache_mb) * 1024 * 1024;
         let open_disk = run(
@@ -280,7 +301,12 @@ impl App {
             launch_scan: false,
             src_open: false,
             confirm: None,
+            hdr: None,
             folders: None,
+            online: Default::default(),
+            trakt: Default::default(),
+            dl: downloads::State::new(&catalog::app_data_dir()),
+            smart: smart::State::load(),
             setup: None,
             account_back: None,
             phase: Phase::Connecting,
@@ -290,6 +316,9 @@ impl App {
             images: Cache::new(600),
             heroes: Cache::new(6),
             scale: 1.0,
+            pads: 0,
+            nav_vp: None,
+            monitor: None,
             hooks_by: HashMap::new(),
             player: None,
             search: None,
@@ -306,6 +335,7 @@ impl App {
             sp: crate::syncplay::SyncPlay::new(vec![], false),
             sp_ids: vec![],
             sp_writes: false,
+            remote: HashMap::new(),
             queue: Default::default(),
             queue_open: false,
             restore_q: false,
@@ -353,6 +383,11 @@ impl App {
         iced::Theme::Dark
     }
 
+    /// Couch mode scales the whole UI (type, targets and spacing together).
+    pub fn scale_factor(&self) -> f32 {
+        crate::couch::factor()
+    }
+
     pub fn title(&self) -> String {
         "NOCTURNE".into()
     }
@@ -379,6 +414,9 @@ impl App {
             subs.push(p.subscription().map(Message::Player));
         }
         subs.push(self.sp.subscription().map(Message::SyncPlay));
+        if self.settings.couch != nocturne_core::settings::CouchMode::Off {
+            subs.push(Subscription::run(crate::pad::events).map(Message::Pad));
+        }
         // A focused text field keeps Esc from the keyboard listener; the overlay still has to close.
         if self.search.is_some() {
             subs.push(event::listen_with(|e, status, _| match e {
@@ -423,7 +461,13 @@ impl App {
                 self.now = now;
                 self.sync_detail();
                 self.sync_ob();
-                Task::batch([self.tick(), self.sync_extras(), crate::snap::poll()])
+                Task::batch([
+                    self.tick(),
+                    self.sync_extras(),
+                    self.sync_remote(),
+                    self.dl_tick(),
+                    crate::snap::poll(),
+                ])
             }
             Message::Frame(now) => {
                 self.now = now;
@@ -437,12 +481,41 @@ impl App {
                 self.scale = f;
                 Task::none()
             }
+            Message::Rescale => Task::batch([
+                window::oldest()
+                    .and_then(window::scale_factor)
+                    .map(Message::Scale),
+                window::oldest()
+                    .and_then(window::size)
+                    .map(Message::Resized),
+            ]),
+            Message::Pad(e) => self.on_pad(e),
+            Message::NavScrolled(o, w, c) => {
+                self.nav_vp = Some((o, w, c));
+                Task::none()
+            }
+            Message::NavPage(d) => {
+                let (off, vw, content) = self.nav_geom();
+                let x = (off + d * vw * 0.7).clamp(0.0, (content - vw).max(0.0));
+                iced::widget::operation::scroll_to(
+                    iced::widget::Id::from(header::NAV_ID),
+                    iced::widget::scrollable::AbsoluteOffset { x, y: 0.0 },
+                )
+            }
+            Message::Monitor(m) => {
+                self.monitor = m;
+                self.refresh_couch()
+            }
             Message::Resized(s) => {
                 self.win = s;
                 if let Some(p) = &mut self.picker {
                     p.cols = picker::columns(s.width);
                 }
-                Task::batch([self.home_wants(), self.browse_visible()])
+                Task::batch([
+                    self.home_wants(),
+                    self.browse_visible(),
+                    self.probe_monitor(),
+                ])
             }
             Message::CloseRequested(_) => self.quit(),
             Message::Back => {
@@ -562,7 +635,21 @@ impl App {
             Message::SessionLoaded(id, r) => self.session_loaded(id, r),
             Message::Scan(id, run_id, m) => self.scan_msg(id, run_id, m),
             Message::Src(a) => self.src_act(a),
+            Message::HeaderInput(v, s) => {
+                self.header_input(v, s);
+                Task::none()
+            }
+            Message::HeaderLoaded(id, l) => {
+                self.header_loaded(id, l);
+                Task::none()
+            }
+            Message::HeaderDone(id, r) => self.header_done(id, r),
             Message::Folder(m) => self.folder_msg(m),
+            Message::Online(m) => self.online_msg(m),
+            Message::Trakt(m) => self.trakt_msg(m),
+            Message::Smart(m) => self.smart_msg(m),
+            Message::Cascade(m) => self.cascade_msg(m),
+            Message::Downloads(m) => self.dl_msg(m),
             Message::CycleFilter => {
                 self.filter = self.filter.next(&self.catalog.priority());
                 self.stack.truncate(1);
@@ -625,6 +712,8 @@ impl App {
             Message::OpenAdmin => self.open_admin(),
             Message::Admin(m) => self.admin_msg(m),
             Message::SyncPlay(m) => self.sp_msg(m),
+            Message::RemoteItems(l, i, s, q) => self.remote_items(l, i, s, q),
+            Message::RemoteTarget(l, i, s, r) => self.remote_target(l, i, s, r),
             Message::Queue(m) => self.queue_msg(m),
             Message::Devices(m) => {
                 if self.devices.as_mut().is_some_and(|d| d.update(m)) {
@@ -660,8 +749,7 @@ impl App {
             }
             Message::SetChoose(row, idx) => {
                 self.dd = None;
-                self.choose_setting(row, idx);
-                Task::none()
+                self.choose_setting(row, idx)
             }
             Message::SetClose => {
                 self.dd = None;
@@ -681,7 +769,7 @@ impl App {
             Message::DiskReady(d) => {
                 self.disk = d;
                 self.apply_disk();
-                Task::none()
+                self.trakt_load()
             }
             Message::Noop => Task::none(),
         }
@@ -940,6 +1028,13 @@ impl App {
         let mut v = vec![
             ("Settings".to_string(), AcctAct::Settings),
             ("Sources".to_string(), AcctAct::Sources),
+            (
+                match self.dl.pending() {
+                    0 => "Downloads".to_string(),
+                    n => format!("Downloads ({n})"),
+                },
+                AcctAct::Downloads,
+            ),
         ];
         // The header's Admin link can sit past the edge of a narrow window; the menu always shows it.
         if self.admin && !self.dev {
@@ -1213,6 +1308,7 @@ impl App {
                 self.dd = None;
                 self.set_off = 0.0;
             }
+            AcctAct::Downloads => return self.dl_msg(downloads::Msg::Open),
             AcctAct::Devices => return self.open_devices(),
             AcctAct::Together => return self.sp_msg(crate::syncplay::Msg::OpenScreen),
             AcctAct::PlayQueue => self.queue_open = true,
@@ -1381,8 +1477,34 @@ impl App {
 
     // ---- keyboard ----
 
-    fn on_key(&mut self, k: Key) -> Task<Message> {
-        // The player page takes every key first.
+    fn on_key(&mut self, mut k: Key) -> Task<Message> {
+        // The remote's Menu key outside the player opens the account menu.
+        if k.name == "menu" && self.player.is_none() {
+            k.name = "a".into();
+        }
+        if self.dl.visible() {
+            return match k.name.as_str() {
+                "escape" | "backspace" => {
+                    self.dl.escape();
+                    Task::none()
+                }
+                "enter" => self.dl_msg(downloads::Msg::Confirm),
+                "up" => self.dl_msg(downloads::Msg::Step(-1)),
+                "down" => self.dl_msg(downloads::Msg::Step(1)),
+                _ => Task::none(),
+            };
+        }
+        // The subtitle finder is modal on every page (over the player and over a detail page): it takes Esc and
+        // swallows the rest, so keys never act on the page underneath.
+        if self.online.finder_open() {
+            return match k.name.as_str() {
+                "escape" | "backspace" => self.online_msg(online::Msg::CloseFinder),
+                "up" => self.online_msg(online::Msg::Step(-1)),
+                "down" => self.online_msg(online::Msg::Step(1)),
+                "enter" => self.online_msg(online::Msg::Confirm),
+                _ => Task::none(),
+            };
+        }
         if self.player.is_some() {
             return self.player_msg(player::Msg::Key(k));
         }
@@ -1415,6 +1537,12 @@ impl App {
             }
             return Task::none();
         }
+        if self.hdr.is_some() {
+            if key == "escape" {
+                self.hdr = None;
+            }
+            return Task::none();
+        }
         if self.confirm.is_some() {
             if matches!(key, "escape" | "backspace") {
                 self.confirm = None;
@@ -1427,6 +1555,22 @@ impl App {
         if self.src_open {
             if matches!(key, "escape" | "backspace") {
                 self.src_open = false;
+            }
+            return Task::none();
+        }
+        if self.smart.is_open() {
+            if key == "escape" {
+                return self.smart_msg(smart::Msg::Close);
+            }
+            return Task::none();
+        }
+        if self.smart.menu_open() && matches!(key, "escape" | "backspace") {
+            self.smart.close_menu();
+            return Task::none();
+        }
+        if self.trakt.is_open() {
+            if key == "escape" {
+                return self.trakt_msg(trakt::Msg::Close);
             }
             return Task::none();
         }
@@ -1548,6 +1692,7 @@ impl App {
             Some(Link::Lib(i)) => self.update(Message::OpenLibrary(i)),
             Some(Link::Libraries) => self.update(Message::ToggleLibMenu),
             Some(Link::Global(i)) => self.update(Message::OpenGlobal(i)),
+            Some(Link::Smart) => self.update(Message::Smart(smart::Msg::Menu)),
             Some(Link::Admin) => self.update(Message::OpenAdmin),
             None => Task::none(),
         }
@@ -1677,6 +1822,12 @@ impl App {
                     .into(),
                 );
             }
+            if self.online.finder_open() {
+                layers.push(self.finder_dialog());
+            }
+            if let Some(h) = self.hints() {
+                layers.push(h);
+            }
             return Stack::with_children(layers).into();
         }
         let ready = matches!(self.phase, Phase::Ready);
@@ -1728,6 +1879,9 @@ impl App {
         if self.search.is_some() && ready {
             layers.push(self.search_overlay());
         }
+        if let Some(h) = self.hints() {
+            layers.push(h);
+        }
         if self.help_open {
             layers.push(self.help_overlay());
         }
@@ -1741,6 +1895,21 @@ impl App {
         }
         if let Some(id) = self.confirm {
             layers.push(self.confirm_dialog(id));
+        }
+        if self.hdr.is_some() {
+            layers.push(self.header_dialog());
+        }
+        if self.online.finder_open() {
+            layers.push(self.finder_dialog());
+        }
+        if self.trakt.is_open() {
+            layers.push(self.trakt_dialog());
+        }
+        if self.dl.visible() {
+            layers.push(self.downloads_dialog());
+        }
+        if self.smart.is_open() {
+            layers.push(self.smart_dialog());
         }
         if let Some((n, _)) = &self.note {
             layers.push(

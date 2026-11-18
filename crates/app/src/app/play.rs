@@ -18,6 +18,7 @@ use std::time::Duration;
 struct LocalHooks {
     backend: LocalBackend,
     origin: SourceId,
+    find_subs: bool,
 }
 
 impl LocalHooks {
@@ -49,6 +50,12 @@ impl PlayerHooks for LocalHooks {
     }
     fn can_write(&self) -> bool {
         false
+    }
+    fn subtitles(&self, id: &str) -> Vec<std::path::PathBuf> {
+        self.backend.subtitles_of(id)
+    }
+    fn can_find_subs(&self) -> bool {
+        self.find_subs
     }
 }
 
@@ -119,6 +126,7 @@ impl App {
             Some(Backend::Local(l)) => Some(Arc::new(LocalHooks {
                 backend: l.clone(),
                 origin: m.origin,
+                find_subs: self.subtitles_on(m.origin),
             })),
             _ => self.hooks_for(m.origin).map(|h| {
                 h.seed_favorite(&m.id, m.favorite);
@@ -154,6 +162,17 @@ impl App {
 
     pub(super) fn after_player(&mut self, t: Task<player::Msg>) -> Task<Message> {
         let mut tasks = vec![t.map(Message::Player)];
+        if let Some(p) = self.player.as_mut() {
+            let evs = p.take_events();
+            if !evs.is_empty() {
+                tasks.push(self.handle_play_events(evs));
+            }
+        }
+        // "Remember my choice" on the HDR prompt is the HDR video setting from now on.
+        if let Some(m) = self.player.as_mut().and_then(|p| p.take_hdr_choice()) {
+            self.settings.hdr = m;
+            self.settings.save();
+        }
         if let Some(Outcome::Closed { failed }) =
             self.player.as_mut().and_then(|p| p.take_outcome())
         {
@@ -174,6 +193,11 @@ impl App {
             {
                 tasks.push(d.reload().map(move |m| Message::Detail(pid, m)));
             }
+        }
+        if let Some(m) = self.player.as_mut().and_then(|p| p.take_find_subs()) {
+            tasks.push(Task::done(Message::Online(super::online::Msg::Find(
+                Box::new(m),
+            ))));
         }
         Task::batch(tasks)
     }
@@ -205,6 +229,10 @@ impl App {
         self.sp.shutdown(self.player.as_mut());
         if let Some(p) = self.player.as_mut() {
             p.shutdown();
+            // The last "stopped" still reaches Trakt; the cascade needs the UI and is skipped on exit.
+            for ev in p.take_events() {
+                self.trakt_event(&ev);
+            }
         }
         self.player = None;
         crate::timing::report();

@@ -8,7 +8,7 @@ use super::{AccountBack, App, Phase};
 use crate::style::{self, border};
 use crate::theme as t;
 use crate::widget::{action_button, dot, icon, mono, rule, section, status_color};
-use iced::widget::{column, container, opaque, row, scrollable as scroll, space, text};
+use iced::widget::{column, container, opaque, row, scrollable as scroll, space, text, text_input};
 use iced::{Alignment, Element, Length, Padding, Task};
 use nocturne_core::catalog::{Slot, Status};
 use nocturne_core::profile::{ProfileKind, label_for};
@@ -19,6 +19,16 @@ use std::sync::Arc;
 use std::time::Instant;
 
 type El<'a> = Element<'a, Message>;
+
+/// The extra-header dialog (Sources > Header). The value may be a secret: masked, kept in the keyring.
+pub(super) struct HeaderDlg {
+    id: SourceId,
+    url: String,
+    name: String,
+    value: String,
+    err: Option<String>,
+    busy: bool,
+}
 
 /// Width of the buttons column of a source row (sign in again, folders, rescan, disable, up, down, remove).
 const ACTS_W: f32 = 560.0;
@@ -61,6 +71,10 @@ impl App {
                     return self.retry_page();
                 }
             }
+            SrcAct::Header(id) => return self.open_header(id),
+            SrcAct::HeaderCancel => self.hdr = None,
+            SrcAct::HeaderClear => return self.save_header(true),
+            SrcAct::HeaderSave => return self.save_header(false),
             SrcAct::AskRemove(id) => self.confirm = Some(id),
             SrcAct::CancelRemove => self.confirm = None,
             SrcAct::ConfirmRemove => {
@@ -70,6 +84,93 @@ impl App {
             }
         }
         Task::none()
+    }
+
+    fn open_header(&mut self, id: SourceId) -> Task<Message> {
+        let Some(ProfileKind::Jellyfin { url, .. }) = self.sources.get(id).map(|p| p.kind.clone())
+        else {
+            return Task::none();
+        };
+        self.hdr = Some(HeaderDlg {
+            id,
+            url: url.clone(),
+            name: String::new(),
+            value: String::new(),
+            err: None,
+            busy: true,
+        });
+        super::run(
+            async move {
+                tokio::task::spawn_blocking(move || nocturne_core::profile::extra_header(&url))
+                    .await
+                    .ok()
+                    .flatten()
+            },
+            move |l| Message::HeaderLoaded(id, l),
+        )
+    }
+
+    pub(super) fn header_loaded(&mut self, id: SourceId, line: Option<String>) {
+        if let Some(d) = self.hdr.as_mut().filter(|d| d.id == id) {
+            d.busy = false;
+            if let Some((n, v)) = line.as_deref().and_then(|l| l.split_once(':')) {
+                d.name = n.trim().into();
+                d.value = v.trim().into();
+            }
+        }
+    }
+
+    pub(super) fn header_input(&mut self, value: bool, s: String) {
+        if let Some(d) = self.hdr.as_mut() {
+            d.err = None;
+            if value {
+                d.value = s;
+            } else {
+                d.name = s;
+            }
+        }
+    }
+
+    fn save_header(&mut self, clear: bool) -> Task<Message> {
+        let Some(d) = self.hdr.as_mut().filter(|d| !d.busy) else {
+            return Task::none();
+        };
+        let (id, url) = (d.id, d.url.clone());
+        let line = (!clear).then(|| {
+            format!(
+                "{}: {}",
+                d.name.trim(),
+                nocturne_core::secret::clean(&d.value)
+            )
+        });
+        d.busy = true;
+        super::run(
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    nocturne_core::profile::set_extra_header(&url, line.as_deref())
+                })
+                .await
+                .unwrap_or_else(|_| Err("Couldn't save the header.".into()))
+            },
+            move |r| Message::HeaderDone(id, r),
+        )
+    }
+
+    pub(super) fn header_done(&mut self, id: SourceId, r: Result<(), String>) -> Task<Message> {
+        match r {
+            Ok(()) => {
+                self.hdr = None;
+                self.toast("Header saved. Restart NOCTURNE so every part of the app uses it.");
+                self.rebuild_slot(id)
+            }
+            Err(e) => {
+                if let Some(d) = self.hdr.as_mut() {
+                    d.busy = false;
+                    d.err = Some(e);
+                }
+                Task::none()
+            }
+        }
     }
 
     pub(super) fn save_sources(&mut self) {
@@ -224,8 +325,11 @@ impl App {
                     let busy = matches!(s.status, Status::Indexing { .. });
                     acts = acts.push(btn("Rescan", false, busy, SrcAct::Rescan(id)));
                 }
-            } else if s.backend.is_some() && self.active != Some(id) {
-                acts = acts.push(btn("Use account", false, false, SrcAct::Use(id)));
+            } else {
+                if s.backend.is_some() && self.active != Some(id) {
+                    acts = acts.push(btn("Use account", false, false, SrcAct::Use(id)));
+                }
+                acts = acts.push(btn("Header", false, false, SrcAct::Header(id)));
             }
             acts = acts
                 .push(btn(
@@ -315,6 +419,79 @@ impl App {
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
+    }
+
+    /// "Extra header" for a server behind a gating proxy: name and (masked) value.
+    pub(super) fn header_dialog(&self) -> El<'_> {
+        let d = self.hdr.as_ref().expect("dialog is open");
+        let field = |ph: &str, v: &str, value: bool| {
+            let i = text_input(ph, v)
+                .on_input(move |s| Message::HeaderInput(value, s))
+                .on_submit(Message::Src(SrcAct::HeaderSave))
+                .size(t::BODY)
+                .padding([t::S2, t::S3])
+                .style(style::input);
+            if value { i.secure(true) } else { i }
+        };
+        let mut card = column![
+            mono("EXTRA HEADER"),
+            text("Sent with every request to this server")
+                .size(t::HEADING)
+                .font(t::BOLD),
+            text("For a server behind a gateway that asks for a header. The value is kept in your system keyring, never in a file. Leave both empty and press Remove to stop sending one.")
+                .size(t::BODY)
+                .line_height(1.5)
+                .color(t::TEXT_SECONDARY),
+            field("Header name, e.g. X-Access-Key", &d.name, false),
+            field("Value", &d.value, true),
+        ]
+        .spacing(t::S3);
+        if let Some(e) = &d.err {
+            card = card.push(text(e.clone()).size(t::CONTROL_TEXT).color(t::DANGER));
+        }
+        let go = d.busy || d.name.trim().is_empty() || d.value.trim().is_empty();
+        card = card.push(
+            container(
+                row![
+                    action_button(
+                        "Cancel",
+                        false,
+                        false,
+                        true,
+                        false,
+                        Message::Src(SrcAct::HeaderCancel)
+                    ),
+                    action_button(
+                        "Remove",
+                        false,
+                        true,
+                        false,
+                        d.busy,
+                        Message::Src(SrcAct::HeaderClear)
+                    ),
+                    action_button(
+                        "Save",
+                        true,
+                        false,
+                        false,
+                        go,
+                        Message::Src(SrcAct::HeaderSave)
+                    ),
+                ]
+                .spacing(t::S2),
+            )
+            .align_right(Length::Fill),
+        );
+        opaque(
+            container(
+                container(card)
+                    .width(480)
+                    .padding(t::S6)
+                    .style(style::panel),
+            )
+            .center(Length::Fill)
+            .style(style::scrim),
+        )
     }
 
     /// "Remove this source?" Says what is and is not deleted.

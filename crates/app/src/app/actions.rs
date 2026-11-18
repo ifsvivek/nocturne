@@ -11,6 +11,7 @@ use nocturne_core::catalog::WriteError;
 use nocturne_core::source::{Kind, Media, SourceId};
 use nocturne_core::sync::SyncHooks;
 use nocturne_core::video::PlayerHooks;
+use nocturne_core::watched::Change;
 use std::sync::Arc;
 
 impl App {
@@ -137,10 +138,13 @@ impl App {
                 self.patch(m.origin, &m.id, set);
                 self.toast(done);
                 let (m2, origin, id) = (m.clone(), m.origin, m.id.clone());
-                run(
-                    async move { l.set_played(&m2, v).await.is_ok() },
-                    move |ok| Message::LocalWrite(origin, id, v, ok),
-                )
+                Task::batch([
+                    run(
+                        async move { l.set_played(&m2, v).await.is_ok() },
+                        move |ok| Message::LocalWrite(origin, id, v, ok),
+                    ),
+                    self.cascade(m, Change::Played(v)),
+                ])
             }
             _ => {
                 let Some(h) = self.hooks_for(m.origin).filter(|h| h.can_write()) else {
@@ -150,7 +154,7 @@ impl App {
                 self.patch(m.origin, &m.id, set);
                 h.set_played(&m.id, v);
                 self.toast(done);
-                Task::none()
+                self.cascade(m, Change::Played(v))
             }
         }
     }
@@ -210,6 +214,13 @@ impl App {
         for (o, h) in &self.hooks_by {
             all.push((*o, h.drain()));
         }
+        let failed = self.hooks.take_report_failure()
+            || self.hooks_by.values().any(|h| h.take_report_failure());
+        if failed {
+            self.toast(
+                "Couldn't reach the server to save watch progress. Playback is not affected.",
+            );
+        }
         for (origin, rs) in all {
             for r in rs {
                 self.patch(origin, &r.id, |m| {
@@ -223,6 +234,7 @@ impl App {
 
     /// Apply `f` to every copy of the item the UI holds, so an optimistic change shows everywhere.
     pub(super) fn patch(&mut self, origin: SourceId, id: &str, f: impl Fn(&mut Media)) {
+        self.smart.clear();
         let hit = |m: &mut Media| {
             if m.origin == origin && m.id == id {
                 f(m)

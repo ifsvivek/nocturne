@@ -1,12 +1,16 @@
 //! NOCTURNE, Iced front end.
+// Release builds on Windows are GUI-subsystem (no console window); debug builds keep the console.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 #![allow(dead_code)] // the widget kit is consumed screen by screen over steps 4a-4e
 mod account;
 mod admin;
 mod app;
+mod couch;
 mod detail;
 mod keys;
 mod motion;
 mod onboarding;
+mod pad;
 mod platform;
 mod player;
 mod queue;
@@ -23,7 +27,28 @@ mod widget;
 use app::App;
 use iced::{Color, Size, window};
 
-fn main() -> iced::Result {
+fn main() -> std::process::ExitCode {
+    // winit would panic (backtrace and all) without a display server: say it plainly instead.
+    if platform::no_graphical_session() {
+        eprintln!(
+            "NOCTURNE needs a graphical session (Wayland or X11), but none was found.\n\
+             Start it from your desktop, or set WAYLAND_DISPLAY or DISPLAY."
+        );
+        return std::process::ExitCode::FAILURE;
+    }
+    match run() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!(
+                "NOCTURNE could not open its window: {e}\n\
+                 Check that your graphics drivers (Vulkan or OpenGL) work and that a graphical session is running."
+            );
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> iced::Result {
     // Before anything costly: a second launch just wakes the first and leaves.
     let Some(_single) = single::acquire() else {
         return Ok(());
@@ -76,16 +101,14 @@ fn main() -> iced::Result {
             text_color: theme::TEXT,
         })
         .theme(App::theme)
+        .scale_factor(App::scale_factor)
         .default_font(theme::FONT)
         .exit_on_close_request(false)
         .window(window::Settings {
             size: Size::new(1280.0, 800.0),
             min_size: Some(Size::new(800.0, 560.0)),
             transparent: true,
-            platform_specific: window::settings::PlatformSpecific {
-                application_id: "nocturne".into(),
-                ..Default::default()
-            },
+            platform_specific: crate::platform::window_settings(),
             exit_on_close_request: false,
             ..Default::default()
         })

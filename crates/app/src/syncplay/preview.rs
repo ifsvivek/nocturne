@@ -442,10 +442,7 @@ pub fn run() -> iced::Result {
             size: Size::new(1280.0, 800.0),
             min_size: Some(Size::new(800.0, 560.0)),
             transparent: true,
-            platform_specific: window::settings::PlatformSpecific {
-                application_id: "nocturne".into(),
-                ..Default::default()
-            },
+            platform_specific: crate::platform::window_settings(),
             exit_on_close_request: false,
             ..Default::default()
         })

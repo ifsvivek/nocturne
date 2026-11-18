@@ -42,8 +42,7 @@ fn load_seek_pause_eof() {
     .unwrap();
     assert!(p.state().idle);
 
-    p.load(path.to_str().unwrap(), Some("X-Test: a, b"))
-        .unwrap();
+    p.load(path.to_str().unwrap(), &["X-Test: a, b"]).unwrap();
     wait("duration", || p.state().duration.is_some());
     let d = p.state().duration.unwrap();
     assert!((1.9..=2.1).contains(&d), "duration {d}");
@@ -97,10 +96,15 @@ fn headers_reach_server_and_not_url() {
         ..Default::default()
     })
     .unwrap();
-    p.load(&url, Some("Authorization: Tok A=\"b\", C=\"d\""))
-        .unwrap();
+    // Two header lines, both with commas in the value: each arrives whole (no list splitting).
+    p.load(
+        &url,
+        &["Authorization: Tok A=\"b\", C=\"d\"", "X-Gate: one, two"],
+    )
+    .unwrap();
     let req = srv.join().unwrap();
     assert!(req.contains("Authorization: Tok A=\"b\", C=\"d\"\r\n"));
+    assert!(req.contains("X-Gate: one, two\r\n"));
     assert!(!url.contains("Tok"));
     wait("failure event", || {
         p.events().try_iter().any(|e| matches!(e, Event::Failed(_)))
@@ -129,7 +133,7 @@ fn killed_child_emits_closed_and_next_load_respawns() {
     });
     assert!(p.state().idle);
 
-    p.load(path.to_str().unwrap(), None).unwrap();
+    p.load(path.to_str().unwrap(), &[]).unwrap();
     assert_ne!(p.child_pid().unwrap(), old);
     wait("duration after respawn", || p.state().duration.is_some());
     drop(p);
@@ -143,7 +147,7 @@ fn auth_header_not_on_child_command_line() {
         ..Default::default()
     })
     .unwrap();
-    p.load("/nonexistent.wav", Some("Authorization: SECRET-TOKEN-123"))
+    p.load("/nonexistent.wav", &["Authorization: SECRET-TOKEN-123"])
         .unwrap();
     wait("failure", || {
         p.events().try_iter().any(|e| matches!(e, Event::Failed(_)))

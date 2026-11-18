@@ -12,6 +12,7 @@ pub enum Sec {
     Chapters,
     Similar,
     Extras,
+    Collections,
     Kids,
     Kids2,
     Seasons,
@@ -19,7 +20,7 @@ pub enum Sec {
 
 impl Sec {
     /// Display order, top to bottom.
-    pub const ALL: [Sec; 8] = [
+    pub const ALL: [Sec; 9] = [
         Sec::Next,
         Sec::Seasons,
         Sec::Kids,
@@ -27,6 +28,7 @@ impl Sec {
         Sec::Chapters,
         Sec::Cast,
         Sec::Extras,
+        Sec::Collections,
         Sec::Similar,
     ];
 
@@ -40,6 +42,7 @@ impl Sec {
             Sec::Kids2 => 5,
             Sec::Next => 6,
             Sec::Seasons => 7,
+            Sec::Collections => 8,
         }
     }
 
@@ -53,6 +56,7 @@ impl Sec {
                 "More like this",
                 "Chosen by the server from what this resembles.",
             ),
+            (Sec::Collections, _) => ("Included in", "Collections this belongs to."),
             (Sec::Extras, _) => ("Extras", "Trailers and special features."),
             (Sec::Kids, Kind::Person) => ("Movies", "Films with this person."),
             (Sec::Kids2, Kind::Person) => ("Shows", "Series with this person."),
@@ -103,6 +107,8 @@ pub enum MoreAct {
     DeletePlaylist,
     PlayNext,
     AddToQueue,
+    FindSubs,
+    Download,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -142,12 +148,13 @@ pub fn actions(m: &Media, has_prev: bool, has_next: bool) -> Vec<DAct> {
             v.push(More);
             v
         }
-        Kind::Series => vec![Play, Watched, Fav],
+        Kind::Series => vec![Play, Watched, Fav, More],
         Kind::Season => {
             let mut v = vec![Play, Watched];
             if m.series_id.is_some() {
                 v.push(Series);
             }
+            v.push(More);
             v
         }
         Kind::BoxSet | Kind::Playlist | Kind::MusicAlbum => vec![PlayAll, Shuffle, Fav, More],
@@ -395,8 +402,8 @@ mod tests {
             actions(&m("Episode"), false, false),
             [Play, Watched, Fav, Series, More]
         );
-        assert_eq!(actions(&m("Series"), false, false), [Play, Fav]);
-        assert_eq!(actions(&m("Season"), false, false), [Play, Series]);
+        assert_eq!(actions(&m("Series"), false, false), [Play, Fav, More]);
+        assert_eq!(actions(&m("Season"), false, false), [Play, Series, More]);
         assert_eq!(
             actions(&m("Playlist"), false, false),
             [PlayAll, Shuffle, Fav, More]

@@ -1,0 +1,16 @@
+# Pinned prebuilt mpv for the Windows installer (sourced by scripts/package-windows.sh, parsed by
+# scripts/gen-notices.py). Change all fields together; the build fails if the hash does not match.
+# Upstream: shinchiro/mpv-winbuild-cmake, the Windows build linked from mpv.io/installation.
+# SHA256 equals the digest GitHub shows for the release asset (checked 2026-11-17).
+MPV_RELEASE=20261111
+MPV_ASSET=mpv-x86_64-20261111-git-bcde6b93cc.7z
+MPV_SHA256=f259b5fd4b5c395617c948a4fadcdf55bba1c5282fb7c13e88626b3f71072baf
+MPV_URL=https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261111/mpv-x86_64-20261111-git-bcde6b93cc.7z
+MPV_VERSION=v0.42.0-38-gbcde6b93c
+# Corresponding source (GPL): the build recipe, plus the mpv and FFmpeg commits named in the release.
+MPV_BUILD_SOURCE=https://github.com/shinchiro/mpv-winbuild-cmake/tree/20261111
+MPV_SOURCE=https://github.com/mpv-player/mpv/tree/bcde6b93cc
+FFMPEG_SOURCE=https://github.com/FFmpeg/FFmpeg/tree/cd4e96eb3
+# Not bundled today (no in-window video on Windows yet); pin kept for when it is.
+LIBMPV_DEV_ASSET=mpv-dev-x86_64-20261111-git-bcde6b93cc.7z
+LIBMPV_DEV_SHA256=273c079b11ea5575822f972756f4c9a71149a5c10130353abeb8586738938452

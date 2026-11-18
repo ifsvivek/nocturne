@@ -4,6 +4,8 @@
 //! The list of known server URLs and the last used one (no secrets) live in
 //! `$XDG_CONFIG_HOME/nocturne/servers.toml`, written atomically.
 
+pub mod paths;
+
 use nocturne_jellyfin_user::Session;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -130,6 +132,42 @@ fn load_account_from(s: &dyn Store, server_url: &str, user_id: &str) -> Result<O
 /// Forget the remembered login of `user_id` on `server_url` (no error if there is none).
 pub fn delete_account(server_url: &str, user_id: &str) -> Result<()> {
     Keyring(service()).delete(&account_key(server_url, user_id))
+}
+
+/// The optional extra HTTP header of `server_url` (`Name: value`; the value may be a secret, so it
+/// lives in the keyring and never in a file).
+pub fn save_header(server_url: &str, line: &str) -> Result<()> {
+    Keyring(service()).set(&header_key(server_url), line)
+}
+
+pub fn load_header(server_url: &str) -> Result<Option<String>> {
+    Keyring(service()).get(&header_key(server_url))
+}
+
+pub fn delete_header(server_url: &str) -> Result<()> {
+    Keyring(service()).delete(&header_key(server_url))
+}
+
+/// A named third-party secret (online metadata / subtitle API keys). Keyring only, like every token.
+pub fn save_secret(name: &str, value: &str) -> Result<()> {
+    Keyring(service()).set(&secret_key(name), value)
+}
+
+pub fn load_secret(name: &str) -> Result<Option<String>> {
+    Keyring(service()).get(&secret_key(name))
+}
+
+pub fn delete_secret(name: &str) -> Result<()> {
+    Keyring(service()).delete(&secret_key(name))
+}
+
+/// Cannot collide with a server URL key (those start with a scheme).
+fn secret_key(name: &str) -> String {
+    format!("secret|{name}")
+}
+
+fn header_key(server_url: &str) -> String {
+    format!("{}|extra-header", key(server_url))
 }
 
 /// Make `session` the active login for `server_url` AND a remembered account (keyring writes),
@@ -309,14 +347,12 @@ pub struct Servers {
 }
 
 impl Servers {
-    /// `$XDG_CONFIG_HOME/nocturne/servers.toml` (default `~/.config`).
+    /// `servers.toml` in [`paths::config_dir`] (`$XDG_CONFIG_HOME/nocturne` on Linux).
     pub fn default_path() -> Result<PathBuf> {
-        let base = std::env::var_os("XDG_CONFIG_HOME")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".config")))
-            .ok_or_else(|| Error::File("neither XDG_CONFIG_HOME nor HOME is set".into()))?;
-        Ok(base.join("nocturne").join("servers.toml"))
+        let dir = paths::config_dir().ok_or_else(|| {
+            Error::File("no per-user config directory (HOME / APPDATA unset)".into())
+        })?;
+        Ok(dir.join("servers.toml"))
     }
 
     pub fn load() -> Result<Self> {

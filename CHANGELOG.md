@@ -3,7 +3,87 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.0] - 2026-11-18
+
+What is verified and what is not is listed per feature in [FEATURES.md](docs/FEATURES.md).
+
+### Added
+**Playback**
+- Secondary subtitle (Subtitles menu, "Secondary" section; Shift+C cycles it; top by default).
+- Audio and subtitle language remembered per show (and per movie) across restarts, in a local file under
+  `$XDG_DATA_HOME/nocturne/`, never on a server; "Original audio" is a choice in the Audio menu.
+- HDR video: for an HDR stream the player asks whether to play in the window in SDR or open an HDR pop-out window (mpv's own
+  window, driven from the app). New setting "HDR video" (Ask / Play in the window in SDR / Open in HDR pop-out window)
+  ([HDR.md](docs/HDR.md)). Not yet seen on an HDR display.
+- Player menus by keyboard: T Subtitles, V Audio, O (or Menu) Settings, Q Quality; Shift+Left / Right seeks 30 s.
+- Local files play the subtitles you downloaded; the Subtitles menu offers "Find subtitles online" (when the source's
+  subtitle download is on) and a download is added to the playing video at once.
+
+**Library and sources**
+- Home "Latest" rows use the server's `Items/Latest`, so new episodes of shows already in the library surface (grouped under
+  the show); Play on a show card starts its next unwatched episode (`Shows/NextUp`).
+- "Included in" strip on movie and show pages (collections the item belongs to, Jellyfin 12+).
+- Optional extra HTTP header per server (Settings > Sources > Header) for servers behind a gateway. The value is kept in the
+  system keyring, never in a file.
+- Smart collections (header: Smart): saved rules over every source, e.g. unwatched 4K movies, added this week, rated 8+ dramas
+  from the 90s. Five starters; create, edit, delete and reorder your own with a live match count. Stored only in `smart.json`
+  on this computer. Resolution rules need a server (local folders sit them out).
+- Optional online details for local media (Local folders > Online details, off by default, per source): TMDB (your own free
+  key, kept in the keyring), TVmaze and MusicBrainz with the Cover Art Archive. Only title, year, ids and season / episode
+  numbers (album and artist for music) are sent, never file names or paths. Unclear matches are listed under "Choose the right
+  match". Results sit below your own edits, `.nfo` files and sidecar art, and TMDB data is refreshed or dropped within six
+  months. Provider credits and the TMDB notice are shown ([METADATA.md](docs/METADATA.md)).
+- Optional subtitle download for local files: "Find subtitles online" searches OpenSubtitles with your own API key (and, for
+  downloads, your OpenSubtitles login; both in the keyring) and keeps the file in NOCTURNE's own folder, never next to media.
+- Offline copies: "Download to this computer" in the ... menu of a server movie, episode, season or show saves the original
+  file(s) into a local library folder (or NOCTURNE's downloads folder), named the Jellyfin way with a small `.nfo` so the copy
+  shows as a second source of the same title. GET only, resumable, never overwrites, one transfer at a time, queue survives
+  restarts (account menu > Downloads), external subtitles come along.
+
+**Across services**
+- One watched state across sources (Settings > Watched state, opt-in): marking a title watched also marks its copies on your
+  other sources, matched by IMDb / TMDB / TVDB id (episodes: series ids plus season and episode), never by title alone. Server
+  copies change only when server changes are on, each on its own server; local copies always follow. Changes that arrive from
+  elsewhere (Trakt import) never spread further ([WRITES.md](docs/WRITES.md)).
+- Trakt (Settings > Trakt, opt-in): connect your own Trakt API app with a browser sign-in (PKCE, loopback redirect; no
+  credentials shipped, no client secret; client id and sign-in live in the keyring), scrobble movies and episodes that have
+  provider ids, and optionally import watched history into local items (server items only with server changes on)
+  ([TRAKT.md](docs/TRAKT.md)).
+- Remote control from other Jellyfin apps (opt-in, off by default, needs server changes on): this computer appears as a
+  controllable device; play, pause, seek, next / previous, stop, volume, mute, audio / subtitle track and on-screen messages
+  sent from another app are carried out ([WRITES.md](docs/WRITES.md)).
+
+**Couch mode and platforms**
+- Couch mode (Settings > Living room: Off / On / Automatic): a 10-foot layout with a larger UI, thicker focus ring, a hint bar,
+  and gamepad support (`gilrs`, a background thread only while the mode is not Off): D-pad / left stick move, A select, B back,
+  Y search, X favourite, Start account menu, LB / RB page, LT / RT seek 30 s. Automatic turns on while a gamepad is connected or
+  on a 1900 px+ display. Remote / media keys share the keyboard path.
+- macOS and Windows code behind the platform seams (preview: built by a one-shot CI workflow, never run on a real PC or Mac): per-OS
+  paths, keyring backends, named-pipe mpv IPC, per-OS libmpv loading, single-instance guard, playback through the external mpv
+  window. `scripts/check-cross.sh` runs the compile checks in Docker ([PLATFORMS.md](docs/PLATFORMS.md)).
+- `.deb` and `.rpm` packages, built inside Debian / Ubuntu and Fedora containers and install-tested in clean containers (the
+  Fedora one needs RPM Fusion for `mpv-libs`). No AppImage: it would be 107 MB and clash over libmpv / glibc
+  ([PACKAGING.md](docs/PACKAGING.md)).
+- Header links that scroll sideways show a fade and chevron at the hidden end and follow the focused link.
+
+### Changed
+- Playback reports carry the play method, media source and play session id, so the server can tell direct play from a
+  transcode.
+- Pasted API keys (TMDB, OpenSubtitles, Trakt client id) and the extra-header value lose surrounding whitespace and one pair
+  of quotes.
+- libmpv older than 0.40 is tolerated (background options are skipped).
+- With no graphical session the app prints a clear message instead of panicking.
+
+### Fixed
+- Online details can no longer attach to the wrong local file after an interrupted scan (item ids are never reused, each
+  online entry is tied to the file it was fetched for, and purged items lose their entries and artwork).
+- The online subtitle finder is usable with arrows, Enter and a gamepad, and a download without an OpenSubtitles login
+  explains that a login is needed.
+- A failed playback report shows a quiet notice (once per playback) instead of being swallowed; the final "stopped" report is
+  retried once.
+- 0.3.1 fix batch: the divider rule no longer runs through the genre chips on detail pages, and the chip band grows when
+  chips wrap.
+- Repository setup instructions work in fish (a one-line `printf` instead of a heredoc), with troubleshooting notes.
 
 ## [0.3.0] - 2026-11-16
 

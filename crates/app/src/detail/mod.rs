@@ -130,6 +130,10 @@ pub enum Outcome {
         next: bool,
     },
     OpenUrl(String),
+    /// "Find subtitles online" for this local item (the root opens the finder).
+    FindSubs(Media),
+    /// "Download to this computer" for this server item (the root asks where to).
+    Download(Media),
     Back,
 }
 
@@ -174,6 +178,7 @@ pub enum Msg {
     Full(u64, Result<Box<(Media, Full)>, Failed>),
     Similar(u64, Result<Vec<Media>, Failed>),
     Extras(u64, Result<Vec<Media>, Failed>),
+    Colls(u64, Result<Vec<Media>, Failed>),
     NextUp(u64, Result<Vec<Media>, Failed>),
     Seasons(u64, Result<Vec<Media>, Failed>),
     Episodes(u64, String, Result<Vec<Media>, Failed>),
@@ -222,6 +227,7 @@ pub struct Detail {
     full: Option<Full>,
     similar: Load<Vec<Media>>,
     extras: Load<Vec<Media>>,
+    colls: Load<Vec<Media>>,
     kids: Load<Vec<Media>>,
     kids2: Load<Vec<Media>>,
     nextup: Load<Vec<Media>>,
@@ -244,6 +250,10 @@ pub struct Detail {
     /// The photos of the grid the page was opened from (for the viewer's arrows).
     siblings: Vec<Media>,
     pub outcomes: Vec<Outcome>,
+    /// The "Find subtitles online" entry is offered (local source with the switch on).
+    pub subs_ok: bool,
+    /// "Download to this computer" is offered (an item on a server).
+    pub dl_ok: bool,
 }
 
 pub fn pic_key(m: &Media, art: Art, w: u32) -> String {
@@ -276,6 +286,7 @@ impl Detail {
             full: None,
             similar: Load::Loading,
             extras: Load::Loading,
+            colls: Load::Loading,
             kids: Load::Loading,
             kids2: Load::Loading,
             nextup: Load::Loading,
@@ -296,6 +307,8 @@ impl Detail {
             photo: None,
             siblings: vec![],
             outcomes: vec![],
+            subs_ok: false,
+            dl_ok: false,
         };
         let t = d.load();
         (d, t)
@@ -371,6 +384,7 @@ impl Detail {
         for l in [
             &mut self.similar,
             &mut self.extras,
+            &mut self.colls,
             &mut self.kids,
             &mut self.kids2,
             &mut self.nextup,
@@ -449,6 +463,14 @@ impl Detail {
             );
         } else {
             self.extras = Load::Ready(vec![]);
+        }
+        if matches!(m.kind, Kind::Movie | Kind::Series) {
+            list!(
+                |b: Backend, i: String| async move { b.collections_of(&i).await },
+                Msg::Colls
+            );
+        } else {
+            self.colls = Load::Ready(vec![]);
         }
         match m.kind {
             Kind::Series => {
@@ -639,6 +661,7 @@ impl Detail {
             Sec::Chapters => self.full.as_ref().map_or(&[], |f| &f.chapters),
             Sec::Similar => self.similar.items(),
             Sec::Extras => self.extras.items(),
+            Sec::Collections => self.colls.items(),
             Sec::Kids => self.kids.items(),
             Sec::Kids2 => self.kids2.items(),
             Sec::Next => self.nextup.items(),
@@ -692,6 +715,10 @@ impl Detail {
         let mut v = model::actions(&self.media, self.neigh.0.is_some(), self.neigh.1.is_some());
         if self.play_err.is_some() {
             v.retain(|a| *a != DAct::Play);
+        }
+        // A show or season has only the download in its menu: no button when that is not offered.
+        if matches!(self.media.kind, Kind::Series | Kind::Season) && self.more_items().is_empty() {
+            v.retain(|a| *a != DAct::More);
         }
         if versions::worth_showing(&self.versions()) && self.media.playable() {
             let at = v.iter().position(|a| *a == DAct::Play).map_or(0, |i| i + 1);
@@ -801,6 +828,17 @@ impl Detail {
         if self.full.as_ref().is_some_and(|f| !f.info.is_empty()) {
             v.push(("Media info", MoreAct::Info));
         }
+        if self.subs_ok && matches!(m.kind, Kind::Movie | Kind::Episode) {
+            v.push(("Find subtitles online\u{2026}", MoreAct::FindSubs));
+        }
+        if self.dl_ok
+            && matches!(
+                m.kind,
+                Kind::Movie | Kind::Episode | Kind::Season | Kind::Series
+            )
+        {
+            v.push(("Download to this computer\u{2026}", MoreAct::Download));
+        }
         v
     }
 
@@ -821,6 +859,7 @@ impl Detail {
             }
             Msg::Similar(e, r) if e == cur => self.similar = Load::of(r),
             Msg::Extras(e, r) if e == cur => self.extras = Load::of(r),
+            Msg::Colls(e, r) if e == cur => self.colls = Load::of(r),
             Msg::NextUp(e, r) if e == cur => self.nextup = Load::of(r),
             Msg::Kids(e, r) if e == cur => self.kids = Load::of(r),
             Msg::Kids2(e, r) if e == cur => self.kids2 = Load::of(r),
@@ -864,6 +903,7 @@ impl Detail {
             Msg::Full(..)
             | Msg::Similar(..)
             | Msg::Extras(..)
+            | Msg::Colls(..)
             | Msg::NextUp(..)
             | Msg::Kids(..)
             | Msg::Kids2(..)
@@ -1135,6 +1175,8 @@ impl Detail {
             MoreAct::Watched => self.toggle_played(m),
             MoreAct::Fav => self.toggle_fav(m),
             MoreAct::Info => self.info_open = true,
+            MoreAct::FindSubs => self.outcomes.push(Outcome::FindSubs(m)),
+            MoreAct::Download => self.outcomes.push(Outcome::Download(m)),
             MoreAct::AddToPlaylist => {
                 if self.playables().is_empty() {
                     self.toast("Nothing to add here.");

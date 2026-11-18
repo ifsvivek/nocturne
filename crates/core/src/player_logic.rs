@@ -2,6 +2,7 @@
 //! quality and play method, track selection, resume rule, subtitle styles, MPRIS mapping.
 use crate::video::{PlayerPrefs, SubMode, Track, TrackKind, language};
 use nocturne_jellyfin as jf;
+use serde::{Deserialize, Serialize};
 
 pub const TICKS: f64 = 10_000_000.0;
 
@@ -217,24 +218,68 @@ pub fn same_lang(a: &str, b: &str) -> bool {
     la != "Unknown" && la.eq_ignore_ascii_case(&lb)
 }
 
-/// Remembered choice for a series/season within this session. Languages, not ids: ids differ per file.
-#[derive(Debug, Clone, PartialEq, Default)]
+/// The audio the viewer picked for a show. Languages, not ids: ids differ per file.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioPick {
+    /// The file's first audio track (the original language in practically every release; neither
+    /// the server nor mpv names the original language).
+    Original,
+    Lang(String),
+}
+
+/// A subtitle pick: off, or a language.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubPick {
+    Off,
+    Lang(String),
+}
+
+impl SubPick {
+    pub fn of(lang: Option<String>) -> Self {
+        lang.map_or(Self::Off, Self::Lang)
+    }
+}
+
+/// Remembered choice for a show (or movie); `None` = never chosen. Persisted by `lang_memory`.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TrackChoice {
-    pub audio_lang: Option<String>,
-    /// `Some(None)` = subtitles off, `Some(Some(lang))` = that language, `None` = never chosen.
-    pub sub: Option<Option<String>>,
+    pub audio: Option<AudioPick>,
+    pub sub: Option<SubPick>,
+    /// The secondary subtitle (shown at the top beside the main one).
+    pub sub2: Option<SubPick>,
 }
 
 fn of_kind(tracks: &[Track], k: TrackKind) -> impl Iterator<Item = &Track> {
     tracks.iter().filter(move |t| t.kind == k)
 }
 
-/// Audio track to select: remembered language, else preferred language, else None (mpv default).
+/// The track "Original audio" selects: the first one in the file.
+pub fn original_audio(tracks: &[Track]) -> Option<i64> {
+    of_kind(tracks, TrackKind::Audio).next().map(|t| t.id)
+}
+
+/// Audio track to select: remembered pick, else preferred language, else None (mpv default).
 pub fn pick_audio(tracks: &[Track], prefs: &PlayerPrefs, mem: &TrackChoice) -> Option<i64> {
-    let want = mem.audio_lang.as_deref().or(prefs.audio_lang.as_deref())?;
+    let want = match &mem.audio {
+        Some(AudioPick::Original) => return original_audio(tracks),
+        Some(AudioPick::Lang(l)) => l.as_str(),
+        None => prefs.audio_lang.as_deref()?,
+    };
     of_kind(tracks, TrackKind::Audio)
         .find(|t| same_lang(&t.lang, want))
         .map(|t| t.id)
+}
+
+fn sub_in_lang(tracks: &[Track], l: &str) -> i64 {
+    let find = |forced: bool| {
+        of_kind(tracks, TrackKind::Sub)
+            .find(|t| same_lang(&t.lang, l) && t.forced == forced)
+            .map(|t| t.id)
+    };
+    find(false).or(find(true)).unwrap_or(0)
 }
 
 /// Subtitle id to select (0 = off). `audio` is the language of the audio that will play.
@@ -242,17 +287,15 @@ pub fn pick_audio(tracks: &[Track], prefs: &PlayerPrefs, mem: &TrackChoice) -> O
 /// language), Always. Full tracks beat forced ones except in ForeignOnly where forced is the point.
 pub fn pick_sub(tracks: &[Track], audio: &str, prefs: &PlayerPrefs, mem: &TrackChoice) -> i64 {
     let subs = || of_kind(tracks, TrackKind::Sub);
-    let in_lang = |l: &str, forced: bool| {
+    let forced_in = |l: &str| {
         subs()
-            .filter(|t| same_lang(&t.lang, l) && t.forced == forced)
-            .map(|t| t.id)
-            .next()
+            .find(|t| same_lang(&t.lang, l) && t.forced)
+            .map_or(0, |t| t.id)
     };
-    if let Some(choice) = &mem.sub {
-        return match choice {
-            None => 0,
-            Some(l) => in_lang(l, false).or(in_lang(l, true)).unwrap_or(0),
-        };
+    match &mem.sub {
+        Some(SubPick::Off) => return 0,
+        Some(SubPick::Lang(l)) => return sub_in_lang(tracks, l),
+        None => {}
     }
     let Some(l) = prefs.sub_lang.as_deref() else {
         return match prefs.sub_mode {
@@ -262,14 +305,28 @@ pub fn pick_sub(tracks: &[Track], audio: &str, prefs: &PlayerPrefs, mem: &TrackC
     };
     match prefs.sub_mode {
         SubMode::Off => 0,
-        SubMode::Always => in_lang(l, false).or(in_lang(l, true)).unwrap_or(0),
+        SubMode::Always => sub_in_lang(tracks, l),
         SubMode::ForeignOnly => {
             if same_lang(audio, l) {
-                in_lang(l, true).unwrap_or(0) // audio already in their language: forced signs only
+                forced_in(l) // audio already in their language: forced signs only
             } else {
-                in_lang(l, false).or(in_lang(l, true)).unwrap_or(0)
+                sub_in_lang(tracks, l)
             }
         }
+    }
+}
+
+/// Secondary subtitle id (0 = off): only ever what the viewer picked for this show, and never the
+/// track already shown as the main one.
+pub fn pick_sub2(tracks: &[Track], main: i64, mem: &TrackChoice) -> i64 {
+    match &mem.sub2 {
+        Some(SubPick::Lang(l)) => tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Sub && t.id != main && same_lang(&t.lang, l))
+            .map(|t| t.id)
+            .next()
+            .unwrap_or(0),
+        _ => 0,
     }
 }
 
@@ -717,6 +774,7 @@ mod tests {
             forced,
             external: false,
             selected: false,
+            secondary: false,
             name: None,
         }
     }
@@ -770,17 +828,67 @@ mod tests {
         assert_eq!(pick_sub(&t, "jpn", &p, &none), 0, "no such language");
         // memory beats prefs, by language
         let mem = TrackChoice {
-            audio_lang: Some("jpn".into()),
-            sub: Some(Some("spa".into())),
+            audio: Some(AudioPick::Lang("jpn".into())),
+            sub: Some(SubPick::Lang("spa".into())),
+            ..Default::default()
         };
         assert_eq!(pick_audio(&t, &p, &mem), Some(1));
         assert_eq!(pick_sub(&t, "jpn", &p, &mem), 3);
         let off = TrackChoice {
-            audio_lang: None,
-            sub: Some(None),
+            sub: Some(SubPick::Off),
+            ..Default::default()
         };
         p.sub_mode = SubMode::Always;
         assert_eq!(pick_sub(&t, "jpn", &p, &off), 0, "remembered Off sticks");
+    }
+
+    #[test]
+    fn original_audio_and_secondary_subtitle() {
+        let t = tracks();
+        let p = PlayerPrefs {
+            audio_lang: Some("eng".into()),
+            ..Default::default()
+        };
+        let orig = TrackChoice {
+            audio: Some(AudioPick::Original),
+            ..Default::default()
+        };
+        assert_eq!(
+            pick_audio(&t, &p, &orig),
+            Some(1),
+            "first track, over prefs"
+        );
+        assert_eq!(original_audio(&[]), None);
+        // secondary: off unless remembered, never the main track, by language
+        let none = TrackChoice::default();
+        assert_eq!(pick_sub2(&t, 1, &none), 0);
+        let two = TrackChoice {
+            sub2: Some(SubPick::Lang("eng".into())),
+            ..Default::default()
+        };
+        assert_eq!(
+            pick_sub2(&t, 3, &two),
+            1,
+            "first eng track that is not the main one"
+        );
+        assert_eq!(
+            pick_sub2(&t, 1, &two),
+            2,
+            "main took 1: the forced eng is next"
+        );
+        let off = TrackChoice {
+            sub2: Some(SubPick::Off),
+            ..Default::default()
+        };
+        assert_eq!(pick_sub2(&t, 0, &off), 0);
+        // survives JSON (Off and a language stay distinct)
+        let c = TrackChoice {
+            audio: Some(AudioPick::Original),
+            sub: Some(SubPick::Off),
+            sub2: Some(SubPick::Lang("spa".into())),
+        };
+        let back: TrackChoice = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back, c);
     }
 
     #[test]

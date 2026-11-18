@@ -28,6 +28,8 @@ pub struct MediaSource {
     pub id: String,
     pub container: Option<String>,
     pub bitrate: Option<u64>,
+    /// File size in bytes.
+    pub size: Option<u64>,
     pub media_streams: Vec<MediaStream>,
 }
 

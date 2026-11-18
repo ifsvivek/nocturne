@@ -1,0 +1,196 @@
+name: Platforms
+
+# Manual, once per release: builds, tests and packages the Windows installer and the macOS .dmg on GitHub-hosted
+# runners and uploads them as 7-day artifacts. Nothing is published and no secrets are used (macOS is ad-hoc signed,
+# Windows unsigned). See docs/PACKAGING.md.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platforms-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Git for Windows defaults to autocrlf=true; CRs would end up in mpv.pin values and Cargo.toml's version.
+      - name: LF checkout
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-windows-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-windows-
+      - name: Rust toolchain
+        # The runner image ships rustup; stable is far above the workspace MSRV (1.89).
+        run: |
+          rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
+          rustup default stable
+          rustc --version
+      - name: NASM (aws-lc-sys assembly on MSVC)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command nasm -ErrorAction SilentlyContinue)) {
+            choco install nasm -y --no-progress
+            Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\NASM'
+          }
+      - name: Build (release, MSVC)
+        # Static CRT: a clean Windows PC without the Visual C++ redistributable must still start nocturne.exe
+        # (the runner has the redistributable installed, so CI alone would not catch a VCRUNTIME140.dll error).
+        env:
+          CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
+        run: cargo build --release --locked -p nocturne-app --target x86_64-pc-windows-msvc
+      - name: Fetch and verify mpv
+        run: |
+          . packaging/windows/mpv.pin
+          mkdir -p dist/win/stage
+          curl -fsSL -o "dist/win/$MPV_ASSET" "$MPV_URL"
+          echo "$MPV_SHA256  dist/win/$MPV_ASSET" | sha256sum -c -
+      - name: Stage files
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          . packaging/windows/mpv.pin
+          cd dist/win
+          SEVENZ=7z; command -v 7z >/dev/null || SEVENZ="/c/Program Files/7-Zip/7z.exe"
+          "$SEVENZ" e -y -ostage "$MPV_ASSET" mpv.exe >/dev/null
+          cd ../..
+          cp target/x86_64-pc-windows-msvc/release/nocturne.exe dist/win/stage/
+          cat LICENSE > dist/win/stage/LICENSE.txt
+          printf '\n\n----------------------------------------------------------------------\n\n' >> dist/win/stage/LICENSE.txt
+          python scripts/gen-notices.py --bundled >> dist/win/stage/LICENSE.txt
+          cp THIRD_PARTY_NOTICES.md dist/win/stage/
+          python -m pip install --quiet pillow
+          python -c "from PIL import Image; Image.open('packaging/icons/nocturne-256.png').save('dist/win/stage/nocturne.ico', sizes=[(256,256),(128,128),(48,48),(32,32),(16,16)])"
+          ls -l dist/win/stage
+      - name: NSIS installer and portable zip
+        env:
+          MSYS_NO_PATHCONV: "1"
+        run: |
+          ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if command -v makensis >/dev/null; then NSIS=makensis
+          elif [ -x "/c/Program Files (x86)/NSIS/makensis.exe" ]; then NSIS="/c/Program Files (x86)/NSIS/makensis.exe"
+          else choco install nsis -y --no-progress; NSIS="/c/Program Files (x86)/NSIS/makensis.exe"
+          fi
+          mkdir -p dist/out
+          setup="nocturne-$ver-x86_64-setup.exe"
+          "$NSIS" -V2 -DVERSION="$ver" -DSTAGE="$(cygpath -w "$PWD/dist/win/stage")" \
+            -DOUTFILE="$(cygpath -w "$PWD/dist/out/$setup")" "$(cygpath -w "$PWD/packaging/windows/nocturne.nsi")"
+          SEVENZ=7z; command -v 7z >/dev/null || SEVENZ="/c/Program Files/7-Zip/7z.exe"
+          zip="nocturne-$ver-x86_64-windows.zip"
+          (cd dist/win/stage && "$SEVENZ" a -tzip -mx=9 "../../out/$zip" nocturne.exe mpv.exe nocturne.ico LICENSE.txt THIRD_PARTY_NOTICES.md >/dev/null)
+          (cd dist/out && sha256sum "$setup" > "$setup.sha256" && sha256sum "$zip" > "$zip.sha256" && cat ./*.sha256 && ls -l)
+      - name: Smoke test (silent install, run, uninstall)
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist/out -Filter '*-setup.exe').FullName
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\NOCTURNE'
+          $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\NOCTURNE'
+          Start-Process -FilePath $setup -ArgumentList '/S' -Wait
+          foreach ($f in 'nocturne.exe','mpv.exe','nocturne.ico','LICENSE.txt','THIRD_PARTY_NOTICES.md','uninstall.exe') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "missing after install: $f" }
+          }
+          if (-not (Test-Path $key)) { throw 'uninstall registry entry missing' }
+          Write-Host "DisplayVersion: $((Get-ItemProperty $key).DisplayVersion)"
+
+          & (Join-Path $dir 'mpv.exe') --version | Select-Object -First 1
+          if ($LASTEXITCODE -ne 0) { throw 'bundled mpv.exe does not run' }
+
+          # No GPU or display on the runner: a window/GPU error exit is acceptable, a loader error is not.
+          $app = Start-Process -FilePath (Join-Path $dir 'nocturne.exe') -PassThru
+          Start-Sleep -Seconds 8
+          if ($app.HasExited) {
+            $code = $app.ExitCode
+            Write-Host "nocturne.exe exited early with $code"
+            # STATUS_DLL_NOT_FOUND, STATUS_ENTRYPOINT_NOT_FOUND, STATUS_INVALID_IMAGE_FORMAT, STATUS_DLL_INIT_FAILED
+            if (@(-1073741515, -1073741511, -1073741701, -1073741502) -contains $code) { throw "loader error $code" }
+          } else {
+            Write-Host 'nocturne.exe is running'
+            Stop-Process -Id $app.Id -Force
+            $app.WaitForExit()
+          }
+
+          # The NSIS uninstaller re-launches itself from %TEMP%, so /S returns at once: poll for the result.
+          Start-Process -FilePath (Join-Path $dir 'uninstall.exe') -ArgumentList '/S'
+          $deadline = (Get-Date).AddSeconds(90)
+          while ((Test-Path $key) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          if (Test-Path $key) { throw 'uninstall did not remove the registry entry' }
+          Start-Sleep -Seconds 3
+          if (Test-Path (Join-Path $dir 'nocturne.exe')) { throw 'uninstall left nocturne.exe behind' }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows
+          path: dist/out/*
+          retention-days: 7
+          if-no-files-found: error
+      # Last on purpose: a test failure must not hide the packaging result above.
+      - name: Test
+        run: cargo test --workspace --locked
+
+  macos:
+    runs-on: macos-latest # arm64
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-macos-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-macos-
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+      - name: Homebrew packages
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: brew install mpv dylibbundler
+      - name: Package (.app and .dmg, ad-hoc signed)
+        run: scripts/package-macos.sh
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          app=dist/macos/NOCTURNE.app
+          plutil -lint "$app/Contents/Info.plist"
+          if find "$app" -type f \( -perm -u+x -o -name '*.dylib' \) -exec file {} + | grep Mach-O | cut -d: -f1 | xargs otool -L | grep -E '/opt/homebrew|/usr/local'; then
+            echo "Homebrew paths remain in the bundle" >&2; exit 1
+          fi
+          "$app/Contents/MacOS/mpv" --version | head -1
+          python3 -c 'import ctypes, sys; ctypes.CDLL(sys.argv[1]); print("libmpv loads")' "$PWD/$app/Contents/Frameworks/libmpv.2.dylib"
+          # Headless runner: a GPU/window failure is acceptable, a dyld error is not.
+          "$app/Contents/MacOS/nocturne" > /tmp/nocturne-smoke.log 2>&1 &
+          pid=$!
+          sleep 8
+          if kill -0 "$pid" 2>/dev/null; then echo "nocturne is running"; kill "$pid"; else echo "nocturne exited early"; fi
+          cat /tmp/nocturne-smoke.log
+          if grep -qiE 'dyld|Library not loaded' /tmp/nocturne-smoke.log; then echo "dyld error" >&2; exit 1; fi
+          cd dist && for f in *.dmg; do shasum -a 256 "$f" > "$f.sha256"; done && cat ./*.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos
+          path: |
+            dist/*.dmg
+            dist/*.dmg.sha256
+          retention-days: 7
+          if-no-files-found: error
+      - name: Test
+        run: cargo test --workspace --locked

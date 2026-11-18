@@ -2,6 +2,7 @@
 """Regenerate THIRD_PARTY_NOTICES.md body from `cargo tree` + `cargo metadata`.
 
 Usage: [PKG=nocturne-app] scripts/gen-notices.py > THIRD_PARTY_NOTICES.md   (run from the repo root)
+       scripts/gen-notices.py --bundled   prints only the "Bundled native libraries" section (installer licence page)
 PKG is the shipped app package (default nocturne-app; same variable as scripts/package.sh). Statements that only
 hold for some dependency sets (GPUI, vendored xattr, self_cell, option-ext) are emitted only when that crate is
 in the shipped tree, so the cut-over needs no edit here.
@@ -15,6 +16,40 @@ from collections import defaultdict
 
 def run(*a):
     return subprocess.run(a, check=True, capture_output=True, text=True).stdout
+
+def pins(path):
+    """KEY=value lines of a packaging pin file."""
+    return dict(l.split("=", 1) for l in open(path).read().splitlines() if l and not l.startswith("#"))
+
+def bundled_section():
+    w = pins("packaging/windows/mpv.pin")
+    return f"""## Bundled native libraries (installers only)
+
+The Linux packages bundle nothing (libmpv comes from the distribution). The **Windows installer** (and portable zip)
+ships one prebuilt third-party program next to `nocturne.exe`: `mpv.exe`, used as the external playback window
+(in-window video exists on Linux only). It is not modified by NOCTURNE.
+
+| File | Version | Origin | SHA256 of the downloaded archive |
+|---|---|---|---|
+| `mpv.exe` | mpv {w["MPV_VERSION"]} | shinchiro/mpv-winbuild-cmake release {w["MPV_RELEASE"]}, `{w["MPV_ASSET"]}` ({w["MPV_URL"]}) | `{w["MPV_SHA256"]}` |
+
+License: this build of mpv statically links FFmpeg and other libraries, including GPL ones (libx264 is present, so
+FFmpeg was built with `--enable-gpl`); the program as distributed is therefore under the GNU General Public License
+(mpv itself is GPL-2.0-or-later, compatible with the GPL-3.0-or-later of NOCTURNE). Each library inside carries its
+own license; the exact list is in the upstream build recipe. Corresponding source, as the GPL requires us to offer it:
+
+- mpv: {w["MPV_SOURCE"]}
+- FFmpeg: {w["FFMPEG_SOURCE"]}
+- build recipe, which also fetches and pins every other library statically linked into it: {w["MPV_BUILD_SOURCE"]}
+
+NOCTURNE starts `mpv.exe` as a separate process (no linking), so the two programs are an aggregate; you can replace
+`mpv.exe` with any other build.
+
+"""
+
+if "--bundled" in sys.argv:
+    print(bundled_section())
+    sys.exit()
 
 PKG = os.environ.get("PKG", "nocturne-app")
 tgt = "x86_64-unknown-linux-gnu"
@@ -82,7 +117,7 @@ INTRO += f"""
 If a distribution builds libmpv as GPL-2.0-only (not the case on Arch) the combination would not be redistributable;
 distribution packages declare mpv as an external dependency, so nothing here is relicensed by NOCTURNE.
 
-## Fonts, icons and artwork
+""" + bundled_section() + f"""## Fonts, icons and artwork
 
 - No font files are bundled. The UI asks the system for "Noto Sans" (SIL OFL-1.1) by name and falls back to
   whatever fontconfig provides.

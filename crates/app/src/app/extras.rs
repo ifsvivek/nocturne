@@ -255,6 +255,7 @@ impl App {
     /// Stop everything tied to the login (sign-out, switching server or account).
     pub(super) fn extras_shutdown(&mut self) {
         self.sp.shutdown(self.player.as_mut());
+        self.remote_shutdown();
         self.adm = None;
         self.devices = None;
         self.queue_open = false;

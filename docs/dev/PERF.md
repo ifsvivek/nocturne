@@ -71,3 +71,22 @@ The larger binary is wgpu (Vulkan + GL backends), Iced's tiny-skia software fall
 library code. Accepted for 0.3: startup and memory improved, and the software renderer keeps the app usable on
 machines without a working Vulkan driver. ponytail: if size matters later, measure dropping tiny-skia or the GL
 backend first.
+
+## 0.4.0 (unreleased) vs 0.3.0, 2026-11-17
+
+Same machine and method (`scripts/perf.sh target/release/nocturne 0.4`, release build of `v0.4-local` at `7db009e` plus
+the QA fixes, throwaway XDG dirs, a demo server on `127.0.0.1:8108` in dev-token mode for the loaded-home row). The
+desktop session was running (a browser and a terminal), so treat the numbers as roughly +/- 10 percent.
+
+| Metric | 0.3.0 Iced | 0.4.0 | Change |
+|---|---|---|---|
+| Binary | 30.13 MiB | 32.24 MiB (33806384 B) | +2.1 MiB |
+| Tarball | 12.48 MiB | n/a (`scripts/package.sh` not run for this row) | |
+| Installed (install.sh) | 30.92 MiB | 33.04 MiB | +2.1 MiB |
+| Start to window mapped (median of 5) | 387 ms | 387 ms | 0 |
+| Idle sign-in RSS / CPU | 286.7 MiB / 1.43 % | 285.9 MiB / 1.50 % | no change |
+| Idle loaded home RSS / CPU | 297.7 MiB / 1.70 % | 298.8 MiB / 1.83 % | no change (noise) |
+| CPU during 60 s 1080p embedded playback | manual | manual | not measured |
+
+The +2.1 MiB is the 0.4 features (online metadata clients, downloads, Trakt, remote control, smart collections, couch mode
+with the gamepad library `gilrs`, Windows/macOS seams). Startup, idle memory and idle CPU did not move.

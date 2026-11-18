@@ -1,6 +1,8 @@
 //! UI-framework-free logic shared by the front ends: settings, navigation, list/detail state,
 //! playback logic, the Jellyfin source layer, caches, and admin/account state machines.
 pub mod account;
+/// Per-OS config/data/cache/runtime dirs (lives in `nocturne-session`, which core builds on).
+pub use nocturne_session::paths;
 pub mod admin;
 pub mod backend;
 pub mod blurhash;
@@ -9,23 +11,32 @@ pub mod cache;
 pub mod catalog;
 pub mod detail;
 pub mod detail_reads;
+pub mod download;
 pub mod dropdown;
 pub mod folders;
+pub mod hdr;
 pub mod help;
 pub mod imgcache;
+pub mod lang_memory;
 pub mod libview;
 pub mod local;
 pub mod merge;
 pub mod nav;
+pub mod online;
 pub mod player_logic;
 pub mod player_mpris;
 pub mod profile;
+pub mod remote;
 pub mod search;
+pub mod secret;
 pub mod settings;
+pub mod smart;
 pub mod source;
 pub mod sources;
 pub mod sync;
 pub mod syncplay;
+pub mod trakt;
 pub mod unified;
 pub mod versions;
 pub mod video;
+pub mod watched;

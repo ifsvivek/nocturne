@@ -128,6 +128,9 @@ impl Client {
         auth.set_sensitive(true);
         let mut headers = header::HeaderMap::new();
         headers.insert(header::AUTHORIZATION, auth);
+        if let Some((n, v)) = crate::header::for_url(&cfg.base_url) {
+            headers.insert(n, v);
+        }
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
             .default_headers(headers)
@@ -160,6 +163,11 @@ impl Client {
             Some(_) => Health::Ok,
         };
         self.health.store(h as u8, Ordering::Relaxed);
+    }
+
+    /// The server's extra header as `Name: value` for mpv (`http-header-fields`), if one is set.
+    pub fn extra_header_line(&self) -> Option<String> {
+        crate::header::line_for(self.base.as_str())
     }
 
     /// Full `Authorization` header value, for handing to mpv (`http-header-fields`).
@@ -252,6 +260,22 @@ impl Client {
         .await
     }
 
+    /// Recently added items of a library (`GET /Items/Latest`, a bare array). With grouping on (the
+    /// server default) new episodes of a show collapse into that show, as in Jellyfin Web.
+    pub async fn latest(&self, user_id: &str, parent_id: &str, limit: u32) -> Result<Vec<Item>> {
+        self.get(
+            &["Items", "Latest"],
+            &[
+                ("userId", user_id.to_string()),
+                ("parentId", parent_id.to_string()),
+                ("limit", limit.to_string()),
+                ("groupItems", "true".into()),
+                ("fields", ID_FIELDS.into()),
+            ],
+        )
+        .await
+    }
+
     /// Next unwatched episode of each series being followed (`GET /Shows/NextUp`).
     pub async fn next_up(&self, user_id: &str, limit: u32) -> Result<Items> {
         self.get(&["Shows", "NextUp"], &next_up_pairs(user_id, limit))
@@ -317,6 +341,28 @@ impl Client {
     ) -> Result<Vec<u8>> {
         let url = Url::parse(&self.trickplay_url(id, width, index, source_id))
             .map_err(|_| Error::Config("trickplay url".into()))?;
+        let path = url.path().to_string();
+        let resp = self.send(url, path).await?;
+        Ok(resp.bytes().await.map_err(http_err)?.to_vec())
+    }
+
+    /// `GET /Items/{id}/Download`: the original file, from byte `from` on (HTTP Range) when it is not 0.
+    /// The caller streams the body (`Response::chunk`). A user without download permission gets 403.
+    pub async fn download(&self, id: &str, from: u64) -> Result<reqwest::Response> {
+        let url = self.url(&["Items", id, "Download"], &[]);
+        let path = url.path().to_string();
+        // The client-wide 15 s timeout would end a long transfer; stalls are the caller's to detect.
+        let mut rb = self.http.get(url).timeout(Duration::from_secs(24 * 3600));
+        if from > 0 {
+            rb = rb.header(header::RANGE, format!("bytes={from}-"));
+        }
+        self.send_with(rb, path).await
+    }
+
+    /// One text subtitle track as SRT, for keeping next to an offline copy.
+    pub async fn subtitle_bytes(&self, id: &str, source_id: &str, index: i64) -> Result<Vec<u8>> {
+        let url = Url::parse(&self.subtitle_url(id, source_id, index))
+            .map_err(|_| Error::Config("subtitle url".into()))?;
         let path = url.path().to_string();
         let resp = self.send(url, path).await?;
         Ok(resp.bytes().await.map_err(http_err)?.to_vec())
@@ -430,7 +476,15 @@ impl Client {
 
     /// One GET: records the outcome for `health()`, and turns a non-2xx answer into `Error::Status`.
     async fn send(&self, url: Url, path: String) -> Result<reqwest::Response> {
-        let resp = self.http.get(url).send().await.map_err(|e| {
+        self.send_with(self.http.get(url), path).await
+    }
+
+    async fn send_with(
+        &self,
+        rb: reqwest::RequestBuilder,
+        path: String,
+    ) -> Result<reqwest::Response> {
+        let resp = rb.send().await.map_err(|e| {
             if e.is_connect() || e.is_timeout() {
                 self.note(None);
             }

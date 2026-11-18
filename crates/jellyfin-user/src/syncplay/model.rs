@@ -197,6 +197,9 @@ pub enum Incoming {
     Group(GroupUpdate),
     /// `ForceKeepAlive`: answer with `KeepAlive` within this many seconds.
     ForceKeepAlive(u64),
+    /// Remote control (`Play`, `Playstate`, `GeneralCommand`): message type and its `Data`,
+    /// interpreted by the app (nocturne_core::remote).
+    Remote(String, Value),
     Other,
 }
 
@@ -233,6 +236,9 @@ pub fn decode(text: &str) -> Incoming {
         Some("ForceKeepAlive") => Incoming::ForceKeepAlive(data.as_u64().unwrap_or(60)),
         Some("SyncPlayCommand") => decode_command(data).map_or(Incoming::Other, Incoming::Command),
         Some("SyncPlayGroupUpdate") => decode_group(data).map_or(Incoming::Other, Incoming::Group),
+        Some(t @ ("Play" | "Playstate" | "GeneralCommand")) => {
+            Incoming::Remote(t.to_string(), data.clone())
+        }
         _ => Incoming::Other,
     }
 }

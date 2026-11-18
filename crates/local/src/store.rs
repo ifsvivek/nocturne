@@ -23,6 +23,16 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     fs::rename(&tmp, path).map_err(io)
 }
 
+/// Delete files in `dir` whose names are not in `keep` (the library's own downloaded art; never a media path).
+pub fn remove_unused(dir: &Path, keep: &std::collections::HashSet<&str>) {
+    let Ok(rd) = fs::read_dir(dir) else { return };
+    for e in rd.flatten() {
+        if !keep.contains(e.file_name().to_string_lossy().as_ref()) {
+            let _ = fs::remove_file(e.path());
+        }
+    }
+}
+
 pub fn save<T: Serialize>(path: &Path, value: &T) -> Result<(), Error> {
     write_atomic(path, &serde_json::to_vec_pretty(value)?)
 }

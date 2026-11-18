@@ -14,6 +14,7 @@ use nocturne_core::merge::Entry;
 use nocturne_core::source::{Kind, Media};
 use nocturne_core::versions;
 use nocturne_core::video::PlayerHooks;
+use nocturne_core::watched::Change;
 
 impl App {
     fn marks(&self) -> Vec<Mark> {
@@ -85,6 +86,8 @@ impl App {
             d.set_siblings(photos);
             tasks.push(d.open_photo());
         }
+        d.subs_ok = self.subtitles_on(m.origin);
+        d.dl_ok = matches!(self.catalog.backend(m.origin), Some(Backend::Jellyfin(_)));
         let pid = self.push_page(View::Detail, Some(m));
         let Some(p) = self.page_mut(pid) else {
             return Task::none();
@@ -190,6 +193,12 @@ impl App {
                 }
                 Task::none()
             }
+            Outcome::FindSubs(m) => {
+                Task::done(Message::Online(super::online::Msg::Find(Box::new(m))))
+            }
+            Outcome::Download(m) => {
+                Task::done(Message::Downloads(super::downloads::Msg::Ask(Box::new(m))))
+            }
             Outcome::OpenUrl(u) => {
                 if u.starts_with("http://") || u.starts_with("https://") {
                     let _ = std::process::Command::new("xdg-open").arg(u).spawn();
@@ -236,10 +245,16 @@ impl App {
                     Err("Favourites are kept by servers, not for local files."),
                 );
             };
-            return run(
-                async move { l.set_played(&m, v).await.is_ok() },
-                move |ok| Message::DetailWrote(pid, w.clone(), if ok { Ok(()) } else { Err("") }),
-            );
+            let more = self.cascade(&m, Change::Played(v));
+            return Task::batch([
+                run(
+                    async move { l.set_played(&m, v).await.is_ok() },
+                    move |ok| {
+                        Message::DetailWrote(pid, w.clone(), if ok { Ok(()) } else { Err("") })
+                    },
+                ),
+                more,
+            ]);
         }
         let Some(h) = self.hooks_for(m.origin).filter(|h| h.can_write()) else {
             return answer(w, Err(self.writes_off()));
@@ -253,7 +268,11 @@ impl App {
             Write::Playlist(_) => {}
         }
         // A server refusing it comes back through `drain_reverts`, which patches the page too.
-        answer(w, Ok(()))
+        let more = match &w {
+            Write::Played(_, v) => self.cascade(&m, Change::Played(*v)),
+            _ => Task::none(),
+        };
+        Task::batch([answer(w, Ok(())), more])
     }
 
     pub(super) fn detail_wrote(

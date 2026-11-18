@@ -14,6 +14,12 @@ export function shipped(v) {
   for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
   return true;
 }
+// .deb and .rpm assets on the GitHub release (names from scripts/package.sh: confirm them at each release; fc45 is the
+// Fedora release the .rpm is built on). Before 0.4.0 ships they name 0.4.0 and the copy around them is marked.
+const PKG_VER = shipped("0.4.0") ? VERSION : "0.4.0";
+export const DEB = `nocturne_${PKG_VER}_amd64.deb`;
+export const RPM = `nocturne-${PKG_VER}-1.fc45.x86_64.rpm`;
+export const asset = (file) => `${REPO}/releases/download/v${PKG_VER}/${file}`;
 // The interface toolkit changed in 0.3 (GPUI -> Iced); credits name the one in the version you can download.
 export const UI = shipped("0.3.0") ? ["Iced", "https://iced.rs"] : ["GPUI, from Zed", "https://www.gpui.rs"];
 export const SITE = "https://nocturne.ifsvivek.in";
@@ -54,7 +60,13 @@ const ALT = {
   "alternates-crop": "Versions and sources: one film on three sources, Living room, Local and Study, with quality, and Always prefer this source",
   "first-run": "Setup, step 2 of 5: Where is your media? Local folders, A Jellyfin server, or Both",
   sources: "Settings, Sources: This computer with one folder, and the servers Living room and Study, all online",
-  "local-folders": "Local folders: one indexed folder, counts of movies, shows and episodes, and one unmatched file to place by hand",
+  "local-folders": "Local folders: one indexed folder, Online details switched on for TVmaze and MusicBrainz with TMDB off, and the providers' credits",
+  couch: "Couch mode: Home in a larger layout with a thick focus ring on Play and a hint bar for the gamepad buttons",
+  smart: "The smart collection Added this week: a poster grid over every source, each card marked Local, Living room or Study",
+  "smart-menu-crop": "The Smart menu in the header: Unwatched 4K movies, Added this week, Unwatched shows, Continue watching, Top rated not watched, Manage smart collections",
+  "downloads-crop": "The Downloads panel: Northbound Lights downloading, 50 MB of 417 MB, with Pause and Cancel",
+  "hdr-crop": "The HDR question in the player: Play here in SDR, or Open in HDR pop-out window, with Remember my choice",
+  "trakt-crop": "The Trakt dialog, not signed in: what is sent, an empty Client ID field, Sign in with Trakt and Create a Trakt app",
 };
 // Image props for one screenshot: src (largest), srcset, intrinsic size and alt, so layout never shifts.
 export function shot(key) {

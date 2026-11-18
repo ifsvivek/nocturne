@@ -177,6 +177,7 @@ fn series_sidecars_and_episode_nfo() {
 }
 
 #[test]
+#[cfg(unix)]
 fn symlink_loop_terminates_and_outside_links_are_followed() {
     let f = fx();
     put(&f.media, "a/One (2001).mkv");
@@ -220,6 +221,7 @@ fn hidden_nomedia_ignore_and_extras_are_skipped() {
 }
 
 #[test]
+#[cfg(unix)]
 fn unreadable_dir_is_a_warning_not_fatal() {
     use std::os::unix::fs::PermissionsExt;
     let f = fx();
@@ -555,5 +557,146 @@ fn no_temp_files_left_and_media_tree_untouched() {
     assert!(
         names.iter().all(|n| !n.to_string_lossy().ends_with(".tmp")),
         "{names:?}"
+    );
+}
+
+#[test]
+fn online_layer_sits_between_filename_and_nfo() {
+    use nocturne_local::{OnlineMeta, online};
+    let f = fx();
+    put(&f.media, "Movies/Heat (1995)/Heat (1995).mkv");
+    put(&f.media, "Movies/Alien (1979)/Alien (1979).mkv");
+    fs::write(
+        f.media.join("Movies/Alien (1979)/Alien (1979).nfo"),
+        "<movie><title>Alien</title><plot>From the nfo.</plot></movie>",
+    )
+    .unwrap();
+    let mut lib = Library::open(&f.data).unwrap();
+    scan(&mut lib, &[&f.media]);
+    let heat = id_of(&lib, "Heat");
+    let alien = id_of(&lib, "Alien");
+    assert_eq!(lib.online_targets(0).len(), 2, "both want a lookup");
+
+    for (id, name) in [(heat, "h.jpg"), (alien, "a.jpg")] {
+        let m = OnlineMeta {
+            provider: "tmdb".into(),
+            fetched: 10,
+            title: Some("Online Title".into()),
+            plot: Some("From online.".into()),
+            genres: vec!["Crime".into()],
+            poster: Some(name.into()),
+            ..Default::default()
+        };
+        lib.put_online(
+            &online::item_key(id),
+            "x",
+            Some(m),
+            vec![],
+            &[(name.into(), vec![1, 2, 3])],
+        )
+        .unwrap();
+    }
+    let h = lib.view(heat).unwrap();
+    assert_eq!(
+        (h.title.as_str(), h.plot.as_deref()),
+        ("Online Title", Some("From online."))
+    );
+    assert_eq!(h.details_from, Some("TMDB"));
+    assert!(
+        h.art.poster.unwrap().starts_with(&f.data),
+        "art lives in the data dir"
+    );
+    // .nfo beats online per field; the online genres still fill what the nfo left empty.
+    let a = lib.view(alien).unwrap();
+    assert_eq!(
+        (a.title.as_str(), a.plot.as_deref()),
+        ("Alien", Some("From the nfo."))
+    );
+    assert_eq!(a.genres, vec!["Crime".to_string()]);
+    // user override beats both
+    lib.set_override(
+        heat,
+        Override {
+            plot: Some("Mine.".into()),
+            title: Some("Mine".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let h = lib.view(heat).unwrap();
+    assert_eq!(
+        (h.title.as_str(), h.plot.as_deref()),
+        ("Mine", Some("Mine."))
+    );
+    // looked up once: nothing left to do, and it survives a reopen
+    assert!(lib.online_targets(100).is_empty());
+    let lib2 = Library::open(&f.data).unwrap();
+    assert_eq!(lib2.view(alien).unwrap().details_from, Some("TMDB"));
+    // six months on, TMDB data is dropped with its art
+    let mut lib = lib2;
+    let day = 24 * 3600;
+    assert_eq!(lib.online_prune(10 + 181 * day).unwrap(), 2);
+    assert_eq!(lib.view(heat).unwrap().details_from, None);
+    assert!(!f.data.join("online-art/h.jpg").exists());
+    assert!(!f.media.join("online-art").exists());
+}
+
+#[test]
+fn stale_online_entries_never_attach_to_new_files() {
+    use nocturne_local::{OnlineMeta, online};
+    let f = fx();
+    let a = put(&f.media, "Movies/Heat (1995)/Heat (1995).mkv");
+    let b = put(&f.media, "Movies/Alien (1979)/Alien (1979).mkv");
+    put(&f.media, "Movies/Keep (2000)/Keep (2000).mkv"); // a root that is not empty counts as mounted
+    let mut lib = Library::open(&f.data).unwrap();
+    scan(&mut lib, &[&f.media]);
+    let old = [id_of(&lib, "Heat"), id_of(&lib, "Alien")];
+    for id in old {
+        let m = OnlineMeta {
+            provider: "tmdb".into(),
+            fetched: 10,
+            title: Some("Stale".into()),
+            poster: Some(format!("p{}.jpg", id.0)),
+            ..Default::default()
+        };
+        let art = [(format!("p{}.jpg", id.0), vec![1])];
+        lib.put_online(&online::item_key(id), "x", Some(m), vec![], &art)
+            .unwrap();
+    }
+    fs::remove_file(a).unwrap();
+    fs::remove_file(b).unwrap();
+    scan(&mut lib, &[&f.media]);
+    lib.purge_missing().unwrap();
+    assert!(
+        !f.data
+            .join(format!("online-art/p{}.jpg", old[0].0))
+            .exists(),
+        "art of purged items is swept"
+    );
+    // A scan killed before its index save leaves the old counter on disk while online.json has the ids.
+    let mut ix: serde_json::Value =
+        serde_json::from_slice(&fs::read(f.data.join("index.json")).unwrap()).unwrap();
+    ix["next_id"] = 1.into();
+    fs::write(f.data.join("index.json"), serde_json::to_vec(&ix).unwrap()).unwrap();
+    // The stale entries come back (as if the purge was lost too).
+    let mut lib = Library::open(&f.data).unwrap();
+    for id in old {
+        lib.put_online(&online::item_key(id), "x", None, vec![], &[])
+            .unwrap();
+    }
+    let mut lib = Library::open(&f.data).unwrap();
+    put(&f.media, "Movies/Ronin (1998)/Ronin (1998).mkv");
+    put(&f.media, "Movies/Fargo (1996)/Fargo (1996).mkv");
+    scan(&mut lib, &[&f.media]);
+    for t in ["Ronin", "Fargo"] {
+        let id = id_of(&lib, t);
+        assert!(!old.contains(&id), "ids are never reused");
+        assert!(lib.online_entry(&online::item_key(id)).is_none());
+        assert_eq!(lib.view(id).unwrap().details_from, None);
+    }
+    assert_eq!(
+        lib.online_targets(0).len(),
+        2,
+        "new files get a real lookup"
     );
 }

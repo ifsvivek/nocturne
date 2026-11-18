@@ -10,7 +10,6 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
     io::{Read, Seek, SeekFrom},
-    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     sync::{
         LazyLock,
@@ -75,6 +74,50 @@ struct Found {
     mtime_ns: i64,
     dev: u64,
     ino: u64,
+}
+
+/// Identity of a file or directory as `(device, inode)`; mtime as unix nanoseconds. Unix reads the
+/// real values. Windows `std` has no stable file index, so there a directory is identified by a
+/// hash of its canonical path (still catches junction/symlink loops) and a file's inode is 0 =
+/// unknown, which the move detection below treats as "no identity" (content hash only).
+#[cfg(unix)]
+mod ident {
+    use std::{fs::Metadata, os::unix::fs::MetadataExt, path::Path};
+    pub fn dir(_: &Path, m: &Metadata) -> (u64, u64) {
+        (m.dev(), m.ino())
+    }
+    pub fn file(m: &Metadata) -> (u64, u64) {
+        (m.dev(), m.ino())
+    }
+    /// Whole seconds and the nanosecond part of the modification time.
+    pub fn mtime(m: &Metadata) -> (i64, i64) {
+        (m.mtime(), m.mtime_nsec())
+    }
+}
+
+#[cfg(not(unix))]
+mod ident {
+    use std::{fs::Metadata, path::Path};
+    pub fn dir(p: &Path, _: &Metadata) -> (u64, u64) {
+        let c = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        let mut h = 0xcbf2_9ce4_8422_2325u64;
+        super::fnv(&mut h, c.as_os_str().as_encoded_bytes());
+        (0, h)
+    }
+    pub fn file(_: &Metadata) -> (u64, u64) {
+        (0, 0)
+    }
+    pub fn mtime(m: &Metadata) -> (i64, i64) {
+        m.modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or((0, 0), |d| (d.as_secs() as i64, d.subsec_nanos() as i64))
+    }
+}
+
+fn mtime_ns(m: &std::fs::Metadata) -> i64 {
+    let (s, ns) = ident::mtime(m);
+    s * 1_000_000_000 + ns
 }
 
 fn fnv(h: &mut u64, bytes: &[u8]) {
@@ -164,8 +207,9 @@ fn side_sig(nfo: &Option<PathBuf>, art: &Art) -> u64 {
                 fnv(&mut h, p.as_os_str().as_encoded_bytes());
                 if let Ok(m) = fs::metadata(p) {
                     fnv(&mut h, &m.len().to_le_bytes());
-                    fnv(&mut h, &m.mtime().to_le_bytes());
-                    fnv(&mut h, &m.mtime_nsec().to_le_bytes());
+                    let (s, ns) = ident::mtime(&m);
+                    fnv(&mut h, &s.to_le_bytes());
+                    fnv(&mut h, &ns.to_le_bytes());
                 }
             }
             None => fnv(&mut h, &[0]),
@@ -204,8 +248,8 @@ fn walk(
             }
         };
         w.root_ok[ri] = true;
-        w.root_dev[ri] = Some(rm.dev());
-        visited.insert((rm.dev(), rm.ino()));
+        w.root_dev[ri] = Some(ident::file(&rm).0);
+        visited.insert(ident::dir(root, &rm));
         let mut stack = vec![root.clone()];
         while let Some(dir) = stack.pop() {
             if cancel.load(Ordering::Relaxed) {
@@ -255,7 +299,7 @@ fn walk(
                     }
                 };
                 if m.is_dir() {
-                    if !naming::is_extras_dir(&name) && visited.insert((m.dev(), m.ino())) {
+                    if !naming::is_extras_dir(&name) && visited.insert(ident::dir(&path, &m)) {
                         stack.push(path);
                     }
                     continue;
@@ -265,15 +309,16 @@ fn walk(
                     if media == Media::Video {
                         listing.videos += 1;
                     }
+                    let (dev, ino) = ident::file(&m);
                     files.push(Found {
                         path,
                         root: ri,
                         dir: di,
                         media,
                         size: m.len(),
-                        mtime_ns: m.mtime() * 1_000_000_000 + m.mtime_nsec(),
-                        dev: m.dev(),
-                        ino: m.ino(),
+                        mtime_ns: mtime_ns(&m),
+                        dev,
+                        ino,
                     });
                 }
             }
@@ -494,7 +539,8 @@ pub(crate) fn scan(
         let hit = vanished.iter().position(|&i| {
             let v = &index.items[i];
             v.size == f.size
-                && ((v.dev == f.dev && v.ino == f.ino) || (hash != 0 && v.hash == hash))
+                && ((f.ino != 0 && v.dev == f.dev && v.ino == f.ino)
+                    || (hash != 0 && v.hash == hash))
         });
         let idx = match hit {
             Some(p) => {

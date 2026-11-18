@@ -38,13 +38,9 @@ impl DiskCache {
         }
     }
 
-    /// `$XDG_CACHE_HOME/nocturne/images` (or `~/.cache/...`).
+    /// `images` in the per-user cache dir (`$XDG_CACHE_HOME/nocturne` on Linux).
     pub fn default_dir() -> Option<PathBuf> {
-        let base = std::env::var_os("XDG_CACHE_HOME")
-            .map(PathBuf::from)
-            .filter(|p| p.is_absolute())
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
-        Some(base.join("nocturne").join("images"))
+        Some(nocturne_session::paths::cache_dir()?.join("images"))
     }
 
     pub fn get(&self, key: &str) -> Option<Vec<u8>> {

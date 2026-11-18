@@ -12,16 +12,21 @@
 //! Env override: `NOCTURNE_VO` picks the windowed video output (default `gpu-next`).
 
 mod deps;
+#[cfg(target_os = "linux")]
 mod embedded;
+#[cfg(not(target_os = "linux"))]
+#[path = "embedded_stub.rs"]
+mod embedded;
+mod ipc;
 mod mpv_ffi;
 pub use deps::{install_hint, install_hint_for, libmpv_available, mpv_binary_available};
-pub use embedded::{EmbeddedPlayer, Geometry, geometry};
+pub use embedded::{EmbeddedPlayer, colour_management_available};
+#[cfg(target_os = "linux")]
+pub use embedded::{Geometry, geometry};
 
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::DirBuilderExt;
-use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -48,6 +53,11 @@ pub struct Options {
     pub headless: bool,
     /// Network read-ahead policy (both backends). See [`Buffering`].
     pub buffering: Buffering,
+    /// Ask the compositor for an HDR output (`target-colorspace-hint=yes`): the window shows HDR
+    /// content as HDR where the display path allows it (docs/HDR.md). Windowed backend only.
+    pub hdr_output: bool,
+    /// Start fullscreen (the HDR pop-out).
+    pub fullscreen: bool,
 }
 
 /// Watermark read-ahead: the demuxer reads until `high_secs` are buffered, then stops reading
@@ -147,7 +157,7 @@ pub enum Event {
 
 struct Conn {
     child: Child,
-    writer: UnixStream,
+    writer: ipc::Stream,
     alive: Arc<AtomicBool>,
     reader: Option<JoinHandle<()>>,
 }
@@ -155,6 +165,8 @@ struct Conn {
 pub struct Player {
     opts: Options,
     dir: PathBuf,
+    /// Instance counter, part of the Windows pipe name.
+    n: u64,
     state: Arc<Mutex<State>>,
     tx: Sender<Event>,
     rx: Receiver<Event>,
@@ -171,22 +183,14 @@ static COUNTER: AtomicU64 = AtomicU64::new(0);
 impl Player {
     pub fn new(opts: Options) -> Result<Self> {
         // Private 0700 dir holding the IPC socket (pid + counter in the name).
-        let base = std::env::var_os("XDG_RUNTIME_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| "/tmp".into());
-        let dir = base.join(format!(
-            "nocturne-mpv-{}-{}",
-            std::process::id(),
-            COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::DirBuilder::new()
-            .mode(0o700)
-            .create(&dir)
-            .map_err(e)?;
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = runtime_base().join(format!("nocturne-mpv-{}-{n}", std::process::id()));
+        ipc::private_dir(&dir).map_err(e)?;
         let (tx, rx) = channel();
         let p = Self {
             opts,
             dir,
+            n,
             state: Arc::default(),
             tx,
             rx,
@@ -203,12 +207,13 @@ impl Player {
         &self.rx
     }
 
-    /// Replace the current file. `headers` is a full header line (e.g. `Authorization: ...`)
-    /// sent over IPC as `http-header-fields`, so credentials never reach the command line or URL.
+    /// Replace the current file. Each of `headers` is a full header line (e.g. `Authorization: ...`)
+    /// sent over IPC as `http-header-fields`, so credentials never reach the command line, the URL
+    /// or any log (nothing here prints them).
     /// Respawns mpv if it died.
-    pub fn load(&self, url: &str, headers: Option<&str>) -> Result<()> {
+    pub fn load(&self, url: &str, headers: &[&str]) -> Result<()> {
         let mut cmds = vec![json!(["change-list", "http-header-fields", "clr", ""])];
-        if let Some(h) = headers {
+        for h in headers {
             // `append` adds one list item verbatim (no splitting on ',').
             cmds.push(json!(["change-list", "http-header-fields", "append", h]));
         }
@@ -317,9 +322,14 @@ impl Player {
     }
 
     fn spawn(&self) -> Result<Conn> {
-        let sock = self.dir.join("mpv.sock");
-        let _ = std::fs::remove_file(&sock);
-        let mut cmd = Command::new("mpv");
+        let sock = ipc::endpoint(&self.dir, std::process::id(), self.n);
+        ipc::clear(&sock);
+        let mut cmd = Command::new(deps::mpv_program());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console next to mpv's window
+        }
         for (k, v) in self.opts.buffering.mpv_options() {
             cmd.arg(format!("--{k}={v}"));
         }
@@ -336,10 +346,16 @@ impl Player {
             let vo = std::env::var("NOCTURNE_VO").unwrap_or_else(|_| "gpu-next".into());
             cmd.args([format!("--vo={vo}"), "--hwdec=auto-safe".into()])
                 .arg("--force-window=yes");
+            if self.opts.hdr_output {
+                cmd.arg("--target-colorspace-hint=yes");
+            }
+            if self.opts.fullscreen {
+                cmd.arg("--fullscreen");
+            }
         }
         let mut child = cmd
             .arg(format!("--volume={}", lock(&self.state).volume))
-            .arg(format!("--input-ipc-server={}", sock.display()))
+            .arg(format!("--input-ipc-server={sock}"))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -348,7 +364,7 @@ impl Player {
 
         let t = Instant::now();
         let writer = loop {
-            match UnixStream::connect(&sock) {
+            match ipc::connect(&sock) {
                 Ok(s) => break s,
                 Err(err) => {
                     let dead = child.try_wait().ok().flatten().is_some();
@@ -361,11 +377,10 @@ impl Player {
                 }
             }
         };
-        let _ = writer.set_write_timeout(Some(Duration::from_secs(1)));
         *lock(&self.state) = State::default();
 
         let alive = Arc::new(AtomicBool::new(true));
-        let rd = writer.try_clone().map_err(e)?;
+        let rd = ipc::reader(&writer).map_err(e)?;
         let (st, tx, al, pe) = (
             self.state.clone(),
             self.tx.clone(),
@@ -406,6 +421,18 @@ impl Drop for Player {
     }
 }
 
+/// Parent of the per-player IPC directory: the runtime dir on Linux (`/tmp` without one), the
+/// temp dir elsewhere.
+fn runtime_base() -> PathBuf {
+    if cfg!(target_os = "linux") {
+        std::env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| "/tmp".into())
+    } else {
+        std::env::temp_dir()
+    }
+}
+
 pub(crate) fn lock(s: &Mutex<State>) -> MutexGuard<'_, State> {
     s.lock().unwrap_or_else(|p| p.into_inner())
 }
@@ -422,14 +449,14 @@ fn reap(mut c: Conn) {
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    let _ = c.writer.shutdown(std::net::Shutdown::Both);
+    ipc::shutdown(&c.writer);
     if let Some(r) = c.reader.take() {
         let _ = r.join();
     }
 }
 
 fn read_loop(
-    sock: UnixStream,
+    sock: ipc::Reader,
     state: Arc<Mutex<State>>,
     tx: Sender<Event>,
     alive: Arc<AtomicBool>,

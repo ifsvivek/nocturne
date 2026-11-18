@@ -39,6 +39,7 @@ async fn profile(id: u32, url: &str, token: &str) -> Profile {
         id: SourceId(id),
         label: format!("s{id}"),
         enabled: true,
+        online: Default::default(),
         kind: ProfileKind::Jellyfin {
             url: url.into(),
             user_id: user,

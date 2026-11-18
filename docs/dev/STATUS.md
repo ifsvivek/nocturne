@@ -25,10 +25,34 @@ Release gate: `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo d
 - [ ] Set the date in `CHANGELOG.md` (`[0.3.0] - UNRELEASED`), tag, and publish the GitHub release from
       [RELEASE_NOTES_0.3.0.md](RELEASE_NOTES_0.3.0.md) with the checksum.
 
+## 0.4 (local branch `v0.4-local`, never pushed)
+
+0.3.0 is released (tag, pacman repository live). 0.4 is feature-complete on the local branch and not published; no release
+until the maintainer has tested it. Contents: [CHANGELOG.md](../../CHANGELOG.md) `[0.4.0]`, honest per-feature status in
+[FEATURES.md](../FEATURES.md).
+
+Verified: offline copies (throwaway server), .deb / .rpm install in clean containers, online metadata (TMDB) and OpenSubtitles
+search live, Windows cross-compile of the whole app, unit tests for everything pure.
+Mock-tested only: Trakt (sign-in, scrobble, import), remote control, watched cascade on two real servers, MusicBrainz / TVmaze.
+Cannot be checked here: HDR output (no HDR display, mpv 0.41), gamepad / TV couch mode, anything on real Windows or macOS
+(macOS code was never built).
+
+0.4 release checklist:
+- [x] QA walkthrough of every 0.4 feature (2026-11-17, see [QA_REPORT.md](../QA_REPORT.md) "0.4.0 walkthrough"); open items listed there.
+- [ ] Live Trakt test with the maintainer's own Trakt app: sign-in, scrobble, history import, disconnect.
+- [ ] HDR hardware test on an HDR display (pop-out colours, fullscreen, IPC control, return to the window).
+- [ ] Couch mode with a real gamepad and on a TV.
+- [ ] Real-machine tests on Windows and macOS (build, keyring, mpv IPC, paths); installers only after that.
+- [ ] Remote control checked from a real Jellyfin Web / mobile client; watched state checked across two real servers.
+- [ ] `scripts/ci-checks.sh` green; footprint numbers in [PERF.md](PERF.md) against 0.3.0; history secret audit; `THIRD_PARTY_NOTICES.md` regenerated (new deps: gilrs and others).
+- [ ] .deb / .rpm run on real Debian / Fedora machines; decide Flatpak (0.5).
+- [ ] Update the website (version, features, download) and the screenshots from a generated demo library; set `VERSION` and `RELEASED`.
+- [ ] Date the changelog section, tag, publish only when the maintainer asks.
+
 ## Decisions
 
-- Linux first (Arch is the only tested platform). macOS and Windows, and .deb/.rpm/AppImage, are planned for 0.4 but not
-  started and never claimed as supported until they exist ([PLATFORMS.md](../PLATFORMS.md)). Platform-specific code stays
+- Linux first (Arch is the only tested platform). macOS and Windows code is written behind the seams and compile-checked (`scripts/check-cross.sh`) but never run, so
+  neither is claimed as supported; .deb/.rpm/AppImage are separate work ([PLATFORMS.md](../PLATFORMS.md)). Platform-specific code stays
   inside the seams listed there.
 - Iced replaced GPUI; the reasons are in [DECISIONS.md](../DECISIONS.md). `vendor/xattr` and the `[patch]` that only GPUI
   needed are gone.
@@ -49,8 +73,10 @@ Release gate: `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo d
 - Not verified live: several newer player features (resume prompt, A-B loop, audio device list, external
   subtitles, subtitle presets), 401 mid-session and offline banner on a real server, multi-season data.
 - Binaries built on Arch need a current glibc; the 0.4 .deb / .rpm must be built inside their distribution containers.
-- In-window video is SDR; the HDR pop-out window is 0.4 ([HDR.md](../HDR.md)).
+- In-window video is SDR; the HDR pop-out window is in 0.4 but unverified on an HDR display ([HDR.md](../HDR.md)).
 - Screen-reader support is limited by Iced; re-evaluate when it improves.
+- 0.4 online details / subtitles: built and unit-tested against a loopback mock; needs a real TMDB key and OpenSubtitles key to verify live; the player loads `LocalBackend::subtitles_of` and offers the finder in its Subtitles menu (checked live with a mock-downloaded file).
+- 0.4 offline copies (`core/download`, `app/downloads.rs`): verified live on a throwaway server (movie, episode batch, interrupted download resumed with Range, copy merges as "2 sources", local copy plays). Not checked: a server that really denies downloads (mapped from 403, unit-tested), exFAT/FAT targets (no hard links: falls back to a checked rename), very large files.
 - Local scans hold the local library's write lock, so reads of that source wait during a scan (note in `core/folders.rs`).
 - `scripts/test-jellyfin.sh`: reject any `..` in `NOCTURNE_JF_TEST_DIR` before `reset` removes the directory.
 - Player: mpv's own window key bindings stay active in the external-mpv fallback.

@@ -23,6 +23,7 @@ pub struct PlayerPrefs {
     pub sub_mode: SubMode,
     pub auto_skip_intro: bool,
     pub autoplay_next: bool,
+    pub hdr: crate::hdr::HdrMode,
 }
 
 /// Account-layer hooks, supplied through `PlayerCtx { hooks, prefs }`. The player page calls ONLY
@@ -33,10 +34,21 @@ pub trait PlayerHooks: Send + Sync {
     fn started(&self, item_id: &str, position_ticks: i64);
     fn progress(&self, item_id: &str, position_ticks: i64, paused: bool);
     fn stopped(&self, item_id: &str, position_ticks: i64);
+    /// How the player delivers `item_id` (play method, media source, transcode session id). Call it
+    /// when an item starts, before its first report, so reports are truthful.
+    fn play_info(&self, _item_id: &str, _info: crate::sync::PlayInfo) {}
     fn set_favorite(&self, item_id: &str, fav: bool);
     fn is_favorite(&self, item_id: &str) -> bool;
     /// Server changes are allowed (master switch on, real login): the heart is live only then.
     fn can_write(&self) -> bool;
+    /// Downloaded subtitles of a local item, to add as external tracks.
+    fn subtitles(&self, _item_id: &str) -> Vec<std::path::PathBuf> {
+        vec![]
+    }
+    /// "Find subtitles online" is offered for this session's items (local source, switch on).
+    fn can_find_subs(&self) -> bool {
+        false
+    }
 }
 
 /// How long the controls stay up without mouse movement or keys.
@@ -95,6 +107,8 @@ pub enum Key {
     SubDelay(f64),
     AudioDelay(f64),
     CycleSubs,
+    /// Shift+C: the secondary subtitle (off, then each track that is not the main one).
+    CycleSecondary,
     Stats,
     Help,
     Screenshot,
@@ -104,6 +118,8 @@ pub enum Key {
     AbLoop,
     Mini,
     Favorite,
+    /// Open (or close) a menu from the keyboard or a gamepad button.
+    Menu(Pop),
 }
 
 /// Player-page key map. `k` is the UI's key name; `shift`/`ctrl` are the held modifiers.
@@ -112,6 +128,8 @@ pub fn key(k: &str, shift: bool, ctrl: bool) -> Option<Key> {
         ("s", true) => Key::Screenshot,
         (_, true) => return None,
         ("space", _) => Key::Toggle,
+        ("left", _) if shift => Key::Seek(-30.0),
+        ("right", _) if shift => Key::Seek(30.0),
         ("left", _) => Key::Seek(-10.0),
         ("right", _) => Key::Seek(10.0),
         ("up", _) => Key::Volume(5.0),
@@ -121,6 +139,10 @@ pub fn key(k: &str, shift: bool, ctrl: bool) -> Option<Key> {
         ("p", _) => Key::Prev,
         ("u", _) => Key::Queue,
         ("a", _) => Key::AbLoop,
+        ("t", _) => Key::Menu(Pop::Subs),
+        ("v", _) => Key::Menu(Pop::Audio),
+        ("o" | "menu", _) => Key::Menu(Pop::Settings),
+        ("q", _) => Key::Menu(Pop::Quality),
         ("h", _) => Key::Favorite,
         ("s", _) => Key::Stop,
         ("f", _) => Key::Fullscreen,
@@ -137,6 +159,7 @@ pub fn key(k: &str, shift: bool, ctrl: bool) -> Option<Key> {
         ("x", _) => Key::SubDelay(0.1),
         ("-", _) => Key::AudioDelay(-0.1),
         ("=", _) => Key::AudioDelay(0.1),
+        ("c", _) if shift => Key::CycleSecondary,
         ("c", _) => Key::CycleSubs,
         ("i", _) => Key::Stats,
         ("l", _) => Key::Loop,
@@ -166,8 +189,9 @@ macro_rules! both {
 }
 
 impl Playback {
-    pub fn load(&self, url: &str, headers: Option<&str>) -> Result<()> {
-        both!(self, p => p.load(url, headers))
+    pub fn load(&self, url: &str, headers: &[String]) -> Result<()> {
+        let h: Vec<&str> = headers.iter().map(String::as_str).collect();
+        both!(self, p => p.load(url, &h))
     }
     pub fn toggle(&self) -> Result<()> {
         both!(self, p => p.toggle())
@@ -219,6 +243,8 @@ pub struct Track {
     pub forced: bool,
     pub external: bool,
     pub selected: bool,
+    /// Shown as the secondary subtitle (then `selected`, the main one, is false for it).
+    pub secondary: bool,
     /// Friendly name from the server's stream list; replaces the built label.
     pub name: Option<String>,
 }
@@ -248,6 +274,7 @@ pub fn parse_tracks(v: &Value) -> Vec<Track> {
                 forced: b("forced"),
                 external: b("external"),
                 selected: b("selected"),
+                secondary: false,
                 name: None,
             })
         })
@@ -415,6 +442,7 @@ pub fn ends_at(now_hm: (u32, u32), remaining: f64, speed: f64) -> String {
 }
 
 /// Local (hour, minute) now.
+#[cfg(unix)]
 pub fn local_hm() -> (u32, u32) {
     // SAFETY: plain libc time calls with a zeroed out-struct.
     unsafe {
@@ -423,6 +451,31 @@ pub fn local_hm() -> (u32, u32) {
         libc::localtime_r(&t, &mut tm);
         (tm.tm_hour as u32, tm.tm_min as u32)
     }
+}
+
+/// Local (hour, minute) now (Win32 `GetLocalTime`, declared by hand: no extra crate for one call).
+#[cfg(windows)]
+pub fn local_hm() -> (u32, u32) {
+    #[repr(C)]
+    #[derive(Default)]
+    struct SystemTime {
+        year: u16,
+        month: u16,
+        day_of_week: u16,
+        day: u16,
+        hour: u16,
+        minute: u16,
+        second: u16,
+        millis: u16,
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetLocalTime(t: *mut SystemTime);
+    }
+    let mut t = SystemTime::default();
+    // SAFETY: fills the struct we own.
+    unsafe { GetLocalTime(&mut t) };
+    (t.hour as u32, t.minute as u32)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -565,6 +618,14 @@ pub struct Settings {
     /// Jellyfin said this item can be transcoded (has a source id): the Quality menu is live.
     pub can_quality: bool,
     pub method: &'static str,
+    /// Secondary subtitle position (0 top .. 100 bottom); the top by default.
+    pub sub2_pos: i64,
+    /// "Original audio" is the remembered choice (the file's first audio track).
+    pub audio_original: bool,
+    /// The video is HDR: `Some(true)` plays in the HDR pop-out, `Some(false)` in the window in SDR.
+    pub hdr_popout: Option<bool>,
+    /// The Subtitles menu offers "Find subtitles online".
+    pub find_subs: bool,
 }
 
 impl Default for Settings {
@@ -589,6 +650,10 @@ impl Default for Settings {
             ab: 0,
             can_quality: false,
             method: "Direct Play",
+            sub2_pos: 0,
+            audio_original: false,
+            hdr_popout: None,
+            find_subs: false,
         }
     }
 }
@@ -604,7 +669,16 @@ impl Settings {
 pub enum MenuAct {
     /// Track id; 0 = off.
     Sub(i64),
+    /// Secondary subtitle track id; 0 = off.
+    Sub2(i64),
+    Sub2Pos(i64),
     Audio(i64),
+    /// "Original audio": the file's first audio track, remembered as such.
+    AudioOriginal,
+    /// Switch between the in-window SDR picture and the HDR pop-out.
+    HdrSwitch,
+    /// A section heading: not a choice.
+    Nop,
     Speed(f64),
     Aspect(Aspect),
     Repeat(Repeat),
@@ -625,6 +699,7 @@ pub enum MenuAct {
     ResetPicture,
     Open(Pop),
     Info,
+    FindSubs,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -637,6 +712,8 @@ pub struct Item {
     pub act: MenuAct,
     /// Left key and the minus button of stepper rows.
     pub dec: Option<MenuAct>,
+    /// Section heading (not selectable).
+    pub head: bool,
 }
 
 fn item(label: impl Into<String>, on: bool, act: MenuAct) -> Item {
@@ -646,6 +723,14 @@ fn item(label: impl Into<String>, on: bool, act: MenuAct) -> Item {
         on,
         act,
         dec: None,
+        head: false,
+    }
+}
+
+fn head(label: &str) -> Item {
+    Item {
+        head: true,
+        ..item(label, false, MenuAct::Nop)
     }
 }
 
@@ -682,14 +767,51 @@ pub fn items(pop: Pop, tracks: &[Track], s: &Settings) -> Vec<Item> {
                 subs.iter()
                     .map(|t| item(t.label(), t.selected, MenuAct::Sub(t.id))),
             );
+            // Two lines only make sense with two tracks to choose from.
+            if subs.len() >= 2 {
+                v.push(head("Secondary subtitle"));
+                v.push(item(
+                    "Off",
+                    subs.iter().all(|t| !t.secondary),
+                    MenuAct::Sub2(0),
+                ));
+                v.extend(
+                    subs.iter()
+                        .map(|t| item(t.label(), t.secondary, MenuAct::Sub2(t.id))),
+                );
+                v.push(step(
+                    "Secondary position",
+                    format!("{}%", s.sub2_pos),
+                    MenuAct::Sub2Pos(-5),
+                    MenuAct::Sub2Pos(5),
+                ));
+            }
+            if s.find_subs {
+                v.push(row("Find subtitles online\u{2026}", "", MenuAct::FindSubs));
+            }
             v.push(row("Subtitle Style", "", MenuAct::Open(Pop::SubStyle)));
             v
         }
-        Pop::Audio => tracks
-            .iter()
-            .filter(|t| t.kind == TrackKind::Audio)
-            .map(|t| item(t.label(), t.selected, MenuAct::Audio(t.id)))
-            .collect(),
+        Pop::Audio => {
+            let audio: Vec<_> = tracks
+                .iter()
+                .filter(|t| t.kind == TrackKind::Audio)
+                .collect();
+            let mut v = vec![];
+            if audio.len() >= 2 {
+                v.push(item(
+                    "Original audio",
+                    s.audio_original,
+                    MenuAct::AudioOriginal,
+                ));
+            }
+            v.extend(
+                audio
+                    .iter()
+                    .map(|t| item(t.label(), t.selected, MenuAct::Audio(t.id))),
+            );
+            v
+        }
         Pop::Speed => SPEEDS
             .iter()
             .map(|x| {
@@ -797,6 +919,17 @@ pub fn items(pop: Pop, tracks: &[Track], s: &Settings) -> Vec<Item> {
                     MenuAct::Open(Pop::Quality),
                 ));
             }
+            if let Some(popout) = s.hdr_popout {
+                v.push(row(
+                    "HDR",
+                    if popout {
+                        "Pop-out window"
+                    } else {
+                        "SDR in window"
+                    },
+                    MenuAct::HdrSwitch,
+                ));
+            }
             v.extend([
                 row("Picture", "", MenuAct::Open(Pop::Picture)),
                 row("Audio Options", "", MenuAct::Open(Pop::AudioFx)),
@@ -830,9 +963,14 @@ pub fn settings_index(tracks: &[Track], s: &Settings, sub: Pop) -> usize {
 
 /// Next subtitle track id in the cycle off -> first -> ... -> last -> off. `cur` 0 = off.
 pub fn next_sub(tracks: &[Track], cur: i64) -> i64 {
+    next_sub_except(tracks, cur, 0)
+}
+
+/// The same cycle for the secondary subtitle, skipping the track `main` shows (0 = none).
+pub fn next_sub_except(tracks: &[Track], cur: i64, main: i64) -> i64 {
     let ids: Vec<i64> = tracks
         .iter()
-        .filter(|t| t.kind == TrackKind::Sub)
+        .filter(|t| t.kind == TrackKind::Sub && t.id != main)
         .map(|t| t.id)
         .collect();
     match ids.iter().position(|i| *i == cur) {
@@ -880,7 +1018,7 @@ mod tests {
         assert_eq!(key("right", false, false), Some(Key::Seek(10.0)));
         assert_eq!(key("f", false, false), Some(Key::Fullscreen));
         assert_eq!(key("escape", false, false), Some(Key::Back));
-        assert_eq!(key("q", false, false), None);
+        assert_eq!(key("j", false, false), None);
         assert_eq!(bump_volume(128.0, 5.0), 130.0);
         assert_eq!(bump_volume(2.0, -5.0), 0.0);
     }
@@ -907,14 +1045,77 @@ mod tests {
         let subs = items(Pop::Subs, &t, &st);
         assert_eq!(subs[0].label, "Off");
         assert!(subs[0].on, "no subtitle selected means Off is on");
-        assert_eq!(subs.len(), 4, "off, two tracks, style entry");
+        assert_eq!(
+            subs.len(),
+            9,
+            "off, two tracks, secondary section (head, off, two tracks, position), style entry"
+        );
         let audio = items(Pop::Audio, &t, &st);
-        assert!(audio[0].on && !audio[1].on);
-        assert_eq!(audio[1].act, MenuAct::Audio(2));
+        assert_eq!(
+            audio[0].act,
+            MenuAct::AudioOriginal,
+            "first row, two tracks to choose from"
+        );
+        assert!(!audio[0].on, "not the remembered choice");
+        assert!(audio[1].on && !audio[2].on);
+        assert_eq!(audio[2].act, MenuAct::Audio(2));
         assert_eq!(next_sub(&t, 0), 1);
         assert_eq!(next_sub(&t, 1), 2);
         assert_eq!(next_sub(&t, 2), 0, "wraps to off");
         assert!(parse_tracks(&serde_json::json!(null)).is_empty());
+    }
+
+    #[test]
+    fn secondary_subtitle_menu_and_cycle() {
+        let mut t = tl();
+        let st = Settings::default();
+        let subs = items(Pop::Subs, &t, &st);
+        let at = subs.iter().position(|i| i.head).expect("secondary heading");
+        assert_eq!(subs[at].label, "Secondary subtitle");
+        assert!(subs[at + 1].on, "secondary is off by default");
+        assert_eq!(subs[at + 1].act, MenuAct::Sub2(0));
+        assert_eq!(subs[at + 2].act, MenuAct::Sub2(1));
+        let pos = &subs[at + 4];
+        assert_eq!(pos.value, "0%", "top by default");
+        assert_eq!(pos.dec, Some(MenuAct::Sub2Pos(-5)));
+        assert_eq!(pos.act, MenuAct::Sub2Pos(5));
+        // A selected secondary lights its own row, not the main list's.
+        t[3].secondary = true;
+        let subs = items(Pop::Subs, &t, &st);
+        assert!(subs[0].on, "main list: nothing selected");
+        assert!(!subs[at + 1].on && subs[at + 3].on);
+        // One subtitle track: nothing to pair it with, no section.
+        let one = &t[..3];
+        assert!(items(Pop::Subs, one, &st).iter().all(|i| !i.head));
+        // Shift+C cycles the secondary, never onto the main track.
+        assert_eq!(next_sub_except(&t, 0, 1), 2);
+        assert_eq!(next_sub_except(&t, 2, 1), 0, "wraps to off");
+        assert_eq!(next_sub_except(&t, 0, 0), 1);
+        assert_eq!(key("c", true, false), Some(Key::CycleSecondary));
+        assert_eq!(key("c", false, false), Some(Key::CycleSubs));
+    }
+
+    #[test]
+    fn original_audio_and_hdr_rows() {
+        let t = tl();
+        let mut st = Settings {
+            audio_original: true,
+            ..Default::default()
+        };
+        assert!(items(Pop::Audio, &t, &st)[0].on);
+        // One audio track: no "Original audio" row.
+        assert_eq!(items(Pop::Audio, &t[..1], &st).len(), 1);
+        // The HDR row only exists for an HDR video and names what is showing.
+        let rows = |s: &Settings| items(Pop::Settings, &t, s);
+        assert!(rows(&st).iter().all(|i| i.act != MenuAct::HdrSwitch));
+        st.hdr_popout = Some(false);
+        let r = rows(&st);
+        assert_eq!(
+            (r[0].act.clone(), r[0].value.as_str()),
+            (MenuAct::HdrSwitch, "SDR in window")
+        );
+        st.hdr_popout = Some(true);
+        assert_eq!(rows(&st)[0].value, "Pop-out window");
     }
 
     fn chs() -> Vec<(f64, String)> {
@@ -1040,11 +1241,36 @@ mod tests {
             "ctrl+s is not stop"
         );
         assert_eq!(key("/", true, false), Some(Key::Help));
+        assert_eq!(key("left", true, false), Some(Key::Seek(-30.0)));
+        assert_eq!(key("right", true, false), Some(Key::Seek(30.0)));
+        assert_eq!(key("t", false, false), Some(Key::Menu(Pop::Subs)));
+        assert_eq!(key("v", false, false), Some(Key::Menu(Pop::Audio)));
+        assert_eq!(key("o", false, false), Some(Key::Menu(Pop::Settings)));
+        assert_eq!(key("menu", false, false), Some(Key::Menu(Pop::Settings)));
+        assert_eq!(key("q", false, false), Some(Key::Menu(Pop::Quality)));
         assert_eq!(key("/", false, false), None);
         assert_eq!(key("pagedown", false, false), Some(Key::Chapter(1)));
         assert_eq!(key("a", false, true), None);
         assert_eq!(key("m", true, false), Some(Key::Mini));
         assert_eq!(key("m", false, false), Some(Key::Mute));
         assert_eq!(key("p", false, false), Some(Key::Prev));
+    }
+}
+
+#[cfg(test)]
+mod find_subs_tests {
+    use super::*;
+
+    #[test]
+    fn subtitle_menu_offers_the_finder_only_when_enabled() {
+        let mut s = Settings::default();
+        let has = |s: &Settings| {
+            items(Pop::Subs, &[], s)
+                .iter()
+                .any(|i| i.act == MenuAct::FindSubs)
+        };
+        assert!(!has(&s));
+        s.find_subs = true;
+        assert!(has(&s));
     }
 }
