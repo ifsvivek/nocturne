@@ -300,6 +300,7 @@ impl App {
             return Task::none();
         };
         self.src_open = false;
+        self.th.open = false;
         self.menu = false;
         self.account_back = Some(super::AccountBack::Ready);
         self.phase = Phase::Account;
@@ -451,6 +452,7 @@ impl App {
         self.stack.clear();
         self.settings_open = false;
         self.src_open = false;
+        self.th.open = false;
         self.menu = false;
         self.phase = Phase::Account;
         let t = self.ensure_accounts();

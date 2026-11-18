@@ -24,6 +24,7 @@ mod search;
 mod settings;
 pub(crate) mod smart;
 mod sources;
+pub(crate) mod themes;
 pub(crate) mod trakt;
 
 use crate::account::{self, Accounts, Event as AcctEvent, devices, picker};
@@ -176,6 +177,9 @@ pub struct App {
     rescan: HashSet<SourceId>,
     launch_scan: bool,
     src_open: bool,
+    /// Saved themes and the Themes page.
+    themes: nocturne_core::customize::Store,
+    th: themes::State,
     /// Source whose removal waits for the confirmation dialog.
     confirm: Option<SourceId>,
     /// The extra-header dialog of a server.
@@ -302,6 +306,8 @@ impl App {
             rescan: HashSet::new(),
             launch_scan: false,
             src_open: false,
+            themes: nocturne_core::customize::Store::load(),
+            th: Default::default(),
             confirm: None,
             hdr: None,
             folders: None,
@@ -474,10 +480,17 @@ impl App {
     // ---- update ----
 
     pub fn update(&mut self, msg: Message) -> Task<Message> {
+        let task = self.update_inner(msg);
+        self.sync_theme();
+        task
+    }
+
+    fn update_inner(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::Key(k) => self.on_key(k),
             Message::Tick(now) => {
                 self.now = now;
+                self.theme_tick(now);
                 self.sync_detail();
                 self.sync_ob();
                 Task::batch([
@@ -540,11 +553,13 @@ impl App {
             Message::CloseRequested(_) => self.quit(),
             Message::Back => {
                 self.src_open = false;
+                self.th.open = false;
                 self.back();
                 self.page_wants()
             }
             Message::Forward => {
                 self.src_open = false;
+                self.th.open = false;
                 self.forward();
                 self.page_wants()
             }
@@ -691,6 +706,7 @@ impl App {
                 self.retry_page()
             }
             Message::OpenSources => self.open_sources(),
+            Message::Themes(m) => self.themes_msg(m),
             Message::Snapped(shot, n) => {
                 crate::snap::save(&shot, n);
                 Task::none()
@@ -924,6 +940,7 @@ impl App {
         self.fwd.clear();
         self.admin_open = false;
         self.src_open = false;
+        self.th.open = false;
         self.settings_open = false;
         self.account_back = None;
         // The admin section follows the account's own rights.
@@ -1001,6 +1018,7 @@ impl App {
         self.admin_open = false;
         self.settings_open = false;
         self.src_open = false;
+        self.th.open = false;
         self.menu = false;
         self.my_tag = None;
         self.hooks = Arc::new(SyncHooks::new(None, false, false));
@@ -1495,6 +1513,7 @@ impl App {
     fn close_admin(&mut self) {
         self.settings_open = false;
         self.src_open = false;
+        self.th.open = false;
         self.menu = false;
         self.admin_open = false;
         if let Some(mut a) = self.adm.take() {
@@ -1587,9 +1606,20 @@ impl App {
         if self.folders.is_some() {
             return self.folders_key(key);
         }
+        if self.th.open {
+            if key == "escape" {
+                return if self.is_previewing() {
+                    self.themes_msg(themes::Msg::Revert)
+                } else {
+                    self.themes_msg(themes::Msg::Close)
+                };
+            }
+            return Task::none();
+        }
         if self.src_open {
             if matches!(key, "escape" | "backspace") {
                 self.src_open = false;
+                self.th.open = false;
             }
             return Task::none();
         }
@@ -1832,6 +1862,7 @@ impl App {
                 false,
             ),
             Phase::Ready if self.folders.is_some() => self.folders_page(),
+            Phase::Ready if self.th.open => self.themes_page(),
             Phase::Ready if self.src_open => self.sources_page(),
             Phase::Ready if self.settings_open => self.settings_page(),
             Phase::Ready if self.adm.is_some() => match self.adm.as_deref() {

@@ -22,7 +22,7 @@ const MENU_ID: &str = "settings-menu";
 /// Estimated heights used to keep the selected row in view (rows wrap, so this is approximate).
 const ROW_H: f32 = 72.0;
 const HEAD_H: f32 = 92.0;
-const TOP_H: f32 = 140.0 + 72.0; // the Sources link row sits above the rows
+const TOP_H: f32 = 140.0 + 72.0 + 72.0; // the Sources and Themes link rows sit above the rows
 const MENU_ROW_H: f32 = 37.0;
 
 /// Estimated top of row `i` inside the page content.
@@ -69,6 +69,36 @@ impl App {
                 rule(),
             ])
             .padding([t::S4, t::PAGE_PAD]),
+        );
+        page = page.push(
+            container(column![
+                Press::new(
+                    row![
+                        column![
+                            text("Themes").size(t::BODY).font(t::semibold()),
+                            text("Colours, corner radii and a font from a CSS file, for the whole app or one server.")
+                                .size(t::CONTROL_TEXT)
+                                .color(t::text_secondary()),
+                        ]
+                        .spacing(2)
+                        .width(Length::Fill),
+                        text("\u{203A}").size(t::BODY_LG),
+                    ]
+                    .spacing(t::S4)
+                    .align_y(Alignment::Center),
+                )
+                .width(Length::Fill)
+                .padding([t::S3, t::S6])
+                .on_press(Message::Themes(super::themes::Msg::Open))
+                .style(|st| Style {
+                    background: matches!(st, Status::Hovered | Status::Pressed)
+                        .then_some(t::GLASS.into()),
+                    text_color: t::text(),
+                    ..Default::default()
+                }),
+                rule(),
+            ])
+            .padding([0.0, t::PAGE_PAD]),
         );
         page = page.push(
             container(column![

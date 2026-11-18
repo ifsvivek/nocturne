@@ -377,6 +377,15 @@ mod tests {
     }
 
     #[test]
+    fn count_counts_set_tokens() {
+        let t = parse(":root{--nocturne-accent:red;--nocturne-radius-card:4px}")
+            .unwrap()
+            .theme;
+        assert_eq!(t.count(), 2);
+        assert_eq!(Theme::default().count(), 0);
+    }
+
+    #[test]
     fn content_types() {
         assert!(content_type_ok("text/css; charset=utf-8"));
         assert!(content_type_ok("TEXT/PLAIN"));

@@ -25,6 +25,15 @@ pub fn on_boot() -> Task<Message> {
                 .ok()
                 .map(|i| Message::Smart(crate::app::smart::Msg::Open(i))),
             "open-sources" => Some(Message::OpenSources),
+            // The Themes page: open it, type the path in `NOCTURNE_THEME_FILE` into the file field,
+            // import it, preview it, apply it.
+            "open-themes" => Some(Message::Themes(crate::app::themes::Msg::Open)),
+            "theme-path" => Some(Message::Themes(crate::app::themes::Msg::Path(
+                std::env::var("NOCTURNE_THEME_FILE").unwrap_or_default(),
+            ))),
+            "theme-import" => Some(Message::Themes(crate::app::themes::Msg::Import)),
+            "theme-preview" => Some(Message::Themes(crate::app::themes::Msg::Preview)),
+            "theme-apply" => Some(Message::Themes(crate::app::themes::Msg::Apply)),
             // `open-folders-1`: the Local folders screen of source id 1.
             n if n.starts_with("open-folders-") => n[13..].parse().ok().map(|i| {
                 Message::Src(crate::app::message::SrcAct::Folders(

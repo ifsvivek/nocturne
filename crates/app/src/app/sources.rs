@@ -49,6 +49,7 @@ impl App {
             SrcAct::Close => self.src_open = false,
             SrcAct::AddServer => {
                 self.src_open = false;
+                self.th.open = false;
                 self.account_back = Some(AccountBack::Ready);
                 self.phase = Phase::Account;
                 let t = self.ensure_accounts();
@@ -249,6 +250,7 @@ impl App {
             // Every source is gone: back to the first-run choice.
             self.stack.clear();
             self.src_open = false;
+            self.th.open = false;
             self.settings_open = false;
             self.setup = None;
             let t = self.start_onboarding(crate::onboarding::Mode::Fresh);

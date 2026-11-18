@@ -325,6 +325,37 @@ fn luma(c: Color) -> f32 {
     0.2126 * l(c.r) + 0.7152 * l(c.g) + 0.0722 * l(c.b)
 }
 
+/// WCAG contrast ratio of two opaque colours.
+fn contrast(a: Color, b: Color) -> f32 {
+    let (x, y) = (luma(a), luma(b));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
+}
+
+/// Advisory contrast notes for a theme (text 4.5:1, outlines 3:1); never blocking.
+pub fn advisories(k: &Tokens) -> Vec<String> {
+    let checks = [
+        ("Text on the background", k.text, k.frame, 4.5),
+        ("Text on panels", k.text, k.surface, 4.5),
+        (
+            "Secondary text on the background",
+            k.text_secondary,
+            k.frame,
+            4.5,
+        ),
+        ("Accent on the background", k.accent, k.frame, 3.0),
+        ("Labels on the accent", k.on_accent, k.accent, 4.5),
+        ("Control outlines on the background", k.edge, k.frame, 3.0),
+    ];
+    checks
+        .into_iter()
+        .filter_map(|(what, fg, bg, min)| {
+            let r = contrast(fg, bg);
+            (r < min)
+                .then(|| format!("{what} has contrast {r:.1}:1 (at least {min}:1 is recommended)"))
+        })
+        .collect()
+}
+
 static ACTIVE: RwLock<Tokens> = RwLock::new(Tokens::DEFAULT);
 
 /// Make `th` the look of the whole app (call when the theme changes, not per frame). The font
