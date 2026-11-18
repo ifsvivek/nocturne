@@ -55,7 +55,7 @@ t_arch() {
 . /w/pre.sh
 pacman -Syu --noconfirm >/dev/null 2>&1   # a real system is synced and upgraded; the image is stale (-Sy alone = partial upgrade, file conflicts)
 NOCTURNE_YES=1 ./install.sh; echo "install_rc=$?"
-echo "--- pacman"; for p in mpv libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon-x11 libxcb dbus libx11 libxcursor libxi; do pacman -Q $p >/dev/null 2>&1 && echo "have $p" || echo "MISSING $p"; done
+echo "--- pacman"; for p in mpv libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon dbus; do pacman -Q $p >/dev/null 2>&1 && echo "have $p" || echo "MISSING $p"; done
 echo "--- libmpv"; ldconfig -p | grep -c 'libmpv.so.2'
 echo "--- ldd"; ldd /usr/local/bin/nocturne | grep -c 'not found'
 bash /w/headless.sh /usr/local/bin/nocturne
@@ -76,7 +76,7 @@ t_nompv() {
   cat > "$WORK/nompv.sh" <<'EOF'
 . /w/pre.sh
 pacman -Syu --noconfirm >/dev/null 2>&1
-pacman -S --noconfirm --needed libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon-x11 libxcb dbus libx11 libxcursor libxi >/dev/null 2>&1
+pacman -S --noconfirm --needed libglvnd vulkan-icd-loader wayland libxkbcommon libxkbcommon dbus >/dev/null 2>&1
 pacman -Q mpv >/dev/null 2>&1 && echo "mpv present (unexpected)" || echo "mpv absent"
 ./install.sh --no-deps >/dev/null; echo "install_rc=$?"
 echo "--- ldd"; ldd /usr/local/bin/nocturne | grep -c 'not found'
@@ -97,7 +97,7 @@ t_apt() { # image
   cat > "$WORK/$tag.sh" <<'EOF'
 . /w/pre.sh
 NOCTURNE_YES=1 ./install.sh; echo "install_rc=$?"
-echo "--- dpkg"; for p in libmpv2 mpv libegl1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libdbus-1-3 libx11-6 libx11-xcb1 libxcursor1 libxi6; do dpkg -s $p >/dev/null 2>&1 && echo "have $p" || echo "MISSING $p"; done
+echo "--- dpkg"; for p in libmpv2 mpv libegl1 libvulkan1 libwayland-client0 libwayland-egl1 libxkbcommon0 libdbus-1-3; do dpkg -s $p >/dev/null 2>&1 && echo "have $p" || echo "MISSING $p"; done
 echo "--- ldd"; ldd /usr/local/bin/nocturne 2>&1 | grep -E 'not found|GLIBC' | head -5
 bash /w/headless.sh /usr/local/bin/nocturne
 EOF
@@ -112,7 +112,7 @@ t_fedora() {
   cat > "$WORK/fedora.sh" <<'EOF'
 . /w/pre.sh
 echo "--- per-package availability"
-for p in mpv-libs mpv libglvnd-egl vulkan-loader libwayland-client libwayland-egl libxkbcommon libxkbcommon-x11 libxcb dbus-libs libX11 libX11-xcb libXcursor libXi; do
+for p in mpv-libs mpv libglvnd-egl vulkan-loader libwayland-client libwayland-egl libxkbcommon dbus-libs; do
   if dnf -q repoquery --available "$p" 2>/dev/null | grep -q .; then echo "available $p"; else echo "UNAVAILABLE $p"; fi
 done
 echo "--- install.sh"

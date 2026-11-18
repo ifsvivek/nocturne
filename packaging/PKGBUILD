@@ -11,10 +11,10 @@ url='https://github.com/ifsvivek/nocturne'
 license=(GPL-3.0-or-later)
 # Runtime list derived from `readelf -d` of the release binary plus dlopen'd libraries (see docs/PACKAGING.md).
 # Only libdbus-1, glibc and libgcc_s are linked; libmpv.so.2, libvulkan.so.1, libEGL.so.1, libwayland-client.so.0,
-# libwayland-egl.so.1, libxkbcommon(-x11) and (X11 sessions) libxcb/libX11/libXcursor/libXi are dlopen'd, so namcap
+# libwayland-egl.so.1, and libxkbcommon are dlopen'd, so namcap
 # cannot infer them: they stay listed explicitly on purpose. No fontconfig/freetype (cosmic-text parses fonts.conf itself).
 depends=(
-  dbus gcc-libs glibc libglvnd libx11 libxcb libxcursor libxi libxkbcommon libxkbcommon-x11
+  dbus gcc-libs glibc libglvnd libxkbcommon
   systemd-libs # libudev.so.1, linked by the gamepad input (gilrs)
   mpv          # provides libmpv.so.2 (loaded at run time) and the `mpv` binary used as the fallback player
   vulkan-icd-loader vulkan-driver wayland

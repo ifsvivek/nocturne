@@ -19,8 +19,8 @@ jobs:
       # Dependencies from docs/PACKAGING.md. libmpv is loaded at run time, not linked; mpv is installed so tests that probe it behave like a user's machine.
       - name: Install dependencies
         run: |
-          pacman -Syu --noconfirm --needed git rust pkgconf mpv dbus fontconfig freetype2 libglvnd libxcb \
-            libxkbcommon libxkbcommon-x11 vulkan-icd-loader wayland
+          pacman -Syu --noconfirm --needed git rust pkgconf mpv dbus fontconfig freetype2 libglvnd \
+            libxkbcommon vulkan-icd-loader wayland
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: fmt
         run: cargo fmt --all -- --check
