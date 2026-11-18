@@ -22,3 +22,17 @@ lto = "fat"
 codegen-units = 1
 strip = true
 # panic stays "unwind": worker-thread panics must not abort the UI, and we never unwind through libmpv callbacks.
+
+# Debug builds: the full debuginfo of every dependency made each worktree's target 5 GB or more. Keep line tables for our crates (backtraces), none for dependencies.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+# QA and package-test builds (scripts set PROFILE_FLAGS to use it): release code, but thin LTO and 16 codegen units so the long single-core link phase disappears. Published artifacts use `release`.
+[profile.fast-release]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+incremental = false
