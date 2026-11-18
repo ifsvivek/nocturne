@@ -1,6 +1,6 @@
 # Customization plan: native CSS themes
 
-Status: phase 1 (research, plan, UI-free engine in `crates/core/src/customize/`) done. Phase 2 (storage, editor UI, Iced wiring, URL import) not started. Requirements: `docs/dev/V05_BRIEF.md` section 2. No WebView, no browser engine, JavaScript is never executed.
+Status: phase 1 (research, plan, UI-free engine in `crates/core/src/customize/`) done. Phase 2 (storage, Themes page, Iced wiring, URL import) done, see section 13 for what shipped and what did not. Requirements: `docs/dev/V05_BRIEF.md` section 2. No WebView, no browser engine, JavaScript is never executed.
 
 ## 1. Research: what Jellyfin community themes use
 
@@ -188,3 +188,16 @@ The UI shows the list grouped by kind with counts ("434 selectors not supported"
 3. URL import policy: allow only https URLs typed by the user (proposed), or also support a curated list of known themes (needs a maintained list and network trust decisions)? Should an imported URL be remembered for a manual "refresh"?
 4. Should a theme be allowed to change the font only from installed fonts (proposed), or may NOCTURNE later bundle one or two optional fonts?
 5. Is advisory-only contrast checking acceptable, or should themes below 4.5:1 text contrast be refused for the shell?
+
+## 13. Phase 2 as shipped
+
+Maintainer decisions (2026-11-18): the editor is its own page (Settings > Themes), the theme is global with an optional per-server override, a typed https URL is fetched once and remembered for a manual Refresh, installed fonts only, contrast warnings are advisory.
+
+- Storage: `customize::Store` in `store.rs`, `themes.toml` next to `settings.toml`, `version = 1`, atomic write, unknown or corrupt file gives an empty store. Only the CSS text and the optional import URL are stored (not the translated tokens): tokens are re-read from the CSS on load, which costs milliseconds and lets a better engine improve old themes. `global` and `[server_theme]` (source id as text to theme id) are the assignments; deleting a theme clears them.
+- Which theme applies (`Store::active_id`): the override of the server on screen, else the global theme. "The server on screen" is the server of the top detail page, or the single server picked in the source filter; the shell (header, Settings, Themes), Home with all sources, and local folders use the global theme. The app re-resolves after a message only when this id changed (`App::sync_theme`), never while drawing.
+- Runtime tokens: `theme::Tokens::resolve` overlays a `Theme` on the built-in constants (a test asserts the empty theme resolves to exactly the defaults), derives dependents when the parent changes (accent hover, text and tint, label colour on the accent, secondary text, control hover, header fill from the background) and is stored in one `RwLock`. The old `theme::ACCENT`-style constants for themable colours, radii and fonts became functions (`t::accent()`); spacing, type scale and layout constants are unchanged.
+- Applied today: all colours, the three radii (the card radius defaults to the small radius), the window background as a colour or a gradient, backdrop opacity on the detail hero, and the font family. Not applied yet: `density`, `font-size` and `backdrop-blur` are parsed and counted but have no effect, because spacing and type sizes are plain constants used in layout geometry (migrating them is the next step). The font family is read once at launch (Iced's default font is fixed then), so a changed font needs a restart; colours and radii change at once.
+- Themes page: saved-theme list, name, `text_editor` for the CSS (select, copy and paste work), file path field plus a native chooser, URL field with Download or Refresh, a summary ("N settings applied", counts per kind, advisory contrast lines) and the list of warnings with line and column, and Preview, Save, Apply, Reset to built-in, Delete (second click confirms). Preview applies the editor's theme to the whole app for 15 seconds, then reverts unless Keep; Esc reverts. Parsing runs through `bridge::spawn` after every edit and stale results are dropped by epoch (not debounced). The per-server picker cycles global then each saved theme.
+- URL import: `customize::validate_url` and `customize::fetch` (https only, http only for loopback, no credentials in the URL, 10 s, at most 3 redirects to https, 256 KB counted while streaming, `text/css` or `text/plain` only). The result goes into the editor and is never applied unseen. Tested against a loopback server.
+- Not done: a live sample panel inside the editor (the whole-app preview replaced it), keyboard shortcut for Reset, per-source themes for local folders (they follow global), export to a `.css` file, accent presets (item 5 of section 11), a real Jellyfin theme from the web has not been tried against the app (only the engine tests in phase 1).
+

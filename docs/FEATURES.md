@@ -68,7 +68,8 @@ What NOCTURNE does: 0.3.0 is released; entries marked **(0.4)** are on the unrel
 
 ## Settings
 - [x] Settings screen: server-changes master switch, progress sync, buffering, grid density, home sections, language preferences, reduce motion (follows the desktop by default)
-- [ ] Theme and accent choice, subtitle appearance presets
+- [x] Themes (Settings > Themes): colours, corner radii, window background and font family from imported CSS, global with an optional per-server override, 15 second preview. Not yet: spacing density, type size, backdrop blur; the font applies from the next launch. Unit-tested and checked in the app on a local library; not tried against a real Jellyfin theme from the web or two servers at once ([CUSTOMIZATION_PLAN.md](dev/CUSTOMIZATION_PLAN.md))
+- [ ] Subtitle appearance presets
 
 ## Admin (administrator accounts only)
 - [x] Dashboard, activity, devices, sessions, logs, plugins (view), backups (list)
