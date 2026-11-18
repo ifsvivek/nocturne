@@ -21,6 +21,8 @@ function build(released, version) {
 }
 const files = (d) => readdirSync(d).flatMap((f) => (statSync(join(d, f)).isDirectory() ? files(join(d, f)) : [join(d, f)]));
 const read = (dir, f) => readFileSync(join(dir, f), "utf8");
+// Site files only: repo/ holds the generated, signed package repositories (checksums, upstream XML namespaces), not site copy.
+const own = (d) => files(d).filter((f) => !f.startsWith(join(d, "repo/")));
 let off, on, prev, v03, v04;
 // prev: the same site while VERSION was 0.2.0, when every new-in-0.3 claim must carry its "Coming in 0.3" mark.
 // v03 / v04: the page just before and just after 0.4.0 ships, for the 0.4 marks.
@@ -40,7 +42,7 @@ test("RELEASED=false: no repo or release links, coming soon", () => {
   assert.doesNotMatch(read(off, "repo.html"), /pacman-key|pacman -S|5204/, "repository steps only once released");
 });
 
-test("package repository page: exact pacman steps, signing key, other formats planned", () => {
+test("package repository page: exact pacman, apt and dnf steps, signing key, other formats planned", () => {
   const h = read(on, "repo.html").replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
   for (const s of [
     "curl -fsSL https://nocturne.ifsvivek.in/repo/ARCH-GPG-KEY | sudo pacman-key --add -",
@@ -49,14 +51,22 @@ test("package repository page: exact pacman steps, signing key, other formats pl
     "sudo pacman -Syu nocturne", "sudo pacman -Syu",
     "5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B", "ed25519, valid until 2029-11-15",
     "CachyOS, EndeavourOS and Manjaro", 'rel="canonical" href="https://nocturne.ifsvivek.in/repo"', "macOS and Windows are planned, not available",
+    // apt and dnf, exactly as in the root README's Install section.
+    "curl -fsSL https://nocturne.ifsvivek.in/repo/NOCTURNE-GPG-KEY.gpg | sudo tee /usr/share/keyrings/nocturne.gpg >/dev/null",
+    "echo 'deb [signed-by=/usr/share/keyrings/nocturne.gpg] https://nocturne.ifsvivek.in/repo/deb stable main' | sudo tee /etc/apt/sources.list.d/nocturne.list",
+    "sudo apt update && sudo apt install nocturne", "gpg --show-keys /usr/share/keyrings/nocturne.gpg",
+    "sudo dnf config-manager addrepo --from-repofile=https://nocturne.ifsvivek.in/repo/rpm/nocturne.repo",
+    "sudo dnf install nocturne", "sudo dnf config-manager --add-repo https://nocturne.ifsvivek.in/repo/rpm/nocturne.repo", "dnf-plugins-core",
+    "https://nocturne.ifsvivek.in/repo/NOCTURNE-GPG-KEY",
   ]) assert.ok(h.includes(s), s);
-  // .deb and .rpm: download from the release, install with the distribution's tool; the file names follow the version.
+  assert.equal((h.match(/5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B/g) || []).length, 1, "one fingerprint for all three repositories");
+  // One-file alternative: download from the release, install with the distribution's tool; the file names follow the version.
   for (const [d, ver] of [[v03, "0.4.0"], [v04, "0.4.0"]]) {
     const t = read(d, "repo.html").replace(/&#39;/g, "'").replace(/&amp;/g, "&");
     const rel = `https://github.com/ifsvivek/nocturne/releases/download/v${ver}`;
-    for (const x of [`curl -LO ${rel}/nocturne_${ver}_amd64.deb`, `sudo apt install ./nocturne_${ver}_amd64.deb`,
+    for (const x of [`href="${rel}/nocturne_${ver}_amd64.deb"`, `sudo apt install ./nocturne_${ver}_amd64.deb`,
       "sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm",
-      `curl -LO ${rel}/nocturne-${ver}-1.fc45.x86_64.rpm`, `sudo dnf install ./nocturne-${ver}-1.fc45.x86_64.rpm`, "Debian 13, Ubuntu 24.04 and newer"]) assert.ok(t.includes(x), x);
+      `href="${rel}/nocturne-${ver}-1.fc45.x86_64.rpm"`, `sudo dnf install ./nocturne-${ver}-1.fc45.x86_64.rpm`, "Debian 13, Ubuntu 24.04 and newer"]) assert.ok(t.includes(x), x);
   }
   assert.doesNotMatch(h, /\.exe|\.msi|\.dmg/, "no Windows or macOS build offered");
   assert.ok(read(on, "index.html").includes('href="/repo"'), "Install and footer link the page");
@@ -129,7 +139,7 @@ test("required copy, no JS, no inline style", () => {
 });
 
 test("no external origins except upstream credit links", () => {
-  for (const d of [off, on, prev, v04]) for (const f of files(d).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) {
+  for (const d of [off, on, prev, v04]) for (const f of own(d).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) {
     for (const m of readFileSync(f, "utf8").replace(/\/\*![\s\S]*?\*\//g, "").matchAll(/https?:\/\/([^\s"'<>)\\/]+)/g)) assert.ok(ALLOWED.has(m[1]), `${f}: ${m[1]}`);
   }
 });
@@ -137,7 +147,7 @@ test("no external origins except upstream credit links", () => {
 test("no personal data patterns", () => {
   const bad = /\/home\/|\/Users\/|[\w.+-]+@[\w-]+\.[a-z]{2,}|(?:api[_-]?key|secret|token|password)\s*[=:]\s*\S{8,}|\b[a-f0-9]{32,}\b|account_id/i;
   // The repository signing key id is public by design.
-  for (const f of files(on).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) assert.doesNotMatch(readFileSync(f, "utf8").replaceAll("5204B42AF768DE210D4979E397FA02EFCF1A4E3B", ""), bad, f);
+  for (const f of own(on).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) assert.doesNotMatch(readFileSync(f, "utf8").replaceAll("5204B42AF768DE210D4979E397FA02EFCF1A4E3B", ""), bad, f);
 });
 
 test("_headers carries the strict CSP and no-transform", () => {
@@ -150,6 +160,9 @@ test("_headers carries the strict CSP and no-transform", () => {
   const rule = (path) => h.match(new RegExp(`^${path.replace(/[.*]/g, (c) => "\\" + c)}\\n  ! Cache-Control\\n  Cache-Control: ([^\\n]+)`, "m"))?.[1];
   for (const p of ["/repo/ARCH-GPG-KEY", "/repo/*.db", "/repo/*.db.sig", "/repo/*.files", "/repo/*.files.sig"]) assert.equal(rule(p), "no-cache, no-transform", p);
   for (const p of ["/repo/*.pkg.tar.zst", "/repo/*.pkg.tar.zst.sig"]) assert.equal(rule(p), "public, max-age=31536000, immutable, no-transform", p);
+  for (const p of ["/repo/NOCTURNE-GPG-KEY*", "/repo/deb/dists/*", "/repo/rpm/nocturne.repo"]) assert.equal(rule(p), "no-cache, no-transform", p);
+  for (const p of ["/repo/deb/pool/*", "/repo/rpm/*.rpm"]) assert.equal(rule(p), "public, max-age=31536000, immutable, no-transform", p);
+  assert.ok(h.lastIndexOf("/repo/rpm/repodata/repomd.xml*") > h.indexOf("/repo/rpm/repodata/*\n"), "repomd.xml (no-cache) overrides the immutable repodata rule");
   assert.ok(h.indexOf("/repo/") > h.indexOf("/*\n"), "repo rules follow the global rule");
 });
 
