@@ -2,7 +2,7 @@
 # Build dist/nocturne_<ver>_amd64.deb from the binary scripts/build-linux-bin.sh makes in a debian:stable container (that glibc,
 # so it also runs on Ubuntu LTS releases that are not older than it). No sudo (docker), no hosted CI.
 #   usage: [PROFILE=release|fast-release] [IMG=debian:stable] scripts/package-deb.sh
-# Packaging itself only needs dpkg-dev, so this step takes seconds once the binary exists. Output: dist/nocturne_<ver>_amd64.deb
+# Packaging runs in the local nocturne-build image (build-essential brings dpkg-dev; no apt at run time), so it takes seconds once the binary exists. Output: dist/nocturne_<ver>_amd64.deb
 set -euo pipefail
 cd "$(dirname "$0")/.."
 IMG="${IMG:-debian:stable}"; PROFILE="${PROFILE:-release}"; export IMG PROFILE
@@ -10,10 +10,7 @@ ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 scripts/build-linux-bin.sh
 mkdir -p dist
 
-docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -e BIN=/src/dist/bin/nocturne-$PROFILE -e VER="$ver" -e HOST_UID="$(id -u)" "$IMG" bash -euc '
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq --no-install-recommends dpkg-dev binutils libdbus-1-3 >/dev/null
+docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -e BIN=/src/dist/bin/nocturne-$PROFILE -e VER="$ver" -e HOST_UID="$(id -u)" "nocturne-build:$(echo "$IMG" | tr ':/' '--')" bash -euc '
 cd /src
 bin=$BIN
 
@@ -21,6 +18,7 @@ bin=$BIN
 # time is listed by hand (see docs/PACKAGING.md).
 w=$(mktemp -d); mkdir -p $w/debian; touch $w/debian/control; cp $bin $w/nocturne
 shl=$(cd $w && dpkg-shlibdeps -O -enocturne 2>/dev/null | sed "s/^shlibs:Depends=//")
+[ -n "$shl" ] || { echo "dpkg-shlibdeps found no dependencies (a linked library is not installed in this container?)" >&2; exit 1; }
 
 r=$w/root
 install -Dm755 $bin $r/usr/bin/nocturne

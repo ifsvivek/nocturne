@@ -8,10 +8,15 @@ cd "$(dirname "$0")/.."
 IMG="${IMG:-fedora:latest}"; PROFILE="${PROFILE:-release}"; export PROFILE
 ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 scripts/build-linux-bin.sh
+# rpm-build lives in a small local image (built once; dnf downloads are slow on some networks).
+RIMG="nocturne-build:$(echo "$IMG" | tr ':/' '--')"
+docker image inspect "$RIMG" >/dev/null 2>&1 || docker build -q -t "$RIMG" - >/dev/null <<DOCKERFILE
+FROM $IMG
+RUN dnf install -y -q rpm-build tar gzip && dnf clean all
+DOCKERFILE
 mkdir -p dist
 
-docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -e PROFILE="$PROFILE" -e VER="$ver" -e HOST_UID="$(id -u)" "$IMG" bash -euc '
-dnf install -y -q rpm-build tar gzip >/dev/null
+docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -e PROFILE="$PROFILE" -e VER="$ver" -e HOST_UID="$(id -u)" "$RIMG" bash -euc '
 mkdir -p ~/rpmbuild/SOURCES
 tar -C /src --exclude=./target --exclude=./dist --exclude=./website --exclude=./.git --exclude=./.claude \
   --transform "s,^\.,nocturne-$VER," -czf ~/rpmbuild/SOURCES/nocturne-$VER.tar.gz .
