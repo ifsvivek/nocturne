@@ -208,10 +208,11 @@ async fn tmdb_movies_are_matched_asked_and_chosen() {
         );
         assert!(r.to_lowercase().contains("user-agent: nocturne/"), "{r}");
     }
+    // Files are visited in directory order, which differs per filesystem (APFS vs ext4 / btrfs): check presence, not position.
     assert!(
-        reqs[0].contains("query=Heat&year=1995&api_key=K3Y"),
-        "{}",
-        reqs[0]
+        reqs.iter()
+            .any(|r| r.contains("query=Heat&year=1995&api_key=K3Y")),
+        "{reqs:?}"
     );
     // Looked up once: a third run asks nothing.
     let before = m.requests().len();

@@ -35,9 +35,10 @@ cargo fmt --all
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked      # offline tests only; live tests are #[ignore]
 scripts/ci-checks.sh                 # full gate: fmt, clippy, tests, cargo deny, secret scan of tree and history
+source scripts/build-env.sh          # per shell/worktree: shared sccache; scripts/cache-budget.sh [--enforce] checks the 70/100 GB disk limits
 ```
 
-Run all of fmt, clippy and test before committing. Unit tests live next to the code (`#[cfg(test)] mod tests`); integration tests are in `crates/*/tests/`.
+Profiles: `dev` has line tables only, `fast-release` (thin LTO, 16 CGUs) is for QA and package tests, `release` (fat LTO) only for published artifacts; Linux packages share one binary from `scripts/build-linux-bin.sh` ([docs/PACKAGING.md](docs/PACKAGING.md)). Agent worktrees must not each build a private full target: source `scripts/build-env.sh`, and run `scripts/cache-budget.sh` before big builds. Run all of fmt, clippy and test before committing. Unit tests live next to the code (`#[cfg(test)] mod tests`); integration tests are in `crates/*/tests/`.
 
 ### Live tests against a throwaway Jellyfin
 

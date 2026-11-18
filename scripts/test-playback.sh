@@ -17,6 +17,7 @@
 # are verified on the host (docs/QA_REPORT.md). It never contacts a Jellyfin server: no URL/token is passed in.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+scripts/cache-budget.sh --quiet || true
 PKG="${PKG:-nocturne-app}"; BIN="${BIN:-nocturne}"; HOLD="${HOLD:-10}"
 for c in docker jq hyprctl; do command -v "$c" >/dev/null || { echo "need $c" >&2; exit 2; }; done
 [ -n "${WAYLAND_DISPLAY:-}" ] && [ -S "${XDG_RUNTIME_DIR:-/nonexistent}/$WAYLAND_DISPLAY" ] || { echo "no Wayland session on the host" >&2; exit 2; }
