@@ -5,6 +5,12 @@ name: Platforms
 # Windows unsigned). See docs/PACKAGING.md.
 on:
   workflow_dispatch:
+    inputs:
+      targets:
+        description: Which platforms to build
+        type: choice
+        options: [both, windows, macos]
+        default: both
 
 permissions:
   contents: read
@@ -19,6 +25,7 @@ env:
 
 jobs:
   windows:
+    if: inputs.targets == 'both' || inputs.targets == 'windows'
     runs-on: windows-latest
     timeout-minutes: 90
     defaults:
@@ -164,6 +171,7 @@ jobs:
         run: cargo test --workspace --locked
 
   macos:
+    if: inputs.targets == 'both' || inputs.targets == 'macos'
     runs-on: macos-latest # arm64
     timeout-minutes: 90
     steps:
