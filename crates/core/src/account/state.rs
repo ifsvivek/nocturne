@@ -44,8 +44,8 @@ impl Form {
         self.fields.get(i).map_or("", |f| f.value.trim())
     }
 
-    /// `key` as the UI names it, `ch` the typed text (None for control keys or ctrl-chords).
-    pub fn key(&mut self, key: &str, ch: Option<&str>) -> Ev {
+    /// Moves between inputs and buttons; typing, backspace and paste belong to the text inputs.
+    pub fn key(&mut self, key: &str) -> Ev {
         let n = self.slots().max(1);
         match key {
             "tab" | "down" => self.focus = (self.focus + 1) % n,
@@ -58,24 +58,9 @@ impl Form {
                 }
             }
             "enter" => return Ev::Press(self.focus - self.fields.len()),
-            "backspace" => {
-                if let Some(f) = self.fields.get_mut(self.focus) {
-                    f.value.pop();
-                }
-            }
-            _ => {
-                if let Some(c) = ch.filter(|c| !c.chars().any(char::is_control)) {
-                    self.paste(c);
-                }
-            }
+            _ => {}
         }
         Ev::Stay
-    }
-
-    pub fn paste(&mut self, s: &str) {
-        if let Some(f) = self.fields.get_mut(self.focus) {
-            f.value.extend(s.chars().filter(|c| !c.is_control()));
-        }
     }
 
     pub fn clear(&mut self) {
@@ -460,10 +445,7 @@ mod tests {
     }
 
     fn type_into(a: &mut Account, text: &str) {
-        for c in text.chars() {
-            let s = c.to_string();
-            a.connect.key(&s, Some(&s));
-        }
+        a.connect.fields[0].value.push_str(text);
     }
 
     fn probe(qc: bool) -> Probe {
@@ -708,25 +690,15 @@ mod tests {
             ],
             2,
         );
-        assert_eq!(f.key("a", Some("a")), Ev::Stay);
-        assert_eq!(
-            f.key("enter", None),
-            Ev::Stay,
-            "enter moves to the next input"
-        );
+        assert_eq!(f.key("enter"), Ev::Stay, "enter moves to the next input");
         assert_eq!(f.focus, 1);
-        f.key("x", Some("x"));
-        f.key("x", Some("\u{7f}")); // control chars never typed
-        assert_eq!((f.value(0), f.value(1)), ("a", "x"));
-        assert_eq!(f.key("enter", None), Ev::Submit);
-        f.key("tab", None);
-        assert_eq!(f.key("enter", None), Ev::Press(0));
-        f.key("down", None);
-        assert_eq!(f.key("enter", None), Ev::Press(1));
-        f.key("down", None);
+        assert_eq!(f.key("enter"), Ev::Submit);
+        f.key("tab");
+        assert_eq!(f.key("enter"), Ev::Press(0));
+        f.key("down");
+        assert_eq!(f.key("enter"), Ev::Press(1));
+        f.key("down");
         assert_eq!(f.focus, 0, "wraps");
-        f.key("backspace", None);
-        assert_eq!(f.value(0), "");
     }
 
     #[test]

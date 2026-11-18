@@ -16,15 +16,6 @@ impl Key {
     pub fn plain(&self) -> bool {
         !self.ctrl && !self.alt && !self.shift
     }
-
-    /// Typed text for a text field: nothing for ctrl chords.
-    pub fn typed(&self) -> Option<&str> {
-        self.text.as_deref().filter(|_| !self.ctrl)
-    }
-
-    pub fn is_paste(&self) -> bool {
-        self.ctrl && self.name == "v"
-    }
 }
 
 fn named(n: Named) -> Option<&'static str> {
@@ -107,11 +98,11 @@ mod tests {
         assert_eq!(k.name, "enter");
         let k = from_event(&ev(K::Character("A".into()), Some("A"), Modifiers::SHIFT)).unwrap();
         assert_eq!(
-            (k.name.as_str(), k.typed(), k.shift),
+            (k.name.as_str(), k.text.as_deref(), k.shift),
             ("a", Some("A"), true)
         );
         let k = from_event(&ev(K::Named(Named::Space), None, Modifiers::empty())).unwrap();
-        assert_eq!((k.name.as_str(), k.typed()), ("space", Some(" ")));
+        assert_eq!((k.name.as_str(), k.text.as_deref()), ("space", Some(" ")));
         assert!(from_event(&ev(K::Named(Named::Shift), None, Modifiers::empty())).is_none());
     }
 
@@ -127,11 +118,5 @@ mod tests {
         assert_eq!(n(Named::MediaTrackPrevious), "p");
         assert_eq!(n(Named::BrowserBack), "escape");
         assert_eq!(n(Named::ContextMenu), "menu");
-    }
-
-    #[test]
-    fn ctrl_chords_type_nothing() {
-        let k = from_event(&ev(K::Character("v".into()), Some("v"), Modifiers::CTRL)).unwrap();
-        assert!(k.is_paste() && k.typed().is_none());
     }
 }

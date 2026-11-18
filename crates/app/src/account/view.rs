@@ -7,8 +7,8 @@ use crate::theme as t;
 use crate::widget::press::Press;
 use crate::widget::{action_button, label, mono, pulse, tip, tracked, wordmark};
 use iced::widget::button::Status;
-use iced::widget::{column, container, opaque, row, space, text};
-use iced::{Alignment, Color, Element, Length, Shadow};
+use iced::widget::{column, container, opaque, row, space, text, text_input};
+use iced::{Alignment, Color, Element, Length};
 use std::time::Instant;
 
 /// Where the README's getting-started section lives.
@@ -92,34 +92,16 @@ fn rule<'a>() -> El<'a> {
     crate::widget::rule()
 }
 
-fn field<'a>(f: &Fld, focused: bool, w: Where) -> El<'a> {
-    let shown = if f.secret {
-        "\u{2022}".repeat(f.value.chars().count())
-    } else {
-        f.value.clone()
-    };
-    let shown = format!("{shown}{}", if focused { "\u{2595}" } else { "" });
-    let input = Press::new(
-        container(
-            text(shown)
-                .font(t::MONO)
-                .size(t::BODY)
-                .wrapping(text::Wrapping::None),
-        )
-        .center_y(Length::Fill)
-        .clip(true),
-    )
-    .width(Length::Fill)
-    .height(40)
-    .padding([0.0, t::S3])
-    .on_press(Msg::Focus(w))
-    .style(move |_| iced::widget::button::Style {
-        background: None,
-        text_color: t::TEXT,
-        border: border(if focused { t::ACCENT } else { t::EDGE }, 1.0, 6.0),
-        shadow: Shadow::default(),
-        snap: false,
-    });
+fn field<'a>(f: &Fld, w: Where) -> El<'a> {
+    let input = text_input("", &f.value)
+        .id(w.id())
+        .on_input(move |s| Msg::Input(w, s))
+        .on_submit(Msg::Submit(w))
+        .secure(f.secret)
+        .font(t::MONO)
+        .size(t::BODY)
+        .padding([t::S3, t::S3])
+        .style(style::input);
     column![mono(f.label), input].spacing(t::S1).into()
 }
 
@@ -142,7 +124,7 @@ fn connect_screen(a: &Accounts, now: Instant) -> El<'_> {
             Some("Enter the address of your server.".into()),
         ),
         steps(),
-        field(&form.fields[0], form.focus == 0, Where::Connect),
+        field(&form.fields[0], Where::Connect),
     ];
     items.extend(note(st.msg));
     let mut go = row![action_button(
@@ -235,8 +217,8 @@ fn login_screen(a: &Accounts, now: Instant) -> El<'_> {
     let f = &st.login;
     let mut items: Vec<El> = vec![
         heading("Sign in", st.server_name.clone(), Some(st.url.clone())),
-        field(&f.fields[0], f.focus == 0, Where::Login(0)),
-        field(&f.fields[1], f.focus == 1, Where::Login(1)),
+        field(&f.fields[0], Where::Login(0)),
+        field(&f.fields[1], Where::Login(1)),
     ];
     items.extend(note(st.msg));
     let mut r = row![action_button(
@@ -348,7 +330,7 @@ fn pw_dialog(d: &Dialog) -> El<'_> {
     };
     let mut items: Vec<El> = vec![heading("Please confirm", title.into(), Some(body.into()))];
     for (i, fld) in f.fields.iter().enumerate() {
-        items.push(field(fld, f.focus == i, Where::Dialog(i)));
+        items.push(field(fld, Where::Dialog(i)));
     }
     let (ci, oi) = (f.fields.len(), f.fields.len() + 1);
     items.extend(note(d.msg));

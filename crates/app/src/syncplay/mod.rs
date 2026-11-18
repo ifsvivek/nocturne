@@ -45,7 +45,11 @@ mod view;
 use crate::keys::Key;
 use crate::player::{self, Player};
 use crate::task::{after, run};
-use iced::{Element, Size, Subscription, Task, clipboard};
+use iced::widget::{self, operation};
+use iced::{Element, Size, Subscription, Task};
+
+/// Id of the "name a new group" input.
+pub(crate) const NAME_ID: &str = "sp-name";
 use nocturne_core::bridge;
 use nocturne_core::source::{Media, Source, SourceId};
 use nocturne_core::sync::NEED_WRITES;
@@ -132,8 +136,7 @@ pub enum Msg {
     Create,
     Leave,
     Follow,
-    NameFocus(bool),
-    Paste(Option<String>),
+    NameInput(String),
     Choose(usize),
 }
 
@@ -197,9 +200,6 @@ pub enum KeyAct {
     JoinSelected,
     Up,
     Down,
-    Backspace,
-    Type(String),
-    Paste,
     Server(bool),
     None,
 }
@@ -215,12 +215,6 @@ pub fn key_act(k: &Key, in_group: bool, name_focus: bool) -> KeyAct {
         "enter" => KeyAct::JoinSelected,
         "up" if !in_group => KeyAct::Up,
         "down" if !in_group => KeyAct::Down,
-        "backspace" if name_focus && !in_group => KeyAct::Backspace,
-        _ if name_focus && !in_group && k.is_paste() => KeyAct::Paste,
-        _ if name_focus && !in_group => match k.typed() {
-            Some(c) if !c.chars().any(char::is_control) => KeyAct::Type(c.to_string()),
-            _ => KeyAct::None,
-        },
         "[" if !in_group && !name_focus => KeyAct::Server(false),
         "]" if !in_group && !name_focus => KeyAct::Server(true),
         _ => KeyAct::None,
@@ -1158,15 +1152,11 @@ impl SyncPlay {
             Msg::Create => self.create(),
             Msg::Leave => self.leave(p),
             Msg::Follow => self.follow_again(p),
-            Msg::NameFocus(on) => {
-                self.name_focus = on;
+            Msg::NameInput(s) => {
+                self.name_focus = true;
+                self.set_name(&s);
                 Task::none()
             }
-            Msg::Paste(Some(t)) => {
-                self.type_text(&t);
-                Task::none()
-            }
-            Msg::Paste(None) => Task::none(),
             Msg::Choose(i) => self.choose(i),
         }
     }
@@ -1183,9 +1173,11 @@ impl SyncPlay {
         Task::none()
     }
 
-    fn type_text(&mut self, t: &str) {
+    /// The name field's text: no control characters, at most 100 bytes.
+    fn set_name(&mut self, t: &str) {
+        self.name.clear();
         for c in t.chars().filter(|c| !c.is_control()) {
-            if self.name.len() < 100 {
+            if self.name.len() + c.len_utf8() <= 100 {
                 self.name.push(c);
             }
         }
@@ -1209,7 +1201,11 @@ impl SyncPlay {
             }
             KeyAct::SwitchFocus => {
                 self.name_focus = !self.name_focus;
-                Task::none()
+                operation::focus(if self.name_focus {
+                    widget::Id::from(NAME_ID)
+                } else {
+                    widget::Id::from("sp-none")
+                })
             }
             KeyAct::Refresh => self.refresh(),
             KeyAct::Leave => self.leave(p),
@@ -1230,15 +1226,6 @@ impl SyncPlay {
                 self.sel = (self.sel + 1).min(self.groups_len().saturating_sub(1));
                 Task::none()
             }
-            KeyAct::Backspace => {
-                self.name.pop();
-                Task::none()
-            }
-            KeyAct::Type(c) => {
-                self.type_text(&c);
-                Task::none()
-            }
-            KeyAct::Paste => clipboard::read().map(Msg::Paste),
             KeyAct::Server(fwd) => {
                 let n = self.targets.len();
                 if n < 2 {

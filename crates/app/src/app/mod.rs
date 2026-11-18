@@ -436,6 +436,16 @@ impl App {
         Subscription::batch(subs)
     }
 
+    /// The sign-in screens and the account dialogs put the cursor in their first input themselves.
+    fn sync_account_focus(&mut self) -> Task<Message> {
+        let shown = matches!(self.phase, Phase::Account)
+            || self.accounts.as_ref().is_some_and(|a| a.dialog_open());
+        match self.accounts.as_mut() {
+            Some(a) => a.focus_task(shown).map(Message::Account),
+            None => Task::none(),
+        }
+    }
+
     fn animating(&self) -> bool {
         self.preview
             .as_ref()
@@ -465,6 +475,7 @@ impl App {
                     self.tick(),
                     self.sync_extras(),
                     self.sync_remote(),
+                    self.sync_account_focus(),
                     self.dl_tick(),
                     crate::snap::poll(),
                 ])
