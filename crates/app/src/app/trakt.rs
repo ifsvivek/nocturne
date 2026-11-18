@@ -28,6 +28,10 @@ pub enum Msg {
     Open,
     Close,
     Id(String),
+    /// The id found without asking (override or built-in), read when the dialog opens.
+    Known(Option<String>),
+    /// Show the field for your own Client ID.
+    Advanced,
     Connect,
     /// The loopback listener ended (epoch of the attempt).
     Callback(u64, Callback),
@@ -51,7 +55,10 @@ enum Stage {
 
 pub struct State {
     open: bool,
+    /// What the user typed in the Client ID field (an override).
     id: String,
+    known: Option<String>,
+    advanced: bool,
     stage: Stage,
     note: Option<String>,
     epoch: u64,
@@ -70,6 +77,8 @@ impl Default for State {
         Self {
             open: false,
             id: String::new(),
+            known: None,
+            advanced: false,
             stage: Stage::Form,
             note: None,
             epoch: 0,
@@ -134,23 +143,16 @@ impl App {
             Msg::Open => {
                 self.trakt.open = true;
                 self.trakt.note = None;
-                // Debug builds only: prefill from the environment (a live test with the maintainer's own app).
-                if cfg!(debug_assertions)
-                    && self.trakt.id.is_empty()
-                    && let Ok(id) = std::env::var("NOCTURNE_TRAKT_CLIENT_ID")
-                {
-                    self.trakt.id = id;
-                }
-                if self.trakt.client.is_none() && self.trakt.id.is_empty() {
-                    // The client id is not secret under PKCE; the user may have entered it before.
+                self.trakt.advanced = false;
+                if self.trakt.client.is_none() {
                     return run(
                         async {
-                            tokio::task::spawn_blocking(Trakt::saved_app_blocking)
+                            tokio::task::spawn_blocking(Trakt::client_id_blocking)
                                 .await
                                 .ok()
                                 .flatten()
                         },
-                        |r| Message::Trakt(Msg::Id(r.unwrap_or_default())),
+                        |r| Message::Trakt(Msg::Known(r)),
                     );
                 }
             }
@@ -159,6 +161,8 @@ impl App {
                 self.trakt.abort();
             }
             Msg::Id(s) => self.trakt.id = nocturne_core::secret::clean(&s),
+            Msg::Known(k) => self.trakt.known = k,
+            Msg::Advanced => self.trakt.advanced = true,
             Msg::Connect => return self.trakt_connect(),
             Msg::Reopen => {
                 if let Stage::Browser(u) = &self.trakt.stage {
@@ -266,7 +270,12 @@ impl App {
 
     /// Start the browser sign-in: listen on the loopback port, open the authorize page, wait for the redirect.
     fn trakt_connect(&mut self) -> Task<Message> {
-        let id = self.trakt.id.trim().to_string();
+        let typed = self.trakt.id.trim().to_string();
+        let id = if typed.is_empty() {
+            self.trakt.known.clone().unwrap_or_default()
+        } else {
+            typed.clone()
+        };
         if id.is_empty() {
             self.trakt.note = Some("Enter the client id of your Trakt app.".into());
             return Task::none();
@@ -293,8 +302,11 @@ impl App {
         self.trakt.pkce = Some(pkce);
         run(
             async move {
-                let i = id.clone();
-                let _ = tokio::task::spawn_blocking(move || Trakt::save_app_blocking(&i)).await;
+                // Only an id the user typed is kept; the built-in one needs no copy.
+                if !typed.is_empty() {
+                    let _ =
+                        tokio::task::spawn_blocking(move || Trakt::save_app_blocking(&typed)).await;
+                }
                 // The listener is bound before the browser opens, so the redirect cannot arrive early.
                 let wait = tokio::spawn(async move {
                     tk::wait_callback(tk::REDIRECT_PORT, &state, SIGN_IN_WAIT, cancel).await
@@ -425,10 +437,21 @@ impl App {
                 .line_height(1.5)
                 .color(t::TEXT_SECONDARY)
         };
+        let own = s.known.is_none() || s.advanced;
+        let intro = if own {
+            format!(
+                "Create a free API app at trakt.tv/oauth/applications, register {} as its redirect URI, then paste its Client ID below. There is no client secret: you sign in on trakt.tv in your browser.",
+                tk::redirect_uri(tk::REDIRECT_PORT)
+            )
+        } else {
+            "Connect your Trakt account to scrobble what you watch and import your watched history. You sign in on trakt.tv in your browser.".into()
+        };
         let mut card = column![
             mono("TRAKT"),
-            text("Scrobble and sync with Trakt").size(t::HEADING).font(t::BOLD),
-            dim(format!("NOCTURNE ships no Trakt credentials. Create a free API app at trakt.tv/oauth/applications, register {} as its redirect URI, then paste its Client ID below. There is no client secret: you sign in on trakt.tv in your browser.", tk::redirect_uri(tk::REDIRECT_PORT))),
+            text("Scrobble and sync with Trakt")
+                .size(t::HEADING)
+                .font(t::BOLD),
+            dim(intro),
             dim(tk::PRIVACY.into()),
             text(tk::CREDIT).size(t::CAPTION).color(t::TEXT_TERTIARY),
         ]
@@ -475,33 +498,60 @@ impl App {
                     );
             }
             (Stage::Form, None) => {
-                let id = text_input("Client ID", &s.id)
-                    .on_input(|x| Message::Trakt(Msg::Id(x)))
-                    .on_submit(Message::Trakt(Msg::Connect))
-                    .size(t::BODY)
-                    .padding([t::S2, t::S3])
-                    .style(style::input);
-                card = card.push(id).push(
-                    row![
-                        action_button(
-                            "Sign in with Trakt",
-                            true,
-                            false,
-                            true,
-                            false,
-                            Message::Trakt(Msg::Connect)
-                        ),
-                        action_button(
-                            "Create a Trakt app",
-                            false,
-                            false,
-                            false,
-                            false,
-                            Message::Trakt(Msg::OpenUrl(PORTAL))
-                        ),
-                    ]
-                    .spacing(t::S3),
-                );
+                let connect = |label| {
+                    action_button(
+                        label,
+                        true,
+                        false,
+                        true,
+                        false,
+                        Message::Trakt(Msg::Connect),
+                    )
+                };
+                if !own {
+                    card = card.push(
+                        row![
+                            connect("Connect Trakt"),
+                            action_button(
+                                "Advanced: use your own Client ID",
+                                false,
+                                false,
+                                false,
+                                false,
+                                Message::Trakt(Msg::Advanced)
+                            ),
+                        ]
+                        .spacing(t::S3),
+                    );
+                } else {
+                    let id = text_input("Client ID", &s.id)
+                        .on_input(|x| Message::Trakt(Msg::Id(x)))
+                        .on_submit(Message::Trakt(Msg::Connect))
+                        .size(t::BODY)
+                        .padding([t::S2, t::S3])
+                        .style(style::input);
+                    card = card.push(id).push(
+                        row![
+                            action_button(
+                                "Sign in with Trakt",
+                                true,
+                                false,
+                                true,
+                                false,
+                                Message::Trakt(Msg::Connect)
+                            ),
+                            action_button(
+                                "Create a Trakt app",
+                                false,
+                                false,
+                                false,
+                                false,
+                                Message::Trakt(Msg::OpenUrl(PORTAL))
+                            ),
+                        ]
+                        .spacing(t::S3),
+                    );
+                }
             }
         }
         if let Some(n) = &s.note {
