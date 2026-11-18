@@ -45,7 +45,7 @@ echo "--- headless start"; timeout 15 "$1" 2>&1 | head -20; echo "exit=${PIPESTA
 EOF
 
 loader_ok() { # $1 = text of a headless start
-  grep -qE 'neither DISPLAY nor WAYLAND_DISPLAY|neither WAYLAND_DISPLAY nor|open window' <<<"$1" && # must actually reach the windowing stage
+  grep -qE 'needs a graphical Wayland session' <<<"$1" && grep -q '^exit=1$' <<<"$1" && # must reach the app's own no-Wayland message and exit 1
   ! grep -qE 'error while loading shared libraries|cannot open shared object|version .GLIBC_[0-9.]+. not found' <<<"$1"
 }
 
