@@ -622,4 +622,70 @@ impl App {
             .into(),
         )
     }
+
+    /// "Update available": the exact command for a package-managed install, or a link to the release page.
+    /// Shares the source banner's slot (a source problem wins) and is dismissible for the session.
+    pub(super) fn update_banner(&self) -> Option<El<'_>> {
+        use nocturne_core::update::{Action, UpdateState};
+        let UpdateState::Available {
+            version, action, ..
+        } = self.update.as_ref()?
+        else {
+            return None;
+        };
+        if !self.settings.check_updates {
+            return None;
+        }
+        let (msg, act): (String, El) = match action {
+            Action::Command(cmd) => (
+                format!("NOCTURNE {version} is available. Update with: {cmd}"),
+                action_button(
+                    "Copy command",
+                    true,
+                    false,
+                    false,
+                    false,
+                    Message::UpdateCopy(cmd),
+                ),
+            ),
+            Action::Download(url) => (
+                format!("NOCTURNE {version} is available."),
+                action_button(
+                    "Download",
+                    true,
+                    false,
+                    false,
+                    false,
+                    Message::UpdateOpen(url.clone()),
+                ),
+            ),
+        };
+        let dismiss = action_button(
+            "Dismiss",
+            false,
+            false,
+            false,
+            false,
+            Message::UpdateDismiss,
+        );
+        Some(
+            container(
+                container(
+                    row![text(msg).size(t::BODY), act, dismiss]
+                        .spacing(t::S4)
+                        .align_y(Alignment::Center),
+                )
+                .padding([t::S2, t::S4])
+                .style(style::raised_card),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Alignment::Center)
+            .padding(Padding {
+                top: t::HEADER_H + t::S2,
+                ..Padding::ZERO
+            })
+            .into(),
+        )
+    }
 }

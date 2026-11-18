@@ -117,6 +117,11 @@ pub enum Message {
     AdminProbed(bool),
     Retry,
     RetryNow,
+    /// The daily update check finished (`None`: not due, off, dev build or failed).
+    Update(Option<nocturne_core::update::UpdateState>),
+    UpdateCopy(&'static str),
+    UpdateOpen(String),
+    UpdateDismiss,
     Account(account::Msg),
     PickerAct(picker::Act),
     Switched {
