@@ -39,4 +39,5 @@ libc = "0.2"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Console", "Win32_Security", "Win32_System_Pipes", "Win32_Storage_FileSystem", "Win32_System_IO"] }
 
 [dev-dependencies]
+iced_test = "0.14"
 tempfile = "3.27.0"

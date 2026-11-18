@@ -858,4 +858,96 @@ mod tests {
         let _ = a.on_key(&key("escape"));
         assert!(a.dialog.is_none());
     }
+
+    /// Real input through Iced's headless harness (`iced_test`): the account views' text inputs.
+    mod input {
+        use super::*;
+        use iced::keyboard::{Key, key::Named};
+        use iced_test::{Simulator, selector};
+
+        fn accounts() -> Accounts {
+            Accounts {
+                st: Account::new(vec![], None),
+                servers: Servers::default(),
+                qc_secret: None,
+                dialog: None,
+                from_picker: false,
+                focused: None,
+                events: vec![],
+            }
+        }
+
+        fn sign_in() -> Accounts {
+            let mut a = accounts();
+            a.st.stage = Stage::Login;
+            a.st.login = Form::new(
+                vec![
+                    Fld {
+                        label: "Username",
+                        ..Default::default()
+                    },
+                    Fld {
+                        label: "Password",
+                        secret: true,
+                        ..Default::default()
+                    },
+                ],
+                2,
+            );
+            a
+        }
+
+        /// Clicks the input, presses End (the click may land inside a long text), runs `f` on the simulator and applies
+        /// the produced messages through `update`.
+        fn act(a: &mut Accounts, w: Where, f: impl FnOnce(&mut Simulator<'_, Msg>)) -> Vec<Msg> {
+            let mut sim = Simulator::new(a.view(Instant::now()));
+            sim.click(selector::id(w.id())).expect("field is on screen");
+            sim.tap_key(Key::Named(Named::End));
+            f(&mut sim);
+            let msgs: Vec<Msg> = sim.into_messages().collect();
+            for m in msgs.iter().cloned() {
+                let _ = a.update(m);
+            }
+            msgs
+        }
+
+        /// One character at a time with a fresh view each time, like the real app's redraws.
+        fn type_into(a: &mut Accounts, w: Where, text: &str) {
+            for c in text.chars() {
+                act(a, w, |s| {
+                    s.typewrite(&c.to_string());
+                });
+            }
+        }
+
+        #[test]
+        fn typing_in_the_sign_in_form_updates_the_form_through_update() {
+            let mut a = sign_in();
+            type_into(&mut a, Where::Login(0), "alice");
+            type_into(&mut a, Where::Login(1), "s3cret");
+            assert_eq!(a.st.login.fields[0].value, "alice");
+            assert_eq!(a.st.login.fields[1].value, "s3cret");
+            assert_eq!(a.st.login.focus, 1);
+        }
+
+        #[test]
+        fn typing_the_server_address_reaches_the_connect_form() {
+            let mut a = accounts();
+            type_into(&mut a, Where::Connect, "http://192.168.1.10:8096");
+            assert_eq!(a.st.connect.fields[0].value, "http://192.168.1.10:8096");
+        }
+
+        #[test]
+        fn enter_in_a_field_submits_that_field() {
+            let mut a = sign_in();
+            let msgs = act(&mut a, Where::Login(1), |s| {
+                s.tap_key(Key::Named(Named::Enter));
+            });
+            assert!(
+                msgs.iter()
+                    .any(|m| matches!(m, Msg::Submit(Where::Login(1)))),
+                "Enter must submit the password field"
+            );
+        }
+    }
 }
