@@ -9,6 +9,7 @@ pub mod blurhash;
 pub mod bridge;
 pub mod cache;
 pub mod catalog;
+pub mod customize;
 pub mod detail;
 pub mod detail_reads;
 pub mod download;
