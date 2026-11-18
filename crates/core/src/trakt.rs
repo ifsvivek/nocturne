@@ -21,7 +21,7 @@ pub const CREDIT: &str = "Trakt is a trademark of Trakt, Inc. NOCTURNE uses the 
 /// Trakt's sign-in and token host (PKCE guide); the API itself is api.trakt.tv.
 pub const AUTH_BASE: &str = "https://auth.trakt.tv";
 /// The public Trakt client id NOCTURNE ships (PKCE, so no secret is involved). The placeholder means "none": the user then enters their own.
-pub const BUILTIN_CLIENT_ID: &str = "NOCTURNE_TRAKT_BUILTIN_CLIENT_ID_PLACEHOLDER";
+pub const BUILTIN_CLIENT_ID: &str = "x8Eug1YSxLXsb3Dcnbhv3naoRiuHlD_f6IsL5UzY4iI";
 
 /// What `BUILTIN_CLIENT_ID` holds in a source tree that ships no id.
 const BUILTIN_PLACEHOLDER: &str = "NOCTURNE_TRAKT_BUILTIN_CLIENT_ID_PLACEHOLDER";
