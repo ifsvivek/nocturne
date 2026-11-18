@@ -692,4 +692,6 @@ impl Admin {
 }
 
 #[cfg(test)]
+mod input_tests;
+#[cfg(test)]
 mod tests;

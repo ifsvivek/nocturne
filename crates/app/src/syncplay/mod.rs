@@ -1266,4 +1266,6 @@ fn snap(p: Option<&Player>) -> Option<PlayerSnap> {
 }
 
 #[cfg(test)]
+mod input_tests;
+#[cfg(test)]
 mod tests;
