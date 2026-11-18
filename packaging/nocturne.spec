@@ -1,4 +1,4 @@
-# RPM for Fedora, built in a fedora container by scripts/package-rpm.sh (Source0 is the tree tarball it makes).
+# RPM for Fedora, built in a fedora container by scripts/package-rpm.sh (Source0 is the tree tarball it makes). The binary is prebuilt on debian:stable by scripts/build-linux-bin.sh and passed as %{binpath}.
 # libmpv is dlopen()ed, so rpm cannot detect it: every run-time library is listed by hand (docs/PACKAGING.md).
 %global debug_package %{nil}
 %global __os_install_post %{nil}
@@ -10,7 +10,6 @@ Summary:        Native media center for local folders and Jellyfin servers
 License:        GPL-3.0-or-later
 URL:            https://nocturne.ifsvivek.in
 Source0:        %{name}-%{version}.tar.gz
-BuildRequires:  gcc, gcc-c++, make, pkgconf-pkg-config, dbus-devel, systemd-devel, libglvnd-devel, curl
 
 # mpv-libs provides libmpv.so.2; on Fedora it comes from RPM Fusion (free).
 Requires:       mpv-libs
@@ -41,13 +40,8 @@ with the Jellyfin project.
 %prep
 %autosetup
 
-%build
-# rustup toolchain (Fedora's rust may lag the MSRV); CARGO_HOME/TARGET are set by the build script.
-export PATH="$CARGO_HOME/bin:$PATH"
-RUSTFLAGS="--remap-path-prefix=$CARGO_HOME=/cargo --remap-path-prefix=$PWD=/src" cargo build --release --locked -p nocturne-app
-
 %install
-install -Dm755 "$CARGO_TARGET_DIR/release/nocturne" %{buildroot}%{_bindir}/nocturne
+install -Dm755 %{binpath} %{buildroot}%{_bindir}/nocturne
 install -Dm644 packaging/io.github.ifsvivek.nocturne.desktop -t %{buildroot}%{_datadir}/applications
 for s in 48 128 256 512; do
   install -Dm644 packaging/icons/nocturne-$s.png %{buildroot}%{_datadir}/icons/hicolor/${s}x${s}/apps/nocturne.png

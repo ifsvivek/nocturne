@@ -7,14 +7,14 @@
 #   usage: [PKG=nocturne-app] [IMG=debian:bookworm] [PROFILE=release|debug] scripts/package-appimage.sh
 #   PROFILE=debug makes dist/NOCTURNE-<ver>-debug-x86_64.AppImage, whose NOCTURNE_PREVIEW=player can play a file (testing only).
 # Needs network (rustup, apt, and the appimagetool release from GitHub, downloaded unverified: no pinned checksum).
-# No sudo (docker), no hosted CI. Cargo cache is a throwaway volume (KEEP_CACHE=1 keeps it).
+# No sudo (docker), no hosted CI. Cargo cache is a persistent named volume.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PKG="${PKG:-nocturne-app}"; PROFILE="${PROFILE:-release}"; IMG="${IMG:-debian:bookworm}"
 ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-VOL=nocturne-appimage-cache
+VOL=nocturne-cache-debian-bookworm  # persistent; scripts/cache-budget.sh bounds it
+scripts/cache-budget.sh --quiet || true
 mkdir -p dist
-trap '[ -n "${KEEP_CACHE:-}" ] || docker volume rm -f "$VOL" >/dev/null 2>&1' EXIT
 
 docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -v "$VOL":/cache -e PKG="$PKG" -e VER="$ver" -e PROFILE="$PROFILE" -e HOST_UID="$(id -u)" "$IMG" bash -euc '
 export DEBIAN_FRONTEND=noninteractive CARGO_HOME=/cache/cargo CARGO_TARGET_DIR=/cache/target RUSTUP_HOME=/cache/rustup
