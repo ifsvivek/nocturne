@@ -11,14 +11,13 @@ through libmpv with hardware decoding on Wayland; on X11 it plays in an external
 
 [Website](https://nocturne.ifsvivek.in) · [Install](#install) · [Package repository](https://nocturne.ifsvivek.in/repo) · [Releases](https://github.com/ifsvivek/nocturne/releases/latest) · [Features](docs/FEATURES.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
 
-Status: version 0.3, early software, Linux x86_64 (tested on Arch only); macOS and Windows are planned, not available
-yet ([docs/PLATFORMS.md](docs/PLATFORMS.md)). See [docs/ROADMAP.md](docs/ROADMAP.md) for what is coming and what is missing.
+Status: version 0.4, early software, Linux x86_64 (tested on Arch; .deb and .rpm install-tested on Debian, Ubuntu and
+Fedora). macOS and Windows builds are previews only ([docs/PLATFORMS.md](docs/PLATFORMS.md)). See
+[docs/ROADMAP.md](docs/ROADMAP.md) for what is coming and [docs/FEATURES.md](docs/FEATURES.md) for what is verified.
 
-Coming in 0.4 (unreleased, not installable yet; 0.3.0 is what the install steps below give you): a secondary subtitle and
-per-show language memory, an HDR pop-out window, online details and subtitles for local media, offline copies from a server,
-smart collections, one watched state across sources, Trakt, remote control from other Jellyfin apps, a couch mode with gamepad
-support, .deb / .rpm packages, and first (untested) macOS and Windows code. See [docs/FEATURES.md](docs/FEATURES.md) for what is
-verified.
+New in 0.4: a secondary subtitle and per-show language memory, an HDR pop-out choice for HDR videos, online details and
+subtitle search for local media (your own keys), offline copies from a server, smart collections, one watched state across
+sources, Trakt, remote control from other Jellyfin apps, a couch mode with gamepad support, and .deb / .rpm packages.
 
 ## Screenshots
 
@@ -111,17 +110,37 @@ git clone https://github.com/ifsvivek/nocturne && cd nocturne/packaging && makep
 ### Other distributions: release tarball
 
 ```sh
-curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.3.0/nocturne-0.3.0-x86_64-linux.tar.gz
-curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.3.0/nocturne-0.3.0-x86_64-linux.tar.gz.sha256
-sha256sum -c nocturne-0.3.0-x86_64-linux.tar.gz.sha256
-tar xf nocturne-0.3.0-x86_64-linux.tar.gz && cd nocturne-0.3.0-x86_64-linux
+curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.4.0/nocturne-0.4.0-x86_64-linux.tar.gz
+curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.4.0/nocturne-0.4.0-x86_64-linux.tar.gz.sha256
+sha256sum -c nocturne-0.4.0-x86_64-linux.tar.gz.sha256
+tar xf nocturne-0.4.0-x86_64-linux.tar.gz && cd nocturne-0.4.0-x86_64-linux
 sudo ./install.sh              # installs to /usr/local; `sudo ./install.sh uninstall` removes it
 ```
 
 The installer checks every runtime library and installs missing ones with your package manager (pacman, apt, dnf or
 zypper; it prints the command first, `--no-deps` skips this). The binary is built on current Arch and needs a recent
-glibc, so on older distributions it may refuse to start: build from source there. Native .deb and .rpm packages are
-planned for 0.4.
+glibc, so on older distributions it may refuse to start: use the .deb / .rpm below or build from source there.
+
+### Debian 13 / Ubuntu 24.04 and newer: .deb
+
+```sh
+curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.4.0/nocturne_0.4.0_amd64.deb
+sudo apt install ./nocturne_0.4.0_amd64.deb
+```
+
+On Ubuntu 24.04 (libmpv 0.37) video plays in a separate mpv window; newer libmpv plays it inside the app window.
+
+### Fedora: .rpm
+
+mpv's library comes from RPM Fusion (free), so enable it first:
+
+```sh
+sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm
+curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.4.0/nocturne-0.4.0-1.fc45.x86_64.rpm
+sudo dnf install ./nocturne-0.4.0-1.fc45.x86_64.rpm
+```
+
+There is no apt or dnf repository yet: update by installing the next release's file.
 
 ### From source
 
@@ -166,8 +185,9 @@ cargo build --release --locked      # stable Rust 1.89+; a clean release build t
 - **Video opens in a separate mpv window.** That is the behaviour on X11, with `NOCTURNE_VIDEO=external`, or when the
   Wayland surface cannot be set up (the terminal says `video: embedded unavailable`). `NOCTURNE_VO` picks that window's
   video output.
-- **HDR video looks like SDR.** Video inside the window is tone-mapped to SDR (mpv's embedding API cannot output HDR). An
-  HDR pop-out window is planned for 0.4 ([docs/HDR.md](docs/HDR.md)).
+- **HDR video looks like SDR.** Video inside the window is tone-mapped to SDR (mpv's embedding API cannot output HDR). For HDR
+  videos NOCTURNE asks whether to play in the window or open an HDR pop-out window; real HDR needs an HDR display, a compositor
+  with colour management and mpv 0.42 or newer ([docs/HDR.md](docs/HDR.md)).
 - **"No system keyring found".** No Secret Service provider is running, so you will sign in again next time. Start
   gnome-keyring, KWallet or KeePassXC with the Secret Service integration enabled; NOCTURNE never writes tokens to a file.
 - **A source shows "Signed out".** That server revoked the login; use *Sign in again* in Settings > Sources. Other

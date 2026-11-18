@@ -3,10 +3,9 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
-## [0.4.0] - UNRELEASED
+## [0.4.0] - 2026-11-18
 
-Local branch, not published. What is verified and what is not is in [FEATURES.md](docs/FEATURES.md) and
-[docs/dev/STATUS.md](docs/dev/STATUS.md).
+What is verified and what is not is listed per feature in [FEATURES.md](docs/FEATURES.md).
 
 ### Added
 **Playback**
@@ -59,7 +58,7 @@ Local branch, not published. What is verified and what is not is in [FEATURES.md
   and gamepad support (`gilrs`, a background thread only while the mode is not Off): D-pad / left stick move, A select, B back,
   Y search, X favourite, Start account menu, LB / RB page, LT / RT seek 30 s. Automatic turns on while a gamepad is connected or
   on a 1900 px+ display. Remote / media keys share the keyboard path.
-- macOS and Windows code behind the platform seams (written and cross-compile-checked, never run; no installers yet): per-OS
+- macOS and Windows code behind the platform seams (preview: built by a one-shot CI workflow, never run on a real PC or Mac): per-OS
   paths, keyring backends, named-pipe mpv IPC, per-OS libmpv loading, single-instance guard, playback through the external mpv
   window. `scripts/check-cross.sh` runs the compile checks in Docker ([PLATFORMS.md](docs/PLATFORMS.md)).
 - `.deb` and `.rpm` packages, built inside Debian / Ubuntu and Fedora containers and install-tested in clean containers (the
@@ -76,6 +75,10 @@ Local branch, not published. What is verified and what is not is in [FEATURES.md
 - With no graphical session the app prints a clear message instead of panicking.
 
 ### Fixed
+- Online details can no longer attach to the wrong local file after an interrupted scan (item ids are never reused, each
+  online entry is tied to the file it was fetched for, and purged items lose their entries and artwork).
+- The online subtitle finder is usable with arrows, Enter and a gamepad, and a download without an OpenSubtitles login
+  explains that a login is needed.
 - A failed playback report shows a quiet notice (once per playback) instead of being swallowed; the final "stopped" report is
   retried once.
 - 0.3.1 fix batch: the divider rule no longer runs through the genre chips on detail pages, and the chip band grows when
