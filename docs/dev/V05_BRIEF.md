@@ -39,3 +39,9 @@ Two interface modes, selectable independently for each connected Jellyfin server
 ## Related earlier wishes (requests log #35)
 
 UI refresh and customization comparable to Jellyfin's display settings: themes/accent colours, home sections (choose, reorder, per library), density and UI scale, backdrops/theme music, per-library default views, date/time formats, possibly layout choices. To be merged into the v0.5 design with the maintainer.
+
+## 3. Updates (maintainer decision 2026-11-18)
+
+A signed in-app updater for per-user installs (Windows per-user installer, macOS app, a new per-user Linux install mode under `~/.local`): checks once a day, downloads the new version, verifies its signature with NOCTURNE's signing key, swaps it in and offers "Restart to update" without a password. Installs managed by pacman, apt or dnf never modify themselves: they show "Update available" with the exact command or a button that opens the software centre. A setting turns update checks off; a check sends only the current version (and, unavoidably, the IP address).
+
+Also for 0.5: Linux becomes Wayland-only (X11 code and dependencies removed, a clear message on X11 sessions); every text field supports selection, copy, cut and paste (needed for pasting CSS and CSS URLs); NOCTURNE's Trakt client id ships built in.
