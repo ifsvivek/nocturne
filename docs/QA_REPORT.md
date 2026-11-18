@@ -1,12 +1,6 @@
 # QA report
 
-Scope: the sections below up to "0.3 branch" cover the released 0.2.0 (GPUI interface, Jellyfin only); the 0.3.0
-(Iced, local + several servers) checks are in the dated 0.3 sections at the end, ending with the 0.3.0 release
-walkthrough. Wayland and X11 (Xwayland) on Linux, release build. Read-only checks ran against a
-a real Jellyfin server in API-key developer mode (a GET-only recording proxy counted requests: 0 non-GET
-requests over the whole run, including one in-window playback). Everything with accounts or writes ran
-only against the throwaway server from `scripts/test-jellyfin.sh`. No personal media details are
-recorded here.
+Scope: the sections below up to "0.3 branch" cover the released 0.2.0 (GPUI interface, Jellyfin only); the 0.3.0 (Iced, local + several servers) checks are in the dated 0.3 sections at the end, ending with the 0.3.0 release walkthrough. Wayland and X11 (Xwayland) on Linux, release build. Read-only checks ran against a a real Jellyfin server in API-key developer mode (a GET-only recording proxy counted requests: 0 non-GET requests over the whole run, including one in-window playback). Everything with accounts or writes ran only against the throwaway server from `scripts/test-jellyfin.sh`. No personal media details are recorded here.
 
 Legend: Y = yes, n/a = not applicable, - = not done, partial = see notes.
 
@@ -46,9 +40,7 @@ Legend: Y = yes, n/a = not applicable, - = not done, partial = see notes.
 
 ## Second pass: features added since the first pass
 
-Same safety rules: the real server was used only through a GET-only recording proxy (199 requests, 0 non-GET,
-one in-window playback with server changes off), every write and sign-in ran on a throwaway Jellyfin 12.4 with
-isolated XDG directories and a unique keyring name. "UI" means driven through the release binary.
+Same safety rules: the real server was used only through a GET-only recording proxy (199 requests, 0 non-GET, one in-window playback with server changes off), every write and sign-in ran on a throwaway Jellyfin 12.4 with isolated XDG directories and a unique keyring name. "UI" means driven through the release binary.
 
 | Feature | Implemented | Unit-tested | Throwaway-integration-tested | Real-server read-only verified | Notes |
 |---|---|---|---|---|---|
@@ -84,125 +76,38 @@ isolated XDG directories and a unique keyring name. "UI" means driven through th
 
 ## Settings drop-downs and scrolling (unreleased)
 
-Throwaway Jellyfin on port 8098, isolated XDG dirs, developer-token mode, 1280x720 window, debug build.
-Checked live: the page scrolls and End / Down move the selected row into view (the last row, Image cache, is
-reachable); Enter opens the drop-down under the chip, or above it when there is no room below (it painted over the
-rows, not under them); the menu scrolls, opens on the current entry (a hand-edited unknown value `xx-custom` appeared
-as its own marked entry and as the chip text); Home / Down / Enter chose English and `settings.toml` then held
-`audio_lang = "eng"` (stored format unchanged). Unit-tested: the menu model (open, clamp, Up / Down / Home / End,
-Enter / Space, Esc, ignored keys), the choice lists and picks per setting, unknown stored values and language aliases,
-and the scroll-child index and navigation-key logic. Not verified live: mouse clicks on chips and options, click-away
-and mouse-wheel scrolling (the desktop was shared with other sessions and focus and pointer moved under the
-test, so only the keyboard path was driven); Esc closing the menu was seen once but not repeated cleanly. Library
-Sort / Filter menus, player menus and admin dialogs were checked for click-to-cycle controls: none exist, so nothing
-else changed. Left alone on purpose: player repeat, A-B loop and speed controls (cycling is the expected behaviour
-there) and the library `V` view shortcut.
+Throwaway Jellyfin on port 8098, isolated XDG dirs, developer-token mode, 1280x720 window, debug build. Checked live: the page scrolls and End / Down move the selected row into view (the last row, Image cache, is reachable); Enter opens the drop-down under the chip, or above it when there is no room below (it painted over the rows, not under them); the menu scrolls, opens on the current entry (a hand-edited unknown value `xx-custom` appeared as its own marked entry and as the chip text); Home / Down / Enter chose English and `settings.toml` then held `audio_lang = "eng"` (stored format unchanged). Unit-tested: the menu model (open, clamp, Up / Down / Home / End, Enter / Space, Esc, ignored keys), the choice lists and picks per setting, unknown stored values and language aliases, and the scroll-child index and navigation-key logic. Not verified live: mouse clicks on chips and options, click-away and mouse-wheel scrolling (the desktop was shared with other sessions and focus and pointer moved under the test, so only the keyboard path was driven); Esc closing the menu was seen once but not repeated cleanly. Library Sort / Filter menus, player menus and admin dialogs were checked for click-to-cycle controls: none exist, so nothing else changed. Left alone on purpose: player repeat, A-B loop and speed controls (cycling is the expected behaviour there) and the library `V` view shortcut.
 
 ## Profile picture in the header avatar (unreleased)
 
-Throwaway Jellyfin on port 8099 (users alice, bob, admin), isolated XDG dirs and keyring name, a private copy of the
-debug binary started from a directory without a `.env`, synthetic PNGs made with ffmpeg. Checked live: alice with an
-uploaded picture showed it, clipped to a circle, in the header after a restart; the account menu header showed it at
-40 px with the server address kept under the name; a picture replaced on the server (new tag) was shown after a restart;
-setting one from the app (Profile image dialog) and removing one (Remove profile image) changed the header avatar at
-once, with the initial back after removal and `accounts.toml` following the tag; adding bob and switching back and
-forth updated the avatar without a restart; the "Switch to bob" row showed bob's picture and "Switch to alice" the
-initial while alice had none; the Admin Users list showed both pictures and the initial for the admin with none.
-Unit-tested: the disk cache key (server, user, tag, size), the avatar fallback (no tag, loading, failed, old tag, ready),
-the image URL, and the `image_tag` field in `accounts.toml` (round trip, old files, only saved when it changes). Not
-verified: a failing image download (initial fallback is unit-tested only) and mouse clicks (the pointer could not be
-moved reliably; the keyboard path was used). Note for testers: a first attempt ran from the repository directory and
-loaded the real `.env` developer token (GET reads only, nothing changed); it was stopped at once, and later runs used a
-directory without `.env`.
+Throwaway Jellyfin on port 8099 (users alice, bob, admin), isolated XDG dirs and keyring name, a private copy of the debug binary started from a directory without a `.env`, synthetic PNGs made with ffmpeg. Checked live: alice with an uploaded picture showed it, clipped to a circle, in the header after a restart; the account menu header showed it at 40 px with the server address kept under the name; a picture replaced on the server (new tag) was shown after a restart; setting one from the app (Profile image dialog) and removing one (Remove profile image) changed the header avatar at once, with the initial back after removal and `accounts.toml` following the tag; adding bob and switching back and forth updated the avatar without a restart; the "Switch to bob" row showed bob's picture and "Switch to alice" the initial while alice had none; the Admin Users list showed both pictures and the initial for the admin with none. Unit-tested: the disk cache key (server, user, tag, size), the avatar fallback (no tag, loading, failed, old tag, ready), the image URL, and the `image_tag` field in `accounts.toml` (round trip, old files, only saved when it changes). Not verified: a failing image download (initial fallback is unit-tested only) and mouse clicks (the pointer could not be moved reliably; the keyboard path was used). Note for testers: a first attempt ran from the repository directory and loaded the real `.env` developer token (GET reads only, nothing changed); it was stopped at once, and later runs used a directory without `.env`.
 
 ## Profile picker (unreleased)
 
-Throwaway Jellyfin on port 8100 (alice with an uploaded picture, bob, carol, admin), isolated XDG dirs, a unique
-keyring service name, the debug binary started from a directory without a `.env` and with the developer variables unset.
-Each user was signed in once through the app's own forms so the tokens were remembered. Checked live: the picker opens at
-launch with the picture on alice and initials on bob and carol (pictures load without a token); Right / Left / Space /
-Enter and a mouse click choose a profile and open Home as that user; ticking "Use as default profile" and choosing wrote
-`default = true` for that account only and the next launch went straight to Home as that profile, also when another
-profile had been used last; "Switch profile" reopened the picker with the default highlighted and the box ticked, and
-choosing another profile without touching the box left the default alone; the Settings "Default profile" drop-down
-changed the default to another profile and back to "Ask every time" (marker removed); signing out of the default account
-removed the marker; revoking the app's tokens on the throwaway made the pick fall back to the sign-in form with the name
-filled in, the password field focused and "Your session ended" shown, Esc returned to the picker, and a password sign-in
-then worked; with one remembered account the launch showed the sign-in form, no picker. Unit-tested: the start-up
-decision (0, 1, N accounts, default set, unset, stale or doubled marker, other server's default, developer-token mode),
-selection (wrapping Left / Right, Up / Down in wrapped rows, Enter, Esc, ignored while signing in), the default box
-(set, keep, clear), the `default` marker in `accounts.toml` (one per server, cleared by forgetting, round trip, older
-files), the Settings row and the name prefill. Not verified: the wrapped layout in a narrow window (columns and
-navigation are unit-tested only), a failed server at launch with a default set (falls back to the picker, not run), and
-more than three profiles. All three tokens were revoked together because the app uses one device id for every account.
+Throwaway Jellyfin on port 8100 (alice with an uploaded picture, bob, carol, admin), isolated XDG dirs, a unique keyring service name, the debug binary started from a directory without a `.env` and with the developer variables unset. Each user was signed in once through the app's own forms so the tokens were remembered. Checked live: the picker opens at launch with the picture on alice and initials on bob and carol (pictures load without a token); Right / Left / Space / Enter and a mouse click choose a profile and open Home as that user; ticking "Use as default profile" and choosing wrote `default = true` for that account only and the next launch went straight to Home as that profile, also when another profile had been used last; "Switch profile" reopened the picker with the default highlighted and the box ticked, and choosing another profile without touching the box left the default alone; the Settings "Default profile" drop-down changed the default to another profile and back to "Ask every time" (marker removed); signing out of the default account removed the marker; revoking the app's tokens on the throwaway made the pick fall back to the sign-in form with the name filled in, the password field focused and "Your session ended" shown, Esc returned to the picker, and a password sign-in then worked; with one remembered account the launch showed the sign-in form, no picker. Unit-tested: the start-up decision (0, 1, N accounts, default set, unset, stale or doubled marker, other server's default, developer-token mode), selection (wrapping Left / Right, Up / Down in wrapped rows, Enter, Esc, ignored while signing in), the default box (set, keep, clear), the `default` marker in `accounts.toml` (one per server, cleared by forgetting, round trip, older files), the Settings row and the name prefill. Not verified: the wrapped layout in a narrow window (columns and navigation are unit-tested only), a failed server at launch with a default set (falls back to the picker, not run), and more than three profiles. All three tokens were revoked together because the app uses one device id for every account.
 
 ## Contrast and Settings controls (unreleased)
 
-Throwaway Jellyfin on port 8101 (synthetic demo library), isolated XDG dirs, unique keyring service name, debug binary
-started from a directory without a `.env` and with the developer variables unset; focus and pid were checked before every
-keystroke. Checked live at 1280x720 (and Settings at 1900x1180): Settings closed, drop-down open (opens upward near the
-page bottom, current choice ticked), scrolled; the switches (ON and OFF words), caret flip, keyboard focus ring and the
-selected-row bar; Movies, an item's detail page and Admin Dashboard with the new tokens. Before and after screenshots
-were compared by eye; contrast measured on real pixels (text against the local background): Settings caption 3.9 before,
-8.0 after; description text 6.9; chip text 11.9; ON label 8.6 (the OFF label sat in the focus glow at 4.3 until the
-focused switch got a solid fill). Unit-tested: all token and surface contrast pairs (text 4.5:1, outlines and focus
-ring 3:1, secondary distinct from tertiary). Not verified live: the profile picker, dialogs and the player overlay with
-the new tokens (their colours come from the same tokens and the audited list, but they were not opened), narrower
-windows than 1280x720, and the drop-down at 1900x1180. Some overlay scrims and hover tints in the player still use raw
-rgba values outside `theme.rs` (decorative, not text).
+Throwaway Jellyfin on port 8101 (synthetic demo library), isolated XDG dirs, unique keyring service name, debug binary started from a directory without a `.env` and with the developer variables unset; focus and pid were checked before every keystroke. Checked live at 1280x720 (and Settings at 1900x1180): Settings closed, drop-down open (opens upward near the page bottom, current choice ticked), scrolled; the switches (ON and OFF words), caret flip, keyboard focus ring and the selected-row bar; Movies, an item's detail page and Admin Dashboard with the new tokens. Before and after screenshots were compared by eye; contrast measured on real pixels (text against the local background): Settings caption 3.9 before, 8.0 after; description text 6.9; chip text 11.9; ON label 8.6 (the OFF label sat in the focus glow at 4.3 until the focused switch got a solid fill). Unit-tested: all token and surface contrast pairs (text 4.5:1, outlines and focus ring 3:1, secondary distinct from tertiary). Not verified live: the profile picker, dialogs and the player overlay with the new tokens (their colours come from the same tokens and the audited list, but they were not opened), narrower windows than 1280x720, and the drop-down at 1900x1180. Some overlay scrims and hover tints in the player still use raw rgba values outside `theme.rs` (decorative, not text).
 
 ## Public screenshots (unreleased)
 
-All images in `docs/screenshots/` (and the copies in `website/src/lib/screens/`) were re-captured from the release build
-(`cargo build --release --locked`) at 3840x2160: a dedicated headless Hyprland output at that size with scale 2 (a 1920x1080
-logical window rendered at 2x, so text and edges are native, not upscaled), the app window set to compositor fullscreen
-(no title bar, panels or other windows; checked with `hyprctl clients`), window class `nocturne`, grabbed with `grim -o`.
-The only library was the synthetic demo one from `scripts/make-demo-library.sh` on a throwaway Jellyfin (own port and
-directories under `/tmp`, run with `NOCTURNE_JF_TEST_PORT`, `NOCTURNE_JF_TEST_DIR`, `NOCTURNE_DEMO_DIR` set explicitly),
-with three generated profiles (Mara, an administrator with Continue Watching, Next Up, favourites and a collection; Theo;
-Juno) that have synthetic profile pictures. The app ran with isolated XDG directories, a unique keyring service name, from a
-directory without a `.env` and with the developer variables unset, so no real server was contacted. "Allow NOCTURNE to
-change data on the server" was on (sync of watch progress off) so menus and the admin pages are not dimmed. The throwaway
-server's published address was set to `https://media.example.com`. Two details that the server or app cannot hide were
-masked in the pixels afterwards: the address line in the account menu (it shows the address the app connected to) and the
-WebSocket port on the Dashboard; both were replaced with the placeholder text in the same font. The Hollow Meridian demo clip
-was re-encoded at 2560x1440 (the generated clips are 1280x720) so the player frame is not upscaled soft. Files are lossy WebP
-at quality 97 with sharp YUV (PSNR about 48 dB against the lossless capture on UI screens, 44 dB on the grainy video frame),
-no downscale, metadata stripped (only the image chunk remains); lossless was several times larger. Checked: OCR of every
-image found no address, port, path, token or name other than the three demo profiles; the Dashboard still shows the
-throwaway server's random server id and the Users page a shortened user id (both meaningless). Not captured: any admin
-Libraries page (it lists paths).
+All images in `docs/screenshots/` (and the copies in `website/src/lib/screens/`) were re-captured from the release build (`cargo build --release --locked`) at 3840x2160: a dedicated headless Hyprland output at that size with scale 2 (a 1920x1080 logical window rendered at 2x, so text and edges are native, not upscaled), the app window set to compositor fullscreen (no title bar, panels or other windows; checked with `hyprctl clients`), window class `nocturne`, grabbed with `grim -o`. The only library was the synthetic demo one from `scripts/make-demo-library.sh` on a throwaway Jellyfin (own port and directories under `/tmp`, run with `NOCTURNE_JF_TEST_PORT`, `NOCTURNE_JF_TEST_DIR`, `NOCTURNE_DEMO_DIR` set explicitly), with three generated profiles (Mara, an administrator with Continue Watching, Next Up, favourites and a collection; Theo; Juno) that have synthetic profile pictures. The app ran with isolated XDG directories, a unique keyring service name, from a directory without a `.env` and with the developer variables unset, so no real server was contacted. "Allow NOCTURNE to change data on the server" was on (sync of watch progress off) so menus and the admin pages are not dimmed. The throwaway server's published address was set to `https://media.example.com`. Two details that the server or app cannot hide were masked in the pixels afterwards: the address line in the account menu (it shows the address the app connected to) and the WebSocket port on the Dashboard; both were replaced with the placeholder text in the same font. The Hollow Meridian demo clip was re-encoded at 2560x1440 (the generated clips are 1280x720) so the player frame is not upscaled soft. Files are lossy WebP at quality 97 with sharp YUV (PSNR about 48 dB against the lossless capture on UI screens, 44 dB on the grainy video frame), no downscale, metadata stripped (only the image chunk remains); lossless was several times larger. Checked: OCR of every image found no address, port, path, token or name other than the three demo profiles; the Dashboard still shows the throwaway server's random server id and the Users page a shortened user id (both meaningless). Not captured: any admin Libraries page (it lists paths).
 
 ## Watch together (SyncPlay), Jellyfin 12.4.0 throwaway on port 8103
 
-**Verified live** with two real app processes (users alice and bob, isolated XDG directories, unique keyring service and
-`NOCTURNE_DEVICE_ID`, started without a `.env`, headless Hyprland outputs), a generated 5 minute 640x360 24 fps clip with a
-burned-in timecode:
-- alice creates a group, bob sees it listed and joins (the header pill shows the group and "2 watching"); alice starts the
-  clip, both start together. Bob (the non-initiator) also started correctly when the group was created by alice.
-- Pause by alice, seek +10 s while paused, unpause by alice; then pause, seek -10 s, unpause by bob: the other player followed
-  every time. Both external mpv players were queried over their IPC sockets at the same instant: the position difference was
-  0.0 ms in every sample after each transition and in 20 consecutive steady-state samples (positions are frame quantised, one
-  frame at 24 fps is 41.7 ms; the largest single difference seen was one frame, 41.7 ms, right after a catch-up).
-- Late join: bob left the group (local control returned: pausing bob did not pause alice), then rejoined 15 s later and caught
-  up to the group's position within about 3 s, ending at a 0 to 41.7 ms difference.
+**Verified live** with two real app processes (users alice and bob, isolated XDG directories, unique keyring service and `NOCTURNE_DEVICE_ID`, started without a `.env`, headless Hyprland outputs), a generated 5 minute 640x360 24 fps clip with a burned-in timecode:
+- alice creates a group, bob sees it listed and joins (the header pill shows the group and "2 watching"); alice starts the clip, both start together. Bob (the non-initiator) also started correctly when the group was created by alice.
+- Pause by alice, seek +10 s while paused, unpause by alice; then pause, seek -10 s, unpause by bob: the other player followed every time. Both external mpv players were queried over their IPC sockets at the same instant: the position difference was 0.0 ms in every sample after each transition and in 20 consecutive steady-state samples (positions are frame quantised, one frame at 24 fps is 41.7 ms; the largest single difference seen was one frame, 41.7 ms, right after a catch-up).
+- Late join: bob left the group (local control returned: pausing bob did not pause alice), then rejoined 15 s later and caught up to the group's position within about 3 s, ending at a 0 to 41.7 ms difference.
 - The stop key stops both players. Closing the video keeps the member in the group; "Play what the group is on" rejoins.
-- Mixed backends: alice on the external mpv, bob on the embedded libmpv player. By timecode screenshots against alice's IPC
-  position the difference was at most about 85 ms (one to two frames, and this includes the screenshot latency).
-- Server stopped for 12 s while both were in the group: the pill read "reconnecting", then after the restart (groups do not
-  survive it) the group state was dropped and local control returned.
+- Mixed backends: alice on the external mpv, bob on the embedded libmpv player. By timecode screenshots against alice's IPC position the difference was at most about 85 ms (one to two frames, and this includes the screenshot latency).
+- Server stopped for 12 s while both were in the group: the pill read "reconnecting", then after the restart (groups do not survive it) the group state was dropped and local control returned.
 - Clock estimate over loopback: offset about 1.4 ms, ping 2 ms. Integer ping accepted by the server.
-- Server wait behaviour (ignored live test): with one member never sending Ready the group was held with `Pause` at 0 s and
-  started with `Unpause` at 30.9 s.
-- Drift correction never had to act in these runs (the players stayed within one frame), so SpeedToSync and SkipToSync were
-  **not** exercised live.
+- Server wait behaviour (ignored live test): with one member never sending Ready the group was held with `Pause` at 0 s and started with `Unpause` at 30.9 s.
+- Drift correction never had to act in these runs (the players stayed within one frame), so SpeedToSync and SkipToSync were **not** exercised live.
 
-**Unit tested only**: message decoding (real-shaped samples), clock estimator, command scheduling, duplicate handling, stale
-queue rejection, late-join start position, drift thresholds and the correction timeline, Ready reports, stall detection, the
-access gate (policy, switch, developer mode), item ordering, reconnect backoff, the WebSocket client against an in-process
-server (decode, keep-alive answer, reconnect), REST bodies against a mock, the Home nav-highlight fix. Not verified: more than
-two members, transcoded members, a user whose policy is `JoinGroups` or `None` against the real server, `LibraryAccessDenied`,
-and the screen on a real library.
+**Unit tested only**: message decoding (real-shaped samples), clock estimator, command scheduling, duplicate handling, stale queue rejection, late-join start position, drift thresholds and the correction timeline, Ready reports, stall detection, the access gate (policy, switch, developer mode), item ordering, reconnect backoff, the WebSocket client against an in-process server (decode, keep-alive answer, reconnect), REST bodies against a mock, the Home nav-highlight fix. Not verified: more than two members, transcoded members, a user whose policy is `JoinGroups` or `None` against the real server, `LibraryAccessDenied`, and the screen on a real library.
 
 ## Not verified / known gaps
 
@@ -219,10 +124,7 @@ and the screen on a real library.
 
 ## 0.3 branch: clean-container install (2026-11-16)
 
-Script: `scripts/test-install.sh` (Docker, throwaway containers, no sudo, no CI). Tarball from `scripts/package.sh tarball`
-(`nocturne-0.2.0-x86_64-linux.tar.gz`, 11451356 B) built from the `iced-migration` head (GPUI `nocturne-app`).
-Final run: `arch`, `nompv`, `fedora`, `pkgbuild` all PASS; `debian` and `ubuntu` PASS for dependency resolution
-(binary does not run there, see below). Containers were `--rm`; pulled images were removed afterwards.
+Script: `scripts/test-install.sh` (Docker, throwaway containers, no sudo, no CI). Tarball from `scripts/package.sh tarball` (`nocturne-0.2.0-x86_64-linux.tar.gz`, 11451356 B) built from the `iced-migration` head (GPUI `nocturne-app`). Final run: `arch`, `nompv`, `fedora`, `pkgbuild` all PASS; `debian` and `ubuntu` PASS for dependency resolution (binary does not run there, see below). Containers were `--rm`; pulled images were removed afterwards.
 
 | Case | Result | Evidence |
 |---|---|---|
@@ -240,27 +142,17 @@ Final run: `arch`, `nompv`, `fedora`, `pkgbuild` all PASS; `debian` and `ubuntu`
 
 Findings:
 
-- The shipped binary needs glibc 2.44 (built on a current Arch/CachyOS toolchain), so the tarball only runs on distros
-  at least that new. Debian stable and Ubuntu cannot run it; building against an older glibc (or building from source on the
-  target) is the only fix. The migration plan limits 0.3 to Arch, so this is recorded, not a bug.
-- `install.sh` runs `pacman -S --needed` without `-y`/`-u` by design. On a stale system (the Docker `archlinux:latest`
-  image has no sync database and is older than the repos), `pacman -Sy` followed by `pacman -S` is a partial upgrade
-  and failed with file conflicts (openssl-3 `libcrypto.so.3` owned by `openssl`). The first harness run hit this and
-  was a test artifact, so the script now runs `pacman -Syu` first, as a real up-to-date Arch machine already is. No
-  change to `packaging/install.sh` was needed: every package name was proven right on Arch, Debian, Ubuntu and Fedora.
-- Not tested: the PKGBUILD `check()` step (skipped with `--nocheck` to save time), a real display or GPU in the
-  container (so only the "reaches windowing" stage), openSUSE, running the tarball binary on Fedora.
+- The shipped binary needs glibc 2.44 (built on a current Arch/CachyOS toolchain), so the tarball only runs on distros at least that new. Debian stable and Ubuntu cannot run it; building against an older glibc (or building from source on the target) is the only fix. The migration plan limits 0.3 to Arch, so this is recorded, not a bug.
+- `install.sh` runs `pacman -S --needed` without `-y`/`-u` by design. On a stale system (the Docker `archlinux:latest` image has no sync database and is older than the repos), `pacman -Sy` followed by `pacman -S` is a partial upgrade and failed with file conflicts (openssl-3 `libcrypto.so.3` owned by `openssl`). The first harness run hit this and was a test artifact, so the script now runs `pacman -Syu` first, as a real up-to-date Arch machine already is. No change to `packaging/install.sh` was needed: every package name was proven right on Arch, Debian, Ubuntu and Fedora.
+- Not tested: the PKGBUILD `check()` step (skipped with `--nocheck` to save time), a real display or GPU in the container (so only the "reaches windowing" stage), openSUSE, running the tarball binary on Fedora.
 
 ## mpv 0.42 TLS verification (self-signed servers)
 
-Question: mpv 0.42 turns `tls-verify` on by default. Does that break playback from a self-signed server, and is a
-per-source "trust this certificate" option needed?
+Question: mpv 0.42 turns `tls-verify` on by default. Does that break playback from a self-signed server, and is a per-source "trust this certificate" option needed?
 
-Setup (all loopback, throwaway data): a small Python TLS reverse proxy (`https://127.0.0.1:8447` with a self-signed
-`CN=localhost` certificate, SAN `127.0.0.1`) in front of the throwaway demo Jellyfin on `127.0.0.1:8097`.
+Setup (all loopback, throwaway data): a small Python TLS reverse proxy (`https://127.0.0.1:8447` with a self-signed `CN=localhost` certificate, SAN `127.0.0.1`) in front of the throwaway demo Jellyfin on `127.0.0.1:8097`.
 
-Installed mpv: 0.41.0. `mpv --list-options` shows `--tls-verify  Flag (default: no)`, so 0.42's new default cannot be
-observed directly; the explicit flag reproduces it.
+Installed mpv: 0.41.0. `mpv --list-options` shows `--tls-verify  Flag (default: no)`, so 0.42's new default cannot be observed directly; the explicit flag reproduces it.
 
 | Check | Result |
 |---|---|
@@ -271,19 +163,11 @@ observed directly; the explicit flag reproduces it.
 | App's own client (`NOCTURNE_JF_URL=https://127.0.0.1:8447`) | "Can't reach your server": the Jellyfin API client (rustls, system roots) already refuses the self-signed certificate |
 | `crates/player`/`crates/app` set `tls-*` options anywhere | no (`grep` finds none), so mpv's own default applies |
 
-Conclusion: no change needed. On mpv 0.42 a self-signed certificate would stop mpv, but such a server never gets as far
-as playback: the API client rejects it at connect time (and has always done so). A server whose certificate chains to a
-CA in the system store (a private CA installed with `update-ca-trust`, or a public one) verifies in both mpv (system CA
-bundle) and the API client, so playback keeps working. A per-source "trust this certificate" setting would have to
-cover the API client as well, not only mpv; it is a feature of its own, not a 0.42 fix. The external mpv player was not
-run separately through the app: it is the same mpv with the same defaults as the CLI rows above.
+Conclusion: no change needed. On mpv 0.42 a self-signed certificate would stop mpv, but such a server never gets as far as playback: the API client rejects it at connect time (and has always done so). A server whose certificate chains to a CA in the system store (a private CA installed with `update-ca-trust`, or a public one) verifies in both mpv (system CA bundle) and the API client, so playback keeps working. A per-source "trust this certificate" setting would have to cover the API client as well, not only mpv; it is a feature of its own, not a 0.42 fix. The external mpv player was not run separately through the app: it is the same mpv with the same defaults as the CLI rows above.
 
 ## Clean-container playback gate, Iced app (2026-11-16)
 
-`PKG=nocturne-ui BIN=nocturne-iced scripts/test-playback.sh` (names as they were before the cut-over; now `nocturne-app` / `nocturne`; package built from `git archive HEAD`
-in a fresh `archlinux:base-devel`, `makepkg -si --nocheck`, non-root user with the host uid, host Wayland socket
-bind-mounted, no `/dev/dri`, mesa `vulkan-swrast` (lavapipe), `WGPU_BACKEND=vulkan`, throwaway XDG dirs,
-`NOCTURNE_KEYRING_SERVICE=nocturne-test`, no Jellyfin URL/token). Result: 0 failures. Container, work dir and the pulled image were removed.
+`PKG=nocturne-ui BIN=nocturne-iced scripts/test-playback.sh` (names as they were before the cut-over; now `nocturne-app` / `nocturne`; package built from `git archive HEAD` in a fresh `archlinux:base-devel`, `makepkg -si --nocheck`, non-root user with the host uid, host Wayland socket bind-mounted, no `/dev/dri`, mesa `vulkan-swrast` (lavapipe), `WGPU_BACKEND=vulkan`, throwaway XDG dirs, `NOCTURNE_KEYRING_SERVICE=nocturne-test`, no Jellyfin URL/token). Result: 0 failures. Container, work dir and the pulled image were removed.
 
 | Check | Result | Detail |
 |---|---|---|
@@ -294,22 +178,11 @@ bind-mounted, no `/dev/dri`, mesa `vulkan-swrast` (lavapipe), `WGPU_BACKEND=vulk
 | `mpv --vo=null --ao=null --hwdec=no --frames=60 clip.mp4` (generated h264/aac, 640x360) | PASS | installed libmpv decodes |
 | Installed `nocturne` on the host compositor | PASS | `hyprctl clients -j` shows a mapped `class=nocturne` window whose pid is in the container (`docker top`); still mapped and running after 10 s; no panic in the log (the log was empty) |
 
-Proves: the package builds from a clean image with only the declared dependencies, every linked and dlopen'd library the
-start-up path touches resolves, the binary opens a Wayland window and survives 10 s on the software Vulkan path, and the
-distro's libmpv decodes video. Does not prove: in-window video (libmpv render API into the Wayland subsurface), UI
-contents (release builds have no screenshot path), input, hardware rendering or decoding, a real library or server, other
-distributions. Those stay host-verified. Also checked 2026-11-16: package names exist in debian:stable, fedora:latest and
-openSUSE Tumbleweed (see PACKAGING.md; `libEGL1` does not exist on openSUSE, `libglvnd` provides `libEGL.so.1`);
-`cargo deny check licenses bans sources` passes on the workspace including the Iced app.
+Proves: the package builds from a clean image with only the declared dependencies, every linked and dlopen'd library the start-up path touches resolves, the binary opens a Wayland window and survives 10 s on the software Vulkan path, and the distro's libmpv decodes video. Does not prove: in-window video (libmpv render API into the Wayland subsurface), UI contents (release builds have no screenshot path), input, hardware rendering or decoding, a real library or server, other distributions. Those stay host-verified. Also checked 2026-11-16: package names exist in debian:stable, fedora:latest and openSUSE Tumbleweed (see PACKAGING.md; `libEGL1` does not exist on openSUSE, `libglvnd` provides `libEGL.so.1`); `cargo deny check licenses bans sources` passes on the workspace including the Iced app.
 
 ## 0.3.0 release walkthrough (2026-11-16)
 
-Debug build for driving (wtype / ydotool on Hyprland, `NOCTURNE_SNAP_WATCH` captures), release build for the sanity
-launch. Two throwaway demo servers (127.0.0.1:8097 and :8098, `/tmp/nocturne-demo*`), a generated local fixture
-(ffmpeg clips, procedural posters, an `.nfo` giving "Ember Tide" the same IMDb id as the demo copies, one two-season
-series, one unmatched file) and a 2,000-file bulk folder (hard links of one clip). Every profile ran under
-`scripts/run-isolated.sh` with a test keyring service. No personal media or server was touched; the only server writes
-were on 8097.
+Debug build for driving (wtype / ydotool on Hyprland, `NOCTURNE_SNAP_WATCH` captures), release build for the sanity launch. Two throwaway demo servers (127.0.0.1:8097 and :8098, `/tmp/nocturne-demo*`), a generated local fixture (ffmpeg clips, procedural posters, an `.nfo` giving "Ember Tide" the same IMDb id as the demo copies, one two-season series, one unmatched file) and a 2,000-file bulk folder (hard links of one clip). Every profile ran under `scripts/run-isolated.sh` with a test keyring service. No personal media or server was touched; the only server writes were on 8097.
 
 | # | Check | Result | Evidence |
 |---|---|---|---|
@@ -329,40 +202,25 @@ were on 8097.
 
 ### Bugs fixed (each a commit on `iced-migration`)
 
-- **Resume position overwritten (medium).** Opening an item with a saved position reported "started at 0:00" before the
-  viewer answered the resume prompt, so declining or even ignoring the prompt left no saved position (observed
-  `resume_secs` 70 -> 0 for a local item). `report_tick` now waits until the prompt is answered.
-- **Sources page stayed on top of navigation (low).** Header links and back/forward did not close Settings > Sources.
-  `close_admin` and the Back/Forward messages now close it.
-- **Admin unreachable in a narrow window (low).** The header's Admin link scrolls off the edge in a narrow window; the
-  account menu now has an "Admin" entry for administrator accounts.
-- **Wording (trivial).** Empty descriptions said "No description from the server." for local items too; now "No
-  description available."
-- **Demo logos (trivial, demo data only).** The generated two-line logo was cropped to one line; fixed in
-  `scripts/demo_assets.py` (regenerated for the throwaway servers).
+- **Resume position overwritten (medium).** Opening an item with a saved position reported "started at 0:00" before the viewer answered the resume prompt, so declining or even ignoring the prompt left no saved position (observed `resume_secs` 70 -> 0 for a local item). `report_tick` now waits until the prompt is answered.
+- **Sources page stayed on top of navigation (low).** Header links and back/forward did not close Settings > Sources. `close_admin` and the Back/Forward messages now close it.
+- **Admin unreachable in a narrow window (low).** The header's Admin link scrolls off the edge in a narrow window; the account menu now has an "Admin" entry for administrator accounts.
+- **Wording (trivial).** Empty descriptions said "No description from the server." for local items too; now "No description available."
+- **Demo logos (trivial, demo data only).** The generated two-line logo was cropped to one line; fixed in `scripts/demo_assets.py` (regenerated for the throwaway servers).
 
 ### Open
 
-- **Header Admin link off-screen at narrow widths (low).** The link row scrolls sideways by design; there is no visual
-  hint that more links exist. Worked around by the account-menu entry.
-- **Manual subtitle verification (low, not a defect).** The sidecar `.srt` is present as a track; its rendering in the
-  window was not inspected because `window::screenshot` cannot see the video subsurface.
+- **Header Admin link off-screen at narrow widths (low).** The link row scrolls sideways by design; there is no visual hint that more links exist. Worked around by the account-menu entry.
+- **Manual subtitle verification (low, not a defect).** The sidecar `.srt` is present as a track; its rendering in the window was not inspected because `window::screenshot` cannot see the video subsurface.
 - **Single-instance focus depends on the compositor (info).** See row 11.
 
 ### Debug aids added
 
-`NOCTURNE_SNAP_WATCH=/tmp/req` (write a target path into that file to get an on-demand window capture) and
-`NOCTURNE_HOLD_SPLASH=0.55` (pin the loading overlay at 55 %), both debug-build only, in `crates/app/src/snap.rs` and
-`player/mod.rs`.
+`NOCTURNE_SNAP_WATCH=/tmp/req` (write a target path into that file to get an on-demand window capture) and `NOCTURNE_HOLD_SPLASH=0.55` (pin the loading overlay at 55 %), both debug-build only, in `crates/app/src/snap.rs` and `player/mod.rs`.
 
 ### Website screenshots
 
-3840x2160 captures in `/tmp/shots-0.3/`, taken on a virtual 4K output at scale 2 (`hyprctl output create headless`, fullscreen
-window, `window::screenshot`; the output was removed afterwards): 01-home, 02-library, 03-movie-detail, 04-series-episodes,
-05-search, 06-playback, 07-settings, 08-admin-dashboard, 09-first-run, 10-sources, 11-local-folders, 12-loading,
-picker, account-menu, settings-dropdown. 06-playback is the only `grim` capture (that headless output only, window
-fullscreen, player showing, nothing else on it). Servers are labelled "Living room" / "Study" and the local source "This
-computer"; the demo library and a generated local fixture only; server changes OFF.
+3840x2160 captures in `/tmp/shots-0.3/`, taken on a virtual 4K output at scale 2 (`hyprctl output create headless`, fullscreen window, `window::screenshot`; the output was removed afterwards): 01-home, 02-library, 03-movie-detail, 04-series-episodes, 05-search, 06-playback, 07-settings, 08-admin-dashboard, 09-first-run, 10-sources, 11-local-folders, 12-loading, picker, account-menu, settings-dropdown. 06-playback is the only `grim` capture (that headless output only, window fullscreen, player showing, nothing else on it). Servers are labelled "Living room" / "Study" and the local source "This computer"; the demo library and a generated local fixture only; server changes OFF.
 
 ## 0.4 Linux packages (W3, 2026-11-17)
 
@@ -382,19 +240,14 @@ Not tested: a window or playback inside the deb/rpm containers, other distributi
 
 Findings (not fixed here, need a code change in `crates/player`):
 
-- **In-window video needs libmpv >= 0.40.** `embedded.rs` sets `background=color`, rejected by mpv 0.35 and 0.37
-  (Ubuntu 24.04's libmpv2 is 0.37); the app then uses the external `mpv`. Setting that option after init and ignoring a
-  failure would make the embedded player work there.
-- The player links `libEGL` at build time (`#[link(name = "EGL")]`), so a missing `libEGL.so.1` is a loader error before the
-  app can show its message, unlike libmpv.
+- **In-window video needs libmpv >= 0.40.** `embedded.rs` sets `background=color`, rejected by mpv 0.35 and 0.37 (Ubuntu 24.04's libmpv2 is 0.37); the app then uses the external `mpv`. Setting that option after init and ignoring a failure would make the embedded player work there.
+- The player links `libEGL` at build time (`#[link(name = "EGL")]`), so a missing `libEGL.so.1` is a loader error before the app can show its message, unlike libmpv.
 - A friendly message instead of the winit panic when no display exists (already a 0.4 polish item).
 - An explicit libmpv path override (e.g. `NOCTURNE_LIBMPV`) would let an AppImage avoid `LD_LIBRARY_PATH`.
 
 ## 0.4 Windows installer (2026-11-17)
 
-**Everything below ran under wine 10.0 (Debian 13 container, Xvfb). Wine is not Windows**: it proves the installer logic and
-that the exe starts, nothing about real Windows (SmartScreen, shell shortcut rendering, wgpu on a Windows GPU driver,
-Credential Manager, mpv.exe playback, Add/Remove Programs UI). Details: [PACKAGING.md](PACKAGING.md).
+**Everything below ran under wine 10.0 (Debian 13 container, Xvfb). Wine is not Windows**: it proves the installer logic and that the exe starts, nothing about real Windows (SmartScreen, shell shortcut rendering, wgpu on a Windows GPU driver, Credential Manager, mpv.exe playback, Add/Remove Programs UI). Details: [PACKAGING.md](PACKAGING.md).
 
 | Check | Result |
 |---|---|
@@ -408,23 +261,13 @@ Credential Manager, mpv.exe playback, Add/Remove Programs UI). Details: [PACKAGI
 | `nocturne.exe` start (15 s, Xvfb) | still running at the timeout, no crash output (a window under wine/Xvfb; no GPU test) |
 | `uninstall.exe /S _?=<dir>` | exit 0; shortcut and registry key removed; program files removed (only `uninstall.exe` remains because `_?=` makes NSIS wait instead of copying itself to a temp dir and deleting itself afterwards; normal silent uninstall self-deletes) |
 
-Not tested: real Windows (any version), the interactive wizard pages (licence page, directory page, finish page "run"),
-upgrade-over-existing install, installing with a custom `/D=`, running playback, code signing. Not done: the macOS
-`.dmg` script has never run (no Mac).
+Not tested: real Windows (any version), the interactive wizard pages (licence page, directory page, finish page "run"), upgrade-over-existing install, installing with a custom `/D=`, running playback, code signing. Not done: the macOS `.dmg` script has never run (no Mac).
 
 ## 0.4.0 walkthrough (unreleased), 2026-11-17
 
-Branch `v0.4-local` (HEAD `7db009e` plus the QA commits below), Arch Linux, Hyprland (Wayland), NVIDIA RTX 3060 + AMD iGPU,
-Jellyfin 12.4.0 throwaway servers (demo library from `scripts/make-demo-library.sh` on loopback 8108 / 8109, the guarded
-test server on 8097), libmpv / mpv 0.41. Every launch went through `scripts/run-isolated.sh` with a throwaway profile and
-keyring service; the apps were driven only by the debug hooks (`NOCTURNE_KEYS`, `NOCTURNE_PAD`, `NOCTURNE_PREVIEW*`) and
-inspected through their own window captures, the server's REST API (`/Sessions`, item state), mpv's private IPC socket and
-the stored data files. No global keystrokes, no real server, no personal media (fixtures: generated clips; the online test
-used public-domain film and show titles). Writes only reached the throwaway servers. The maintainer's TMDB and OpenSubtitles
-keys were loaded into the throwaway keyring and never printed or captured. Trakt was skipped (maintainer's sign-in).
+Branch `v0.4-local` (HEAD `7db009e` plus the QA commits below), Arch Linux, Hyprland (Wayland), NVIDIA RTX 3060 + AMD iGPU, Jellyfin 12.4.0 throwaway servers (demo library from `scripts/make-demo-library.sh` on loopback 8108 / 8109, the guarded test server on 8097), libmpv / mpv 0.41. Every launch went through `scripts/run-isolated.sh` with a throwaway profile and keyring service; the apps were driven only by the debug hooks (`NOCTURNE_KEYS`, `NOCTURNE_PAD`, `NOCTURNE_PREVIEW*`) and inspected through their own window captures, the server's REST API (`/Sessions`, item state), mpv's private IPC socket and the stored data files. No global keystrokes, no real server, no personal media (fixtures: generated clips; the online test used public-domain film and show titles). Writes only reached the throwaway servers. The maintainer's TMDB and OpenSubtitles keys were loaded into the throwaway keyring and never printed or captured. Trakt was skipped (maintainer's sign-in).
 
-Gate: `scripts/ci-checks.sh` passed on `7db009e`. (The next master commit `b213603` left `crates/core/tests/trakt_live.rs`
-unformatted, so `cargo fmt --check` would have failed on it; fixed in `0f1bacc`.)
+Gate: `scripts/ci-checks.sh` passed on `7db009e`. (The next master commit `b213603` left `crates/core/tests/trakt_live.rs` unformatted, so `cargo fmt --check` would have failed on it; fixed in `0f1bacc`.)
 
 | # | Check | Result | Evidence |
 |---|---|---|---|
@@ -456,8 +299,7 @@ unformatted, so `cargo fmt --check` would have failed on it; fixed in `0f1bacc`.
 | Watch together (SyncPlay) | PARTIAL | Two preview instances signed in as alice and bob and showed the screen; creating a group needs typing, which the hooks cannot do. The two-member protocol suite (`syncplay_live`) passes against the guarded server after the test fix below |
 | Single instance | PASS | A second launch exits at once (0) and leaves one process and one window |
 
-Live suites run on the guarded throwaway server (8097): `nocturne-jellyfin-user` (7 + playlists + profile + sessions + syncplay)
-and `nocturne-core` `live_watched`: all pass.
+Live suites run on the guarded throwaway server (8097): `nocturne-jellyfin-user` (7 + playlists + profile + sessions + syncplay) and `nocturne-core` `live_watched`: all pass.
 
 ### Bugs fixed during the walkthrough
 
@@ -487,6 +329,5 @@ and `nocturne-core` `live_watched`: all pass.
 - Windows and macOS machines (build, keyring, mpv IPC, installers; the macOS script has never run).
 - Remote control from a real Jellyfin Web / mobile client (QA sent the same commands through the REST API).
 - A transcoded stream's `PlayMethod`, a server that denies downloads, exFAT/FAT download targets.
-- Typing flows the key hooks cannot drive: the extra header field in Sources, the API key fields, a custom smart collection, the
-  subtitle Download button with an OpenSubtitles login, the SyncPlay group name.
+- Typing flows the key hooks cannot drive: the extra header field in Sources, the API key fields, a custom smart collection, the subtitle Download button with an OpenSubtitles login, the SyncPlay group name.
 - .deb / .rpm on bare-metal Debian / Fedora installs.

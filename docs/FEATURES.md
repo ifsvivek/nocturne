@@ -1,9 +1,6 @@
 # Features
 
-What NOCTURNE does: 0.3.0 is released; entries marked **(0.4)** are on the unreleased local 0.4 branch. `[x]` implemented, `[~]` partial, `[ ]` not implemented.
-Verification tags on 0.4 items: *verified* (run against a real or throwaway server / real data), *mock-tested* (unit tests and loopback mocks only), *needs hardware / account* (cannot be checked here).
-Verification detail per feature is in [QA_REPORT.md](QA_REPORT.md); remaining work is in [ROADMAP.md](ROADMAP.md).
-Which features change data on your server is in [WRITES.md](WRITES.md).
+What NOCTURNE does: 0.3.0 is released; entries marked **(0.4)** are on the unreleased local 0.4 branch. `[x]` implemented, `[~]` partial, `[ ]` not implemented. Verification tags on 0.4 items: *verified* (run against a real or throwaway server / real data), *mock-tested* (unit tests and loopback mocks only), *needs hardware / account* (cannot be checked here). Verification detail per feature is in [QA_REPORT.md](QA_REPORT.md); remaining work is in [ROADMAP.md](ROADMAP.md). Which features change data on your server is in [WRITES.md](WRITES.md).
 
 ## Sources: local folders and several servers
 - [x] First-run setup flow (5 steps fresh, 2 for upgraders): Local library, Connect to a server, or Both; Settings > Run setup again

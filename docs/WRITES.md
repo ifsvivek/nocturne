@@ -1,10 +1,6 @@
 # What NOCTURNE changes on your server
 
-By default NOCTURNE only reads. One setting, **Settings > Allow NOCTURNE to change data on the
-server** (`allow_server_writes`, default off), gates every change. Turn it on and the features below
-work, each with its existing confirmation dialog where one exists. With several servers, every change goes only to the server
-the item came from (its **origin**) and uses that server's own account; no change is ever sent to another server. Developer API-key mode
-(`NOCTURNE_JF_TOKEN`) refuses all writes whatever the setting says (it also cannot take part in a group).
+By default NOCTURNE only reads. One setting, **Settings > Allow NOCTURNE to change data on the server** (`allow_server_writes`, default off), gates every change. Turn it on and the features below work, each with its existing confirmation dialog where one exists. With several servers, every change goes only to the server the item came from (its **origin**) and uses that server's own account; no change is ever sent to another server. Developer API-key mode (`NOCTURNE_JF_TOKEN`) refuses all writes whatever the setting says (it also cannot take part in a group).
 
 | Feature | Needs server changes on | Also needs |
 |---|---|---|
@@ -28,38 +24,15 @@ the item came from (its **origin**) and uses that server's own account; no chang
 | Offline copies: "Download to this computer" (GET `Items/{id}/Download`, only reads the server) | no | writes only new files into the local folder you choose, never overwrites; needs the server to allow downloads for your account |
 | Local library: mark watched, resume position, manual match, source preference, folders and sources list | no | nothing leaves your computer: stored in NOCTURNE's own files (`$XDG_DATA_HOME/nocturne/local/`, `sources.toml`) |
 
-**Remote control** (`remote_control`, default off; needs server changes on; never in developer API-key mode). When on, each
-signed-in server gets `POST /Sessions/Capabilities/Full` (`SupportsMediaControl`, playable types Video and Audio, the
-commands below), re-posted whenever the socket reconnects, and one WebSocket per server (separate from SyncPlay's). Other
-Jellyfin apps of the same account then see this computer as a device. They can send: Play (PlayNow / PlayNext / PlayLast
-with item ids, resolved through that server's own catalog), Playstate (PlayPause, Pause, Unpause, Stop, Seek, NextTrack,
-PreviousTrack, Rewind, FastForward) and GeneralCommand (SetVolume, Mute, Unmute, ToggleMute, SetAudioStreamIndex,
-SetSubtitleStreamIndex, DisplayMessage shown as a notice). Everything else is ignored. A command only drives the player: it
-never writes, never runs an admin action and never answers a confirmation dialog. Switching the setting off posts
-"not controllable" again (when server changes are on), closes the socket and ignores commands. With it off nothing is posted at
-all: the app does not announce itself as controllable.
+**Remote control** (`remote_control`, default off; needs server changes on; never in developer API-key mode). When on, each signed-in server gets `POST /Sessions/Capabilities/Full` (`SupportsMediaControl`, playable types Video and Audio, the commands below), re-posted whenever the socket reconnects, and one WebSocket per server (separate from SyncPlay's). Other Jellyfin apps of the same account then see this computer as a device. They can send: Play (PlayNow / PlayNext / PlayLast with item ids, resolved through that server's own catalog), Playstate (PlayPause, Pause, Unpause, Stop, Seek, NextTrack, PreviousTrack, Rewind, FastForward) and GeneralCommand (SetVolume, Mute, Unmute, ToggleMute, SetAudioStreamIndex, SetSubtitleStreamIndex, DisplayMessage shown as a notice). Everything else is ignored. A command only drives the player: it never writes, never runs an admin action and never answers a confirmation dialog. Switching the setting off posts "not controllable" again (when server changes are on), closes the socket and ignores commands. With it off nothing is posted at all: the app does not announce itself as controllable.
 
-**Watched state in step** (`sync_watched`). Only a user action starts it: marking watched / unwatched, or finishing an item
-(90% of its length, as Jellyfin counts). The title's other copies are looked up by strong identity only (a shared IMDb /
-TMDB / TVDB id; an episode by its series' ids plus season and number); "possible duplicates" that share only a title and
-year are never touched. A server copy is written only with server changes on and a real login (never in developer API-key
-mode, skipped silently otherwise), through that server's own hooks; a local copy is written to the local state file. The
-setters it calls never start another cascade, and state that arrives from elsewhere (the Trakt import) is applied without
-spreading. Resume positions follow only with Sync watch progress on, scaled by runtime when the copies differ in length.
+**Watched state in step** (`sync_watched`). Only a user action starts it: marking watched / unwatched, or finishing an item (90% of its length, as Jellyfin counts). The title's other copies are looked up by strong identity only (a shared IMDb / TMDB / TVDB id; an episode by its series' ids plus season and number); "possible duplicates" that share only a title and year are never touched. A server copy is written only with server changes on and a real login (never in developer API-key mode, skipped silently otherwise), through that server's own hooks; a local copy is written to the local state file. The setters it calls never start another cascade, and state that arrives from elsewhere (the Trakt import) is applied without spreading. Resume positions follow only with Sync watch progress on, scaled by runtime when the copies differ in length.
 
-**Playback report fields.** Start, progress and stop reports (`POST /Sessions/Playing`, `/Progress`, `/Stopped`) carry the item id,
-position, pause and mute state, volume, the play method (DirectPlay or Transcode), the media source id and the play session id,
-so the server can stop a transcode when you stop. A failed report shows a quiet notice once per playback and the final "stopped"
-is retried once. They are sent only with server changes and Sync watch progress on, to the item's own server. Local items send
-nothing.
+**Playback report fields.** Start, progress and stop reports (`POST /Sessions/Playing`, `/Progress`, `/Stopped`) carry the item id, position, pause and mute state, volume, the play method (DirectPlay or Transcode), the media source id and the play session id, so the server can stop a transcode when you stop. A failed report shows a quiet notice once per playback and the final "stopped" is retried once. They are sent only with server changes and Sync watch progress on, to the item's own server. Local items send nothing.
 
-**What only reads.** Offline copies use `GET Items/{id}/Download` and write files only into your local folder. The Latest, Next
-Up, "Included in" and Smart collection views are reads. Online metadata and subtitle search talk to TMDB, TVmaze, MusicBrainz,
-Cover Art Archive and OpenSubtitles (never to your media server), send only titles, years and ids (never file names or paths),
-and need their own opt-in. Trakt talks to trakt.tv only.
+**What only reads.** Offline copies use `GET Items/{id}/Download` and write files only into your local folder. The Latest, Next Up, "Included in" and Smart collection views are reads. Online metadata and subtitle search talk to TMDB, TVmaze, MusicBrainz, Cover Art Archive and OpenSubtitles (never to your media server), send only titles, years and ids (never file names or paths), and need their own opt-in. Trakt talks to trakt.tv only.
 
-**Stored on this computer** (nothing here is sent to a server; all under `$XDG_DATA_HOME/nocturne/` unless noted; secrets are in the
-system keyring, never in these files):
+**Stored on this computer** (nothing here is sent to a server; all under `$XDG_DATA_HOME/nocturne/` unless noted; secrets are in the system keyring, never in these files):
 - `local/index.json`, `local/overrides.json`, `local/state.json`: local library index, your edits, resume and watched state
 - `local/online.json`, `local/online-art/`: online details and artwork for local media (below your own edits; TMDB data ages out after six months)
 - `local/subtitles/`: subtitles downloaded for local files
@@ -72,12 +45,8 @@ system keyring, never in these files):
 
 Local media files are never modified, moved, renamed or deleted by NOCTURNE, whatever the setting says; scanning only reads.
 
-With the switch off, the controls above stay visible but dimmed with the tooltip "Turn on server
-changes in Settings", the keyboard shortcuts show a short notice, and the Admin section is view
-only with a banner linking to the setting.
+With the switch off, the controls above stay visible but dimmed with the tooltip "Turn on server changes in Settings", the keyboard shortcuts show a short notice, and the Admin section is view only with a banner linking to the setting.
 
-Signing in and out is separate: it creates and ends this app's own session on the server, which any
-client must do to authenticate. Switching between remembered accounts only uses stored sign-ins (it reads `/Users/Me` once) and works with server changes off. The music queue never leaves the app. Collections are read only in NOCTURNE.
+Signing in and out is separate: it creates and ends this app's own session on the server, which any client must do to authenticate. Switching between remembered accounts only uses stored sign-ins (it reads `/Users/Me` once) and works with server changes off. The music queue never leaves the app. Collections are read only in NOCTURNE.
 
-Settings files written before this switch existed (version 1) had progress sync on by default;
-on first load that value is reset to off and the master switch starts off.
+Settings files written before this switch existed (version 1) had progress sync on by default; on first load that value is reset to off and the master switch starts off.
