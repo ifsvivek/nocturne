@@ -29,13 +29,20 @@ jobs:
       - name: LF checkout
         run: git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Restore downloaded AND compiled dependencies; saved right after a successful build (below), so a later
+      # packaging or smoke-test failure no longer throws the compile work away.
+      - name: Restore cargo cache
+        id: cargo-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-windows-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-windows-
+            target
+          key: cargo-windows-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            cargo-windows-${{ hashFiles('Cargo.lock') }}-
+            cargo-windows-
       - name: Rust toolchain
         # The runner image ships rustup; stable is far above the workspace MSRV (1.89).
         run: |
@@ -50,11 +57,21 @@ jobs:
             Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\NASM'
           }
       - name: Build (release, MSVC)
+        id: build
         # Static CRT: a clean Windows PC without the Visual C++ redistributable must still start nocturne.exe
         # (the runner has the redistributable installed, so CI alone would not catch a VCRUNTIME140.dll error).
         env:
           CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: -C target-feature=+crt-static
         run: cargo build --release --locked -p nocturne-app --target x86_64-pc-windows-msvc
+      - name: Save cargo cache
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-windows-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
       - name: Fetch and verify mpv
         run: |
           . packaging/windows/mpv.pin
@@ -151,13 +168,20 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Restore downloaded AND compiled dependencies; saved right after a successful build (below), so a later
+      # packaging or smoke-test failure no longer throws the compile work away.
+      - name: Restore cargo cache
+        id: cargo-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-macos-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-macos-
+            target
+          key: cargo-macos-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            cargo-macos-${{ hashFiles('Cargo.lock') }}-
+            cargo-macos-
       - name: Rust toolchain
         run: |
           rustup toolchain install stable --profile minimal
@@ -169,7 +193,17 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: brew install mpv dylibbundler
       - name: Package (.app and .dmg, ad-hoc signed)
+        id: build
         run: scripts/package-macos.sh
+      - name: Save cargo cache
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-macos-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
       - name: Smoke test
         run: |
           set -euo pipefail
