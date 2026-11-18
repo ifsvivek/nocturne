@@ -212,6 +212,8 @@ pub struct App {
     win: Size,
     now: Instant,
     note: Option<(String, Instant)>,
+    /// A newer version, until dismissed (docs/dev/UPDATER_PLAN.md).
+    update: Option<nocturne_core::update::UpdateState>,
     /// Developer-token mode (`NOCTURNE_JF_TOKEN`): no login, read-only.
     dev: bool,
     /// The token / account has admin rights (an `Admin` entry follows the libraries).
@@ -329,6 +331,7 @@ impl App {
             win: Size::new(1280.0, 800.0),
             now: Instant::now(),
             note: None,
+            update: None,
             admin: false,
             admin_open: false,
             adm: None,
@@ -368,9 +371,15 @@ impl App {
             .and_then(window::scale_factor)
             .map(Message::Scale);
         // Keyring reads, index loading and connections all follow in tasks, after the first frame.
+        let check = if me.settings.check_updates {
+            run(nocturne_core::update::check(), Message::Update)
+        } else {
+            Task::none()
+        };
         let task = Task::batch([
             size,
             scale,
+            check,
             me.load_sources(),
             open_disk,
             crate::snap::on_boot(),
@@ -546,6 +555,21 @@ impl App {
                 Task::none()
             }
             Message::Retry => self.connect(),
+            Message::Update(u) => {
+                self.update = u;
+                Task::none()
+            }
+            Message::UpdateCopy(cmd) => iced::clipboard::write(cmd.to_string()),
+            Message::UpdateOpen(u) => {
+                if u.starts_with("https://") {
+                    let _ = std::process::Command::new("xdg-open").arg(u).spawn();
+                }
+                Task::none()
+            }
+            Message::UpdateDismiss => {
+                self.update = None;
+                Task::none()
+            }
             Message::RetryNow => {
                 let now = Instant::now();
                 for s in &mut self.catalog.slots {
@@ -1863,7 +1887,7 @@ impl App {
         let setting_up = self.folders.as_ref().is_some_and(|f| f.setup) || self.ob_away.is_some();
         if ready && !setting_up {
             layers.push(self.header());
-            if let Some(b) = self.source_banner() {
+            if let Some(b) = self.source_banner().or_else(|| self.update_banner()) {
                 layers.push(b);
             }
             if !self.admin_open

@@ -146,6 +146,8 @@ pub struct Settings {
     pub trakt_scrobble: bool,
     /// Import Trakt's watched history into local items (and server items when changes are allowed).
     pub trakt_history: bool,
+    /// Look for a newer NOCTURNE at most once a day (one GET of a small file; only the version is sent). docs/dev/UPDATER_PLAN.md.
+    pub check_updates: bool,
     /// Last first-run walkthrough the user finished or skipped (0 = never). Internal state, no Settings row.
     pub onboarding: u32,
     pub audio_lang: Option<String>,
@@ -185,6 +187,7 @@ impl Default for Settings {
             sync_watched: false,
             trakt_scrobble: false,
             trakt_history: false,
+            check_updates: true,
             onboarding: 0,
             audio_lang: None,
             sub_lang: None,
@@ -254,13 +257,16 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 24;
+pub const ROWS: usize = 25;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
 pub const PROFILE_ROW: usize = 22;
 
 /// The "Couch mode" row.
 pub const COUCH_ROW: usize = 23;
+
+/// The "Check for updates" row.
+pub const UPDATES_ROW: usize = 24;
 
 /// The "Trakt account" row: not a toggle, it opens the connect dialog.
 pub const TRAKT_ROW: usize = 19;
@@ -277,6 +283,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         19 => Some("Trakt"),
         22 => Some("Profiles"),
         23 => Some("Living room"),
+        24 => Some("Updates"),
         _ => None,
     }
 }
@@ -481,6 +488,11 @@ impl Settings {
                     .map_or("Off", |(_, n)| n)
                     .into(),
             ),
+            r(
+                "Check for updates",
+                "Once a day NOCTURNE asks nocturne.ifsvivek.in whether a newer version exists and says so here. It sends nothing but the version number (and, unavoidably, your IP address). Never downloads or installs anything by itself.",
+                onoff(self.check_updates),
+            ),
         ]
     }
 
@@ -613,6 +625,7 @@ impl Settings {
             19 => {} // opens the Trakt dialog (the app handles it)
             20 => self.trakt_scrobble ^= true,
             21 => self.trakt_history ^= true,
+            UPDATES_ROW => self.check_updates ^= true,
             COUCH_ROW => {
                 let i = COUCH.iter().position(|(m, _)| *m == self.couch);
                 let i = (i.unwrap_or(0) as i32 + d).rem_euclid(COUCH.len() as i32) as usize;
@@ -733,6 +746,16 @@ mod tests {
         assert!(!s.sync_watched && !s.trakt_scrobble && !s.trakt_history);
         assert!(s.autoplay_next && !s.auto_skip_intro);
         assert_eq!(s.rows().len(), ROWS);
+    }
+
+    #[test]
+    fn update_check_row_toggles_and_defaults_on() {
+        let mut s = Settings::default();
+        assert!(s.check_updates);
+        assert_eq!(s.rows()[UPDATES_ROW].value, "On");
+        s.cycle(UPDATES_ROW, 1);
+        assert!(!s.check_updates);
+        assert_eq!(s.rows()[UPDATES_ROW].value, "Off");
     }
 
     #[test]
@@ -995,7 +1018,7 @@ mod tests {
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
         assert_eq!(scroll_child(11), 15);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 9);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 10);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));
         assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));
