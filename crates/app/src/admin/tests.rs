@@ -65,7 +65,8 @@ fn single_confirm_choke_point() {
         .map(|(p, _)| p.as_str())
         .collect();
     assert_eq!(hits.len(), 1, "minted in: {hits:?}");
-    assert!(hits[0].ends_with("admin/mod.rs"));
+    // Path::ends_with compares components, so this holds with `\` separators on Windows too.
+    assert!(std::path::Path::new(hits[0]).ends_with("admin/mod.rs"));
     let src = include_str!("mod.rs");
     assert_eq!(src.matches(&call).count(), 1);
     assert!(src.contains(&format!("Confirmed::{call})")));
