@@ -2,8 +2,17 @@ name: Platforms
 
 # Manual, once per release: builds, tests and packages the Windows installer and the macOS .dmg on GitHub-hosted
 # runners and uploads them as 7-day artifacts. Nothing is published and no secrets are used (macOS is ad-hoc signed,
-# Windows unsigned). See docs/PACKAGING.md.
+# Windows unsigned). See docs/PACKAGING.md. release.yml calls it (workflow_call) on a version tag.
 on:
+  workflow_call:
+    inputs:
+      targets:
+        type: string
+        default: both
+      ref:
+        description: Git ref to build (empty = the triggering ref)
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       targets:
@@ -36,6 +45,8 @@ jobs:
       - name: LF checkout
         run: git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
       # Restore downloaded AND compiled dependencies; saved right after a successful build (below), so a later
       # packaging or smoke-test failure no longer throws the compile work away.
       - name: Restore cargo cache
@@ -176,6 +187,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
       # Restore downloaded AND compiled dependencies; saved right after a successful build (below), so a later
       # packaging or smoke-test failure no longer throws the compile work away.
       - name: Restore cargo cache
