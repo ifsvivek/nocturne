@@ -8,6 +8,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Every text field can now be edited like a normal one: select with the mouse or Shift+arrows, double-click a word, Ctrl+A, Ctrl+C / Ctrl+X / Ctrl+V. The sign-in, add-server, account dialog, admin dialog and SyncPlay name fields used a hand-rolled input that could only append and delete characters. Password fields cannot be copied or cut.
 
 ### Changed
+- Packaging: the deb, rpm, Arch package and `install.sh` no longer depend on X11 libraries (`libX11`, `libxcb`, `libXcursor`, `libXi`, `libxkbcommon-x11`) now that Linux is Wayland-only.
 - **Linux is Wayland-only.** X11 support is removed: Iced is built without its X11 backend (no X11 libraries are loaded) and on a session with only `DISPLAY` set NOCTURNE prints that X11 is not supported and exits. The external mpv player remains the fallback when in-window video cannot start and for the HDR pop-out.
 
 ## [0.4.0] - 2026-11-18
