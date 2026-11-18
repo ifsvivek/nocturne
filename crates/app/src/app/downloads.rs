@@ -520,11 +520,11 @@ impl App {
             }
         };
         let mut c = column![
-            text(a.media.title.clone()).size(t::HEADING).font(t::BOLD),
+            text(a.media.title.clone()).size(t::HEADING).font(t::bold()),
             text("Saves the original file(s) from the server into a folder of your local library, so they play without the server. Nothing on the server changes.")
                 .size(t::CONTROL_TEXT)
                 .line_height(1.5)
-                .color(t::TEXT_SECONDARY),
+                .color(t::text_secondary()),
             mono(summary),
             mono("SAVE TO"),
         ]
@@ -575,7 +575,7 @@ impl App {
         if jobs.is_empty() {
             return text("Nothing downloading. Use \u{201c}Download to this computer\u{2026}\u{201d} in a title's \u{2026} menu.")
                 .size(t::BODY)
-                .color(t::TEXT_SECONDARY)
+                .color(t::text_secondary())
                 .into();
         }
         let mut list = column![].spacing(t::S3);

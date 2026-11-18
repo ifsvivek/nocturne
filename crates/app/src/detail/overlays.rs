@@ -79,11 +79,11 @@ impl Detail {
             };
             let right: El<'_> = row![
                 dot(if v.available {
-                    mark.map_or(t::TEXT_SECONDARY, |m| m.color)
+                    mark.map_or(t::text_secondary(), |m| m.color)
                 } else {
-                    t::WARN
+                    t::warn()
                 }),
-                mono(mark.map_or(String::new(), |m| m.label.clone())).color(t::TEXT_SECONDARY),
+                mono(mark.map_or(String::new(), |m| m.label.clone())).color(t::text_secondary()),
             ]
             .spacing(t::S1 + 2.0)
             .align_y(Alignment::Center)
@@ -97,25 +97,25 @@ impl Detail {
             };
             let on = i == cur;
             let line = row![
-                container(g(if i == picked { "\u{2713}" } else { "" }).color(t::ACCENT_TEXT))
+                container(g(if i == picked { "\u{2713}" } else { "" }).color(t::accent_text()))
                     .width(20),
                 column![
                     container(
                         g(title)
                             .size(t::BODY)
-                            .font(t::SEMIBOLD)
+                            .font(t::semibold())
                             .color(if v.available {
-                                t::TEXT
+                                t::text()
                             } else {
-                                t::TEXT_SECONDARY
+                                t::text_secondary()
                             })
                             .wrapping(text::Wrapping::None),
                     )
                     .clip(true),
                     mono(sub).color(if v.available {
-                        t::TEXT_TERTIARY
+                        t::text_tertiary()
                     } else {
-                        t::WARN
+                        t::warn()
                     }),
                 ]
                 .spacing(2)
@@ -131,13 +131,13 @@ impl Detail {
                     .on_press(Msg::VersionPick(i))
                     .style(move |s| Style {
                         background: if on {
-                            Some(Background::Color(t::ACCENT_TINT))
+                            Some(Background::Color(t::accent_tint()))
                         } else if matches!(s, Status::Hovered | Status::Pressed) {
                             Some(Background::Color(t::GLASS))
                         } else {
                             None
                         },
-                        text_color: t::TEXT,
+                        text_color: t::text(),
                         border: style::border(t::NONE, 0.0, 6.0),
                         shadow: Shadow::default(),
                         snap: false,
@@ -146,10 +146,10 @@ impl Detail {
         }
         let can_prefer = versions::worth_showing(&list);
         let panel = column![
-            g("Versions and sources").size(t::HEADING).font(t::BOLD),
+            g("Versions and sources").size(t::HEADING).font(t::bold()),
             g("Choose which copy Play uses for this title.")
                 .size(t::BODY)
-                .color(t::TEXT_SECONDARY),
+                .color(t::text_secondary()),
             space().height(t::S2),
             col,
             space().height(t::S2),
@@ -215,8 +215,8 @@ impl Detail {
         };
         let mut col = column![
             mono("PLEASE CONFIRM"),
-            g(title).size(t::HEADING).font(t::BOLD),
-            g(body).size(t::BODY).color(t::TEXT_SECONDARY),
+            g(title).size(t::HEADING).font(t::bold()),
+            g(body).size(t::BODY).color(t::text_secondary()),
             mono(label.to_uppercase()),
             text_input("", &d.text)
                 .id(DLG_ID)
@@ -228,7 +228,7 @@ impl Detail {
         ]
         .spacing(t::S3);
         if let Some(m) = d.msg {
-            col = col.push(g(m).size(t::BODY).color(t::DANGER));
+            col = col.push(g(m).size(t::BODY).color(t::danger()));
         }
         col = col.push(
             row![

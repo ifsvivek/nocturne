@@ -183,7 +183,7 @@ fn glyph_width(c: char, size: f32) -> f32 {
         bounds: Size::INFINITE,
         size: Pixels(size),
         line_height: adv::LineHeight::default(),
-        font: t::BOLD,
+        font: t::bold(),
         align_x: Alignment::Default,
         align_y: alignment::Vertical::Top,
         shaping: adv::Shaping::Advanced,
@@ -255,16 +255,16 @@ impl<M> canvas::Program<M> for Overlay {
 
         if self.light {
             // The video stays visible, just calmer.
-            f.fill_rectangle(Point::ORIGIN, size, scale(t::FRAME, 0.38 * a));
+            f.fill_rectangle(Point::ORIGIN, size, scale(t::frame(), 0.38 * a));
         } else {
             if self.plain {
                 f.fill_rectangle(
                     Point::ORIGIN,
                     size,
                     vgrad(&[
-                        (0.0, scale(t::FRAME, a)),
-                        (0.7, scale(mix(t::FRAME, t::SURFACE, 0.8), a)),
-                        (1.0, scale(mix(t::SURFACE, t::ACCENT, 0.06), a)),
+                        (0.0, scale(t::frame(), a)),
+                        (0.7, scale(mix(t::frame(), t::surface(), 0.8), a)),
+                        (1.0, scale(mix(t::surface(), t::accent(), 0.06), a)),
                     ]),
                 );
             }
@@ -273,9 +273,9 @@ impl<M> canvas::Program<M> for Overlay {
                 Point::ORIGIN,
                 size,
                 vgrad(&[
-                    (0.0, scale(t::FRAME, 0.50 * a)),
-                    (0.5, scale(t::FRAME, 0.58 * a)),
-                    (1.0, scale(t::FRAME, 0.96 * a)),
+                    (0.0, scale(t::frame(), 0.50 * a)),
+                    (0.5, scale(t::frame(), 0.58 * a)),
+                    (1.0, scale(t::frame(), 0.96 * a)),
                 ]),
             );
             let edge = w * 0.30;
@@ -284,8 +284,8 @@ impl<M> canvas::Program<M> for Overlay {
                     Point::new(x0.min(x1), 0.0),
                     Size::new(edge, h),
                     Linear::new(Point::new(x0, 0.0), Point::new(x1, 0.0))
-                        .add_stop(0.0, scale(t::FRAME, 0.75 * a))
-                        .add_stop(1.0, scale(t::FRAME, 0.0)),
+                        .add_stop(0.0, scale(t::frame(), 0.75 * a))
+                        .add_stop(1.0, scale(t::frame(), 0.0)),
                 );
             }
         }
@@ -334,8 +334,8 @@ impl<M> canvas::Program<M> for Overlay {
                     &c.to_string(),
                     Point::new(*x, wm_y),
                     sz,
-                    scale(mix(t::TEXT, t::ACCENT_TEXT, hot * 0.8), k),
-                    t::BOLD,
+                    scale(mix(t::text(), t::accent_text(), hot * 0.8), k),
+                    t::bold(),
                     Alignment::Left,
                 ));
             }
@@ -350,12 +350,12 @@ impl<M> canvas::Program<M> for Overlay {
             f.fill_rectangle(
                 Point::new(x0, flare_y),
                 Size::new(len, 2.0),
-                scale(t::HAIRLINE_STRONG, a),
+                scale(t::hairline_strong(), a),
             );
             f.fill_rectangle(
                 Point::new(x0, flare_y),
                 Size::new(len * self.reveal.clamp(0.0, 1.0), 2.0),
-                scale(t::ACCENT, a),
+                scale(t::accent(), a),
             );
         } else {
             // Leading edge: a narrow, subtle block of thin slanted accent hairlines.
@@ -374,7 +374,7 @@ impl<M> canvas::Program<M> for Overlay {
                         ),
                         Stroke::default()
                             .with_width(1.0)
-                            .with_color(scale(t::ACCENT, 0.7 * k * edge * a)),
+                            .with_color(scale(t::accent(), 0.7 * k * edge * a)),
                     );
                 }
             }
@@ -383,25 +383,25 @@ impl<M> canvas::Program<M> for Overlay {
             let half = w * if self.light { 0.22 } else { 0.40 };
             let line = |y: f32, hgt: f32, core: Color, k: f32| {
                 let g = Linear::new(Point::new(cx - half, 0.0), Point::new(cx + half, 0.0))
-                    .add_stop(0.0, scale(t::ACCENT, 0.0))
-                    .add_stop(0.2, scale(t::ACCENT, 0.35 * k))
+                    .add_stop(0.0, scale(t::accent(), 0.0))
+                    .add_stop(0.2, scale(t::accent(), 0.35 * k))
                     .add_stop(0.5, scale(core, k))
-                    .add_stop(0.8, scale(t::ACCENT, 0.35 * k))
-                    .add_stop(1.0, scale(t::ACCENT, 0.0));
+                    .add_stop(0.8, scale(t::accent(), 0.35 * k))
+                    .add_stop(1.0, scale(t::accent(), 0.0));
                 (Point::new(cx - half, y), Size::new(half * 2.0, hgt), g)
             };
             for i in (1..=7).rev() {
                 let (p, s, g) = line(
                     flare_y + 1.0 - i as f32 * 1.6,
                     i as f32 * 3.2,
-                    t::ACCENT,
+                    t::accent(),
                     0.05 * fl,
                 );
                 f.fill_rectangle(p, s, g);
             }
-            let (p, s, g) = line(flare_y, 2.0, t::TEXT, 0.95 * fl);
+            let (p, s, g) = line(flare_y, 2.0, t::text(), 0.95 * fl);
             f.fill_rectangle(p, s, g);
-            let (p, s, g) = line(flare_y + 0.5, 1.0, t::TEXT, fl);
+            let (p, s, g) = line(flare_y + 0.5, 1.0, t::text(), fl);
             f.fill_rectangle(p, s, g);
         }
         if !self.status.is_empty() {
@@ -409,7 +409,7 @@ impl<M> canvas::Program<M> for Overlay {
                 &self.status,
                 Point::new(cx, flare_y + 28.0),
                 t::MICRO,
-                scale(t::TEXT_SECONDARY, a),
+                scale(t::text_secondary(), a),
                 t::MONO,
                 Alignment::Center,
             ));
@@ -488,7 +488,7 @@ pub fn view<'a, M: 'a>(s: Splash<'a>) -> Element<'a, M> {
             container(space())
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .style(crate::style::fill(Color { a, ..t::FRAME }))
+                .style(crate::style::fill(Color { a, ..t::frame() }))
                 .into(),
         );
         if let Some(h) = s.backdrop {

@@ -88,6 +88,8 @@ fn run() -> iced::Result {
     // Config (and .env) is read once, before any other thread exists. (Not for the player preview:
     // it never touches the configured server.)
     let cfg = nocturne_jellyfin::Config::load().ok();
+    // The saved global theme, before the first frame (and the only moment its font family is read).
+    theme::set(&nocturne_core::customize::Store::load().resolve(None));
     iced::application(move || App::boot(cfg.clone()), App::update, App::view)
         .title(App::title)
         .subscription(App::subscription)
@@ -95,11 +97,11 @@ fn run() -> iced::Result {
         // player page (step 4d) leaves a hole for the video subsurface.
         .style(|_, _| iced::theme::Style {
             background_color: Color::TRANSPARENT,
-            text_color: theme::TEXT,
+            text_color: theme::text(),
         })
         .theme(App::theme)
         .scale_factor(App::scale_factor)
-        .default_font(theme::FONT)
+        .default_font(theme::base())
         .exit_on_close_request(false)
         .window(window::Settings {
             size: Size::new(1280.0, 800.0),

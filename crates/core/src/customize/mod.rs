@@ -3,8 +3,10 @@
 //! that was not understood. No browser engine, no network, no code execution; see
 //! `docs/dev/CUSTOMIZATION_PLAN.md` for the token model, selector vocabulary and mapping table.
 mod css;
+mod store;
 mod value;
 
+pub use store::{Saved, Store, content_type_ok, fetch, validate_url};
 pub use value::{Color, Fill};
 
 use serde::{Deserialize, Serialize};
@@ -40,6 +42,34 @@ pub enum WarningKind {
     Clamped,
     /// A size limit stopped the reader or the warning list.
     LimitReached,
+}
+
+impl WarningKind {
+    /// Plural phrase for the editor's summary ("434 selectors not supported").
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::SyntaxError => "syntax errors",
+            Self::UnsupportedAtRule => "at-rules not supported",
+            Self::UnsupportedSelector => "selectors not supported",
+            Self::UnsupportedProperty => "properties not supported",
+            Self::UnsupportedValue => "values not supported",
+            Self::RemoteResource => "links not fetched",
+            Self::UnresolvedVar => "unknown variables",
+            Self::VarCycle => "variable cycles",
+            Self::FontNotDownloaded => "fonts only if installed",
+            Self::Approximated => "approximated",
+            Self::Clamped => "clamped to the allowed range",
+            Self::LimitReached => "limits reached",
+        }
+    }
+
+    /// Notes that need no action; shown dimmed.
+    pub fn informational(self) -> bool {
+        matches!(
+            self,
+            Self::FontNotDownloaded | Self::Clamped | Self::Approximated
+        )
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -182,6 +212,14 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// How many tokens the theme sets.
+    pub fn count(&self) -> usize {
+        serde_json::to_value(self)
+            .ok()
+            .and_then(|v| v.as_object().map(|o| o.len()))
+            .unwrap_or(0)
+    }
+
     /// Lay `top` over `self`: every field `top` sets wins.
     pub fn overlay(&mut self, top: &Theme) {
         macro_rules! ov {

@@ -990,7 +990,7 @@ impl App {
                     .height(Length::Fill)
                     .clip(true)
                     .style(|_| container::Style {
-                        border: border(t::HAIRLINE, 1.0, t::R_PANEL),
+                        border: border(t::hairline(), 1.0, t::r_panel()),
                         ..Default::default()
                     }),
             )
@@ -1061,9 +1061,9 @@ impl App {
                         menu_row(
                             row![
                                 text(k.label()).size(t::BODY).color(if cur {
-                                    t::ACCENT_TEXT
+                                    t::accent_text()
                                 } else {
-                                    t::TEXT
+                                    t::text()
                                 }),
                                 space().width(Length::Fill),
                                 mono(if cur && k != SortKey::Random {
@@ -1126,9 +1126,9 @@ impl App {
                     items.push(menu_row(
                         row![
                             text(r.label).size(t::BODY).color(if r.on {
-                                t::ACCENT_TEXT
+                                t::accent_text()
                             } else {
-                                t::TEXT
+                                t::text()
                             }),
                             space().width(Length::Fill),
                             mono(if r.on { "\u{2713}" } else { "" }),
@@ -1189,7 +1189,7 @@ impl App {
                     ))
                     .style(move |s| iced::widget::button::Style {
                         background: if on {
-                            Some(t::ACCENT.into())
+                            Some(t::accent().into())
                         } else if matches!(
                             s,
                             iced::widget::button::Status::Hovered
@@ -1199,8 +1199,12 @@ impl App {
                         } else {
                             None
                         },
-                        text_color: if on { t::ON_ACCENT } else { t::TEXT_SECONDARY },
-                        border: border(t::NONE, 0.0, t::R_XS),
+                        text_color: if on {
+                            t::on_accent()
+                        } else {
+                            t::text_secondary()
+                        },
+                        border: border(t::NONE, 0.0, t::r_card()),
                         ..Default::default()
                     }),
                 );
@@ -1291,9 +1295,9 @@ impl App {
             column![
                 text(md.title.clone())
                     .size(t::BODY)
-                    .font(t::SEMIBOLD)
+                    .font(t::semibold())
                     .wrapping(text::Wrapping::None)
-                    .color(if on { t::TEXT } else { t::TEXT_SECONDARY }),
+                    .color(if on { t::text() } else { t::text_secondary() }),
                 mono(sub).wrapping(text::Wrapping::None),
             ]
             .width(Length::Fill)
@@ -1328,8 +1332,8 @@ impl App {
                 .padding([0.0, t::S4])
                 .center_y(LIST_ROW_H)
                 .style(move |_| container::Style {
-                    background: on.then_some(t::ACCENT_TINT.into()),
-                    border: border(t::HAIRLINE, 0.0, 0.0),
+                    background: on.then_some(t::accent_tint().into()),
+                    border: border(t::hairline(), 0.0, 0.0),
                     ..Default::default()
                 }),
         )
@@ -1355,9 +1359,9 @@ impl App {
                 row![
                     text(item.label.clone())
                         .size(t::BODY)
-                        .font(t::SEMIBOLD)
+                        .font(t::semibold())
                         .wrapping(text::Wrapping::None)
-                        .color(if on { t::TEXT } else { t::TEXT_SECONDARY }),
+                        .color(if on { t::text() } else { t::text_secondary() }),
                     space().width(Length::Fill),
                     mono(format!("0x{:02x}", i + 1)),
                 ]
@@ -1368,8 +1372,8 @@ impl App {
             .padding([0.0, t::S4])
             .center_y(NAME_ROW_H)
             .style(move |_| container::Style {
-                background: on.then_some(t::ACCENT_TINT.into()),
-                border: border(t::HAIRLINE, 1.0, 0.0),
+                background: on.then_some(t::accent_tint().into()),
+                border: border(t::hairline(), 1.0, 0.0),
                 ..Default::default()
             });
             cells.push(
@@ -1431,7 +1435,7 @@ fn list_header<'a>() -> El<'a> {
 }
 
 fn note<'a>(s: &str) -> El<'a> {
-    container(text(s.to_string()).size(t::BODY).color(t::TEXT_SECONDARY))
+    container(text(s.to_string()).size(t::BODY).color(t::text_secondary()))
         .padding(t::S6)
         .into()
 }

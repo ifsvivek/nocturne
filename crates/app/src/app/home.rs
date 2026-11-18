@@ -640,12 +640,12 @@ impl App {
             None => text(m.title.clone())
                 .size(size)
                 .line_height(1.08)
-                .font(t::BOLD)
-                .color(t::TEXT)
+                .font(t::bold())
+                .color(t::text())
                 .into(),
         };
         let season_line = (m.logo.is_some() && matches!(m.kind, Kind::Season | Kind::Episode))
-            .then(|| text(m.title.clone()).size(t::HEADING).font(t::SEMIBOLD));
+            .then(|| text(m.title.clone()).size(t::HEADING).font(t::semibold()));
         let sub = m.overview.clone().unwrap_or_else(|| m.meta_line());
         let verb = if m.kind == Kind::Photo {
             "View"
@@ -686,7 +686,7 @@ impl App {
                     text(sub)
                         .size(t::BODY_LG)
                         .line_height(1.6)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                 )
                 .max_width(560)
                 .max_height(t::BODY_LG * 1.6 * 3.0)
@@ -707,7 +707,7 @@ impl App {
         };
         Stack::with_children(vec![
             container(space())
-                .style(style::fill(t::SURFACE))
+                .style(style::fill(t::surface()))
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .into(),
@@ -877,7 +877,7 @@ pub fn strip_id(ri: usize) -> Id {
 }
 
 fn note<'a>(s: &str) -> El<'a> {
-    container(text(s.to_string()).size(t::BODY).color(t::TEXT_SECONDARY))
+    container(text(s.to_string()).size(t::BODY).color(t::text_secondary()))
         .padding([t::S6, t::PAGE_PAD])
         .into()
 }
@@ -907,7 +907,7 @@ fn strip_band<'a>(title: &str, text_: &str, meta: String, strip: El<'a>) -> El<'
     ]))
     .clip(true)
     .style(|_| container::Style {
-        border: style::border(t::HAIRLINE, 1.0, t::R_PANEL),
+        border: style::border(t::hairline(), 1.0, t::r_panel()),
         ..Default::default()
     });
     band(

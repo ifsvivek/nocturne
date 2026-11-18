@@ -28,20 +28,20 @@ pub fn view<'a, M: Clone + 'a>(
             .on_press(on(act))
             .style(move |s| Style {
                 background: None,
-                text_color: t::ACCENT_TEXT,
+                text_color: t::accent_text(),
                 border: border(
                     if on_it {
-                        t::ACCENT
+                        t::accent()
                     } else if matches!(s, Status::Hovered | Status::Pressed) {
-                        t::TEXT_TERTIARY
+                        t::text_tertiary()
                     } else {
-                        t::EDGE
+                        t::edge()
                     },
                     2.0,
                     PIC / 2.0,
                 ),
                 shadow: if on_it {
-                    glow_shadow(t::GLOW.a)
+                    glow_shadow(t::glow().a)
                 } else {
                     Shadow::default()
                 },
@@ -49,8 +49,12 @@ pub fn view<'a, M: Clone + 'a>(
             });
         let name = text(label)
             .size(t::BODY_LG)
-            .font(if on_it { t::SEMIBOLD } else { t::FONT })
-            .color(if on_it { t::TEXT } else { t::TEXT_SECONDARY });
+            .font(if on_it { t::semibold() } else { t::base() })
+            .color(if on_it {
+                t::text()
+            } else {
+                t::text_secondary()
+            });
         mouse_area(
             container(
                 column![ring, name]
@@ -75,21 +79,22 @@ pub fn view<'a, M: Clone + 'a>(
                 t::NONE,
                 0.0,
                 44.0,
-                t::ACCENT_TEXT,
+                t::accent_text(),
             );
             tile(i, a.user_name.clone(), face)
         })
         .collect();
-    let add: Element<'a, M> = container(text("+").size(44).font(t::MONO).color(t::TEXT_SECONDARY))
-        .width(PIC - 4.0)
-        .height(PIC - 4.0)
-        .center(PIC - 4.0)
-        .style(|_| iced::widget::container::Style {
-            background: Some(t::GLASS.into()),
-            border: border(t::NONE, 0.0, PIC / 2.0),
-            ..Default::default()
-        })
-        .into();
+    let add: Element<'a, M> =
+        container(text("+").size(44).font(t::MONO).color(t::text_secondary()))
+            .width(PIC - 4.0)
+            .height(PIC - 4.0)
+            .center(PIC - 4.0)
+            .style(|_| iced::widget::container::Style {
+                background: Some(t::GLASS.into()),
+                border: border(t::NONE, 0.0, PIC / 2.0),
+                ..Default::default()
+            })
+            .into();
     tiles.push(tile(n_acc, "Add profile".into(), add));
     let grid = container(row(tiles).spacing(GAP).wrap().vertical_spacing(GAP))
         .width(p.cols.min(p.tiles()) as f32 * (TILE_W + GAP) - GAP)
@@ -99,19 +104,19 @@ pub fn view<'a, M: Clone + 'a>(
     let boxx = container(
         text(if checked { "\u{2713}" } else { "" })
             .size(t::CAPTION)
-            .color(t::ON_ACCENT),
+            .color(t::on_accent()),
     )
     .width(18)
     .height(18)
     .center(18)
     .style(move |_| iced::widget::container::Style {
-        background: checked.then(|| t::ACCENT.into()),
-        border: border(if checked { t::ACCENT } else { t::EDGE }, 1.0, 4.0),
+        background: checked.then(|| t::accent().into()),
+        border: border(if checked { t::accent() } else { t::edge() }, 1.0, 4.0),
         ..Default::default()
     });
     let ink = Color {
         a: if adding { 0.4 } else { 1.0 },
-        ..t::TEXT_SECONDARY
+        ..t::text_secondary()
     };
     let check = Press::new(
         row![
@@ -126,7 +131,7 @@ pub fn view<'a, M: Clone + 'a>(
     container(
         column![
             wordmark(t::HEADING),
-            text("Who's watching?").size(36).font(t::BOLD),
+            text("Who's watching?").size(36).font(t::bold()),
             grid,
             check,
             mono("\u{2190} \u{2192} move    ENTER choose    SPACE default profile"),

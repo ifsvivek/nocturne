@@ -228,6 +228,7 @@ pub enum Message {
     Downloads(super::downloads::Msg),
     CycleFilter,
     OpenSources,
+    Themes(super::themes::Msg),
     /// Debug builds only: a window capture for `NOCTURNE_SNAP`.
     Snapped(window::Screenshot, usize),
     /// Own profile read: (user id, picture tag).

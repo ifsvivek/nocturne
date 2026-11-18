@@ -12,7 +12,7 @@ pub fn panel<'a, M: Clone + 'a>(
     body: Vec<Element<'a, M>>,
     away: M,
 ) -> Element<'a, M> {
-    let inner = column![text(title.to_string()).size(t::HEADING).font(t::BOLD)]
+    let inner = column![text(title.to_string()).size(t::HEADING).font(t::bold())]
         .extend(body)
         .spacing(t::S3);
     let panel = container(scrollable(inner).style(style::scroll))

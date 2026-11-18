@@ -66,7 +66,7 @@ impl Devices {
         let mut body: Vec<Element<Msg>> = vec![
             text("Sessions this account has open on the server. To end one, sign out on that device.")
                 .size(t::BODY)
-                .color(t::TEXT_SECONDARY)
+                .color(t::text_secondary())
                 .into(),
             mono(self.server.clone()).into(),
         ];
@@ -94,7 +94,7 @@ fn device_row<'a>(s: &OwnSession) -> Element<'a, Msg> {
         column![
             text(format!("{} on {}", s.client, s.device_name))
                 .size(t::BODY)
-                .font(t::SEMIBOLD),
+                .font(t::semibold()),
             mono(format!("{} \u{00B7} active {last}", s.application_version)),
         ]
         .spacing(2)

@@ -1,25 +1,45 @@
 //! Design tokens: near-black base, hairline structure, one electric blue accent, monochrome
 //! chrome (library art is the only rich colour). Dark only. Raw hex lives here and nowhere else.
-use iced::Color;
 use iced::Font;
 use iced::font::{Family, Weight};
+use iced::gradient::{self, Gradient};
+use iced::{Background, Color, Degrees};
+use nocturne_core::customize::{self as cz, Fill};
+use std::sync::{OnceLock, RwLock};
 use std::time::Duration;
 
 // ponytail: system fonts; bundle faces when branding needs it
-pub const FONT: Font = Font::with_name("Noto Sans");
 pub const MONO: Font = Font::with_name("JetBrainsMono Nerd Font");
+const FAMILY_DEFAULT: &str = "Noto Sans";
 
-/// Noto Sans at `weight` (the GPUI app used MEDIUM / SEMIBOLD / BOLD).
-pub const fn font(weight: Weight) -> Font {
+/// The body family, fixed at launch (a theme's `font-family` applies from the next start, because
+/// Iced's default font is set once and a mix of old and new faces would look broken).
+static FAMILY: OnceLock<&'static str> = OnceLock::new();
+
+fn family() -> &'static str {
+    FAMILY.get().copied().unwrap_or(FAMILY_DEFAULT)
+}
+
+/// The body font at `weight` (Noto Sans unless the active theme names an installed family).
+pub fn font(weight: Weight) -> Font {
     Font {
-        family: Family::Name("Noto Sans"),
+        family: Family::Name(family()),
         weight,
         ..Font::DEFAULT
     }
 }
-pub const MEDIUM: Font = font(Weight::Medium);
-pub const SEMIBOLD: Font = font(Weight::Semibold);
-pub const BOLD: Font = font(Weight::Bold);
+pub fn base() -> Font {
+    font(Weight::Normal)
+}
+pub fn medium() -> Font {
+    font(Weight::Medium)
+}
+pub fn semibold() -> Font {
+    font(Weight::Semibold)
+}
+pub fn bold() -> Font {
+    font(Weight::Bold)
+}
 
 const fn rgb(hex: u32) -> Color {
     Color {
@@ -118,6 +138,257 @@ pub const SLOW: Duration = Duration::from_millis(300);
 /// Type size of control values (Settings chips) and the minimum control height.
 pub const CONTROL_TEXT: f32 = 13.0;
 pub const CONTROL_H: f32 = 32.0;
+
+/// The tokens a theme can change, resolved once per theme change (never while drawing). The `pub
+/// const`s above are the built-in values and the source of truth for the default look.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Tokens {
+    pub bg: Background,
+    pub frame: Color,
+    pub surface: Color,
+    pub raised: Color,
+    pub header_bg: Color,
+    pub text: Color,
+    pub text_secondary: Color,
+    pub text_tertiary: Color,
+    pub accent: Color,
+    pub accent_hover: Color,
+    pub accent_text: Color,
+    pub accent_tint: Color,
+    pub glow: Color,
+    pub on_accent: Color,
+    pub edge: Color,
+    pub hairline: Color,
+    pub hairline_strong: Color,
+    pub control: Color,
+    pub control_hover: Color,
+    pub danger: Color,
+    pub danger_tint: Color,
+    pub warn: Color,
+    pub scrim: Color,
+    pub r_panel: f32,
+    pub r_xs: f32,
+    pub r_card: f32,
+    /// Backdrop artwork opacity and blur radius (px).
+    pub backdrop_opacity: f32,
+    pub backdrop_blur: f32,
+}
+
+impl Tokens {
+    pub const DEFAULT: Tokens = Tokens {
+        bg: Background::Color(FRAME),
+        frame: FRAME,
+        surface: SURFACE,
+        raised: RAISED,
+        header_bg: HEADER_BG,
+        text: TEXT,
+        text_secondary: TEXT_SECONDARY,
+        text_tertiary: TEXT_TERTIARY,
+        accent: ACCENT,
+        accent_hover: ACCENT_HOVER,
+        accent_text: ACCENT_TEXT,
+        accent_tint: ACCENT_TINT,
+        glow: GLOW,
+        on_accent: ON_ACCENT,
+        edge: EDGE,
+        hairline: HAIRLINE,
+        hairline_strong: HAIRLINE_STRONG,
+        control: CONTROL,
+        control_hover: CONTROL_HOVER,
+        danger: DANGER,
+        danger_tint: DANGER_TINT,
+        warn: WARN,
+        scrim: SCRIM,
+        r_panel: R_PANEL,
+        r_xs: R_XS,
+        r_card: R_XS,
+        backdrop_opacity: 1.0,
+        backdrop_blur: 0.0,
+    };
+
+    /// Overlay a theme on the built-in look. A token the theme leaves out keeps its built-in value;
+    /// a token derived from another (hover from accent, tints, secondary text) follows it only when
+    /// the theme changed the parent and did not set the derived one itself.
+    pub fn resolve(th: &cz::Theme) -> Tokens {
+        let c = |c: cz::Color| {
+            let [r, g, b, a] = c.to_f32();
+            Color { r, g, b, a }
+        };
+        let mut k = Self::DEFAULT;
+        match &th.background {
+            Some(Fill::Solid(v)) => {
+                k.frame = c(*v);
+                k.bg = Background::Color(k.frame);
+            }
+            Some(Fill::Linear { angle, stops }) if !stops.is_empty() => {
+                let mut g = gradient::Linear::new(Degrees(*angle));
+                for (col, at) in stops {
+                    g = g.add_stop(*at, c(*col));
+                }
+                k.frame = c(stops[0].0);
+                k.bg = Background::Gradient(Gradient::Linear(g));
+            }
+            _ => {}
+        }
+        if th.background.is_some() {
+            k.header_bg = Color {
+                a: HEADER_BG.a,
+                ..k.frame
+            };
+        }
+        let set = |dst: &mut Color, v: Option<cz::Color>| {
+            if let Some(v) = v {
+                *dst = c(v);
+            }
+        };
+        set(&mut k.surface, th.surface);
+        set(&mut k.raised, th.raised);
+        set(&mut k.header_bg, th.header);
+        if let Some(v) = th.text {
+            k.text = c(v);
+            k.text_secondary = mix(k.text, k.frame, 0.3);
+            k.text_tertiary = mix(k.text, k.frame, 0.45);
+        }
+        set(&mut k.text_secondary, th.text_secondary);
+        set(&mut k.text_tertiary, th.text_tertiary);
+        if let Some(v) = th.accent {
+            k.accent = c(v);
+            k.accent_hover = mix(k.accent, Color::WHITE, 0.17);
+            k.accent_text = mix(k.accent, Color::WHITE, 0.45);
+            k.accent_tint = Color {
+                a: ACCENT_TINT.a,
+                ..k.accent
+            };
+            k.glow = Color {
+                a: GLOW.a,
+                ..k.accent
+            };
+            // Dark or white label, whichever reads better on the fill.
+            k.on_accent = if luma(k.accent) > 0.18 {
+                ON_ACCENT
+            } else {
+                Color::WHITE
+            };
+        }
+        set(&mut k.accent_hover, th.accent_hover);
+        set(&mut k.accent_text, th.accent_text);
+        set(&mut k.on_accent, th.on_accent);
+        set(&mut k.edge, th.edge);
+        if let Some(v) = th.hairline {
+            k.hairline = c(v);
+            k.hairline_strong = Color {
+                a: HAIRLINE_STRONG.a,
+                ..k.hairline
+            };
+        }
+        if let Some(v) = th.control {
+            k.control = c(v);
+            k.control_hover = mix(k.control, Color::WHITE, 0.05);
+        }
+        set(&mut k.control_hover, th.control_hover);
+        if let Some(v) = th.danger {
+            k.danger = c(v);
+            k.danger_tint = Color {
+                a: DANGER_TINT.a,
+                ..k.danger
+            };
+        }
+        set(&mut k.warn, th.warn);
+        set(&mut k.scrim, th.scrim);
+        k.r_panel = th.radius_panel.unwrap_or(k.r_panel);
+        k.r_xs = th.radius_small.unwrap_or(k.r_xs);
+        // Cards keep the small radius unless the theme sets one.
+        k.r_card = th.radius_card.or(th.radius_small).unwrap_or(k.r_card);
+        k.backdrop_opacity = th.backdrop_opacity.unwrap_or(1.0);
+        k.backdrop_blur = th.backdrop_blur.unwrap_or(0.0);
+        k
+    }
+}
+
+fn mix(a: Color, b: Color, t: f32) -> Color {
+    Color {
+        r: a.r + (b.r - a.r) * t,
+        g: a.g + (b.g - a.g) * t,
+        b: a.b + (b.b - a.b) * t,
+        a: a.a,
+    }
+}
+
+fn luma(c: Color) -> f32 {
+    let l = |v: f32| {
+        if v <= 0.03928 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * l(c.r) + 0.7152 * l(c.g) + 0.0722 * l(c.b)
+}
+
+/// WCAG contrast ratio of two opaque colours.
+fn contrast(a: Color, b: Color) -> f32 {
+    let (x, y) = (luma(a), luma(b));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
+}
+
+/// Advisory contrast notes for a theme (text 4.5:1, outlines 3:1); never blocking.
+pub fn advisories(k: &Tokens) -> Vec<String> {
+    let checks = [
+        ("Text on the background", k.text, k.frame, 4.5),
+        ("Text on panels", k.text, k.surface, 4.5),
+        (
+            "Secondary text on the background",
+            k.text_secondary,
+            k.frame,
+            4.5,
+        ),
+        ("Accent on the background", k.accent, k.frame, 3.0),
+        ("Labels on the accent", k.on_accent, k.accent, 4.5),
+        ("Control outlines on the background", k.edge, k.frame, 3.0),
+    ];
+    checks
+        .into_iter()
+        .filter_map(|(what, fg, bg, min)| {
+            let r = contrast(fg, bg);
+            (r < min)
+                .then(|| format!("{what} has contrast {r:.1}:1 (at least {min}:1 is recommended)"))
+        })
+        .collect()
+}
+
+static ACTIVE: RwLock<Tokens> = RwLock::new(Tokens::DEFAULT);
+
+/// Make `th` the look of the whole app (call when the theme changes, not per frame). The font
+/// family is read only on the first call, i.e. at launch.
+pub fn set(th: &cz::Theme) {
+    // ponytail: the name is leaked once per launch, bounded by the engine's 64 character cap.
+    let name: &'static str = match th.font_family.as_deref() {
+        Some(n) if FAMILY.get().is_none() => Box::leak(n.to_owned().into_boxed_str()),
+        _ => FAMILY_DEFAULT,
+    };
+    let _ = FAMILY.set(name);
+    *ACTIVE.write().unwrap_or_else(|e| e.into_inner()) = Tokens::resolve(th);
+}
+
+pub fn active() -> Tokens {
+    *ACTIVE.read().unwrap_or_else(|e| e.into_inner())
+}
+
+macro_rules! getters {
+    ($($f:ident: $t:ty),* $(,)?) => {$(
+        pub fn $f() -> $t {
+            ACTIVE.read().unwrap_or_else(|e| e.into_inner()).$f
+        }
+    )*};
+}
+getters!(
+    bg: Background, frame: Color, surface: Color, raised: Color, header_bg: Color, text: Color,
+    text_secondary: Color, text_tertiary: Color, accent: Color, accent_hover: Color,
+    accent_text: Color, accent_tint: Color, glow: Color, on_accent: Color, edge: Color,
+    hairline: Color, hairline_strong: Color, control: Color, control_hover: Color, danger: Color,
+    danger_tint: Color, warn: Color, scrim: Color, r_panel: f32, r_xs: f32, r_card: f32,
+    backdrop_opacity: f32, backdrop_blur: f32,
+);
 
 #[cfg(test)]
 mod tests {
@@ -239,5 +510,22 @@ mod tests {
             );
             println!("{tn}: {lo:.2} - {hi:.2}");
         }
+    }
+
+    #[test]
+    fn default_theme_resolves_to_the_built_in_look() {
+        assert_eq!(Tokens::resolve(&cz::Theme::default()), Tokens::DEFAULT);
+    }
+
+    #[test]
+    fn accent_override_derives_its_dependents() {
+        let th = cz::parse(":root{--nocturne-accent:#ff8800;}")
+            .unwrap()
+            .theme;
+        let k = Tokens::resolve(&th);
+        assert_ne!(k.accent, ACCENT);
+        assert_eq!(k.accent_tint.a, ACCENT_TINT.a);
+        assert_eq!(k.accent_tint.r, k.accent.r);
+        assert!(ratio(solid(k.on_accent), solid(k.accent)) >= 4.5);
     }
 }

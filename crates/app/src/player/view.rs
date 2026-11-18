@@ -40,7 +40,7 @@ impl Player {
                 container(
                     text("Playing in the mpv window")
                         .size(t::BODY)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                 )
                 .center(Length::Fill)
                 .into(),
@@ -127,10 +127,10 @@ impl Player {
 fn popout_panel<'a>() -> Element<'a, Msg> {
     container(
         column![
-            text("Playing in HDR").size(t::HEADING).font(t::SEMIBOLD),
+            text("Playing in HDR").size(t::HEADING).font(t::semibold()),
             text("The picture is in mpv's own window. The controls below drive it from here.")
                 .size(t::BODY)
-                .color(t::TEXT_SECONDARY),
+                .color(t::text_secondary()),
             chip_button(
                 "Play in this window (SDR)",
                 false,

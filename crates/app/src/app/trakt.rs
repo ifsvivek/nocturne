@@ -435,7 +435,7 @@ impl App {
             text(x)
                 .size(t::CONTROL_TEXT)
                 .line_height(1.5)
-                .color(t::TEXT_SECONDARY)
+                .color(t::text_secondary())
         };
         let own = s.known.is_none() || s.advanced;
         let intro = if own {
@@ -450,10 +450,10 @@ impl App {
             mono("TRAKT"),
             text("Scrobble and sync with Trakt")
                 .size(t::HEADING)
-                .font(t::BOLD),
+                .font(t::bold()),
             dim(intro),
             dim(tk::PRIVACY.into()),
-            text(tk::CREDIT).size(t::CAPTION).color(t::TEXT_TERTIARY),
+            text(tk::CREDIT).size(t::CAPTION).color(t::text_tertiary()),
         ]
         .spacing(t::S3);
         match (&s.stage, &s.user) {
@@ -473,7 +473,7 @@ impl App {
                     .push(
                         text(format!("Connected as {u}."))
                             .size(t::BODY)
-                            .color(t::ACCENT_TEXT),
+                            .color(t::accent_text()),
                     )
                     .push(
                         row![
@@ -555,7 +555,7 @@ impl App {
             }
         }
         if let Some(n) = &s.note {
-            card = card.push(text(n.clone()).size(t::CONTROL_TEXT).color(t::DANGER));
+            card = card.push(text(n.clone()).size(t::CONTROL_TEXT).color(t::danger()));
         }
         card = card.push(
             container(action_button(

@@ -108,14 +108,16 @@ impl App {
         for (k, label) in list {
             r = r.push(
                 row![
-                    container(mono(*k).color(t::TEXT))
+                    container(mono(*k).color(t::text()))
                         .padding([2.0, t::S2])
                         .style(|_| container::Style {
-                            background: Some(t::CONTROL.into()),
-                            border: border(t::EDGE, 1.0, t::R_XS + 3.0),
+                            background: Some(t::control().into()),
+                            border: border(t::edge(), 1.0, t::r_xs() + 3.0),
                             ..Default::default()
                         }),
-                    text(*label).size(t::CAPTION + 1.0).color(t::TEXT_SECONDARY),
+                    text(*label)
+                        .size(t::CAPTION + 1.0)
+                        .color(t::text_secondary()),
                 ]
                 .spacing(t::S2)
                 .align_y(Alignment::Center),

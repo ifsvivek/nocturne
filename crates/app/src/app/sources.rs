@@ -49,6 +49,7 @@ impl App {
             SrcAct::Close => self.src_open = false,
             SrcAct::AddServer => {
                 self.src_open = false;
+                self.th.open = false;
                 self.account_back = Some(AccountBack::Ready);
                 self.phase = Phase::Account;
                 let t = self.ensure_accounts();
@@ -249,6 +250,7 @@ impl App {
             // Every source is gone: back to the first-run choice.
             self.stack.clear();
             self.src_open = false;
+            self.th.open = false;
             self.settings_open = false;
             self.setup = None;
             let t = self.start_onboarding(crate::onboarding::Mode::Fresh);
@@ -275,19 +277,21 @@ impl App {
         let badge = container(icon(
             if local { "folder" } else { "server" },
             18.0,
-            t::TEXT_SECONDARY,
+            t::text_secondary(),
         ))
         .center(38)
         .style(|_| container::Style {
             background: Some(t::GLASS.into()),
-            border: border(t::HAIRLINE_STRONG, 1.0, 19.0),
+            border: border(t::hairline_strong(), 1.0, 19.0),
             ..Default::default()
         });
         let who = column![
             text(s.profile.label.clone())
                 .size(t::BODY)
-                .font(t::SEMIBOLD),
-            text(account).size(t::CONTROL_TEXT).color(t::TEXT_SECONDARY),
+                .font(t::semibold()),
+            text(account)
+                .size(t::CONTROL_TEXT)
+                .color(t::text_secondary()),
         ]
         .spacing(2)
         .width(Length::Fill);
@@ -296,7 +300,7 @@ impl App {
                 dot(status_color(&s.status)),
                 text(status_text(&s.status, Instant::now()))
                     .size(t::CONTROL_TEXT)
-                    .color(t::TEXT_SECONDARY),
+                    .color(t::text_secondary()),
             ]
             .spacing(t::S2)
             .align_y(Alignment::Center),
@@ -401,7 +405,7 @@ impl App {
                 container(
                     text("No sources yet. Add a server or a folder on this computer.")
                         .size(t::BODY)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                 )
                 .padding([t::S6, t::PAGE_PAD]),
             );
@@ -437,17 +441,17 @@ impl App {
             mono("EXTRA HEADER"),
             text("Sent with every request to this server")
                 .size(t::HEADING)
-                .font(t::BOLD),
+                .font(t::bold()),
             text("For a server behind a gateway that asks for a header. The value is kept in your system keyring, never in a file. Leave both empty and press Remove to stop sending one.")
                 .size(t::BODY)
                 .line_height(1.5)
-                .color(t::TEXT_SECONDARY),
+                .color(t::text_secondary()),
             field("Header name, e.g. X-Access-Key", &d.name, false),
             field("Value", &d.value, true),
         ]
         .spacing(t::S3);
         if let Some(e) = &d.err {
-            card = card.push(text(e.clone()).size(t::CONTROL_TEXT).color(t::DANGER));
+            card = card.push(text(e.clone()).size(t::CONTROL_TEXT).color(t::danger()));
         }
         let go = d.busy || d.name.trim().is_empty() || d.value.trim().is_empty();
         card = card.push(
@@ -516,11 +520,11 @@ impl App {
         };
         let card = column![
             mono("PLEASE CONFIRM"),
-            text(title).size(t::HEADING).font(t::BOLD),
+            text(title).size(t::HEADING).font(t::bold()),
             text(body)
                 .size(t::BODY)
                 .line_height(1.5)
-                .color(t::TEXT_SECONDARY),
+                .color(t::text_secondary()),
             space().height(t::S2),
             container(
                 row![

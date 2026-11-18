@@ -29,11 +29,11 @@ fn hist_button<'a>(glyph: &'static str, label: &'static str, enabled: bool, m: M
                 background: matches!(s, Status::Hovered | Status::Pressed)
                     .then_some(t::GLASS.into()),
                 text_color: if enabled {
-                    t::TEXT
+                    t::text()
                 } else {
                     iced::Color {
                         a: 0.5,
-                        ..t::TEXT_TERTIARY
+                        ..t::text_tertiary()
                     }
                 },
                 border: border(t::NONE, 0.0, 6.0),
@@ -130,7 +130,7 @@ impl App {
                 row![
                     text("Search")
                         .size(t::CAPTION + 1.0)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                     mono("/")
                 ]
                 .spacing(t::S3)
@@ -140,12 +140,12 @@ impl App {
             .padding([6.0, t::S3])
             .on_press(Message::OpenSearch)
             .style(|s| Style {
-                text_color: t::TEXT,
+                text_color: t::text(),
                 border: border(
                     if matches!(s, Status::Hovered | Status::Pressed) {
-                        t::ACCENT
+                        t::accent()
                     } else {
-                        t::EDGE
+                        t::edge()
                     },
                     1.0,
                     6.0,
@@ -174,7 +174,7 @@ impl App {
             .height(t::HEADER_H - 1.0);
         let head = container(column![container(bar).padding([0.0, t::PAGE_PAD]), rule(),])
             .width(Length::Fill)
-            .style(style::fill(t::HEADER_BG));
+            .style(style::fill(t::header_bg()));
         container(head)
             .width(Length::Fill)
             .height(Length::Fill)
@@ -197,15 +197,15 @@ impl App {
             t::NONE,
             0.0,
             t::CAPTION + 1.0,
-            t::ACCENT_TEXT,
+            t::accent_text(),
         ))
         .on_press(Message::ToggleMenu)
         .style(move |s| Style {
             border: border(
                 if open || matches!(s, Status::Hovered | Status::Pressed) {
-                    t::ACCENT
+                    t::accent()
                 } else {
-                    t::EDGE
+                    t::edge()
                 },
                 1.0,
                 16.0,
@@ -253,11 +253,11 @@ impl App {
                         .on_press_maybe((!last).then_some(Message::Crumb(i)))
                         .style(move |s| Style {
                             text_color: if last {
-                                t::TEXT
+                                t::text()
                             } else if matches!(s, Status::Hovered | Status::Pressed) {
-                                t::ACCENT_TEXT
+                                t::accent_text()
                             } else {
-                                t::TEXT_SECONDARY
+                                t::text_secondary()
                             },
                             ..Default::default()
                         }),
@@ -270,7 +270,7 @@ impl App {
         let bar = container(r.height(28))
             .width(Length::Fill)
             .padding([0.0, t::PAGE_PAD])
-            .style(style::fill(t::HEADER_BG));
+            .style(style::fill(t::header_bg()));
         Some(
             container(bar)
                 .width(Length::Fill)
@@ -302,15 +302,15 @@ impl App {
                 40.0,
                 &name,
                 self.my_pic().as_ref(),
-                t::HAIRLINE_STRONG,
+                t::hairline_strong(),
                 1.0,
                 t::BODY,
-                t::ACCENT_TEXT
+                t::accent_text()
             ),
             column![
                 text(name)
                     .size(t::BODY)
-                    .font(t::SEMIBOLD)
+                    .font(t::semibold())
                     .wrapping(text::Wrapping::None),
                 mono(server).wrapping(text::Wrapping::None),
             ]
@@ -332,10 +332,10 @@ impl App {
                         22.0,
                         &a.user_name,
                         pic.as_ref(),
-                        t::HAIRLINE_STRONG,
+                        t::hairline_strong(),
                         1.0,
                         t::CAPTION,
-                        t::TEXT_SECONDARY,
+                        t::text_secondary(),
                     )
                 }),
                 _ => None,
@@ -501,20 +501,23 @@ impl App {
         }
         let edge = |glyph: &'static str, to_right: bool, dir: f32| -> El<'a> {
             // Solid frame colour at the outer edge, clear on the strip side.
-            let clear = iced::Color { a: 0.0, ..t::FRAME };
+            let clear = iced::Color {
+                a: 0.0,
+                ..t::frame()
+            };
             let angle = if to_right { 0.0 } else { std::f32::consts::PI };
             let g = iced::gradient::Linear::new(angle)
                 .add_stop(0.0, clear)
-                .add_stop(1.0, t::FRAME);
+                .add_stop(1.0, t::frame());
             let chev = Press::new(container(text(glyph).size(t::HEADING)).center(Length::Fill))
                 .width(48)
                 .height(t::HEADER_H - 1.0)
                 .on_press(Message::NavPage(dir))
                 .style(|s| Style {
                     text_color: if matches!(s, Status::Hovered | Status::Pressed) {
-                        t::ACCENT_TEXT
+                        t::accent_text()
                     } else {
-                        t::TEXT
+                        t::text()
                     },
                     ..Default::default()
                 });
