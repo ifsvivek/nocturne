@@ -108,8 +108,12 @@ jobs:
           if (-not (Test-Path $key)) { throw 'uninstall registry entry missing' }
           Write-Host "DisplayVersion: $((Get-ItemProperty $key).DisplayVersion)"
 
-          & (Join-Path $dir 'mpv.exe') --version | Select-Object -First 1
-          if ($LASTEXITCODE -ne 0) { throw 'bundled mpv.exe does not run' }
+          # mpv.exe is a GUI-subsystem program: run it to completion and read its exit code (piping it into
+          # Select-Object -First 1 cut the pipeline short and produced a false failure on the first CI run).
+          $mpv = Start-Process -FilePath (Join-Path $dir 'mpv.exe') -ArgumentList '--version' -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput mpv-version.txt
+          Get-Content mpv-version.txt -TotalCount 1
+          if ($mpv.ExitCode -ne 0) { throw "bundled mpv.exe does not run (exit $($mpv.ExitCode))" }
 
           # No GPU or display on the runner: a window/GPU error exit is acceptable, a loader error is not.
           $app = Start-Process -FilePath (Join-Path $dir 'nocturne.exe') -PassThru

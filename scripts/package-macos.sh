@@ -59,6 +59,15 @@ dylibbundler -od -b -cd \
 mv "$stage/libmpv.2.dylib" "$app/Contents/Frameworks/libmpv.2.dylib"
 # the dylib's own install name still points into Homebrew; the check below would (rightly) flag it
 install_name_tool -id @executable_path/../Frameworks/libmpv.2.dylib "$app/Contents/Frameworks/libmpv.2.dylib"
+# dylibbundler can add an LC_RPATH the binary already has; dyld on current macOS aborts on a duplicate
+# ("duplicate LC_RPATH", found by the first CI run). Drop repeats so each rpath appears once.
+for f in "$app/Contents/MacOS/"* "$app/Contents/Frameworks/"*.dylib; do
+  otool -l "$f" | awk '/cmd LC_RPATH/{r=1} r&&/ path /{print $2; r=0}' | sort | uniq -d | while read -r rp; do
+    while [ "$(otool -l "$f" | awk -v p="$rp" '/cmd LC_RPATH/{r=1} r&&/ path /{if($2==p)n++; r=0} END{print n+0}')" -gt 1 ]; do
+      install_name_tool -delete_rpath "$rp" "$f"
+    done
+  done
+done
 # Fallback if dylibbundler fails: for each `otool -L` entry under the Homebrew prefix, copy it into Frameworks/ and run
 #   install_name_tool -change <old> @executable_path/../Frameworks/<name> <binary>
 # (and `-id @rpath/<name>` on the dylib itself), recursing through the copied dylibs.
