@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
-# Build dist/nocturne-<ver>-1.<dist>.x86_64.rpm INSIDE a fedora container (packaging/nocturne.spec).
-#   usage: [PKG unsupported: spec builds nocturne-app] [IMG=fedora:latest] scripts/package-rpm.sh
-# Sources are the working tree (mounted read-only, tarred without target/dist/website); the cargo cache lives in a
-# throwaway volume removed at the end unless KEEP_CACHE=1.
+# Build dist/nocturne-<ver>-1.<dist>.x86_64.rpm INSIDE a fedora container (packaging/nocturne.spec), packaging the binary
+# scripts/build-linux-bin.sh built on debian:stable (older glibc, runs on Fedora). Nothing is compiled in the fedora container.
+#   usage: [PROFILE=release|fast-release] [IMG=fedora:latest] scripts/package-rpm.sh
+# Sources are the working tree (mounted read-only, tarred without target/dist/website).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-IMG="${IMG:-fedora:latest}"
+IMG="${IMG:-fedora:latest}"; PROFILE="${PROFILE:-release}"; export PROFILE
 ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-VOL=nocturne-rpm-cache
+scripts/build-linux-bin.sh
+# rpm-build lives in a small local image (built once; dnf downloads are slow on some networks).
+RIMG="nocturne-build:$(echo "$IMG" | tr ':/' '--')"
+docker image inspect "$RIMG" >/dev/null 2>&1 || docker build -q -t "$RIMG" - >/dev/null <<DOCKERFILE
+FROM $IMG
+RUN dnf install -y -q rpm-build tar gzip && dnf clean all
+DOCKERFILE
 mkdir -p dist
-trap '[ -n "${KEEP_CACHE:-}" ] || docker volume rm -f "$VOL" >/dev/null 2>&1' EXIT
 
-docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -v "$VOL":/cache -e VER="$ver" -e CARGO_PROFILE_RELEASE_LTO -e CARGO_PROFILE_RELEASE_CODEGEN_UNITS -e HOST_UID="$(id -u)" "$IMG" bash -euc '
-export CARGO_HOME=/cache/cargo CARGO_TARGET_DIR=/cache/target RUSTUP_HOME=/cache/rustup
-dnf install -y -q rpm-build gcc gcc-c++ make pkgconf-pkg-config dbus-devel systemd-devel libglvnd-devel curl tar gzip >/dev/null
-[ -x /cache/cargo/bin/cargo ] || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable >/dev/null
+docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -e PROFILE="$PROFILE" -e VER="$ver" -e HOST_UID="$(id -u)" "$RIMG" bash -euc '
 mkdir -p ~/rpmbuild/SOURCES
 tar -C /src --exclude=./target --exclude=./dist --exclude=./website --exclude=./.git --exclude=./.claude \
   --transform "s,^\.,nocturne-$VER," -czf ~/rpmbuild/SOURCES/nocturne-$VER.tar.gz .
-rpmbuild -bb --define "pkgver $VER" /src/packaging/nocturne.spec
+rpmbuild -bb --define "pkgver $VER" --define "binpath /src/dist/bin/nocturne-$PROFILE" /src/packaging/nocturne.spec
 cp ~/rpmbuild/RPMS/*/nocturne-*.rpm /out/
 chown $HOST_UID /out/nocturne-*.rpm
 '

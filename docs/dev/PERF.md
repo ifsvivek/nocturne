@@ -66,3 +66,7 @@ Same machine and method (`scripts/perf.sh target/release/nocturne 0.4`, release 
 | CPU during 60 s 1080p embedded playback | manual | manual | not measured |
 
 The +2.1 MiB is the 0.4 features (online metadata clients, downloads, Trakt, remote control, smart collections, couch mode with the gamepad library `gilrs`, Windows/macOS seams). Startup, idle memory and idle CPU did not move.
+
+## Build cost, 2026-11-18 (lean profiles, shared cache)
+
+Clean `cargo build -p nocturne-app` (dev), 16 cores, machine shared with other builds: before 158 s and 5.3 GB target, after (`debug = "line-tables-only"`, `debug = false` for dependencies) 67 s and 2.6 GB. `fast-release` (thin LTO, 16 codegen units) clean: 181 s on the busy machine (135 s quiet, see PACKAGING.md), 46 MB binary; fat-LTO `release` timing to be re-measured on a quiet machine. A second worktree with sccache and `SCCACHE_BASEDIRS`: 92 % hits, dev build 67 s to 41 s (32 s fully warm). Container packaging: first run (image, rustup, 15.5 min compile on 6 niced CPUs over a slow link) then a repeat `package.sh deb` in 10 s and the rpm from the same binary installs on `fedora:latest` with no missing libraries.

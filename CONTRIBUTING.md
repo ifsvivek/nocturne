@@ -20,6 +20,8 @@ cargo run -p nocturne-app        # the app (binary: nocturne); debug builds read
 cargo test --workspace           # offline tests
 ```
 
+Several worktrees (agents, parallel branches) multiply the build cache: `source scripts/build-env.sh` once per shell to share compiled dependencies through sccache (`cargo install --locked sccache`, optional), and run `scripts/cache-budget.sh` (`--enforce` to trim) to see the disk use against the 70 GB cache / 100 GB project limits. Debug builds carry line tables only; use `--profile fast-release` for quick optimised QA builds and plain `--release` only for published artifacts. Details: [docs/PACKAGING.md](docs/PACKAGING.md#build-profiles-shared-cache-and-disk-budget).
+
 Before opening a pull request run `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo deny`, secret scan). At minimum `cargo fmt --all` and `cargo clippy --workspace --all-targets -- -D warnings` must be clean.
 
 ## Throwaway Jellyfin for live tests

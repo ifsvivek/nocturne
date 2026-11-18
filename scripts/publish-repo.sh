@@ -4,6 +4,7 @@
 # VERSION must match pkgver in packaging/PKGBUILD (its sha256 is for that tag's source archive). Needs docker, gpg, repo-add.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+scripts/cache-budget.sh --quiet || true
 FPR=5204B42AF768DE210D4979E397FA02EFCF1A4E3B
 ver=${1:-$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)}
 pkgver=$(sed -n 's/^pkgver=//p' packaging/PKGBUILD)
