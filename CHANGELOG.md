@@ -5,6 +5,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 ## [Unreleased]
 
 ### Added
+- Pushing a `vX.Y.Z` tag builds every format on GitHub-hosted runners (tarball, .deb, .rpm, Windows installer and zip, macOS .dmg, best-effort AppImage) and creates a draft release with `SHA256SUMS` and the CHANGELOG section as notes; the repositories are still signed and published locally (`.github/workflows/release.yml`, [PACKAGING.md](docs/PACKAGING.md)).
 - apt and dnf repositories next to the pacman one (`https://nocturne.ifsvivek.in/repo/deb` and `/repo/rpm`, signed with the same key): Debian/Ubuntu and Fedora users get NOCTURNE updates through `apt upgrade` / `dnf upgrade` and their software centres. Built by `scripts/publish-repo-deb-rpm.sh` (called by `scripts/publish-repo.sh`); the key is also published as `repo/NOCTURNE-GPG-KEY` (armored) and `repo/NOCTURNE-GPG-KEY.gpg` (binary).
 
 ## [0.4.0] - 2026-11-18
