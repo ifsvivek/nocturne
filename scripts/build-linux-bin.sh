@@ -9,6 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 PKG="${PKG:-nocturne-app}"; IMG="${IMG:-debian:stable}"; PROFILE="${PROFILE:-release}"
 CACHE_CAP_GB="${CACHE_CAP_GB:-15}"
+JOBS="${JOBS:-$(nproc)}"  # JOBS=6 leaves the desktop responsive; the container is also limited to that many CPUs
 case "$PROFILE" in release|fast-release) ;; *) echo "PROFILE must be release or fast-release" >&2; exit 2 ;; esac
 scripts/cache-budget.sh --quiet || true
 VOL="nocturne-cache-$(echo "$IMG" | tr ':/' '--')"
@@ -20,8 +21,8 @@ FROM $IMG
 RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends build-essential pkg-config curl ca-certificates libdbus-1-dev libudev-dev libegl-dev && rm -rf /var/lib/apt/lists/*
 DOCKERFILE
 
-docker run --rm -v "$PWD":/src:ro -v "$PWD/dist/bin":/out -v "$VOL":/cache -e PKG="$PKG" -e PROFILE="$PROFILE" -e CAP="$CACHE_CAP_GB" -e HOST_UID="$(id -u)" "$BIMG" bash -euc '
-export CARGO_HOME=/cache/cargo CARGO_TARGET_DIR=/cache/target RUSTUP_HOME=/cache/rustup CARGO_BUILD_JOBS=$(nproc)
+docker run --rm --cpus "$JOBS" -e CARGO_BUILD_JOBS="$JOBS" -v "$PWD":/src:ro -v "$PWD/dist/bin":/out -v "$VOL":/cache -e PKG="$PKG" -e PROFILE="$PROFILE" -e CAP="$CACHE_CAP_GB" -e HOST_UID="$(id -u)" "$BIMG" bash -euc '
+export CARGO_HOME=/cache/cargo CARGO_TARGET_DIR=/cache/target RUSTUP_HOME=/cache/rustup
 [ -x /cache/cargo/bin/cargo ] || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable >/dev/null
 export PATH=/cache/cargo/bin:$PATH
 cd /src
