@@ -39,7 +39,7 @@ Installed-Size: $size
 Section: video
 Priority: optional
 Homepage: https://nocturne.ifsvivek.in
-Depends: $shl, libmpv2, libvulkan1, mesa-vulkan-drivers | vulkan-icd, libwayland-client0, libwayland-egl1, libxkbcommon0, libxkbcommon-x11-0, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxcb1
+Depends: $shl, libmpv2, libvulkan1, mesa-vulkan-drivers | vulkan-icd, libwayland-client0, libwayland-egl1, libxkbcommon0
 Recommends: mpv, gnome-keyring | kwalletmanager | keepassxc, xdg-desktop-portal, fonts-noto-core
 Description: Native media center for local folders and Jellyfin servers
  One cinematic, searchable library over local media and any number of

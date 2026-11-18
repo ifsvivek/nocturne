@@ -19,12 +19,6 @@ Requires:       vulkan-loader
 Requires:       libwayland-client
 Requires:       libwayland-egl
 Requires:       libxkbcommon
-Requires:       libxkbcommon-x11
-Requires:       libX11
-Requires:       libX11-xcb
-Requires:       libXcursor
-Requires:       libXi
-Requires:       libxcb
 Requires:       dbus-libs
 Recommends:     mesa-vulkan-drivers
 Recommends:     mpv

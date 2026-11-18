@@ -111,7 +111,7 @@ INTRO += f"""
 | libmpv.so.2 (mpv 0.41.0) | playback (loaded at run time with dlopen) | GPL-2.0-or-later AND LGPL-2.1-or-later (a GPL-enabled build makes the loaded library GPL-2.0-or-later, which is compatible with GPLv3 or later) |
 | libvulkan (vulkan-icd-loader) + a Vulkan driver | {GPU} | Apache-2.0 / driver specific |
 | libEGL (libglvnd) | video embedding, GL fallback | BSD-like (MIT) |
-| libxkbcommon, libxkbcommon-x11, libxcb, libX11, libXcursor, libXi, libwayland-client, libwayland-egl, libdbus-1 | windowing, input, keyring | MIT / permissive / AFL-or-GPL (dbus) |
+| libxkbcommon, libwayland-client, libwayland-egl, libdbus-1 | windowing, input, keyring | MIT / permissive / AFL-or-GPL (dbus) |
 | glibc, libgcc_s | runtime | LGPL-2.1+ / GPL-3.0+ with GCC runtime exception |
 
 If a distribution builds libmpv as GPL-2.0-only (not the case on Arch) the combination would not be redistributable;
