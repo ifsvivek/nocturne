@@ -1,0 +1,14 @@
+[package]
+name = "nocturne-style"
+description = "Element-tree styling for themes (spike): CSS cascade, Taffy layout"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nocturne-core = { path = "../core" }
+# No default features: no float layout, no calc, no flexbox balance. `parse` reads CSS values into Taffy styles (cssparser, MPL-2.0).
+taffy = { version = "0.15.1", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "block_layout", "content_size", "parse"] }
