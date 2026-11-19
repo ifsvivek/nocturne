@@ -866,6 +866,30 @@ impl Scene {
     pub fn animating(&self) -> bool {
         self.anims.active()
     }
+
+    /// Is `doc` the tree this scene was built from (apart from the generated leaves and the instantiated virtual items)? A page whose rebuilt tree equals the one on screen keeps its scene, scroll and animations.
+    pub fn same_tree(&self, doc: &Doc) -> bool {
+        doc.nodes.len() == self.real_len
+            && self.doc.nodes[..self.real_len]
+                .iter()
+                .zip(&doc.nodes)
+                .all(|(a, b)| {
+                    a.tag == b.tag
+                        && a.id == b.id
+                        && a.classes == b.classes
+                        && a.attrs == b.attrs
+                        && a.text == b.text
+                        && a.inline == b.inline
+                        && a.parent == b.parent
+                        && a.children == b.children
+                        && a.focusable == b.focusable
+                        && a.essential == b.essential
+                        && a.slot == b.slot
+                        && a.image == b.image
+                        && a.virt == b.virt
+                        && a.virtual_proto == b.virtual_proto
+                })
+    }
 }
 
 fn layout_affecting(a: &Computed, b: &Computed) -> bool {

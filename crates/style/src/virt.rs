@@ -308,6 +308,7 @@ impl Scene {
         }
         // Rebuild the item region from scratch: cheap, because only visible rows exist and styles come from the shared cache.
         let base = self.base_len;
+        let old = self.remember_interaction();
         self.doc.truncate(base);
         self.st.truncate(base);
         self.virt.pos.clear();
@@ -337,6 +338,7 @@ impl Scene {
                 }
             }
         }
+        self.restore_interaction(old);
         let f = crate::cascade::flags(&self.doc, &self.interaction);
         let mut cx = crate::cascade::Cx {
             sheet: &self.sheet,
@@ -361,6 +363,67 @@ impl Scene {
         }
         self.tree_dirty = true;
         true
+    }
+
+    /// Item nodes with their list index, in node order (an item's subtree runs to the next item).
+    fn items_sorted(&self) -> Vec<(Id, usize)> {
+        let mut v: Vec<(Id, usize)> = self.virt.index.iter().map(|(n, i)| (*n, *i)).collect();
+        v.sort_unstable();
+        v
+    }
+
+    /// The item (node, index, subtree size) that `n` belongs to, when `n` is inside a virtual item.
+    fn item_of(&self, items: &[(Id, usize)], n: Id) -> Option<(Id, usize, usize)> {
+        let at = items.partition_point(|(i, _)| *i <= n).checked_sub(1)?;
+        let (node, idx) = items[at];
+        let end = items.get(at + 1).map_or(self.doc.len(), |(i, _)| *i);
+        (n < end).then_some((node, idx, end - node))
+    }
+
+    /// Hover, focus and active ids that point into the virtual region, as (item index, offset inside the item, item size): the
+    /// region is rebuilt when rows scroll in and out, and an item keeps its state as long as it stays instantiated.
+    fn remember_interaction(&self) -> [Option<(usize, usize, usize)>; 3] {
+        let items = self.items_sorted();
+        let it = self.interaction;
+        [it.hover, it.focus, it.active].map(|n| {
+            let n = n?;
+            let (item, idx, size) = self.item_of(&items, n)?;
+            Some((idx, n - item, size))
+        })
+    }
+
+    fn restore_interaction(&mut self, old: [Option<(usize, usize, usize)>; 3]) {
+        let items = self.items_sorted();
+        let end = |at: usize| items.get(at + 1).map_or(self.doc.len(), |(i, _)| *i);
+        let find = |m: Option<(usize, usize, usize)>| -> Option<Id> {
+            let (idx, rel, size) = m?;
+            let at = items.iter().position(|(_, i)| *i == idx)?;
+            (end(at) - items[at].0 == size).then(|| items[at].0 + rel)
+        };
+        let base = self.base_len;
+        let fix = |cur: Option<Id>, m: Option<(usize, usize, usize)>| match cur {
+            Some(n) if n >= base => find(m),
+            other => other,
+        };
+        let it = self.interaction;
+        self.interaction.hover = fix(it.hover, old[0]);
+        self.interaction.focus = fix(it.focus, old[1]);
+        self.interaction.active = fix(it.active, old[2]);
+    }
+
+    /// The node of list item `index` while it is instantiated.
+    pub fn item_node(&self, index: usize) -> Option<Id> {
+        self.virt
+            .index
+            .iter()
+            .find(|(_, i)| **i == index)
+            .map(|(n, _)| *n)
+    }
+
+    /// The list item that `n` is (or is inside).
+    pub fn item_index(&self, n: Id) -> Option<usize> {
+        let items = self.items_sorted();
+        self.item_of(&items, n).map(|(_, i, _)| i)
     }
 
     /// Scroll offset (page or container) that brings item `index` of container `c` into view; applies it.
