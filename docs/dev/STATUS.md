@@ -9,6 +9,10 @@ Maintainer working notes for the public tree. User-facing status is in
 
 What 0.5 added: native CSS themes with layout on named parts (`crates/core/src/customize/`, Themes page in `crates/app/src/app/themes.rs`, Marquee and Feed examples, a theme per server); Server UI per server (`core/server_ui.rs`, `app/server_ui.rs`; home-sections editor behind `allow_server_writes`); in-app updates (`core/update.rs`, `core/update_install.rs`, signed with a separate ed25519 key); Linux Wayland-only; apt and dnf repositories; Windows and macOS previews; real text editing in every field; built-in Trakt client id; headless test-session scripts. 0.5.1: the macOS update tarball, theme import creating a new theme (`customize::import_name`), a steadier `scripts/headless-input-check.sh`.
 
+## 0.5.2 in progress: the theme engine
+
+On the branch `theme-engine` (cargo feature `theme-engine`, off in every normal build): the engine (`crates/style`, step B) and Home plus the shared header as element trees (`app/home_tree.rs`, `app/header_tree.rs`, `app/engine_ui.rs`, `crates/style/themes/default.css`, step D) with pixel parity to the hand-written pages, numbers and what differs in [THEME_ENGINE_PLAN.md](THEME_ENGINE_PLAN.md) section 10. `scripts/headless-parity.sh` repeats the comparison.
+
 ## Still open after 0.5.1
 
 - The updater end to end from a published release (tested with unit and integration tests and a local server); the macOS update path has never run on a Mac.

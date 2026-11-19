@@ -27,7 +27,7 @@ The hand-written screens (Settings, Admin, onboarding, Sources, account, dialogs
 | A | Classic preset + missing parts (running) | main | none |
 | B | Engine phase 1: `crates/style` from the spike made production-grade (typed declarations, style cache, incremental restyle on hover/focus, limits and `catch_unwind`, `:is/:where`, `@media`, grid areas, focus order and spatial navigation from the scene, safe mode), `widget/styled.rs` with slots (proven with a `text_input` and the Hole), virtual container | `theme-engine` | none |
 | C | `@import` following + one server's UI over another (core store + server_ui resolution + Settings > Sources choice) | main | A merged (shared app files) |
-| D | Engine phase 2: Home + header as trees, default stylesheet reproducing today, stage-1 translator (Marquee, Feed, Classic keep working), parity tests | `theme-engine` | A, B |
+| D | Engine phase 2: Home + header as trees, default stylesheet reproducing today, stage-1 translator (Marquee, Feed, Classic keep working), parity tests (**built**, THEME_ENGINE_PLAN section 10; the feature is still off by default) | `theme-engine` | A, B |
 | E | Engine phase 3: Library and Search grids on the virtual container, card images, 5,000-item grid under the frame budget | `theme-engine` | D |
 | F | Jellyfin compatibility class map + `::before/::after` text, `transform`, `transition`, element inspector on the Themes page; coverage test against a small hand-written sample | `theme-engine` | D, C |
 | F2 | Engine phase 4: Detail page and player overlay as trees (parity with today; logo art; the example look as a starter) | `theme-engine` | D |

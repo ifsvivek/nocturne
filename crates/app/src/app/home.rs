@@ -125,7 +125,7 @@ impl Geo {
         self.dims.0 + 2.0 * self.look.pad + 1.0
     }
 
-    fn head_h(&self) -> f32 {
+    pub(super) fn head_h(&self) -> f32 {
         if self.title_t.hidden {
             0.0
         } else {
@@ -134,7 +134,7 @@ impl Geo {
     }
 
     /// Height of the heading block: the title and its paragraph, or the title alone.
-    fn head_title_h(&self) -> f32 {
+    pub(super) fn head_title_h(&self) -> f32 {
         if self.details {
             SECTION_H
         } else {
@@ -144,7 +144,7 @@ impl Geo {
         }
     }
 
-    fn arrow_size(&self) -> f32 {
+    pub(super) fn arrow_size(&self) -> f32 {
         if self.arrows.shown() && !self.grid {
             self.arrows.size.unwrap_or(22.0) + 8.0
         } else {
@@ -167,7 +167,7 @@ impl Geo {
     }
 }
 
-fn band_pad() -> f32 {
+pub(super) fn band_pad() -> f32 {
     t::S8 * 1.5 * t::density()
 }
 
@@ -420,7 +420,7 @@ pub fn hero_h(win_w: f32, win_h: f32) -> f32 {
     (win_w * 9.0 / 16.0).min(win_h * 0.62).max(500.0).round()
 }
 
-const SECTION_H: f32 = 72.0;
+pub(super) const SECTION_H: f32 = 72.0;
 
 /// Height of one built-in strip band for cards whose image is `ch` tall.
 pub fn band_h(ch: f32) -> f32 {
@@ -694,6 +694,10 @@ impl App {
     // ---- view ----
 
     pub(super) fn home_page(&self) -> El<'_> {
+        #[cfg(feature = "theme-engine")]
+        if let Some(v) = self.eng_home_view() {
+            return v;
+        }
         let Some(p) = self.stack.last() else {
             return space().into();
         };
@@ -1061,6 +1065,10 @@ impl App {
 
     /// Arrow keys, Enter on Home. Returns the task for scrolling and image requests.
     pub(super) fn home_key(&mut self, key: &str) -> Task<Message> {
+        #[cfg(feature = "theme-engine")]
+        if let Some(t) = self.eng_key(key) {
+            return t;
+        }
         let links = self.nav_links();
         let nav_w = self.nav_widths();
         let (nav_off, nav_vw, _) = self.nav_geom();

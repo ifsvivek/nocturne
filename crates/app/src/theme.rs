@@ -581,6 +581,36 @@ impl Typo {
         self.size
     }
 
+    /// The typography as CSS declarations for the theme engine's tree builders (colour only when the stylesheet set one).
+    pub fn css(&self) -> String {
+        use iced::font::Weight as W;
+        let w = match self.font.weight {
+            W::Thin => 100,
+            W::ExtraLight => 200,
+            W::Light => 300,
+            W::Normal => 400,
+            W::Medium => 500,
+            W::Semibold => 600,
+            W::Bold => 700,
+            W::ExtraBold => 800,
+            W::Black => 900,
+        };
+        let mut s = format!("font-size: {}px; font-weight: {w}", self.size);
+        if let Some(c) = self.color {
+            s += &format!("; color: {}", css_color(c));
+        }
+        if let Some(l) = self.line {
+            s += &format!("; line-height: {l}");
+        }
+        match self.transform {
+            cz::TextTransform::None => {}
+            cz::TextTransform::Uppercase => s += "; text-transform: uppercase",
+            cz::TextTransform::Lowercase => s += "; text-transform: lowercase",
+            cz::TextTransform::Capitalize => s += "; text-transform: capitalize",
+        }
+        s
+    }
+
     /// Like [`Typo::text`] but the colour is only set when the stylesheet set one, so the text
     /// keeps the colour its container gives it (buttons that change ink on hover).
     pub fn text_inherit<'a>(&self, s: impl AsRef<str>) -> iced::widget::Text<'a> {
@@ -624,6 +654,12 @@ fn capitalize(s: &str) -> String {
             o
         })
         .collect()
+}
+
+/// A colour as a CSS `rgba()` (for the theme engine's sheets).
+pub fn css_color(c: Color) -> String {
+    let b = |v: f32| (v * 255.0).round() as u8;
+    format!("rgba({}, {}, {}, {:.3})", b(c.r), b(c.g), b(c.b), c.a)
 }
 
 pub fn active() -> Tokens {

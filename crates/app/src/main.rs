@@ -65,6 +65,11 @@ fn run() -> iced::Result {
         timing::mark("fonts loaded");
     });
     platform::install_term_handlers();
+    // Feature `theme-engine` only: the element-tree theme engine on a static Home screen (see widget/styled_preview.rs).
+    #[cfg(feature = "theme-engine")]
+    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("theme-engine") {
+        return widget::styled_preview::run();
+    }
     // Debug builds only: run the player page alone on a local file (see player/preview.rs).
     #[cfg(debug_assertions)]
     if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("player") {

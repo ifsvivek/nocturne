@@ -1,0 +1,39 @@
+/* Side rail: the header becomes a vertical rail on the left (flex column, children reordered with `order`), content beside it, tall poster cards. */
+:root { --bg: #101018; --rail: #16161f; --text: #ececf3; --dim: #9a9aab; --accent: #7c5cff; }
+
+page { display: flex; background: var(--bg); color: var(--text); font-size: 15px; }
+
+.header { position: fixed; top: 0; bottom: 0; left: 0; width: 230px; z-index: 5; display: flex; flex-direction: column; align-items: stretch; gap: 14px; padding: 28px 18px; background: var(--rail); border-right: 1px solid #262633; }
+.logo { order: -2; font-size: 24px; font-weight: 800; color: var(--accent); padding: 0 10px 8px; }
+.search { order: -1; padding: 10px 12px; border-radius: 10px; background: #1f1f2b; color: var(--dim); font-size: 13px; }
+.nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.nav-link { padding: 11px 12px; border-radius: 10px; color: #c4c4d2; }
+.nav-link:hover { background: #20202c; color: #ffffff; }
+.nav-link.active { background: var(--accent); color: #ffffff; font-weight: 700; }
+.avatar { width: 40px; height: 40px; border-radius: 20px; background: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 700; }
+.sidebar { display: none; }
+
+.main { flex: 1; min-width: 0; margin-left: 230px; display: flex; flex-direction: column; gap: 22px; padding: 24px 0 56px; }
+
+.hero { position: relative; height: 46vh; margin: 0 28px; border-radius: 20px; display: flex; align-items: flex-end; overflow: hidden; }
+.hero-art { position: absolute; inset: 0; }
+.hero-body { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 90px 36px 32px; width: 100%; background: linear-gradient(0deg, rgba(8, 8, 14, 0.92), rgba(8, 8, 14, 0)); }
+.hero-tag { color: #b9a8ff; font-size: 12px; font-weight: 800; }
+.hero-title { font-size: 40px; font-weight: 800; }
+.hero-meta { color: #d3d3df; }
+.hero-text { display: none; }
+.actions { display: flex; gap: 10px; margin-top: 6px; }
+.button { padding: 10px 22px; border-radius: 22px; background: rgba(255, 255, 255, 0.16); font-weight: 700; }
+.button.primary { background: var(--accent); }
+
+.row { display: flex; flex-direction: column; gap: 12px; }
+.row-title { padding: 0 28px; font-size: 20px; font-weight: 700; }
+.cards { display: flex; gap: 16px; overflow-x: scroll; padding: 4px 28px; }
+.card { flex: none; width: 170px; display: flex; flex-direction: column; gap: 8px; }
+.thumb { position: relative; aspect-ratio: 2 / 3; border-radius: 14px; }
+.card:hover .thumb { border: 2px solid var(--accent); }
+.card-title { font-size: 14px; font-weight: 700; -webkit-line-clamp: 1; }
+.card-meta { color: var(--dim); font-size: 12px; margin-top: -4px; -webkit-line-clamp: 1; }
+.badge { position: absolute; left: 8px; top: 8px; padding: 2px 7px; border-radius: 10px; background: rgba(16, 16, 24, 0.8); font-size: 11px; font-weight: 700; }
+.progress { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 4px; border-radius: 2px; background: linear-gradient(90deg, #7c5cff 0%, #7c5cff 45%, rgba(255, 255, 255, 0.3) 45%); }
+.progress[data-watched=false] { display: none; }

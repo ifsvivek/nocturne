@@ -16,6 +16,10 @@ rust-version.workspace = true
 name = "nocturne"
 path = "src/main.rs"
 
+[features]
+# The element-tree theme engine (`docs/dev/THEME_ENGINE_PLAN.md`): widget and preview only, off in every normal build until the screens move onto it.
+theme-engine = ["dep:nocturne-style"]
+
 [dependencies]
 # Iced default features minus `x11`: Linux is Wayland-only, no X11 crates in the build.
 iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "crisp", "web-colors", "thread-pool", "linux-theme-detection", "wayland", "tokio", "image", "svg", "advanced", "lazy", "canvas"] }
@@ -26,6 +30,8 @@ nocturne-jellyfin-admin = { path = "../jellyfin-admin" }
 nocturne-jellyfin-user = { path = "../jellyfin-user" }
 nocturne-session = { path = "../session" }
 nocturne-player = { path = "../player" }
+# The element-tree theme engine, behind the `theme-engine` feature.
+nocturne-style = { path = "../style", optional = true }
 serde_json = "1.0.154"
 png = "0.18"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time"] }

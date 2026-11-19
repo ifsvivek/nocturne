@@ -7,6 +7,12 @@ pub mod overlay;
 pub mod popover;
 pub mod press;
 pub mod source;
+#[cfg(feature = "theme-engine")]
+pub mod styled;
+#[cfg(feature = "theme-engine")]
+pub mod styled_preview;
+#[cfg(all(test, feature = "theme-engine"))]
+mod styled_tests;
 pub mod tex;
 pub mod text;
 

@@ -1,0 +1,570 @@
+//! Paint-side value types: layered backgrounds with linear gradients (own parser: many stops, `px` stops, double-position
+//! stops, hex with alpha), shadows (outer, inset, spread), 2D transforms, `object-fit`, easing and transition specs.
+use nocturne_core::customize::value::{self, Color, split_top};
+
+/// Iced draws at most this many gradient stops.
+pub const MAX_STOPS: usize = 8;
+/// Background layers kept per element.
+pub const MAX_LAYERS: usize = 4;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum StopPos {
+    Frac(f32),
+    /// Length along the gradient line; resolved against the box at paint time.
+    Px(f32),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Stop {
+    pub color: Color,
+    pub pos: Option<StopPos>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Fill {
+    Solid(Color),
+    /// CSS angle in degrees (0 = towards the top, 90 = right, 180 = bottom).
+    Linear {
+        angle: f32,
+        stops: Vec<Stop>,
+    },
+}
+
+fn num(s: &str) -> Option<f32> {
+    let s = s.trim();
+    s.parse::<f32>().ok().filter(|v| v.is_finite())
+}
+
+fn pos(t: &str) -> Result<StopPos, String> {
+    if let Some(p) = t.strip_suffix('%').and_then(num) {
+        return Ok(StopPos::Frac(p / 100.0));
+    }
+    if let Some(p) = t.strip_suffix("px").and_then(num) {
+        return Ok(StopPos::Px(p));
+    }
+    if t == "0" {
+        return Ok(StopPos::Px(0.0));
+    }
+    Err(format!("`{t}`: gradient stop positions must be % or px"))
+}
+
+fn angle(first: &str) -> Option<Result<f32, String>> {
+    let f = first.trim().to_ascii_lowercase();
+    if let Some(d) = f.strip_suffix("deg").and_then(num) {
+        return Some(Ok(d.rem_euclid(360.0)));
+    }
+    if let Some(t) = f.strip_suffix("turn").and_then(num) {
+        return Some(Ok((t * 360.0).rem_euclid(360.0)));
+    }
+    if let Some(r) = f.strip_suffix("rad").and_then(num) {
+        return Some(Ok(r.to_degrees().rem_euclid(360.0)));
+    }
+    if f == "0" {
+        return Some(Ok(0.0));
+    }
+    if let Some(rest) = f.strip_prefix("to ") {
+        let words: Vec<&str> = rest.split_whitespace().collect();
+        let has = |w: &str| words.contains(&w);
+        let v = if has("top") {
+            Some(true)
+        } else if has("bottom") {
+            Some(false)
+        } else {
+            None
+        };
+        let h = if has("right") {
+            Some(true)
+        } else if has("left") {
+            Some(false)
+        } else {
+            None
+        };
+        return Some(match (v, h) {
+            (Some(true), None) => Ok(0.0),
+            (Some(true), Some(true)) => Ok(45.0),
+            (None, Some(true)) => Ok(90.0),
+            (Some(false), Some(true)) => Ok(135.0),
+            (Some(false), None) => Ok(180.0),
+            (Some(false), Some(false)) => Ok(225.0),
+            (None, Some(false)) => Ok(270.0),
+            (Some(true), Some(false)) => Ok(315.0),
+            (None, None) => Err("unrecognised gradient direction".into()),
+        });
+    }
+    None
+}
+
+fn gradient(args: &str) -> Result<Fill, String> {
+    let mut parts = split_top(args, Some(','));
+    let mut ang = 180.0;
+    if let Some(a) = parts.first().and_then(|f| angle(f)) {
+        ang = a?;
+        parts.remove(0);
+    }
+    let mut stops: Vec<Stop> = vec![];
+    for p in parts {
+        let toks = split_top(p, None);
+        let first = toks.first().ok_or("empty gradient stop")?;
+        let Ok(c) = value::color(first) else {
+            return Err("colour hints in gradients are not supported".into());
+        };
+        // `color 0% 58%` is two stops of the same colour.
+        match toks.len() {
+            1 => stops.push(Stop {
+                color: c,
+                pos: None,
+            }),
+            2 | 3 => {
+                for t in &toks[1..] {
+                    stops.push(Stop {
+                        color: c,
+                        pos: Some(pos(t)?),
+                    });
+                }
+            }
+            _ => return Err(format!("`{p}` is not a gradient stop")),
+        }
+    }
+    if stops.len() < 2 {
+        return Err("a gradient needs at least two stops".into());
+    }
+    Ok(Fill::Linear { angle: ang, stops })
+}
+
+/// A `background` value: comma-separated layers, each a colour or `linear-gradient()` (other words in a layer, such as
+/// `center / cover no-repeat`, are ignored). The first layer is on top.
+pub fn layers(v: &str) -> Result<Vec<Fill>, String> {
+    if v.trim() == "none" {
+        return Ok(vec![]);
+    }
+    if v.contains("url(") {
+        return Err("`url()` is never fetched; images come from the app's own data".into());
+    }
+    let mut out = vec![];
+    for layer in split_top(v, Some(',')) {
+        let l = layer.to_ascii_lowercase();
+        let fill = if let Some(i) = l.find("linear-gradient(") {
+            // Take the balanced call.
+            let args_start = i + "linear-gradient(".len();
+            let mut depth = 1;
+            let mut end = None;
+            for (k, ch) in l[args_start..].char_indices() {
+                match ch {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = Some(args_start + k);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let end = end.ok_or("unclosed gradient")?;
+            gradient(&l[args_start..end])?
+        } else if l.contains("gradient(") {
+            return Err("only linear-gradient() is supported".into());
+        } else {
+            let c = split_top(&l, None)
+                .into_iter()
+                .find_map(|t| value::color(t).ok())
+                .ok_or_else(|| format!("`{layer}` is not a supported background"))?;
+            Fill::Solid(c)
+        };
+        out.push(fill);
+        if out.len() > MAX_LAYERS {
+            return Err("more than 4 background layers".into());
+        }
+    }
+    Ok(out)
+}
+
+/// A gradient ready to draw: angle and at most [`MAX_STOPS`] stops with ascending fractions.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Resolved {
+    pub angle: f32,
+    pub stops: Vec<(Color, f32)>,
+}
+
+/// Length of the gradient line for a box (CSS: `|w sin a| + |h cos a|`).
+pub fn line_length(angle: f32, w: f32, h: f32) -> f32 {
+    let a = angle.to_radians();
+    (w * a.sin()).abs() + (h * a.cos()).abs()
+}
+
+/// Resolve stop positions (percent, px, missing) for a box of `w` x `h`, make them monotonic and cap the count.
+pub fn resolve(fill: &Fill, w: f32, h: f32) -> Option<Resolved> {
+    let Fill::Linear { angle, stops } = fill else {
+        return None;
+    };
+    let len = line_length(*angle, w, h).max(1.0);
+    let mut p: Vec<Option<f32>> = stops
+        .iter()
+        .map(|s| {
+            s.pos.map(|q| match q {
+                StopPos::Frac(f) => f,
+                StopPos::Px(px) => px / len,
+            })
+        })
+        .collect();
+    let n = p.len();
+    p[0].get_or_insert(0.0);
+    p[n - 1].get_or_insert(1.0);
+    let mut i = 1;
+    while i < n {
+        if p[i].is_none() {
+            let lo = i - 1;
+            let hi = (i..n).find(|&j| p[j].is_some()).unwrap_or(n - 1);
+            let (a, b) = (p[lo].unwrap_or(0.0), p[hi].unwrap_or(1.0));
+            #[allow(clippy::needless_range_loop)]
+            for k in i..hi {
+                p[k] = Some(a + (b - a) * (k - lo) as f32 / (hi - lo) as f32);
+            }
+            i = hi;
+        }
+        i += 1;
+    }
+    let mut out: Vec<(Color, f32)> = vec![];
+    let mut top = f32::NEG_INFINITY;
+    for (s, q) in stops.iter().zip(p) {
+        let q = q.unwrap_or(0.0).max(top).clamp(0.0, 1.0);
+        top = q;
+        out.push((s.color, q));
+    }
+    if out.len() > MAX_STOPS {
+        // Keep the ends and spread the rest: the shape of a long scrim survives.
+        let m = out.len();
+        out = (0..MAX_STOPS)
+            .map(|k| out[k * (m - 1) / (MAX_STOPS - 1)])
+            .collect();
+    }
+    Some(Resolved {
+        angle: *angle,
+        stops: out,
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shadow {
+    pub inset: bool,
+    pub dx: f32,
+    pub dy: f32,
+    pub blur: f32,
+    pub spread: f32,
+    pub color: Color,
+}
+
+pub const MAX_SHADOWS: usize = 4;
+
+/// `box-shadow`, `text-shadow`: `[inset] x y [blur [spread]] color`, comma separated (at most [`MAX_SHADOWS`]).
+pub fn shadows(v: &str, allow_inset: bool, allow_spread: bool) -> Result<Vec<Shadow>, String> {
+    if v.trim() == "none" {
+        return Ok(vec![]);
+    }
+    let mut out = vec![];
+    for one in split_top(v, Some(',')) {
+        let (mut nums, mut color, mut inset) = (vec![], None, false);
+        for t in split_top(one, None) {
+            if t == "inset" {
+                if !allow_inset {
+                    return Err("`inset` is not allowed here".into());
+                }
+                inset = true;
+                continue;
+            }
+            match t
+                .strip_suffix("px")
+                .and_then(num)
+                .or_else(|| (t == "0").then_some(0.0))
+            {
+                Some(n) => nums.push(n),
+                None => color = Some(value::color(t)?),
+            }
+        }
+        let color = color.unwrap_or(Color::rgba(0, 0, 0, 128));
+        let (dx, dy, blur, spread) = match nums[..] {
+            [dx, dy] => (dx, dy, 0.0, 0.0),
+            [dx, dy, b] => (dx, dy, b, 0.0),
+            [dx, dy, b, s] if allow_spread => (dx, dy, b, s),
+            _ => return Err(format!("`{one}` is not a shadow")),
+        };
+        out.push(Shadow {
+            inset,
+            dx,
+            dy,
+            blur: blur.max(0.0),
+            spread,
+            color,
+        });
+        if out.len() >= MAX_SHADOWS {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+/// A 2D transform at paint time: translation (px plus a fraction of the element's own box), scale, origin as box fractions.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Xf {
+    pub tx: (f32, f32),
+    pub ty: (f32, f32),
+    pub sx: f32,
+    pub sy: f32,
+    pub origin: (f32, f32),
+}
+
+impl Xf {
+    pub const IDENTITY: Xf = Xf {
+        tx: (0.0, 0.0),
+        ty: (0.0, 0.0),
+        sx: 1.0,
+        sy: 1.0,
+        origin: (0.5, 0.5),
+    };
+
+    pub fn is_identity(&self) -> bool {
+        self.tx == (0.0, 0.0) && self.ty == (0.0, 0.0) && self.sx == 1.0 && self.sy == 1.0
+    }
+
+    pub fn lerp(&self, o: &Xf, t: f32) -> Xf {
+        let l = |a: f32, b: f32| a + (b - a) * t;
+        Xf {
+            tx: (l(self.tx.0, o.tx.0), l(self.tx.1, o.tx.1)),
+            ty: (l(self.ty.0, o.ty.0), l(self.ty.1, o.ty.1)),
+            sx: l(self.sx, o.sx),
+            sy: l(self.sy, o.sy),
+            origin: o.origin,
+        }
+    }
+
+    /// Translation in px and the (uniform) scale for a box of `w` x `h`: Iced's transformation has no non-uniform scale,
+    /// so the larger of the two scale factors is used.
+    pub fn resolve(&self, w: f32, h: f32) -> (f32, f32, f32) {
+        let s = if (self.sx - 1.0).abs() >= (self.sy - 1.0).abs() {
+            self.sx
+        } else {
+            self.sy
+        };
+        (self.tx.0 + self.tx.1 * w, self.ty.0 + self.ty.1 * h, s)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fit {
+    Fill,
+    Contain,
+    Cover,
+    None,
+    ScaleDown,
+}
+
+/// The rectangle an image of `iw` x `ih` is drawn into inside a box of `bw` x `bh` (relative to the box; it may overflow it,
+/// the caller clips to the box). `pos` is `object-position` as fractions of the free space.
+pub fn fit_rect(fit: Fit, pos: (f32, f32), bw: f32, bh: f32, iw: f32, ih: f32) -> [f32; 4] {
+    if iw <= 0.0 || ih <= 0.0 {
+        return [0.0, 0.0, bw, bh];
+    }
+    let (w, h) = match fit {
+        Fit::Fill => (bw, bh),
+        Fit::None => (iw, ih),
+        Fit::Contain | Fit::Cover | Fit::ScaleDown => {
+            let (sx, sy) = (bw / iw, bh / ih);
+            let s = match fit {
+                Fit::Cover => sx.max(sy),
+                Fit::Contain => sx.min(sy),
+                _ => sx.min(sy).min(1.0),
+            };
+            (iw * s, ih * s)
+        }
+    };
+    [(bw - w) * pos.0, (bh - h) * pos.1, w, h]
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Ease {
+    Linear,
+    Ease,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+    Bezier(f32, f32, f32, f32),
+}
+
+impl Ease {
+    /// `t` and the result are in 0..=1.
+    pub fn at(self, t: f32) -> f32 {
+        if t <= 0.0 {
+            return 0.0;
+        }
+        if t >= 1.0 {
+            return 1.0;
+        }
+        let (x1, y1, x2, y2) = match self {
+            Ease::Linear => return t,
+            Ease::Ease => (0.25, 0.1, 0.25, 1.0),
+            Ease::EaseIn => (0.42, 0.0, 1.0, 1.0),
+            Ease::EaseOut => (0.0, 0.0, 0.58, 1.0),
+            Ease::EaseInOut => (0.42, 0.0, 0.58, 1.0),
+            Ease::Bezier(a, b, c, d) => (a, b, c, d),
+        };
+        let bez = |a: f32, b: f32, s: f32| {
+            let u = 1.0 - s;
+            3.0 * u * u * s * a + 3.0 * u * s * s * b + s * s * s
+        };
+        // Solve x(s) = t by bisection (x is monotonic for x1, x2 in 0..=1), then read y(s).
+        let (mut lo, mut hi) = (0.0f32, 1.0f32);
+        for _ in 0..24 {
+            let mid = (lo + hi) / 2.0;
+            if bez(x1, x2, mid) < t {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        bez(y1, y2, (lo + hi) / 2.0)
+    }
+
+    pub fn parse(t: &str) -> Option<Ease> {
+        Some(match t {
+            "linear" => Ease::Linear,
+            "ease" => Ease::Ease,
+            "ease-in" => Ease::EaseIn,
+            "ease-out" => Ease::EaseOut,
+            "ease-in-out" => Ease::EaseInOut,
+            _ => {
+                let a = t.strip_prefix("cubic-bezier(")?.strip_suffix(')')?;
+                let n: Vec<f32> = a.split(',').filter_map(num).collect();
+                match n[..] {
+                    [x1, y1, x2, y2] if (0.0..=1.0).contains(&x1) && (0.0..=1.0).contains(&x2) => {
+                        Ease::Bezier(x1, y1, x2, y2)
+                    }
+                    _ => return None,
+                }
+            }
+        })
+    }
+}
+
+/// The properties a transition can animate (paint-only: never layout).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AProp {
+    Opacity,
+    Transform,
+    Color,
+    Background,
+    BorderColor,
+}
+
+pub const ALL_APROPS: [AProp; 5] = [
+    AProp::Opacity,
+    AProp::Transform,
+    AProp::Color,
+    AProp::Background,
+    AProp::BorderColor,
+];
+
+/// One entry of `transition-property`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TP {
+    All,
+    One(AProp),
+    /// A property that cannot animate here (layout, shadows): its slot keeps the timing lists aligned and does nothing.
+    Other,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TransSpec {
+    pub props: Vec<TP>,
+    pub durs: Vec<f32>,
+    pub delays: Vec<f32>,
+    pub eases: Vec<Ease>,
+}
+
+impl TransSpec {
+    /// (duration ms, delay ms, easing) for the property, if it transitions.
+    pub fn for_prop(&self, p: AProp) -> Option<(f32, f32, Ease)> {
+        let k = self
+            .props
+            .iter()
+            .position(|x| *x == TP::All)
+            .or_else(|| self.props.iter().position(|x| *x == TP::One(p)))?;
+        let pick = |v: &[f32]| if v.is_empty() { 0.0 } else { v[k % v.len()] };
+        let dur = pick(&self.durs);
+        if dur <= 0.0 && pick(&self.delays) <= 0.0 {
+            return None;
+        }
+        let ease = if self.eases.is_empty() {
+            Ease::Ease
+        } else {
+            self.eases[k % self.eases.len()]
+        };
+        Some((dur, pick(&self.delays), ease))
+    }
+
+    /// Nothing can transition.
+    pub fn is_none(&self) -> bool {
+        self.props.iter().all(|p| *p == TP::Other)
+    }
+}
+
+fn time(t: &str) -> Option<f32> {
+    if let Some(ms) = t.strip_suffix("ms") {
+        return num(ms);
+    }
+    t.strip_suffix('s').and_then(num).map(|s| s * 1000.0)
+}
+
+pub fn aprop(name: &str) -> Option<AProp> {
+    Some(match name {
+        "opacity" => AProp::Opacity,
+        "transform" => AProp::Transform,
+        "color" => AProp::Color,
+        "background" | "background-color" | "background-image" => AProp::Background,
+        "border-color"
+        | "border"
+        | "border-top-color"
+        | "border-bottom-color"
+        | "border-left-color"
+        | "border-right-color" => AProp::BorderColor,
+        _ => return None,
+    })
+}
+
+/// `transition` shorthand: `opacity 260ms cubic-bezier(...) 50ms, transform 0.3s`.
+pub fn transition(v: &str) -> Result<TransSpec, String> {
+    let mut spec = TransSpec::default();
+    if v.trim() == "none" {
+        return Ok(spec);
+    }
+    for item in split_top(v, Some(',')) {
+        let (mut prop, mut times, mut ease) = (None, vec![], None);
+        for t in split_top(item, None) {
+            if let Some(ms) = time(t) {
+                times.push(ms);
+            } else if let Some(e) = Ease::parse(t) {
+                ease = Some(e);
+            } else if t.chars().all(|c| c.is_ascii_alphabetic() || c == '-') {
+                prop = Some(t);
+            } else {
+                return Err(format!("`{t}` is not supported in a transition"));
+            }
+        }
+        spec.durs
+            .push(times.first().copied().unwrap_or(0.0).max(0.0));
+        spec.delays.push(times.get(1).copied().unwrap_or(0.0));
+        spec.eases.push(ease.unwrap_or(Ease::Ease));
+        spec.props.push(match prop.unwrap_or("all") {
+            "all" => TP::All,
+            p => aprop(p).map_or(TP::Other, TP::One),
+        });
+    }
+    if let Some(k) = spec.props.iter().position(|p| *p == TP::All) {
+        // With `all` present its timing applies to every property.
+        spec.props = vec![TP::All];
+        spec.durs = vec![spec.durs[k]];
+        spec.delays = vec![spec.delays[k]];
+        spec.eases = vec![spec.eases[k]];
+    }
+    Ok(spec)
+}
