@@ -87,7 +87,7 @@
       <p class="m-0 mt-2 text-sm text-ink-2">ed25519, valid until 2029-11-15. One key signs all three repositories. pacman: <a class="break-all" href={KEY_URL}>{KEY_URL}</a>; apt: <a class="break-all" href="{SITE}/repo/NOCTURNE-GPG-KEY.gpg">{SITE}/repo/NOCTURNE-GPG-KEY.gpg</a>; dnf: <a class="break-all" href="{SITE}/repo/NOCTURNE-GPG-KEY">{SITE}/repo/NOCTURNE-GPG-KEY</a>.</p>
     </aside>
 
-    <p class="mt-16 text-sm text-ink-2">macOS and Windows are planned, not available. The PKGBUILD, the tarball and the source build are under <a href="/#install">Install</a>.</p>
+    <p class="mt-16 text-sm text-ink-2">Windows (x64) and macOS (Apple Silicon) are previews on the <a href="https://github.com/ifsvivek/nocturne/releases/latest">GitHub release</a>, without a package repository. The PKGBUILD, the tarball and the source build are under <a href="/#install">Install</a>.</p>
   {:else}
     <p class="lede mt-6">The package repository opens with the first release.</p>
   {/if}
