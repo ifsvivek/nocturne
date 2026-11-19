@@ -8,6 +8,7 @@ use super::{Act, BAR_H, CtxAct, Msg, Player, Sheet};
 use crate::style::border;
 use crate::theme as t;
 use crate::widget::press::Press;
+use crate::widget::probe::probe;
 use crate::widget::text::mono;
 use iced::widget::button::{Status, Style};
 use iced::widget::{column, container, image, opaque, pin, row, scrollable, space, text};
@@ -30,6 +31,16 @@ fn panel_style(_: &iced::Theme) -> container::Style {
         text_color: Some(t::text()),
         ..Default::default()
     }
+}
+
+/// Reports where `el` is laid out when the video is a child window (Windows) that has to be cut
+/// out there; `el` itself elsewhere.
+fn seen<'a>(p: &Player, slot: usize, el: impl Into<Element<'a, Msg>>) -> Element<'a, Msg> {
+    let el = el.into();
+    if p.surface.is_none() {
+        return el;
+    }
+    probe(el, p.covers[slot], move |r| Msg::Cover(slot, r))
 }
 
 fn panel<'a>(c: impl Into<Element<'a, Msg>>) -> container::Container<'a, Msg> {
@@ -150,7 +161,7 @@ pub fn popover(p: &Player, pop: video::Pop) -> Element<'_, Msg> {
         .width(360)
         .max_height(420);
     placed(
-        opaque(body),
+        seen(p, 0, opaque(body)),
         H::Right,
         V::Bottom,
         Padding {
@@ -242,7 +253,7 @@ pub fn queue_panel(p: &Player, shown: bool) -> Option<Element<'_, Msg>> {
         .width(360)
         .height(Length::Fill);
     Some(placed(
-        opaque(body),
+        seen(p, 1, opaque(body)),
         H::Right,
         V::Top,
         Padding {
@@ -306,7 +317,12 @@ pub fn ctx_panel(p: &Player) -> Option<Element<'_, Msg>> {
                 .style(move |s| row_look(s, false, kb)),
         );
     }
-    Some(pin(opaque(panel(col).width(220))).x(o.x).y(o.y).into())
+    Some(
+        pin(seen(p, 2, opaque(panel(col).width(220))))
+            .x(o.x)
+            .y(o.y)
+            .into(),
+    )
 }
 
 /// Top-left OSD chip, stats panel and key help over the video.
@@ -314,7 +330,11 @@ pub fn overlays(p: &Player) -> Vec<Element<'_, Msg>> {
     let mut v: Vec<Element<Msg>> = vec![];
     if let Some((s, _)) = &p.osd {
         v.push(placed(
-            panel(text(s.clone()).size(13)).padding([t::S2, t::S4]),
+            seen(
+                p,
+                3,
+                panel(text(s.clone()).size(13)).padding([t::S2, t::S4]),
+            ),
             H::Left,
             V::Top,
             Padding::new(t::S6),
@@ -332,7 +352,7 @@ pub fn overlays(p: &Player) -> Vec<Element<'_, Msg>> {
             );
         }
         v.push(placed(
-            panel(col).padding([t::S3, t::S4]),
+            seen(p, 4, panel(col).padding([t::S3, t::S4])),
             H::Left,
             V::Top,
             Padding {
@@ -383,7 +403,7 @@ pub fn overlays(p: &Player) -> Vec<Element<'_, Msg>> {
             );
         }
         v.push(placed(
-            panel(col).padding([t::S3, t::S4]),
+            seen(p, 5, panel(col).padding([t::S3, t::S4])),
             H::Right,
             V::Top,
             Padding {
@@ -395,9 +415,13 @@ pub fn overlays(p: &Player) -> Vec<Element<'_, Msg>> {
     }
     if let Some((n, _)) = &p.note {
         v.push(placed(
-            panel(text(n.clone()).size(13))
-                .padding([t::S3, t::S4])
-                .max_width(360),
+            seen(
+                p,
+                6,
+                panel(text(n.clone()).size(13))
+                    .padding([t::S3, t::S4])
+                    .max_width(360),
+            ),
             H::Right,
             V::Top,
             Padding::new(t::S6),
@@ -417,11 +441,15 @@ pub fn floaters(p: &Player, shown: bool) -> Vec<Element<'_, Msg>> {
     };
     if let Some(s) = p.active_seg() {
         v.push(placed(
-            container(chip_button(
-                &format!("{}  \u{21B5}", s.label()),
-                true,
-                Msg::Act(Act::Skip),
-            )),
+            seen(
+                p,
+                8,
+                container(chip_button(
+                    &format!("{}  \u{21B5}", s.label()),
+                    true,
+                    Msg::Act(Act::Skip),
+                )),
+            ),
             H::Right,
             V::Bottom,
             pad(if p.next_card().is_some() { 150.0 } else { 0.0 }),
@@ -449,7 +477,12 @@ pub fn floaters(p: &Player, shown: bool) -> Vec<Element<'_, Msg>> {
         )
         .padding(t::S3)
         .width(300);
-        v.push(placed(opaque(body), H::Right, V::Bottom, pad(0.0)));
+        v.push(placed(
+            seen(p, 7, opaque(body)),
+            H::Right,
+            V::Bottom,
+            pad(0.0),
+        ));
     }
     v
 }
@@ -597,7 +630,7 @@ pub fn scrub_tip(p: &Player) -> Option<Element<'_, Msg>> {
     }
     col = col.push(label);
     Some(
-        pin(col)
+        pin(seen(p, 9, col))
             .x(logic::tip_left(x, w, p.win.width))
             .y((p.win.height - BAR_H - 4.0 - h).max(0.0))
             .into(),
