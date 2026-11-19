@@ -1,0 +1,19 @@
+{
+  "version": "0.5.0",
+  "date": "2026-11-19",
+  "notes_url": "https://github.com/ifsvivek/nocturne/releases/tag/v0.5.0",
+  "platforms": {
+    "linux-x86_64": {
+      "url": "https://github.com/ifsvivek/nocturne/releases/download/v0.5.0/nocturne-0.5.0-x86_64-linux.tar.gz",
+      "size": 13953316,
+      "sha256": "9b159c08dd70686f3966dfe637956afa7ae3bc971fcd6eabc7236058e852e5af",
+      "signature": "Q1fMkFykgEzyKODCrIXn5jWvimLxWL+OU1MXPwqyzaebN/okY3v5czem2cX4HTFFmG0T6CaDm1ACOXc+FHPTDA=="
+    },
+    "windows-x86_64": {
+      "url": "https://github.com/ifsvivek/nocturne/releases/download/v0.5.0/nocturne-0.5.0-x86_64-windows.zip",
+      "size": 58114995,
+      "sha256": "b5a5f19931de84bb9042f9e9a9a481e3a7a28fa6870e6236f6682d9868166b89",
+      "signature": "13iSSfrI9Ksi4Ws2KrXgi5+gjParBXmTUCN4Lic/hdCO57aJbgRRioWsIW+mpkiPxkCZEAZa1+9jZtmRH4N8Aw=="
+    }
+  }
+}
