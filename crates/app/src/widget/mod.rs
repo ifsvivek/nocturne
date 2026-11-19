@@ -17,3 +17,4 @@ pub use text::{label, mono, tracked, wordmark};
 pub mod buffering;
 pub mod hole;
 pub mod track;
+pub mod zoom;

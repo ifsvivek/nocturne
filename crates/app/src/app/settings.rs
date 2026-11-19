@@ -68,7 +68,7 @@ impl App {
                 }),
                 rule(),
             ])
-            .padding([t::S4, t::PAGE_PAD]),
+            .padding([t::S4, t::page_pad()]),
         );
         page = page.push(
             container(column![
@@ -98,7 +98,7 @@ impl App {
                 }),
                 rule(),
             ])
-            .padding([0.0, t::PAGE_PAD]),
+            .padding([0.0, t::page_pad()]),
         );
         page = page.push(
             container(column![
@@ -128,7 +128,7 @@ impl App {
                 }),
                 rule(),
             ])
-            .padding([0.0, t::PAGE_PAD]),
+            .padding([0.0, t::page_pad()]),
         );
         for (i, r) in self.settings.rows().into_iter().enumerate() {
             let on = i == self.settings_sel;
@@ -162,7 +162,7 @@ impl App {
                         }),
                         rule(),
                     ])
-                    .padding([0.0, t::PAGE_PAD]),
+                    .padding([0.0, t::page_pad()]),
                 );
             }
             let text_col = column![
@@ -209,10 +209,10 @@ impl App {
             let cell = Stack::from_vec(vec![press.into(), bar])
                 .width(Length::Fill)
                 .height(Length::Shrink);
-            page = page.push(container(column![cell, rule()]).padding([0.0, t::PAGE_PAD]));
+            page = page.push(container(column![cell, rule()]).padding([0.0, t::page_pad()]));
         }
         scroll(page.padding(Padding {
-            top: t::HEADER_H + t::S8,
+            top: t::header_h() + t::S8,
             bottom: t::S8,
             ..Padding::ZERO
         }))
@@ -282,8 +282,8 @@ impl App {
     fn reveal_row(&self, i: usize) -> Task<Message> {
         let (top, bottom) = (row_top(i), row_top(i) + ROW_H);
         let (off, h) = (self.set_off, self.set_h);
-        let y = if top < off + t::HEADER_H {
-            (top - t::HEADER_H - t::S8).max(0.0)
+        let y = if top < off + t::header_h() {
+            (top - t::header_h() - t::S8).max(0.0)
         } else if bottom > off + h {
             bottom - h + t::S8
         } else {

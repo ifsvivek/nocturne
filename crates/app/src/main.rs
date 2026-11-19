@@ -89,7 +89,8 @@ fn run() -> iced::Result {
     // it never touches the configured server.)
     let cfg = nocturne_jellyfin::Config::load().ok();
     // The saved global theme, before the first frame (and the only moment its font family is read).
-    theme::set(&nocturne_core::customize::Store::load().resolve(None));
+    let (th, lay) = nocturne_core::customize::Store::load().resolve_all(None);
+    theme::set(&th, &lay);
     iced::application(move || App::boot(cfg.clone()), App::update, App::view)
         .title(App::title)
         .subscription(App::subscription)

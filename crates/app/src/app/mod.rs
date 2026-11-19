@@ -406,7 +406,7 @@ impl App {
 
     /// Couch mode scales the whole UI (type, targets and spacing together).
     pub fn scale_factor(&self) -> f32 {
-        crate::couch::factor()
+        crate::couch::factor() * crate::theme::font_scale()
     }
 
     pub fn title(&self) -> String {

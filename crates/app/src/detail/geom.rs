@@ -8,7 +8,9 @@ use nocturne_core::detail::Full;
 use nocturne_core::source::{Art, Kind, Media};
 
 /// The header and the breadcrumb strip float over the page; content starts below them.
-pub const TOP: f32 = t::HEADER_H + 29.0;
+pub fn top() -> f32 {
+    t::header_h() + 29.0
+}
 pub const FACTS_H: f32 = 52.0;
 /// Chip height and the gaps of the chip band (a gap above keeps the rule off the chips).
 pub const CHIP_H: f32 = 28.0;
@@ -18,7 +20,7 @@ const CHIPS_TOP: f32 = t::S3;
 /// they need, and the band grows with them so they never run into the next band.
 /// ponytail: text width is estimated per character (13 px font ~ 7.2 px); a measured width would be exact.
 pub fn chips_h(labels: &[String], w: f32) -> f32 {
-    let avail = (w - 2.0 * t::PAGE_PAD).max(1.0);
+    let avail = (w - 2.0 * t::page_pad()).max(1.0);
     let mut lines = 1;
     let mut x = 0.0;
     for l in labels {
@@ -85,11 +87,11 @@ pub fn hero_h(win: iced::Size) -> f32 {
 
 /// Episode-card columns and each card's thumbnail width.
 pub fn card_cols(width: f32) -> usize {
-    nocturne_core::nav::fit_cols(width - 2.0 * t::PAGE_PAD, CARD_TARGET)
+    nocturne_core::nav::fit_cols(width - 2.0 * t::page_pad(), CARD_TARGET)
 }
 
 pub fn card_w(width: f32) -> f32 {
-    let avail = width - 2.0 * t::PAGE_PAD;
+    let avail = width - 2.0 * t::page_pad();
     (avail / card_cols(width) as f32).floor() - 2.0 * t::S3
 }
 
@@ -142,7 +144,7 @@ pub fn facts(m: &Media, f: &Full) -> Vec<(&'static str, String)> {
 /// Height of the overview + facts band (text wraps, so the line count is an estimate; the band is
 /// laid out to this height and clips).
 pub fn about_h(m: &Media, f: &Full, width: f32) -> f32 {
-    let text_w = (width - 2.0 * t::PAGE_PAD - 300.0 - t::S8).clamp(280.0, 760.0);
+    let text_w = (width - 2.0 * t::page_pad() - 300.0 - t::S8).clamp(280.0, 760.0);
     let per_line = (text_w / 8.0).floor().max(20.0) as usize;
     let chars = m
         .overview
@@ -175,7 +177,7 @@ impl Geom {
         let w = d.win.width;
         let empty = Full::default();
         let full = d.full.as_ref().unwrap_or(&empty);
-        let mut y = TOP + hero_h(d.win) + 1.0;
+        let mut y = top() + hero_h(d.win) + 1.0;
         let hero_end = y;
         y += FACTS_H + 1.0;
         let labels: Vec<String> = d.chips().iter().map(model::Chip::label).collect();
@@ -288,7 +290,7 @@ mod tests {
     fn cards_fill_the_width() {
         assert_eq!(card_cols(1280.0), 3);
         let (c, w) = (card_cols(1280.0), card_w(1280.0));
-        assert!(c as f32 * (w + 2.0 * t::S3) <= 1280.0 - 2.0 * t::PAGE_PAD);
+        assert!(c as f32 * (w + 2.0 * t::S3) <= 1280.0 - 2.0 * t::page_pad());
     }
 
     #[test]

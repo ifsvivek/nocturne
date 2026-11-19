@@ -100,7 +100,7 @@ impl App {
         }
         // Couch mode drops the pointer-sized history buttons (B goes back) and keeps the big tabs.
         let mut brand = row![].spacing(t::S1).align_y(Alignment::Center);
-        if !crate::couch::on() {
+        if !crate::couch::on() && t::header_item(t::HeaderItem::History) {
             brand = brand
                 .push(hist_button(
                     "\u{2039}",
@@ -167,14 +167,22 @@ impl App {
                 "Show one source or all",
             ));
         }
-        let right = right.push(search).push(self.avatar());
+        if t::header_item(t::HeaderItem::Search) {
+            right = right.push(search);
+        }
+        if t::header_item(t::HeaderItem::Account) {
+            right = right.push(self.avatar());
+        }
         let right = row![right].spacing(t::S4).align_y(Alignment::Center);
         let bar = row![left, right]
             .align_y(Alignment::Center)
-            .height(t::HEADER_H - 1.0);
-        let head = container(column![container(bar).padding([0.0, t::PAGE_PAD]), rule(),])
-            .width(Length::Fill)
-            .style(style::fill(t::header_bg()));
+            .height(t::header_h() - 1.0);
+        let head = container(column![
+            container(bar).padding([0.0, t::page_pad()]),
+            rule(),
+        ])
+        .width(Length::Fill)
+        .style(style::fill(t::header_bg()));
         container(head)
             .width(Length::Fill)
             .height(Length::Fill)
@@ -269,14 +277,14 @@ impl App {
         // Same fill as the header: scrolled content must not show through behind the trail.
         let bar = container(r.height(28))
             .width(Length::Fill)
-            .padding([0.0, t::PAGE_PAD])
+            .padding([0.0, t::page_pad()])
             .style(style::fill(t::header_bg()));
         Some(
             container(bar)
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .padding(Padding {
-                    top: t::HEADER_H,
+                    top: t::header_h(),
                     ..Padding::ZERO
                 })
                 .align_y(Alignment::Start)
@@ -372,8 +380,8 @@ impl App {
                 .align_x(Alignment::End)
                 .align_y(Alignment::Start)
                 .padding(Padding {
-                    top: t::HEADER_H + 4.0,
-                    right: t::PAGE_PAD,
+                    top: t::header_h() + 4.0,
+                    right: t::page_pad(),
                     ..Padding::ZERO
                 }),
         ]
@@ -402,7 +410,13 @@ pub const NAV_ID: &str = "nav-scroll";
 /// Rough width of one header link (label at body size plus its padding and gap); the real widths
 /// are not known until layout, and the strip only needs to land near the focused link.
 fn link_w(label: &str) -> f32 {
-    label.chars().count() as f32 * t::BODY * 0.58 + 2.0 * t::S3 + t::S1
+    let size = t::typo(
+        &t::parts(None, None).header_link,
+        t::BODY,
+        iced::font::Weight::Medium,
+    )
+    .size();
+    label.chars().count() as f32 * size * 0.58 + 2.0 * t::S3 + t::S1
 }
 
 /// Where to scroll the strip so link `col` is in view (`None`: already visible). `widths` are the
@@ -461,7 +475,7 @@ impl App {
         let content: f32 = self.nav_widths().iter().sum();
         (
             0.0,
-            (self.win.width - 2.0 * t::PAGE_PAD - 600.0).max(200.0),
+            (self.win.width - 2.0 * t::page_pad() - 600.0).max(200.0),
             content,
         )
     }
@@ -511,7 +525,7 @@ impl App {
                 .add_stop(1.0, t::frame());
             let chev = Press::new(container(text(glyph).size(t::HEADING)).center(Length::Fill))
                 .width(48)
-                .height(t::HEADER_H - 1.0)
+                .height(t::header_h() - 1.0)
                 .on_press(Message::NavPage(dir))
                 .style(|s| Style {
                     text_color: if matches!(s, Status::Hovered | Status::Pressed) {
@@ -546,6 +560,9 @@ impl App {
 
     /// The header's links for the libraries known now (see `unified::links`).
     pub(super) fn nav_links(&self) -> Vec<Link> {
+        if !t::header_item(t::HeaderItem::Nav) {
+            return vec![];
+        }
         let home = self.stack.first();
         let libs = home.map_or(&[][..], |h| h.libs.items());
         let several = home.is_some_and(|h| h.fan.contributors() > 1);
