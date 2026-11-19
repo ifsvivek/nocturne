@@ -18,6 +18,8 @@ mod header;
 #[cfg(feature = "theme-engine")]
 mod header_tree;
 mod help;
+#[cfg(feature = "theme-engine")]
+mod hero_ui;
 mod home;
 #[cfg(feature = "theme-engine")]
 mod home_tree;
@@ -254,6 +256,11 @@ pub struct App {
     images: Cache<String, Img>,
     /// Big backdrops, kept apart so they cannot push posters out of `images`.
     heroes: Cache<String, Img>,
+    /// The window has the keyboard focus and a mouse button is down: the hero carousel pauses on either.
+    #[cfg(feature = "theme-engine")]
+    win_focused: bool,
+    #[cfg(feature = "theme-engine")]
+    pointer_down: bool,
     scale: f32,
     /// Gamepads connected now, and the monitor under the window (Automatic couch mode).
     pads: usize,
@@ -396,6 +403,10 @@ impl App {
             next_pid: 0,
             images: Cache::new(600),
             heroes: Cache::new(6),
+            #[cfg(feature = "theme-engine")]
+            win_focused: true,
+            #[cfg(feature = "theme-engine")]
+            pointer_down: false,
             scale: 1.0,
             pads: 0,
             nav_vp: None,
@@ -509,6 +520,18 @@ impl App {
             window::resize_events().map(|(_, s)| Message::Resized(s)),
             window::close_requests().map(Message::CloseRequested),
             event::listen_with(|e, _, _| match e {
+                #[cfg(feature = "theme-engine")]
+                iced::Event::Window(window::Event::Focused) => Some(Message::WinFocus(true)),
+                #[cfg(feature = "theme-engine")]
+                iced::Event::Window(window::Event::Unfocused) => Some(Message::WinFocus(false)),
+                #[cfg(feature = "theme-engine")]
+                iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
+                    Some(Message::Pointer(true))
+                }
+                #[cfg(feature = "theme-engine")]
+                iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                    Some(Message::Pointer(false))
+                }
                 iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Back)) => {
                     Some(Message::Back)
                 }
@@ -602,13 +625,33 @@ impl App {
             Message::Eng(w, e) => self.eng_event(w, e),
             #[cfg(feature = "theme-engine")]
             Message::Studio(m) => self.studio_msg(m),
+            #[cfg(feature = "theme-engine")]
+            Message::HeroStep(d) => self.hero_step(d),
+            #[cfg(feature = "theme-engine")]
+            Message::HeroGoto(i) => self.hero_goto(i),
+            #[cfg(feature = "theme-engine")]
+            Message::HeroToggle => self.hero_toggle(),
+            #[cfg(feature = "theme-engine")]
+            Message::WinFocus(on) => {
+                self.win_focused = on;
+                Task::none()
+            }
+            #[cfg(feature = "theme-engine")]
+            Message::Pointer(down) => {
+                self.pointer_down = down;
+                Task::none()
+            }
             Message::Tick(now) => {
                 self.now = now;
+                #[cfg(feature = "theme-engine")]
+                let hero = self.hero_tick(now);
                 self.sync_detail();
                 #[cfg(feature = "theme-engine")]
                 self.sync_player_css();
                 self.sync_ob();
                 Task::batch([
+                    #[cfg(feature = "theme-engine")]
+                    hero,
                     self.tick(),
                     self.sync_extras(),
                     self.sync_remote(),
