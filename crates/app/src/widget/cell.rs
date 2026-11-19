@@ -55,6 +55,8 @@ pub struct Look {
     pub episode_format: Option<cz::EpisodeFormat>,
     /// The library name is drawn large and centred over the image (My media tiles).
     pub tile_center: bool,
+    /// No hairlines between cards and no index tag (`.row --row-frame: none`).
+    pub flat: bool,
     badge: cz::Badge,
     progress: cz::Progress,
 }
@@ -94,6 +96,7 @@ impl Look {
             center_meta: p.card_meta.align == Some(cz::TextAlign::Center),
             episode_format: p.card.episode_format,
             tile_center: false,
+            flat: p.row.framed == Some(false),
             badge: p.card_badge.clone(),
             progress: p.card_progress.clone(),
         }
@@ -336,6 +339,7 @@ impl Look {
         let bg = b.background.map_or_else(t::accent, ic);
         let ink = b.color.map_or_else(t::on_accent, ic);
         let radius = b.radius.unwrap_or(4.0);
+        let n_len = n.chars().count();
         let label: Element<'a, M> = match b.font_size {
             Some(sz) => text(n).size(sz).font(t::semibold()).color(ink).into(),
             None => mono(n).color(ink).into(),
@@ -345,14 +349,21 @@ impl Look {
             Some(cz::BadgePos::TopLeft) => (Alignment::Start, Alignment::Start),
             _ => (Alignment::End, Alignment::End),
         };
-        let bx = container(label)
-            .padding([0.0, t::S2])
-            .center_y(Length::Shrink)
-            .style(move |_| container::Style {
-                background: Some(bg.into()),
-                border: border(t::NONE, 0.0, radius),
-                ..Default::default()
-            });
+        // With a set size the badge is a round chip: as wide as it is tall for one digit.
+        let one = n_len == 1;
+        let mut bx = container(label).padding([0.0, t::S2]);
+        if let Some(sz) = b.font_size {
+            let hgt = sz + 10.0;
+            bx = bx.height(hgt).center_y(hgt);
+            if one {
+                bx = bx.width(hgt).center_x(hgt).padding(0);
+            }
+        }
+        let bx = bx.style(move |_| container::Style {
+            background: Some(bg.into()),
+            border: border(t::NONE, 0.0, radius),
+            ..Default::default()
+        });
         corner(bx.into(), ax, ay, t::S2)
     }
 
@@ -473,14 +484,16 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
             .into(),
         );
     }
-    layers.push(corner(
-        mono(format!("0x{:02x}", c.index + 1))
-            .color(t::INDEX_TAG)
-            .into(),
-        Alignment::Start,
-        Alignment::Start,
-        t::S2,
-    ));
+    if !look.flat {
+        layers.push(corner(
+            mono(format!("0x{:02x}", c.index + 1))
+                .color(t::INDEX_TAG)
+                .into(),
+            Alignment::Start,
+            Alignment::Start,
+            t::S2,
+        ));
+    }
     if let Some(mk) = c.mark {
         layers.push(corner(
             container(mono(mk).color(t::text()))
@@ -618,12 +631,14 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
         .width(w + 2.0 * pad)
         .height(look.cell_h(h) - 1.0);
     // Shared edges: a hairline right and below each cell.
-    let hair = |w: Length, h: Length| -> Element<'a, M> {
-        container(space())
-            .width(w)
-            .height(h)
-            .style(crate::style::rule)
-            .into()
+    let flat = look.flat;
+    let hair = move |w: Length, h: Length| -> Element<'a, M> {
+        let c = container(space()).width(w).height(h);
+        if flat {
+            c.into()
+        } else {
+            c.style(crate::style::rule).into()
+        }
     };
     let with_edges = row![
         column![cell, hair(Length::Fixed(w + 2.0 * pad), Length::Fixed(1.0))],

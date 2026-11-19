@@ -114,6 +114,8 @@ pub struct Geo {
     pub title_t: t::Typo,
     /// The paragraph and count beside the row title (`.row-title --row-details`).
     pub details: bool,
+    /// The strip sits in a hairline panel with a fade at its right edge (the built-in look).
+    pub framed: bool,
     /// The previous / next buttons at the right of the title (`.row-arrows`).
     pub arrows: cz::Arrows,
 }
@@ -210,6 +212,7 @@ pub fn geo_for(win_w: f32, card: f32, k: HRow, p: &Parts) -> Geo {
         hidden: p.row.hidden == Some(true) || p.card.hidden == Some(true),
         title_t: t::typo(&p.row_title, 28.0, iced::font::Weight::Bold),
         details: p.row.details != Some(false),
+        framed: p.row.framed != Some(false),
         arrows: p.row_arrows.clone(),
         look,
     }
@@ -1241,7 +1244,7 @@ fn strip_band<'a>(
             )),
             ..Default::default()
         });
-    let body: El<'a> = if g.grid {
+    let body: El<'a> = if g.grid || !g.framed {
         strip
     } else {
         Stack::with_children(vec![
@@ -1254,8 +1257,13 @@ fn strip_band<'a>(
         ])
         .into()
     };
-    let panel = container(body).clip(true).style(|_| container::Style {
-        border: style::border(t::hairline(), 1.0, t::r_panel()),
+    let framed = g.framed;
+    let panel = container(body).clip(true).style(move |_| container::Style {
+        border: if framed {
+            style::border(t::hairline(), 1.0, t::r_panel())
+        } else {
+            style::border(t::NONE, 0.0, 0.0)
+        },
         ..Default::default()
     });
     let mut col = column![].spacing(t::S6);

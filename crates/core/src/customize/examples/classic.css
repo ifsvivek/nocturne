@@ -45,6 +45,7 @@
 .row {
   display: carousel;
   gap: 12px;
+  --row-frame: none;
 }
 
 .row-title {

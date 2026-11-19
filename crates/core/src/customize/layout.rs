@@ -243,7 +243,7 @@ opt_struct! {
     CardImage { radius: f32, shadow: Shadow }
     Row {
         hidden: bool, layout: RowLayout, gap: f32, columns: u8, padding: f32, order: i32,
-        details: bool,
+        details: bool, framed: bool,
     }
     Hero { hidden: bool, style: HeroStyle, height: f32, overlay: Fill }
     Header { position: HeaderPosition, height: f32, align: HeaderAlign, link_icons: bool }
@@ -863,6 +863,7 @@ fn set_part(
                     p.row.layout = lay;
                 }
             }
+            "--row-frame" => p.row.framed = Some(one_of(v, &[("panel", true), ("none", false)])?),
             "--row-layout" => {
                 p.row.layout = Some(one_of(
                     v,
