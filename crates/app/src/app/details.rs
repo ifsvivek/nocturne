@@ -141,6 +141,9 @@ impl App {
         );
         #[cfg(feature = "theme-engine")]
         let css = self.engine_css();
+        // The Studio's docked panel takes its width from the page.
+        #[cfg(feature = "theme-engine")]
+        let win = iced::Size::new(self.eng_width(), win.height);
         if let Some(d) = self.stack.last_mut().and_then(|p| p.det.as_deref_mut()) {
             d.set_win(win);
             d.set_writes(writes);

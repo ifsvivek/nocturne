@@ -70,6 +70,14 @@ pub struct Mark {
     pub selected: bool,
 }
 
+/// What the Theme Studio asks of a scene hosted outside `app/engine_ui.rs` (the detail page, the player's bar): the outlines to draw, whether picking is on (hosted widgets are then inert) and the width the docked panel takes from the window.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Probe {
+    pub marks: Vec<Mark>,
+    pub pick: bool,
+    pub dock: f32,
+}
+
 pub struct Styled<'a, M> {
     scene: SceneRef<'a>,
     slots: Vec<Element<'a, M>>,
@@ -81,6 +89,8 @@ pub struct Styled<'a, M> {
     /// Tab, arrows, Enter, Space and the safe-look chord are this widget's (default); off, the keyboard belongs to the page around it.
     keys: bool,
     marks: Vec<Mark>,
+    /// Hosted slot widgets get no events (the Studio's pick mode selects them instead).
+    inert: bool,
 }
 
 #[derive(Default)]
@@ -143,6 +153,7 @@ impl<'a, M: 'a> Styled<'a, M> {
             on_event: Box::new(on_event),
             keys: true,
             marks: vec![],
+            inert: false,
         }
     }
 
@@ -161,6 +172,20 @@ impl<'a, M: 'a> Styled<'a, M> {
     pub fn keys(mut self, on: bool) -> Self {
         self.keys = on;
         self
+    }
+
+    /// Slot widgets stop taking events, so a click on one selects its element (the Theme Studio's pick mode).
+    pub fn inert(mut self, on: bool) -> Self {
+        self.inert = on;
+        self
+    }
+
+    /// Marks and inertness from a [`Probe`].
+    pub fn probe(self, p: Option<&Probe>) -> Self {
+        match p {
+            Some(p) => self.marks(p.marks.clone()).inert(p.pick),
+            None => self,
+        }
     }
 
     /// Outlines drawn over the scene (the Theme Studio's pick mode).
@@ -1417,12 +1442,14 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
         // Slots, topmost first.
         let st = tree.state.downcast_mut::<State>();
         let (hover, pressed, size) = (st.hover, st.pressed, st.size);
+        let inert = self.inert;
         for ((el, t), l) in self
             .slots
             .iter_mut()
             .zip(tree.children.iter_mut())
             .zip(layout.children())
             .rev()
+            .filter(|_| !inert)
         {
             el.as_widget_mut()
                 .update(t, event, l, cursor, renderer, clipboard, shell, viewport);
@@ -1592,6 +1619,7 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
             .iter()
             .zip(&tree.children)
             .zip(layout.children())
+            .filter(|_| !self.inert)
             .map(|((el, t), l)| {
                 el.as_widget()
                     .mouse_interaction(t, l, cursor, viewport, renderer)

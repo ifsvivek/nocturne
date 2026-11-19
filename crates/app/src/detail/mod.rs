@@ -272,6 +272,9 @@ pub struct Detail {
     expanded: nocturne_core::expand::Expanded,
     #[cfg(feature = "theme-engine")]
     eng: Option<Box<engine::Host>>,
+    /// The Theme Studio's marks and pick state for the scene (set by the app while the Studio is open).
+    #[cfg(feature = "theme-engine")]
+    pub studio: Option<crate::widget::styled::Probe>,
 }
 
 pub fn pic_key(m: &Media, art: Art, w: u32) -> String {
@@ -331,6 +334,8 @@ impl Detail {
             expanded: Default::default(),
             #[cfg(feature = "theme-engine")]
             eng: engine::enabled().then(|| Box::new(engine::Host::new())),
+            #[cfg(feature = "theme-engine")]
+            studio: None,
         };
         let t = d.load();
         #[cfg(feature = "theme-engine")]

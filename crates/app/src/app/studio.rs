@@ -17,6 +17,32 @@ use nocturne_style::inspect::{self, Computed, Inspection, Like, Step};
 use nocturne_style::{Dir, Id};
 use std::time::{Duration, Instant};
 
+/// A built scene: owned by the app (Home, header, page, search), by the detail page, or shared with the player's bar.
+pub enum SceneRef<'a> {
+    Ref(&'a nocturne_style::Scene),
+    Shared(std::rc::Rc<nocturne_style::Scene>),
+}
+
+impl std::ops::Deref for SceneRef<'_> {
+    type Target = nocturne_style::Scene;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            SceneRef::Ref(s) => s,
+            SceneRef::Shared(s) => s,
+        }
+    }
+}
+
+/// Every scene the Studio can pick in, topmost first.
+const SCENES: [Which; 6] = [
+    Which::Bar,
+    Which::Search,
+    Which::Detail,
+    Which::Page,
+    Which::Home,
+    Which::Header,
+];
+
 /// Width of the docked panel.
 pub const PANEL_W: f32 = 400.0;
 /// First line of a theme made with the Studio: tells the app to layer it over the engine's default sheet.
@@ -657,6 +683,28 @@ impl App {
         self.studio.open && self.studio.pick
     }
 
+    /// The detail page and the player's bar are drawn by their own modules: give them the Studio's marks, pick state and docked width, and the working copy as their rules.
+    pub(super) fn studio_ext_sync(&mut self) {
+        let probe = |w| {
+            self.studio.open.then(|| crate::widget::styled::Probe {
+                marks: self.studio_marks(w),
+                pick: self.studio.pick,
+                dock: PANEL_W,
+            })
+        };
+        let (dp, pp) = (probe(Which::Detail), probe(Which::Bar));
+        if let Some(d) = self.stack.last_mut().and_then(|p| p.det.as_deref_mut()) {
+            d.studio = dp;
+        }
+        if let Some(p) = self.player.as_mut() {
+            p.studio = pp;
+        }
+        if self.studio.open {
+            self.sync_detail();
+            self.sync_player_css();
+        }
+    }
+
     /// Width the engine's scenes get: the window less the docked panel.
     pub(super) fn eng_width(&self) -> f32 {
         if self.studio.open {
@@ -906,7 +954,7 @@ impl App {
             }
             #[cfg(debug_assertions)]
             Msg::DebugSelect(sel) => {
-                let found = [Which::Search, Which::Page, Which::Home, Which::Header]
+                let found = SCENES
                     .into_iter()
                     .find_map(|w| {
                         let sc = self.eng_scene_of(w)?;
@@ -918,7 +966,7 @@ impl App {
             }
             #[cfg(debug_assertions)]
             Msg::DebugPointer(sel, click) => {
-                let found = [Which::Search, Which::Page, Which::Home, Which::Header]
+                let found = SCENES
                     .into_iter()
                     .find_map(|w| {
                         let sc = self.eng_scene_of(w)?;
@@ -1000,7 +1048,7 @@ impl App {
         let sel = Sel {
             w,
             id,
-            insp: inspect::inspect(scene, id),
+            insp: inspect::inspect(&scene, id),
             this: inspect::this_selector(&scene.doc, id),
             likes: inspect::like_selectors(&scene.doc, &scene.sheet, id),
             like_ix: 0,
@@ -1045,7 +1093,7 @@ impl App {
         let sel = Sel {
             w,
             id: n,
-            insp: inspect::inspect(scene, n),
+            insp: inspect::inspect(&scene, n),
             this,
             likes: inspect::like_selectors(&scene.doc, &scene.sheet, n),
             like_ix: ix,
@@ -1481,6 +1529,30 @@ mod tests {
         let names: Vec<_> = starters().iter().map(|s| s.0).collect();
         for n in ["Spotlight", "Glass", "Marquee", "Feed", "Classic"] {
             assert!(names.contains(&n), "{n}");
+        }
+    }
+
+    #[test]
+    fn every_starter_copy_applies_with_no_warning() {
+        use nocturne_style::{Builders, Engine, Interaction, approx};
+        for (i, (name, _)) in starters().into_iter().enumerate() {
+            // What "Start from this" puts in the working copy.
+            let css = with_marker(&starter_css(i).unwrap());
+            let mut engine = Engine::new(&crate::app::engine_ui::sheet_css());
+            engine.set_user_css(Some(&css));
+            let mut doc = nocturne_style::Doc::new("page");
+            for sel in ["section.hero", "a.button.primary", "div.card", "div.tab"] {
+                doc.add(0, sel);
+            }
+            let scene = engine.build(
+                &doc,
+                (900.0, 600.0),
+                Interaction::default(),
+                &Builders::new(),
+                &mut approx,
+            );
+            let w = scene.warnings();
+            assert!(w.is_empty(), "{name}: {w:?}");
         }
     }
 }
