@@ -11,7 +11,10 @@ Maintainer request (2026-11-19): "0.5.2: the full theming engine that can read t
 
 5. **Full Jellyfin web themes as far as natively possible** (maintainer test with an ElegantFin-style theme, 2026-11-19: stage 1 applied 15 settings and rejected 434 selectors): `:has()` with relative selectors (bounded, memoised), font properties (`font-weight`, `font-style`, `font-family` lists), theme fonts from `@font-face` and font-CSS imports downloaded under the remote-CSS limits and loaded into the app at run time (TTF/OTF, WOFF2/WOFF if a small pure-Rust decoder passes the licence check), browser-only harmless properties accepted silently as "no effect in a desktop app", and warnings grouped by kind with counts so no category is hidden.
 
-Detail page and player overlay stay on the stage-1 parts in 0.5.2 (engine phase 4 follows in 0.5.3), as do the hand-written screens.
+6. **Theme Studio** (maintainer, 2026-11-19: "build the theme in the app directly"): a pick mode that outlines any element of the live app and shows its tag, classes and data attributes; an edit panel with controls instead of code (colour picker with alpha, sliders for size, padding, gap, radius and shadow, dropdowns for display, direction, alignment, position and visibility, a font picker over installed and theme fonts, hover effects); every change applies live, with undo/redo, "this element only" vs "all elements like it" (selector generalisation from classes), per-element reset; it writes real CSS that stays editable by hand in both directions (the panel reads the cascade, edits become rules in the theme); save, export and per-server use like any theme; a gallery of layout starters per screen ("full-bleed backdrop with title logo" for Detail, "floating pill header", "poster grid", "wide carousel"). Built on the engine's element inspector.
+7. **Detail page and player overlay on the engine** (engine phase 4, moved into 0.5.2 by the maintainer): hero with the item's logo art when the server has one, metadata line, genres, overview, pill buttons, cast and crew rows, seasons and episodes; player controls as a tree around the Hole slot (the video subsurface stays out of the tree). Target look example from the maintainer: full-bleed backdrop, logo title, rating · year · runtime · rating badge, genres, overview, rounded pill buttons, a floating rounded header, section titles with an accent bar.
+
+The hand-written screens (Settings, Admin, onboarding, Sources, account, dialogs) stay hand-written.
 
 ## Order of work (at most two workers; no overlapping files)
 
@@ -23,6 +26,8 @@ Detail page and player overlay stay on the stage-1 parts in 0.5.2 (engine phase 
 | D | Engine phase 2: Home + header as trees, default stylesheet reproducing today, stage-1 translator (Marquee, Feed, Classic keep working), parity tests | `theme-engine` | A, B |
 | E | Engine phase 3: Library and Search grids on the virtual container, card images, 5,000-item grid under the frame budget | `theme-engine` | D |
 | F | Jellyfin compatibility class map + `::before/::after` text, `transform`, `transition`, element inspector on the Themes page; coverage test against a small hand-written sample | `theme-engine` | D, C |
+| F2 | Engine phase 4: Detail page and player overlay as trees (parity with today; logo art; the example look as a starter) | `theme-engine` | D |
+| F3 | Theme Studio: pick mode, edit panel, two-way CSS, undo/redo, starters gallery | `theme-engine` | F (inspector), D |
 | G | Full QA in the headless session (default parity, every preset, a Jellyfin web theme through the user's server branding read-only, cross-server UI, keyboard and couch navigation, performance budgets), docs, website, release 0.5.2 | main | all |
 
-Every step: fmt, clippy `-D warnings`, tests, the headless input check, captures from demo data only, master review before merge. Release only after G passes; Windows and macOS stay previews.
+Every step: fmt, clippy `-D warnings`, tests, the headless input check, captures from demo data only, master review before merge. QA in G also covers Theme Studio (building the example look from scratch with controls only) and Detail/player parity. Release only after G passes; Windows and macOS stay previews.
