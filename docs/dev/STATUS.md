@@ -37,7 +37,7 @@ Verified: offline copies (throwaway server), .deb / .rpm install in clean contai
 
 0.4 release checklist:
 - [x] QA walkthrough of every 0.4 feature (2026-11-17, see [QA_REPORT.md](../QA_REPORT.md) "0.4.0 walkthrough"); open items listed there.
-- [x] Trakt one-click connect: built-in public client id with user override (env, then saved id); the real id is filled in at release, the placeholder falls back to the old prompt.
+- [x] Trakt one-click connect: built-in public client id with user override (env, then saved id); NOCTURNE's real id is built in since 20e253e; the placeholder path remains for source builds that blank it, and falls back to the old prompt.
 - [ ] Live Trakt test with the maintainer's own Trakt app: sign-in, scrobble, history import, disconnect.
 - [ ] HDR hardware test on an HDR display (pop-out colours, fullscreen, IPC control, return to the window).
 - [ ] Couch mode with a real gamepad and on a TV.

@@ -4,6 +4,8 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-19
+
 ### Added
 - Updates: NOCTURNE checks once a day (Settings > Updates turns it off). Per-user installs offer Download and install, then Restart to update; every download is checked against the announced size, sha256 and an ed25519 signature before anything is replaced, and a failed update leaves the current version untouched. Package-managed installs show the pacman, apt or dnf command instead.
 - Themes can restyle layout with CSS on named parts, and the app follows it: cards (aspect, width, caption position, radius, shadow, typography, hover zoom), Home rows (carousel or grid, gap, padding, section order and hiding), hero (billboard, banner or none, height, overlay), header (height, hidden items, static or overlaid, link typography), button hover scale and the player bar background. Two built-in examples, Marquee and Feed, can be copied from Settings > Themes. `--nocturne-density`, `font-size` (whole-interface zoom) and `backdrop-blur` (a soft placeholder on the detail page) are applied approximately; `letter-spacing` is read but not drawn.
