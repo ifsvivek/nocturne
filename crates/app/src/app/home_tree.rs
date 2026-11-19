@@ -54,29 +54,22 @@ fn rgba(c: cz::Color) -> String {
 }
 
 impl App {
-    /// Whether the active theme only uses things the tree builders reproduce; otherwise Home stays hand-written (so no theme can look different on the engine).
-    pub(super) fn engine_supports_home(&self) -> bool {
-        let hdr = t::parts(None, None);
-        let sections = [
-            cz::Section::Resume,
-            cz::Section::NextUp,
-            cz::Section::Latest,
-        ];
-        // Link icons are SVG (the engine draws raster images); the library tiles' centred label is drawn over the image by the hand-written cell.
-        hdr.header.link_icons != Some(true)
-            && sections.iter().all(|s| {
-                let p = t::parts(Some(Page::Home), Some(*s));
-                p.card.tile_label != Some(cz::TileLabel::OverlayCenter)
-            })
+    /// Whether the active theme only uses things the tree builders reproduce; otherwise Home stays hand-written (so no theme can look different on the engine). The library tiles' centred label (server UI mode) is drawn over the image by the hand-written cell.
+    pub(super) fn engine_supports_home(&self, lay: &[HRow]) -> bool {
+        !lay.contains(&HRow::Tiles)
+            || t::parts(Some(Page::Home), None).card.tile_label != Some(cz::TileLabel::OverlayCenter)
     }
 
     /// The whole Home page (hero, strips, notes) and, when `with_header`, the header as one tree. `None` when Home shows its failure panel or the theme needs the hand-written page.
     pub(super) fn home_tree(&self, with_header: bool) -> Option<Tree> {
         let p = self.stack.last()?;
-        if matches!(p.libs, Load::Failed) || !self.engine_supports_home() {
+        if matches!(p.libs, Load::Failed) {
             return None;
         }
         let h = p.home.as_deref()?;
+        if !self.engine_supports_home(&h.layout()) {
+            return None;
+        }
         let mut tree = Tree::new();
         let hp = t::parts(Some(Page::Home), None);
         let hh = t::header_h();

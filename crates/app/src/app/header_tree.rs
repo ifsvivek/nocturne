@@ -20,6 +20,12 @@ pub enum Slot {
     People,
     Filter,
     Avatar,
+    /// The small icon in front of a header link (`--header-link-icons: on`).
+    Icon {
+        name: &'static str,
+        side: u16,
+        lit: bool,
+    },
 }
 
 /// What a tree builder produces besides the elements: what a click does, how focusable nodes map to the Home focus model, the images and the slots.
@@ -124,6 +130,7 @@ impl App {
         let left = d.add(bar, "div.header-left");
         let brand = d.add(left, "div.header-brand");
         let mut slots: Vec<(Id, Slot)> = vec![];
+        let mut icon_slots: Vec<(Id, Slot)> = vec![];
         if !crate::couch::on() && t::header_item(t::HeaderItem::History) {
             for (s, last) in [(Slot::Back, false), (Slot::Forward, true)] {
                 let n = d.add(brand, "div.slot");
@@ -225,14 +232,23 @@ impl App {
                 tree.cell(a, (0, n));
                 continue;
             }
+            let ty = t::typo(&hp.header_link, t::BODY, iced::font::Weight::Medium);
             if icons && let Some(name) = link_icon(&link, libs) {
+                // The icon is SVG: a slot, tinted like the hand-written link does (lit when active or focused).
+                let side = ty.size() + 3.0;
                 let i = d.add(a, "span.header-icon");
-                d.text(i, name);
-                d.inline(i, "display: none");
+                d.inline(i, &format!("width: {0}; height: {0}; flex: none", px(side)));
+                icon_slots.push((
+                    i,
+                    Slot::Icon {
+                        name,
+                        side: side.round() as u16,
+                        lit: active || focused,
+                    },
+                ));
             }
             let l = d.add(a, "span.header-label");
             d.text(l, &label);
-            let ty = t::typo(&hp.header_link, t::BODY, iced::font::Weight::Medium);
             d.inline(l, &format!("font-size: {}", px(ty.size())));
             d.add(a, "i.header-dot");
             if let Some(m) = msg {
@@ -274,7 +290,7 @@ impl App {
             d.essential(n);
             slots.push((n, Slot::Avatar));
         }
-        for (n, s) in slots {
+        for (n, s) in slots.into_iter().chain(icon_slots) {
             tree.slot(n, s);
         }
         header

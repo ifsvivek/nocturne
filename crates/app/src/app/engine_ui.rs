@@ -615,6 +615,12 @@ impl App {
                 "Show one source or all",
             ),
             Slot::Avatar => self.avatar(),
+            Slot::Icon { name, side, lit } => icon(
+                name,
+                f32::from(side),
+                if lit { t::text() } else { t::text_secondary() },
+            )
+            .into(),
         }
     }
 
