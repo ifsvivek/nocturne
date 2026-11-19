@@ -204,3 +204,58 @@ A debug build is about ten times slower (cold first build 8 ms).
 - Tooltips of the Search button are gone (it is a tree element; the icon buttons keep theirs).
 - The scene is rebuilt on every message that can change what Home shows (about 40 times while images load); it is cheap, but step E should make image arrival a targeted update.
 - Slots cost an `update` call per event each; fine for the dozen the header has, not for a slot per card.
+
+## 12. Step F2 as shipped: the Detail page and the player's controls bar on the engine
+
+Behind the same cargo feature `theme-engine`; `NOCTURNE_ENGINE_UI=0` shows the hand-written Detail page and bar.
+
+### What moved
+
+- **Detail** (`detail/detail_tree.rs`, `detail/engine.rs`). The page builds a `Doc` from its own state: `.page-detail` (data-kind), the hero `.detail` with `.detail-art`, `.detail-backdrop`, `.detail-scrim-side|foot`, `.detail-body`, `.detail-col`, `.detail-eyebrow`, `.detail-chips` (`.detail-meta` with `.detail-kind|rating|year|runtime|cert`, `.detail-genres`), `.detail-logo` (the item's logo art; `.detail-title` text when there is none, and while the logo loads the hand-written page's rule is kept), `.detail-season`, `.detail-text.detail-summary` (the description) with `.detail-more`, `.detail-actions` with `.button`, `.button-primary`, `.button-icon`, `.button-label` (`data-action`); then `.detail-facts` (stars, ratings, certification), `.detail-tags`, `.detail-about` (`.detail-text.detail-about-text` carries the stage-1 `.detail-text` typography), `.section` (`.section-head`, `.section-title`, `.section-text`, `.section-meta`, `.section-strip`, with `data-section` and `data-region`), `.poster` (cast, chapters, similar...), `.detail-tabs` with `.tab`, `.episode` cards with `.round` buttons, `.entry` rows, `.detail-info`. Data attributes: `data-kind`, `data-watched`, `data-action`, `data-section`, `data-region` (`loading|ready`), `data-expanded`. The page keeps its own focus model (`Focus` over `DRow`): every focusable node maps to a `(DRow, index)`, the scene's focus follows `Focus` after every key, the pointer on a poster, card or row moves it as before, arrows and Enter run the hand-written `Detail::key`, Tab walks the scene's visual order (a stop on a cell moves `Focus`). The engine and scene live inside `Detail` (not the root), so the page, its previews and its tests are self-contained; `Detail::set_user_css` takes the active theme's engine sheet.
+- **Sizes a theme can change.** The hand-written page fixes the hero height and the room under the header; the tree puts them in `--nocturne-detail-hero` and `--nocturne-detail-top` on the page (used by `.detail` and `.detail-top`), so a rule such as `.detail-top { height: 0 }` lets the backdrop run under the header. The overview band keeps the hand-written estimate as a `min-height` and grows with the real text.
+- **Expandable description.** `Expanded` (open set by `origin:id`) and `expand::clamp` decide whether the text is longer than three lines (then `.detail-more` and a click on the text toggle it, `data-expanded` flips). The default sheet shows the three-line box and hides `.detail-more` (so it is also out of the tab order); a theme that shows it makes it a stop (Tab, Enter).
+- **Loading regions.** `Region::of` per strip and `skeleton_cells` give `section.section-skeleton` (placeholder cells) while a strip loads; the default sheet hides them and keeps the hand-written "loading" note of the episode list, a theme such as Spotlight shows them.
+- **Player controls** (`player/bar_tree.rs`). The bar is `.player-controls` (`data-video`) with `.player-row-1|2`, `.player-btn` buttons (`.button .button-icon`, `data-action`, `.primary` while lit, `.dim` while unavailable), `.player-info` (`.player-ends`, `.player-title`, `.player-status`), `.player-clock`, `.player-remain`, `.player-frame`; the svg icons, the seek track and the volume track are slots (they drag). The bar and its buttons are marked `essential`, so a theme can restyle them but not hide them. **The Hole, the click layer, the loading overlay, the pop-overs and the video subsurface are not in the tree and did not change**: the Hole is still the bottom layer of the player's stack and reports its bounds exactly as before; only the bar above it is replaced (the plan's "tree around the Hole slot" is met by leaving the Hole out, which is the safest reading of "must not change"). The tree is built while the view is (a `RefCell` host keeps only the hover and press state), so it cannot show stale numbers; the paint widget has a `keys(false)` mode so Space, arrows and Enter stay the player's own.
+- **Paint widget** (`widget/styled.rs`): a box one line high never wraps (the shaper's width and the renderer's can differ by a hair), `Styled::shared` takes a scene built during `view`, `Styled::keys(false)` leaves the keyboard to the page.
+
+### Spotlight and how an engine sheet reaches the engine
+
+`crates/style/themes/spotlight.css` (`nocturne_style::STARTERS`, offered on the Themes page after the examples as "use as starting point"): full-bleed backdrop under a floating rounded header, logo title, one line of rating, year, runtime and certification, genres, a three-line overview that opens on click, light primary and glass secondary pill buttons, round icon buttons, section titles with an accent bar, skeleton placeholders. Pure CSS on the engine vocabulary; a test applies it to the page and requires an empty warning report. The Themes page still reads pasted text with the stage-1 reader, so it reports the engine-only selectors until the Theme Studio (F3) shows the engine's report.
+A theme's own rules are layered over the default sheet only when the sheet uses the vocabulary only the trees emit (`nocturne_style::is_engine_sheet`, an interim rule); stage-1 themes (Marquee, Feed, Classic) keep running through the builders' translator, which is what the Home parity table measured.
+
+### Parity (no theme, headless, demo library, debug build, `scripts/headless-session.sh`)
+
+Detail preview (`NOCTURNE_PREVIEW=detail` against the throwaway demo server) and the whole app, window captured through Iced, per pixel over all channels; the preview's stand-in header strip (the top 90 px, a plain container over the page) is excluded. The whole-app captures are of the same debug binary with and without `NOCTURNE_ENGINE_UI=0`.
+
+| capture | mean difference | pixels over 16 | over 64 | over 128 |
+|---|---|---|---|---|
+| movie, 1600x900 | 0.17 / 255 | 0.27 % | 0.07 % | 0.02 % |
+| series with seasons and episodes, 1600x900 | 0.87 | 1.02 % | 0.62 % | 0.24 % |
+| episode, 1600x900 | 0.36 | 0.65 % | 0.15 % | 0.04 % |
+| movie, 1920x1080 | 0.14 | 0.21 % | 0.06 % | 0.02 % |
+| series, 1920x1080 | 0.65 | 0.73 % | 0.46 % | 0.20 % |
+| episode, 1920x1080 | 0.20 | 0.24 % | 0.12 % | 0.03 % |
+| player bar over a demo clip, 1600x900 | 0.15 | 0.11 % | | |
+| whole app: Home then the detail page, no theme | 0.40 | 0.65 % | | |
+| whole app, More menu open over the page | 0.20 | 0.37 % | | |
+| Marquee: Home / detail | 0.31 / 0.39 | 0.53 % / 0.64 % | | |
+| Feed: Home / detail | 0.40 / 0.36 | 0.67 % / 0.54 % | | |
+| Classic: Home / detail | 0.52 / 0.47 | 0.81 % / 0.70 % | | |
+| real keys (wtype) Right, Right, Down, Down on the page | 0.68 | 1.25 % | | |
+| real keys Right, Down, Escape | 0.32 | 0.51 % | | |
+
+What is left: one pixel of text placement where the engine breaks a paragraph itself (the series description), hairlines of the focus ring and a 2 px difference in the tab count's spacing. The captures of the in-window video (a frame of a demo clip playing in the Hole under the engine bar) show the picture below the window as before; `scripts/headless-input-check.sh` passes 7 of 7.
+
+### Fixes the work needed, outside the two pages
+
+- The header scene of every page but Home swallowed Tab, the arrows, Enter and Space (the paint widget captures them), so the hand-written pages below it lost their keyboard with the feature on. The header's widget now uses `keys(false)`.
+- `Press` panicked in `overlay`, `update`, `operate` and `draw` when a hosted slot had no room (a theme that clipped the control away): it now does nothing for a control without laid-out content.
+
+### What differs, gaps
+
+- Tooltips are gone for the buttons that were dimmed with server changes off (`title="..."` is only a data attribute) and for the round episode buttons; the reason shows when the button is pressed, as before.
+- A stage-1 `--header-*` or layout special in a stage-1 theme still goes through the translator; an engine theme cannot yet change the inline heights of the header (`.header` and `.header-bar` get their heights from the stage-1 token), Spotlight works with that by padding.
+- The player bar cannot animate its hover (the scene is rebuilt with the view; transitions need a scene that lives across frames) and its geometry is the hand-written bar's (seek track rectangle shared with the scrub tip).
+- Space on the detail page now activates the focused control (the paint widget treats Space like Enter); the hand-written page ignored it. The player is unaffected (`keys(false)`).
+- The detail preview's stand-in header strip draws under the engine page's images (a plain container above a hosted scene): the real app's header is its own scene and its translucent layers (menus, dialogs, the scrim of the More menu) are above the page, checked in the whole-app captures.
+

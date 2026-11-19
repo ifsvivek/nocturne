@@ -103,6 +103,7 @@ pub struct EngineUi {
     pub enabled: bool,
     engine: Engine,
     css: String,
+    user: Option<String>,
     cache: MeasureCache,
     pub home: Option<Hosted>,
     pub hdr: Option<Hosted>,
@@ -145,6 +146,7 @@ impl Default for EngineUi {
             enabled: std::env::var("NOCTURNE_ENGINE_UI").map_or(true, |v| v != "0"),
             engine: Engine::new(DEFAULT_CSS),
             css: String::new(),
+            user: None,
             cache: MeasureCache::new(),
             home: None,
             hdr: None,
@@ -160,7 +162,7 @@ impl Default for EngineUi {
 }
 
 /// The `:root` tokens of the active theme, and the translator's rules (hover scale and transitions of the strips and buttons) as CSS, in front of the default sheet.
-pub(super) fn sheet_css() -> String {
+pub(crate) fn sheet_css() -> String {
     let k = t::active();
     let c = t::css_color;
     let mut s = String::from(":root {");
@@ -286,6 +288,7 @@ impl App {
             let safe = self.eng.engine.safe_mode();
             self.eng.engine = Engine::new(&css);
             self.eng.engine.set_safe_mode(safe);
+            self.eng.user = None;
             self.eng.css = css;
             self.eng.sheet_gen += 1;
         }
@@ -293,6 +296,16 @@ impl App {
             self.eng.sheet_gen += 1;
         }
         self.eng.engine.set_safe_mode(self.th.safe);
+        // The active theme's own rules, layered over the default sheet.
+        let user = self
+            .themes
+            .active_css(self.theme_source(), self.theme_ui())
+            .filter(|c| nocturne_style::is_engine_sheet(c))
+            .map(str::to_string);
+        if user != self.eng.user {
+            self.eng.engine.set_user_css(user.as_deref());
+            self.eng.user = user;
+        }
         if !self.eng.warmed {
             // The first measurement starts the font system (about 18 ms in release): do it before the first scene is timed.
             let st = nocturne_style::TextStyle {
@@ -1001,7 +1014,10 @@ impl App {
     }
 
     fn eng_widget<'a>(&'a self, h: &'a Hosted, w: Which) -> Element<'a, Message> {
-        let mut s = Styled::new(&h.scene, move |e| Message::Eng(w, e)).images(&h.tree.images);
+        // The header scene of another page must not take the arrows, Tab and Enter from the page below it.
+        let mut s = Styled::new(&h.scene, move |e| Message::Eng(w, e))
+            .keys(w != Which::Header)
+            .images(&h.tree.images);
         for (i, slot) in h.tree.slots.iter().enumerate() {
             s = s.slot(i as u32 + 1, self.eng_slot(*slot));
         }

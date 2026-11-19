@@ -251,6 +251,8 @@ impl Preview {
                 Outcome::FindSubs(_) => "find-subs".into(),
                 Outcome::Download(_) => "download".into(),
                 Outcome::Back => "back".into(),
+                #[cfg(feature = "theme-engine")]
+                Outcome::SafeLook => "safe-look".into(),
             };
             eprintln!("OUTCOME {what}");
         }

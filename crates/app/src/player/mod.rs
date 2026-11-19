@@ -15,6 +15,8 @@
 //! - after each update read `Player::take_outcome()` (`Outcome::Closed`) and leave the page;
 //! - draw `Player::view()` as the whole page (it paints its own backdrop and leaves the video
 //!   hole transparent); call `Player::shutdown()` before closing the window.
+#[cfg(feature = "theme-engine")]
+mod bar_tree;
 mod controls;
 mod input;
 pub mod logic;
@@ -147,6 +149,9 @@ pub enum Msg {
     Act(Act),
     Seek(Ev),
     Vol(Ev),
+    /// An event of the engine's paint widget (the controls bar).
+    #[cfg(feature = "theme-engine")]
+    Eng(crate::widget::styled::StyledEvent),
     Target(u64, Result<PlayTarget, PlayError>),
     Item(u64, Option<jf::PlayItem>),
     Segs(u64, Vec<jf::Segment>),
@@ -159,6 +164,8 @@ pub enum Msg {
 }
 
 pub struct Player {
+    #[cfg(feature = "theme-engine")]
+    bar: Option<std::cell::RefCell<bar_tree::BarHost>>,
     pub ctx: PlayerCtx,
     pub media: Media,
     pub queue: Vec<Media>,
@@ -304,6 +311,8 @@ impl Player {
         };
         let target = ctx.target.clone();
         let mut me = Self {
+            #[cfg(feature = "theme-engine")]
+            bar: bar_tree::BarHost::new(),
             media: media.clone(),
             queue,
             qi,
@@ -496,6 +505,8 @@ impl Player {
             Msg::Act(a) => return self.act(a),
             Msg::Seek(e) => return self.on_seek(e),
             Msg::Vol(e) => self.on_vol(e),
+            #[cfg(feature = "theme-engine")]
+            Msg::Eng(e) => return self.bar_event(e),
             Msg::Target(epoch, r) if epoch == self.epoch => match r {
                 Ok(t) => {
                     self.target = Some(t);

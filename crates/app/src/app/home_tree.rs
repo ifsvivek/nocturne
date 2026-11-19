@@ -785,7 +785,7 @@ pub(super) fn card_doc(d: &mut Doc, parent: Id, g: &Geo, c: &CardIn) -> CardNode
     }
 }
 
-pub(super) struct CardIn {
+pub(crate) struct CardIn {
     pub pic: Pic,
     /// The picture node's id in the widget's image table, and the cache keys it waits for.
     pub pic_id: u32,

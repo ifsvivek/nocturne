@@ -11,7 +11,7 @@ mod couch;
 mod details;
 mod downloads;
 #[cfg(feature = "theme-engine")]
-mod engine_ui;
+pub(crate) mod engine_ui;
 mod extras;
 mod folders;
 mod header;
@@ -594,6 +594,8 @@ impl App {
             Message::Tick(now) => {
                 self.now = now;
                 self.sync_detail();
+                #[cfg(feature = "theme-engine")]
+                self.sync_player_css();
                 self.sync_ob();
                 Task::batch([
                     self.tick(),
