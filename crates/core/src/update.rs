@@ -1,4 +1,4 @@
-//! "Update available" for every install kind (docs/dev/UPDATER_PLAN.md). Phase 1: check and tell, never download or swap.
+//! "Update available" for every install kind (docs/dev/UPDATER_PLAN.md). This module checks and tells; `update_install` downloads and swaps (per-user installs only).
 //! One small JSON manifest, at most one GET per 24 h, nothing sent but the version in the User-Agent (and, unavoidably, the IP).
 use serde::Deserialize;
 use std::cmp::Ordering;
@@ -21,7 +21,7 @@ pub struct Manifest {
     pub platforms: BTreeMap<String, Artifact>,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Artifact {
     pub url: String,
     pub size: u64,
@@ -115,7 +115,7 @@ pub enum Manager {
 pub enum InstallKind {
     /// The binary lives in `/usr` and the distro's package database exists: the package manager owns it.
     SystemPackage(Manager),
-    /// Anything else a user installed (tarball, Windows installer, macOS app). Phase 2 self-updates these.
+    /// Anything else a user installed (tarball, Windows installer, macOS app). Self-updates when its directory is writable.
     PerUser,
     /// A cargo build from the source tree: never checks.
     Dev,
@@ -154,8 +154,10 @@ pub fn detect_here() -> InstallKind {
 pub enum Action {
     /// Run in a terminal; shown copyable.
     Command(&'static str),
-    /// Open the release page. Phase 2 replaces this by the in-app download for `PerUser`.
+    /// Open the release page (per-user installs that cannot update themselves, or no artifact for this platform).
     Download(String),
+    /// Per-user install that can replace itself: download, verify, swap, restart.
+    Install(Artifact),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -168,7 +170,8 @@ pub enum UpdateState {
     },
 }
 
-pub fn decide(current: &str, m: &Manifest, kind: InstallKind) -> UpdateState {
+/// `self_update`: the install directory is writable by the user (`update_install::can_self_update`).
+pub fn decide(current: &str, m: &Manifest, kind: InstallKind, self_update: bool) -> UpdateState {
     let (Some(cur), Some(new)) = (Version::parse(current), Version::parse(&m.version)) else {
         return UpdateState::UpToDate;
     };
@@ -177,8 +180,17 @@ pub fn decide(current: &str, m: &Manifest, kind: InstallKind) -> UpdateState {
     }
     let action = match kind {
         InstallKind::SystemPackage(Manager::Pacman) => Action::Command("sudo pacman -Syu"),
-        // ponytail: the .deb / .rpm come from the release page (no apt / dnf repository yet), so a repository
-        // command would do nothing; switch these to commands when such a repository exists.
+        InstallKind::SystemPackage(Manager::Apt) => {
+            Action::Command("sudo apt update && sudo apt upgrade")
+        }
+        InstallKind::SystemPackage(Manager::Dnf) => Action::Command("sudo dnf upgrade"),
+        InstallKind::PerUser if self_update => m
+            .platforms
+            .get(&crate::update_install::platform_key())
+            .map_or_else(
+                || Action::Download(m.notes_url.clone()),
+                |a| Action::Install(a.clone()),
+            ),
         _ => Action::Download(m.notes_url.clone()),
     };
     UpdateState::Available {
@@ -241,7 +253,9 @@ pub async fn check() -> Option<UpdateState> {
     let m = fetch(MANIFEST_URL).await.ok()?;
     let _ = std::fs::create_dir_all(path.parent()?);
     let _ = std::fs::write(&path, now_secs().to_string());
-    Some(decide(CURRENT, &m, kind))
+    let can =
+        std::env::current_exe().is_ok_and(|e| crate::update_install::can_self_update(kind, &e));
+    Some(decide(CURRENT, &m, kind, can))
 }
 
 #[cfg(test)]
@@ -289,7 +303,7 @@ mod tests {
 
     #[test]
     fn decision_per_install_kind() {
-        let up = |k| decide("0.5.0", &m("0.6.0"), k);
+        let up = |k| decide("0.5.0", &m("0.6.0"), k, false);
         assert_eq!(
             up(InstallKind::SystemPackage(Manager::Pacman)),
             UpdateState::Available {
@@ -298,26 +312,67 @@ mod tests {
                 action: Action::Command("sudo pacman -Syu")
             }
         );
+        for (k, cmd) in [
+            (
+                InstallKind::SystemPackage(Manager::Apt),
+                "sudo apt update && sudo apt upgrade",
+            ),
+            (InstallKind::SystemPackage(Manager::Dnf), "sudo dnf upgrade"),
+        ] {
+            assert!(
+                matches!(up(k), UpdateState::Available { action: Action::Command(c), .. } if c == cmd)
+            );
+        }
+        // not writable: Download
+        assert!(matches!(
+            up(InstallKind::PerUser),
+            UpdateState::Available {
+                action: Action::Download(_),
+                ..
+            }
+        ));
+        assert_eq!(up(InstallKind::Dev), UpdateState::UpToDate);
+        let same = decide("0.6.0", &m("0.6.0"), InstallKind::PerUser, true);
+        assert_eq!(same, UpdateState::UpToDate);
+        let older = decide("0.7.0", &m("0.6.0"), InstallKind::PerUser, true);
+        assert_eq!(older, UpdateState::UpToDate);
+        let rc = decide("0.6.0-rc.1", &m("0.6.0"), InstallKind::PerUser, true);
+        assert!(matches!(rc, UpdateState::Available { .. }));
+    }
+
+    #[test]
+    fn only_per_user_gets_the_in_app_install() {
+        let art = Artifact {
+            url: "https://example.org/a".into(),
+            size: 1,
+            sha256: "00".into(),
+            signature: "x".into(),
+        };
+        let mut mf = m("0.6.0");
+        mf.platforms
+            .insert(crate::update_install::platform_key(), art.clone());
+        let act = |k| match decide("0.5.0", &mf, k, true) {
+            UpdateState::Available { action, .. } => Some(action),
+            UpdateState::UpToDate => None,
+        };
+        assert_eq!(act(InstallKind::PerUser), Some(Action::Install(art)));
         for k in [
+            InstallKind::SystemPackage(Manager::Pacman),
             InstallKind::SystemPackage(Manager::Apt),
             InstallKind::SystemPackage(Manager::Dnf),
-            InstallKind::PerUser,
         ] {
-            assert!(matches!(
-                up(k),
-                UpdateState::Available {
-                    action: Action::Download(_),
-                    ..
-                }
-            ));
+            assert!(matches!(act(k), Some(Action::Command(_))));
         }
-        assert_eq!(up(InstallKind::Dev), UpdateState::UpToDate);
-        let same = decide("0.6.0", &m("0.6.0"), InstallKind::PerUser);
-        assert_eq!(same, UpdateState::UpToDate);
-        let older = decide("0.7.0", &m("0.6.0"), InstallKind::PerUser);
-        assert_eq!(older, UpdateState::UpToDate);
-        let rc = decide("0.6.0-rc.1", &m("0.6.0"), InstallKind::PerUser);
-        assert!(matches!(rc, UpdateState::Available { .. }));
+        assert_eq!(act(InstallKind::Dev), None);
+        // no entry for this platform: Download
+        mf.platforms.clear();
+        assert!(matches!(
+            decide("0.5.0", &mf, InstallKind::PerUser, true),
+            UpdateState::Available {
+                action: Action::Download(_),
+                ..
+            }
+        ));
     }
 
     #[test]

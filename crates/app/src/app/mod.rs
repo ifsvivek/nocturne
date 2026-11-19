@@ -137,6 +137,18 @@ pub const GLOBALS: [(&str, &str); 3] = [
     ("favourites", "Favourites"),
 ];
 
+/// The in-app update, after the banner's Install was pressed.
+enum UpdateStage {
+    Idle,
+    Downloading {
+        progress: std::sync::Arc<std::sync::atomic::AtomicU64>,
+        size: u64,
+    },
+    /// Swapped in; waiting for the user to restart.
+    Ready(std::path::PathBuf),
+    Failed(String),
+}
+
 enum Phase {
     /// Login mode: the account screens (connect, sign in, restore) own the window.
     Account,
@@ -222,6 +234,8 @@ pub struct App {
     note: Option<(String, Instant)>,
     /// A newer version, until dismissed (docs/dev/UPDATER_PLAN.md).
     update: Option<nocturne_core::update::UpdateState>,
+    /// Where the in-app update of that version stands.
+    update_stage: UpdateStage,
     /// Developer-token mode (`NOCTURNE_JF_TOKEN`): no login, read-only.
     dev: bool,
     /// The token / account has admin rights (an `Admin` entry follows the libraries).
@@ -344,6 +358,7 @@ impl App {
             now: Instant::now(),
             note: None,
             update: None,
+            update_stage: UpdateStage::Idle,
             admin: false,
             admin_open: false,
             adm: None,
@@ -383,6 +398,12 @@ impl App {
             .and_then(window::scale_factor)
             .map(Message::Scale);
         // Keyring reads, index loading and connections all follow in tasks, after the first frame.
+        // The new version started (we are it): drop the previous one and stale downloads.
+        if nocturne_core::update::detect_here() != nocturne_core::update::InstallKind::Dev
+            && let Ok(exe) = std::env::current_exe()
+        {
+            nocturne_core::update_install::cleanup(&exe);
+        }
         let check = if me.settings.check_updates {
             run(nocturne_core::update::check(), Message::Update)
         } else {
@@ -589,6 +610,42 @@ impl App {
             }
             Message::UpdateDismiss => {
                 self.update = None;
+                self.update_stage = UpdateStage::Idle;
+                Task::none()
+            }
+            Message::UpdateInstall(art) => {
+                use nocturne_core::update_install as ui;
+                if matches!(self.update_stage, UpdateStage::Downloading { .. }) {
+                    return Task::none();
+                }
+                let (Some(dir), Ok(exe)) = (ui::staging_dir(), std::env::current_exe()) else {
+                    self.update_stage = UpdateStage::Failed("no place to keep the download".into());
+                    return Task::none();
+                };
+                let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+                self.update_stage = UpdateStage::Downloading {
+                    progress: progress.clone(),
+                    size: art.size,
+                };
+                let kind = nocturne_core::update::detect_here();
+                run(
+                    async move { ui::update(kind, &art, &ui::KEYS, &dir, &exe, progress).await },
+                    Message::UpdateInstalled,
+                )
+            }
+            Message::UpdateInstalled(r) => {
+                self.update_stage = match r {
+                    Ok(exe) => UpdateStage::Ready(exe),
+                    Err(e) => UpdateStage::Failed(e),
+                };
+                Task::none()
+            }
+            Message::UpdateRestart => {
+                if let UpdateStage::Ready(exe) = &self.update_stage {
+                    nocturne_core::update_install::request_restart(exe.clone());
+                    // The normal quit path stops playback and reports; `main` starts the new version afterwards.
+                    return self.quit();
+                }
                 Task::none()
             }
             Message::RetryNow => {

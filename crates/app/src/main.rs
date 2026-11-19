@@ -33,7 +33,13 @@ fn main() -> std::process::ExitCode {
         eprintln!("{msg}");
         return std::process::ExitCode::FAILURE;
     }
-    match run() {
+    // The UI loop and every guard (single-instance lock, player) are gone when `run` returns; only then can the
+    // updated binary take over.
+    let result = run();
+    if let Some(e) = nocturne_core::update_install::restart_if_requested() {
+        eprintln!("NOCTURNE could not restart after the update: {e}");
+    }
+    match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             eprintln!(

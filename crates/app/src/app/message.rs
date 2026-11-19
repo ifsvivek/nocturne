@@ -130,6 +130,12 @@ pub enum Message {
     UpdateCopy(&'static str),
     UpdateOpen(String),
     UpdateDismiss,
+    /// Banner "Install": download, verify, swap.
+    UpdateInstall(nocturne_core::update::Artifact),
+    /// Download finished (verified file, or why not); the swap follows on the same task.
+    UpdateInstalled(Result<std::path::PathBuf, String>),
+    /// Banner "Restart to update".
+    UpdateRestart,
     Account(account::Msg),
     PickerAct(picker::Act),
     Switched {

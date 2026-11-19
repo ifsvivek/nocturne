@@ -40,6 +40,7 @@ pub mod syncplay;
 pub mod trakt;
 pub mod unified;
 pub mod update;
+pub mod update_install;
 pub mod versions;
 pub mod video;
 pub mod watched;

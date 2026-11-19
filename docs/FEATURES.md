@@ -67,6 +67,11 @@ What NOCTURNE does: 0.3.0 is released; entries marked **(0.4)** are on the unrel
 - [x] Playlists you own: create (N on the Playlists page), add from any item or album (More), remove and reorder entries (x, [ ], ]), rename, delete (typed name); collections stay read only
 - [x] Music queue: queue panel (u) with reorder, remove, shuffle and repeat; kept for the session and started from the account menu
 
+## Updates
+
+- At most one check a day (setting `check_updates`, on by default) tells you when a newer version exists. Package-managed installs show the command (`sudo pacman -Syu`, `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade`) and never touch themselves.
+- Per-user installs (tarball under `~/.local`, Windows installer, macOS app in a folder you can write) update in the app: Download and install, then Restart to update. The download is checked against the announced size, its sha256 and an ed25519 signature made with the NOCTURNE update key before anything is replaced; if any step fails the current version stays as it was.
+
 ## Settings
 - [x] Settings screen: server-changes master switch, progress sync, buffering, grid density, home sections, language preferences, reduce motion (follows the desktop by default)
 - [x] Themes (Settings > Themes): colours, corner radii, window background and font family from imported CSS, global with an optional per-server override, 15 second preview. Layout CSS on named parts (cards, rows, Home sections and hero, header, buttons, player bar) with built-in Marquee and Feed examples; density, type size (whole-UI zoom) and backdrop blur (blurhash stand-in) are applied approximately; the font applies from the next launch. Unit-tested and checked in the app on a local library; not tried against a real Jellyfin theme from the web or two servers at once ([CUSTOMIZATION_PLAN.md](dev/CUSTOMIZATION_PLAN.md))
