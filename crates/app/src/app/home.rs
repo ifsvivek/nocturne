@@ -18,6 +18,7 @@ use iced::widget::{Stack, column, container, image, row, space, text};
 use iced::{Alignment, Color, ContentFit, Element, Length, Padding, Task};
 use nocturne_core::merge::Entry;
 use nocturne_core::nav::{self, Dir};
+use nocturne_core::server_ui::{Section, ServerUi};
 use nocturne_core::source::{Art, Kind, Media, SourceId};
 use nocturne_core::sources::{Fanout, status_text};
 use std::collections::HashMap;
@@ -34,6 +35,15 @@ pub enum HRow {
     Resume,
     NextUp,
     Latest(usize),
+    /// Server UI: the "My media" library tiles.
+    Tiles,
+}
+
+impl HRow {
+    /// Landscape cards (16:9) instead of posters.
+    pub fn wide(self) -> bool {
+        matches!(self, Self::Resume | Self::NextUp | Self::Tiles)
+    }
 }
 
 pub struct LatestRow {
@@ -70,6 +80,9 @@ pub struct Home {
     pub vh: f32,
     /// Horizontal offset of each strip (by layout row).
     pub strips: HashMap<usize, f32>,
+    /// Server UI mode, one server selected: that server's own layout. `None` is the NOCTURNE
+    /// layout (also while the server's answer is still on its way).
+    pub server: Option<ServerUi>,
 }
 
 impl Home {
@@ -87,11 +100,56 @@ impl Home {
             off: 0.0,
             vh: 0.0,
             strips: HashMap::new(),
+            server: None,
+        }
+    }
+
+    /// The server's rows in the server's order, reusing the NOCTURNE row kinds.
+    fn server_layout(&self, ui: &ServerUi, v: &mut Vec<HRow>) {
+        for s in ui.shown() {
+            match s {
+                Section::MyMedia | Section::LibraryButtons => {
+                    if !v.contains(&HRow::Tiles) && !self.tiles().is_empty() {
+                        v.push(HRow::Tiles);
+                    }
+                }
+                Section::Resume if !self.resume_e.is_empty() => v.push(HRow::Resume),
+                Section::NextUp if !self.nextup_e.is_empty() => v.push(HRow::NextUp),
+                Section::Latest => {
+                    let rows: Vec<(&str, usize)> = self
+                        .latest
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, r)| r.shown())
+                        .map(|(i, r)| (r.lib.id.as_str(), i))
+                        .collect();
+                    v.extend(
+                        ui.latest_libs(rows, |r| r.0)
+                            .into_iter()
+                            .map(|r| HRow::Latest(r.1)),
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Server UI: the libraries as tiles, in the user's order without the hidden ones.
+    fn tiles(&self) -> Vec<&Media> {
+        match &self.server {
+            Some(ui) => ui.tiles(self.latest.iter().map(|r| &r.lib).collect(), |m| {
+                m.id.as_str()
+            }),
+            None => vec![],
         }
     }
 
     pub fn layout(&self) -> Vec<HRow> {
         let mut v = vec![HRow::Nav, HRow::Hero];
+        if let Some(ui) = &self.server {
+            self.server_layout(ui, &mut v);
+            return v;
+        }
         if self.show.0 && !self.resume_e.is_empty() {
             v.push(HRow::Resume);
         }
@@ -115,6 +173,7 @@ impl Home {
         match k {
             HRow::Resume => entries(&self.resume_e),
             HRow::NextUp => entries(&self.nextup_e),
+            HRow::Tiles => self.tiles().into_iter().map(|m| (m, 1)).collect(),
             HRow::Latest(i) => self
                 .latest
                 .get(i)
@@ -183,6 +242,7 @@ impl App {
         let (rf, t2) = self.fan(pid, FanKind::Resume, |b| async move { b.resume().await });
         let (nf, t3) = self.fan(pid, FanKind::NextUp, |b| async move { b.next_up().await });
         let show = self.settings.home();
+        let server = self.server_ui_now();
         if let Some(p) = self.page_mut(pid) {
             p.libs = if fan.is_empty() {
                 Load::Ready(vec![])
@@ -190,7 +250,9 @@ impl App {
                 Load::Loading
             };
             p.fan = fan;
-            p.home = Some(Box::new(Home::new(show, rf, nf)));
+            let mut home = Home::new(show, rf, nf);
+            home.server = server;
+            p.home = Some(Box::new(home));
         }
         Task::batch([t1, t2, t3])
     }
@@ -369,9 +431,10 @@ impl App {
         let vh = if h.vh > 0.0 { h.vh } else { self.win.height };
         let mut top = hh;
         for (ri, k) in lay.iter().enumerate().skip(2) {
-            let (dims, art) = match k {
-                HRow::Resume | HRow::NextUp => (wide, Art::Landscape),
-                _ => (size, Art::Poster),
+            let (dims, art) = if k.wide() {
+                (wide, Art::Landscape)
+            } else {
+                (size, Art::Poster)
             };
             let bh = band_h(dims.1);
             let near = top + bh > h.off - vh * 0.5 && top < h.off + vh * 1.5;
@@ -457,6 +520,15 @@ impl App {
                     wide,
                     Art::Landscape,
                     true,
+                    false,
+                ),
+                HRow::Tiles => (
+                    "My media".to_string(),
+                    "Your libraries.".to_string(),
+                    format!("{n} libraries"),
+                    wide,
+                    Art::Landscape,
+                    false,
                     false,
                 ),
                 HRow::Latest(i) => {
@@ -777,10 +849,7 @@ impl App {
             let mut top = hh;
             let mut want_y = 0.0;
             for (ri, k) in lay.iter().enumerate().skip(2) {
-                let dims = match k {
-                    HRow::Resume | HRow::NextUp => wide,
-                    _ => size,
-                };
+                let dims = if k.wide() { wide } else { size };
                 if ri == h.row {
                     want_y = top;
                 }
@@ -788,11 +857,7 @@ impl App {
             }
             if h.row >= 2 {
                 let vh = if h.vh > 0.0 { h.vh } else { win_h };
-                let bh = band_h(if matches!(k, HRow::Resume | HRow::NextUp) {
-                    wide.1
-                } else {
-                    size.1
-                });
+                let bh = band_h(if k.wide() { wide.1 } else { size.1 });
                 let target = if want_y < h.off {
                     want_y
                 } else if want_y + bh > h.off + vh {
@@ -815,11 +880,7 @@ impl App {
             }
             // Strip: bring the focused card into view.
             if h.row >= 2 {
-                let dims = if matches!(k, HRow::Resume | HRow::NextUp) {
-                    wide
-                } else {
-                    size
-                };
+                let dims = if k.wide() { wide } else { size };
                 let cell_w = dims.0 + 2.0 * t::S3 + 1.0;
                 let cur = h.strips.get(&h.row).copied().unwrap_or(0.0);
                 let x = virt::into_view(cur, win_w - 2.0 * t::PAGE_PAD, cell_w, h.col);
@@ -851,7 +912,7 @@ impl App {
                     return self.activate_link(links.get(col).copied());
                 }
                 HRow::Resume | HRow::NextUp => Some((At::Home(row, col), CellAct::Play)),
-                HRow::Latest(_) => Some((At::Home(row, col), CellAct::Open)),
+                HRow::Latest(_) | HRow::Tiles => Some((At::Home(row, col), CellAct::Open)),
             };
             if let Some((at, a)) = act {
                 return self.update_cell(at, a);
@@ -982,6 +1043,61 @@ mod tests {
         assert_eq!(h.hero().map(|m| m.id.as_str()), Some("r"));
         h.show.0 = false;
         assert_eq!(h.layout().len(), 4, "Continue watching switched off");
+    }
+
+    #[test]
+    fn server_layout_follows_the_servers_sections_libraries_and_exclusions() {
+        let mut h = Home::new((false, false, false), Fanout::default(), Fanout::default());
+        let row = |id: &str, n: usize| LatestRow {
+            origin: SourceId(1),
+            lib: media(id),
+            items: Load::Ready((0..n).map(|i| media(&format!("{id}{i}"))).collect()),
+        };
+        h.latest = vec![row("a", 1), row("b", 1), row("c", 0), row("d", 1)];
+        h.resume_e = vec![Entry {
+            primary: media("r"),
+            alternates: vec![],
+        }];
+        // NOCTURNE layout: toggles decide (latest off), the server data is ignored.
+        assert_eq!(h.layout().len(), 2);
+        let mut ui = ServerUi {
+            sections: vec![
+                Section::Latest,
+                Section::MyMedia,
+                Section::Resume,
+                Section::NextUp,
+            ],
+            ordered_views: vec!["d".into(), "a".into()],
+            my_media_excludes: vec!["b".into()],
+            latest_excludes: vec!["a".into()],
+            ..Default::default()
+        };
+        h.server = Some(ui.clone());
+        // Latest first (d, b; a excluded, c empty), then the tiles, then Continue watching; Next up has nothing.
+        assert_eq!(
+            h.layout(),
+            [
+                HRow::Nav,
+                HRow::Hero,
+                HRow::Latest(3),
+                HRow::Latest(1),
+                HRow::Tiles,
+                HRow::Resume
+            ]
+        );
+        let tiles: Vec<_> = h
+            .items(HRow::Tiles)
+            .iter()
+            .map(|(m, _)| m.id.clone())
+            .collect();
+        assert_eq!(tiles, ["d", "a", "c"], "user order, hidden one dropped");
+        ui.sections = vec![Section::LiveTv, Section::ResumeAudio];
+        h.server = Some(ui);
+        assert_eq!(
+            h.layout(),
+            [HRow::Nav, HRow::Hero],
+            "unsupported kinds are skipped"
+        );
     }
 
     #[test]

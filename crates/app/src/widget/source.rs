@@ -66,6 +66,7 @@ mod tests {
                 label: label.into(),
                 enabled: true,
                 online: Default::default(),
+                server_ui: false,
                 kind,
             },
             backend: None,

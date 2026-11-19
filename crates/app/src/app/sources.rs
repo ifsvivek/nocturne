@@ -31,7 +31,7 @@ pub(super) struct HeaderDlg {
 }
 
 /// Width of the buttons column of a source row (sign in again, folders, rescan, disable, up, down, remove).
-const ACTS_W: f32 = 560.0;
+const ACTS_W: f32 = 780.0;
 
 fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
@@ -76,6 +76,12 @@ impl App {
             SrcAct::HeaderCancel => self.hdr = None,
             SrcAct::HeaderClear => return self.save_header(true),
             SrcAct::HeaderSave => return self.save_header(false),
+            SrcAct::Layout(id) => return self.toggle_server_ui(id),
+            SrcAct::Sections(id) => self.open_sections(id),
+            a @ (SrcAct::SecToggle(_)
+            | SrcAct::SecShift(..)
+            | SrcAct::SecSave
+            | SrcAct::SecCancel) => return self.sections_act(a),
             SrcAct::AskRemove(id) => self.confirm = Some(id),
             SrcAct::CancelRemove => self.confirm = None,
             SrcAct::ConfirmRemove => {
@@ -334,6 +340,21 @@ impl App {
                     acts = acts.push(btn("Use account", false, false, SrcAct::Use(id)));
                 }
                 acts = acts.push(btn("Header", false, false, SrcAct::Header(id)));
+                if !self.dev && s.profile.enabled {
+                    acts = acts.push(btn(
+                        if s.profile.server_ui {
+                            "Layout: server's"
+                        } else {
+                            "Layout: NOCTURNE"
+                        },
+                        false,
+                        false,
+                        SrcAct::Layout(id),
+                    ));
+                    if s.profile.server_ui {
+                        acts = acts.push(btn("Sections", false, false, SrcAct::Sections(id)));
+                    }
+                }
             }
             acts = acts
                 .push(btn(

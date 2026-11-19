@@ -73,7 +73,7 @@ pub struct State {
     busy: bool,
     preview: Option<Instant>,
     /// The theme id last handed to `theme::set` (`None` = not yet / must be redone).
-    applied: Option<Option<u32>>,
+    applied: Option<u64>,
 }
 
 impl Default for State {
@@ -122,7 +122,7 @@ impl App {
         if self.th.preview.is_some() {
             return;
         }
-        let want = self.themes.active_id(self.theme_source());
+        let want = self.themes.active_key(self.theme_source());
         if self.th.applied != Some(want) {
             crate::theme::set(&self.themes.resolve(self.theme_source()));
             self.th.applied = Some(want);
