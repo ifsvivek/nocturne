@@ -33,6 +33,7 @@ What NOCTURNE does as of 0.5.1 (2026-11-19); entries tagged (0.4) or (0.5) say w
 - [x] Profile picker ("Who's watching?") at launch when the server has two or more remembered accounts: round profile tiles with picture or initial, Add profile tile, mouse / arrows / Enter, local sign-in with the stored token (a rejected token opens the sign-in form with the name filled in); "Use as default profile" skips it at the next launches; account menu "Switch profile" and a Settings "Default profile" drop-down; the default is a name marker in `accounts.toml`, cleared when that account is removed; no server writes, not shown in developer-token mode or with a single account
 
 ## Browsing
+- [x] Home banner data (0.5.2, UI in progress): slides from continue watching, next up, latest and favourites without duplicates, auto-advance with pause rules, logo art (server and local sidecar), expandable descriptions, skeleton loading states; Settings > Home banner. Unit-tested; the Glass theme draws it
 - [x] Home: hero, Continue Watching, Next Up, latest per library
 - [x] (0.4) Latest rows include new episodes of existing shows; Play on a show card starts the next unwatched episode; "Included in" collections on movie and show pages (Jellyfin 12+)
 - [x] Library views: paged virtualised grid, sort, filters, A-Z jump, poster / thumb / list views

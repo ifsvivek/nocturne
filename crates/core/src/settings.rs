@@ -612,7 +612,8 @@ impl Settings {
             15 => self.image_cache_mb = CACHE_MB.get(idx).copied().unwrap_or(self.image_cache_mb),
             16 => self.reduce_motion = MOTION.get(idx).map_or(self.reduce_motion, |(m, _)| *m),
             HERO_INTERVAL_ROW => {
-                self.hero_interval_secs = HERO_S.get(idx).copied().unwrap_or(self.hero_interval_secs)
+                self.hero_interval_secs =
+                    HERO_S.get(idx).copied().unwrap_or(self.hero_interval_secs)
             }
             COUCH_ROW => self.couch = COUCH.get(idx).map_or(self.couch, |(m, _)| *m),
             _ => {}

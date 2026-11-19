@@ -12,6 +12,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 - Settings > Sources has a "UI:" button on every source and on a new "All sources" row to choose whose UI is used (NOCTURNE, this server, another server); a fallback is explained on the row. Settings > Themes lists the built-in themes first, has "Refresh imports", shows what was fetched and which fonts loaded, and previews a pasted or imported theme on the whole app until Keep or Revert (a floating bar on every screen).
 - Safe look: Ctrl+Shift+0 or starting with `NOCTURNE_SAFE_THEME=1` restores the built-in look at once, whatever theme is saved.
+- Data for the Glass look (UI follows): title logo art for server items (own or the show's) and local `logo.png` / `clearlogo.png` sidecars (next to the movie or in the show folder, read only); Settings > Home banner (rotate by itself, interval 5 to 30 s); the banner's slide selection and timer (several sources in order, no duplicates, pauses while hovered, focused, expanded, hidden or playing, none with reduced motion); expandable descriptions; loading states for skeleton placeholders.
 
 ### Changed
 - Loaded theme fonts apply at once to headings, labels and buttons (text without an explicit font keeps the launch font).
