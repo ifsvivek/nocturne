@@ -237,10 +237,84 @@ fn themes_really_differ_in_layout() {
     assert_eq!(dock[1] + dock[3], dock[1] + 64.0);
 }
 
+/// How much of a real stylesheet the engine understands (syntax only; which elements it hits depends on the class names the tree
+/// exposes): `NOCTURNE_CSS_FILE=elegantfin.css cargo test -p nocturne-style -- --ignored coverage --nocapture`.
+#[test]
+#[ignore]
+fn coverage() {
+    use std::collections::BTreeMap;
+    let Ok(path) = std::env::var("NOCTURNE_CSS_FILE") else {
+        return;
+    };
+    let css = std::fs::read_to_string(path).unwrap();
+    let (rules, skipped) = nocturne_core::customize::read_rules(&css).unwrap();
+    let (mut sel_ok, mut sel_bad) = (0, 0);
+    let mut why: BTreeMap<String, usize> = BTreeMap::new();
+    let (mut d_ok, mut d_var, mut d_bad) = (0, 0, 0);
+    let mut bad: BTreeMap<String, usize> = BTreeMap::new();
+    let cx = props::Ctx {
+        vw: 1920.0,
+        vh: 1080.0,
+    };
+    for r in &rules {
+        for s in &r.selectors {
+            match select::parse(s) {
+                Ok(_) => sel_ok += 1,
+                Err(e) => {
+                    sel_bad += 1;
+                    let k = e.split('`').next().unwrap_or("").trim().to_string();
+                    let k = if e.starts_with('`') {
+                        e.split('`').nth(2).unwrap_or("").trim().to_string()
+                    } else {
+                        k
+                    };
+                    *why.entry(k).or_default() += 1;
+                }
+            }
+        }
+        for (n, v, _) in &r.decls {
+            if n.starts_with("--") {
+                continue;
+            }
+            if v.contains("var(") {
+                d_var += 1;
+                continue;
+            }
+            match props::apply(&mut props::Computed::root(), n, v, cx) {
+                Ok(()) => d_ok += 1,
+                Err(e) => {
+                    d_bad += 1;
+                    let k = if e.contains("not drawn yet") || e.contains("not a supported property")
+                    {
+                        n.clone()
+                    } else {
+                        format!("{n} (value)")
+                    };
+                    *bad.entry(k).or_default() += 1;
+                }
+            }
+        }
+    }
+    println!(
+        "rules {} (+{skipped} reader problems), selectors ok {sel_ok} rejected {sel_bad}: {why:?}",
+        rules.len()
+    );
+    println!("declarations applied {d_ok}, rejected {d_bad}, with var() {d_var} (not checked)");
+    let mut b: Vec<_> = bad.into_iter().collect();
+    b.sort_by_key(|x| std::cmp::Reverse(x.1));
+    println!("rejected by property: {:?}", &b[..b.len().min(30)]);
+}
+
 /// Timing, run with `cargo test -p nocturne-style --release -- --ignored --nocapture`.
 #[test]
 #[ignore]
 fn timing() {
+    println!(
+        "size_of Computed {} B, taffy Style {} B, Node {} B",
+        std::mem::size_of::<props::Computed>(),
+        std::mem::size_of::<taffy::Style>(),
+        std::mem::size_of::<doc::Node>()
+    );
     for n in [1_000, 10_000] {
         let d = demo::big(n);
         for (name, css) in THEMES {

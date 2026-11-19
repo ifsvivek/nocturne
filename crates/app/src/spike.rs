@@ -33,6 +33,7 @@ enum M {
     Hover(Option<Id>),
     Wheel(Option<Id>, f32, f32),
     Poll,
+    Frame(Instant),
     Snap(usize),
     Shot(window::Screenshot, usize),
 }
@@ -109,6 +110,7 @@ struct Spike {
     win: Option<window::Id>,
     cache: HashMap<u64, (f32, f32)>,
     stats: bool,
+    dir: f32,
 }
 
 fn sheet() -> (Sheet, Option<PathBuf>) {
@@ -173,6 +175,7 @@ fn boot() -> (Spike, Task<M>) {
             win: None,
             cache: HashMap::new(),
             stats: env("NOCTURNE_SPIKE_STATS").is_some(),
+            dir: 1.0,
         },
         Task::batch(tasks),
     )
@@ -264,6 +267,22 @@ impl Spike {
                 }
                 self.clamp();
             }
+            M::Frame(_) => {
+                // Benchmark: scroll the page down and up by itself, one redraw per frame.
+                let max = self
+                    .scene
+                    .as_ref()
+                    .map_or(0.0, |s| s.rects[0][3] - self.size.height)
+                    .max(1.0);
+                self.dir = if self.page_y >= max {
+                    -1.0
+                } else if self.page_y <= 0.0 {
+                    1.0
+                } else {
+                    self.dir
+                };
+                self.page_y = (self.page_y + 14.0 * self.dir).clamp(0.0, max);
+            }
             M::Poll => {
                 if let Some(p) = &self.css_path {
                     let t = mtime(p);
@@ -301,6 +320,9 @@ impl Spike {
         let mut s = vec![];
         if self.css_path.is_some() {
             s.push(iced::time::every(Duration::from_secs(1)).map(|_| M::Poll));
+        }
+        if env("NOCTURNE_SPIKE_ANIM").is_some() {
+            s.push(window::frames().map(M::Frame));
         }
         Subscription::batch(s)
     }
@@ -626,7 +648,7 @@ impl<'a> Widget<M, iced::Theme, iced::Renderer> for Page<'a> {
                 let mut d = d.borrow_mut();
                 d.0 += 1;
                 d.1 += t.elapsed();
-                if d.0 % 20 == 0 {
+                if d.0 % 120 == 0 {
                     eprintln!(
                         "spike: draw {} us average over {} frames",
                         d.1.as_micros() / d.0 as u128,
