@@ -83,8 +83,8 @@ pub enum SrcAct {
     HeaderSave,
     HeaderClear,
     HeaderCancel,
-    /// Follow the server's own layout (Server UI) or NOCTURNE's.
-    Layout(SourceId),
+    /// The next choice of whose UI this source (or "All", `None`) is browsed with.
+    Layout(Option<SourceId>),
     /// The home-sections editor of this server, and its buttons.
     Sections(SourceId),
     SecToggle(usize),
