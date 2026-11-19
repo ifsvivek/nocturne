@@ -8,10 +8,10 @@ mod store;
 mod value;
 
 pub use layout::{
-    Arrows, Aspect, Badge, BadgePos, Brand, BrandContent, Card, CardImage, Controls,
-    EpisodeFormat, Header, HeaderAlign, HeaderPosition, Hero, HeroStyle, Layout, Page, Progress,
-    ProgressPos, Row, RowLayout, Scope, Section, Shadow, Text, TextAlign, TextTransform,
-    TileLabel, TitlePosition, Visibility,
+    Arrows, Aspect, Badge, BadgePos, Brand, BrandContent, Card, CardImage, Controls, EpisodeFormat,
+    Header, HeaderAlign, HeaderPosition, Hero, HeroStyle, Layout, Page, Parts, Progress,
+    ProgressPos, Row, RowLayout, Scope, Section, Shadow, Text, TextAlign, TextTransform, TileLabel,
+    TitlePosition, Visibility,
 };
 pub use store::{Saved, Store, content_type_ok, fetch, import_name, validate_url};
 pub use value::{Color, Fill};

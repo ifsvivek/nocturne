@@ -243,6 +243,7 @@ opt_struct! {
     CardImage { radius: f32, shadow: Shadow }
     Row {
         hidden: bool, layout: RowLayout, gap: f32, columns: u8, padding: f32, order: i32,
+        details: bool,
     }
     Hero { hidden: bool, style: HeroStyle, height: f32, overlay: Fill }
     Header { position: HeaderPosition, height: f32, align: HeaderAlign, link_icons: bool }
@@ -668,7 +669,10 @@ fn text(t: &mut Text, name: &str, v: &str, notes: &mut Notes) -> Result<bool, St
 fn episode_format(v: &str) -> Result<EpisodeFormat, String> {
     one_of(
         v,
-        &[("short", EpisodeFormat::Short), ("long", EpisodeFormat::Long)],
+        &[
+            ("short", EpisodeFormat::Short),
+            ("long", EpisodeFormat::Long),
+        ],
     )
 }
 
@@ -837,7 +841,10 @@ fn set_part(
             }
             p.header_icons.hidden = Some(display(v));
         }
-        PartId::RowTitle => return text(&mut p.row_title, name, v, notes),
+        PartId::RowTitle => match name {
+            "--row-details" => p.row.details = Some(one_of(v, &[("on", true), ("off", false)])?),
+            _ => return text(&mut p.row_title, name, v, notes),
+        },
         PartId::HeroTitle => return text(&mut p.hero_title, name, v, notes),
         PartId::HeroMeta => return text(&mut p.hero_meta, name, v, notes),
         PartId::HeaderLink => return text(&mut p.header_link, name, v, notes),

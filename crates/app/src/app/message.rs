@@ -214,6 +214,8 @@ pub enum Message {
     DetailWrote(u64, crate::detail::Write, Result<(), &'static str>),
     HomeScroll(f32, f32),
     HomeStrip(usize, f32),
+    /// A row's arrow was pressed: strip index and direction (-1 back, 1 forward).
+    HomeStripPage(usize, f32),
     Browse(u64, super::browse::BMsg),
     Search(super::search::SMsg),
     /// The stored login of a server, to build its write hooks (played / favourite).

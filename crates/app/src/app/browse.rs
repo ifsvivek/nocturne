@@ -1270,6 +1270,7 @@ impl App {
                 focused: idx == sel,
                 progress: md.progress(),
                 badge: badge(md),
+                subtitle: false,
                 mark: several
                     .then(|| mark_for(&self.catalog, md, copies))
                     .flatten(),
@@ -1422,6 +1423,7 @@ fn skeleton<'a>(i: usize, m: &Metrics, look: Look) -> El<'a> {
         focused: false,
         progress: None,
         badge: None,
+        subtitle: false,
         mark: None,
         chips: None,
         on_open: Message::Noop,

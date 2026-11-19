@@ -537,6 +537,7 @@ fn classic_has_the_web_home_layout() {
     assert_eq!(l.header_brand.content, Some(BrandContent::Server));
     assert_eq!(l.header_icons.hidden, Some(false));
     assert!(l.row_arrows.shown());
+    assert_eq!(l.row.details, Some(false));
     assert_eq!(l.card.tile_label, Some(TileLabel::OverlayCenter));
     assert_eq!(l.card.episode_format, Some(EpisodeFormat::Short));
     assert_eq!(l.card_title.align, Some(TextAlign::Center));
