@@ -4,10 +4,62 @@
 use crate::source::SourceId;
 use nocturne_session::{Accounts, Servers};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
-pub const VERSION: u32 = 1;
+/// 2: `ui_from` replaces the per-server `server_ui` switch (the old key is still read, see `migrate`).
+pub const VERSION: u32 = 2;
+
+/// Whose UI (home sections, branding CSS) a source is browsed with. Local only: nothing is ever
+/// written to the server whose UI is borrowed. Stored in `sources.toml` as the text
+/// `"nocturne"`, `"self"` or a source id.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum UiFrom {
+    /// The built-in NOCTURNE layout.
+    #[default]
+    Nocturne,
+    /// The server's own UI (the "Server UI" switch of 0.5). For "All": each item's own server.
+    SelfServer,
+    /// Another source's UI, signed in there.
+    Source(SourceId),
+}
+
+impl UiFrom {
+    pub fn text(self) -> String {
+        match self {
+            Self::Nocturne => "nocturne".into(),
+            Self::SelfServer => "self".into(),
+            Self::Source(id) => id.0.to_string(),
+        }
+    }
+
+    /// Anything unreadable is the default, so a hand-edited file never breaks loading.
+    pub fn parse(t: &str) -> Self {
+        match t.trim() {
+            "self" => Self::SelfServer,
+            n => n
+                .parse()
+                .map(|i| Self::Source(SourceId(i)))
+                .unwrap_or_default(),
+        }
+    }
+}
+
+impl Serialize for UiFrom {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.text())
+    }
+}
+
+impl<'de> Deserialize<'de> for UiFrom {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(Self::parse(&String::deserialize(d)?))
+    }
+}
+
+/// Key of "All" in `Sources::ui_from`.
+const ALL: &str = "all";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -31,9 +83,9 @@ pub struct Profile {
     /// Online details and subtitle switches (local sources only; off by default). No secrets: keys are in the keyring.
     #[serde(default)]
     pub online: crate::online::Flags,
-    /// Jellyfin sources: follow the server's own home layout (section order, My media tiles,
-    /// branding CSS) when this server alone is selected. Off for new servers.
-    #[serde(default)]
+    /// Compatibility mirror of `Sources::ui_of(this) == SelfServer`: read from files older than
+    /// version 2, never written, kept in step by `Sources::set_ui_from`. Use `ui_of`.
+    #[serde(default, skip_serializing)]
     pub server_ui: bool,
     #[serde(flatten)]
     pub kind: ProfileKind,
@@ -52,6 +104,9 @@ pub struct Sources {
     pub next_id: u32,
     #[serde(rename = "profile")]
     pub profiles: Vec<Profile>,
+    /// Whose UI each source is browsed with: key `"all"` or a source id, absent means NOCTURNE.
+    /// Only ever holds `self` or an existing server's id (`Sources::set_ui_from` checks).
+    pub ui_from: BTreeMap<String, UiFrom>,
 }
 
 impl Default for Sources {
@@ -60,6 +115,7 @@ impl Default for Sources {
             version: VERSION,
             next_id: 1,
             profiles: vec![],
+            ui_from: BTreeMap::new(),
         }
     }
 }
@@ -110,11 +166,124 @@ impl Sources {
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e),
         };
-        let s: Self = toml::from_str(&text).map_err(io::Error::other)?;
+        let mut s: Self = toml::from_str(&text).map_err(io::Error::other)?;
         if s.version > VERSION {
             return Err(io::Error::other("sources.toml is from a newer NOCTURNE"));
         }
+        s.migrate();
         Ok(Some(s))
+    }
+
+    /// Version 1 had a `server_ui` switch per server: it becomes `ui_from = "self"`. Every load
+    /// then drops choices that no longer make sense (a removed or non-server source, a local
+    /// folder using its own UI) and rebuilds the compatibility mirror.
+    fn migrate(&mut self) {
+        if self.version < 2 {
+            let on: Vec<SourceId> = self
+                .profiles
+                .iter()
+                .filter(|p| p.server_ui && matches!(p.kind, ProfileKind::Jellyfin { .. }))
+                .map(|p| p.id)
+                .collect();
+            for id in on {
+                self.ui_from
+                    .entry(id.0.to_string())
+                    .or_insert(UiFrom::SelfServer);
+            }
+            self.version = VERSION;
+        }
+        self.clean_ui();
+    }
+
+    fn is_server(&self, id: SourceId) -> bool {
+        self.get(id)
+            .is_some_and(|p| matches!(p.kind, ProfileKind::Jellyfin { .. }))
+    }
+
+    fn clean_ui(&mut self) {
+        let ok: Vec<(String, UiFrom)> = self
+            .ui_from
+            .iter()
+            .filter(|(k, v)| {
+                let ctx = if k.as_str() == ALL {
+                    None
+                } else {
+                    match k
+                        .parse()
+                        .ok()
+                        .map(SourceId)
+                        .filter(|i| self.get(*i).is_some())
+                    {
+                        Some(i) => Some(i),
+                        None => return false,
+                    }
+                };
+                match **v {
+                    UiFrom::Nocturne => false,
+                    // A local folder has no UI of its own.
+                    UiFrom::SelfServer => ctx.is_none_or(|c| self.is_server(c)),
+                    UiFrom::Source(t) => self.is_server(t) && Some(t) != ctx,
+                }
+            })
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        self.ui_from = ok.into_iter().collect();
+        for i in 0..self.profiles.len() {
+            let id = self.profiles[i].id;
+            self.profiles[i].server_ui = self.ui_of(Some(id)) == UiFrom::SelfServer;
+        }
+    }
+
+    /// Whose UI `ctx` (a source, or `None` for "All") is browsed with.
+    pub fn ui_of(&self, ctx: Option<SourceId>) -> UiFrom {
+        let key = ctx.map_or(ALL.to_string(), |i| i.0.to_string());
+        self.ui_from.get(&key).copied().unwrap_or_default()
+    }
+
+    /// Choose whose UI `ctx` uses. False (nothing changes) when the choice is not valid: `ctx` is
+    /// not a source, the chosen source is not an existing server, or a local folder asks for its
+    /// own UI. Choosing a source's own id is `SelfServer`.
+    pub fn set_ui_from(&mut self, ctx: Option<SourceId>, to: UiFrom) -> bool {
+        if ctx.is_some_and(|c| self.get(c).is_none()) {
+            return false;
+        }
+        let to = match to {
+            UiFrom::Source(t) if Some(t) == ctx => UiFrom::SelfServer,
+            t => t,
+        };
+        let valid = match to {
+            UiFrom::Nocturne => true,
+            UiFrom::SelfServer => ctx.is_none_or(|c| self.is_server(c)),
+            UiFrom::Source(t) => self.is_server(t),
+        };
+        if !valid {
+            return false;
+        }
+        let key = ctx.map_or(ALL.to_string(), |i| i.0.to_string());
+        match to {
+            UiFrom::Nocturne => self.ui_from.remove(&key),
+            t => self.ui_from.insert(key, t),
+        };
+        if let Some(p) = ctx.and_then(|c| self.profiles.iter_mut().find(|p| p.id == c)) {
+            p.server_ui = to == UiFrom::SelfServer;
+        }
+        true
+    }
+
+    /// What the choice list of `ctx` offers, in order: NOCTURNE, its own UI (servers and "All"),
+    /// then every other server.
+    pub fn ui_choices(&self, ctx: Option<SourceId>) -> Vec<UiFrom> {
+        let mut v = vec![UiFrom::Nocturne];
+        if ctx.is_none_or(|c| self.is_server(c)) {
+            v.push(UiFrom::SelfServer);
+        }
+        v.extend(
+            self.profiles
+                .iter()
+                .filter(|p| Some(p.id) != ctx && matches!(p.kind, ProfileKind::Jellyfin { .. }))
+                .map(|p| UiFrom::Source(p.id)),
+        );
+        v
     }
 
     /// Atomic: temp file in the same directory, then rename.
@@ -141,9 +310,11 @@ impl Sources {
         id
     }
 
+    /// Remove a source. Choices that used its UI go back to NOCTURNE, and its own choice goes.
     pub fn remove(&mut self, id: SourceId) -> bool {
         let n = self.profiles.len();
         self.profiles.retain(|p| p.id != id);
+        self.clean_ui();
         self.profiles.len() != n
     }
 
@@ -192,12 +363,16 @@ impl Sources {
         }
     }
 
+    /// The 0.5 switch, now `ui_from` `self` / `nocturne`. Turning it off also drops a borrowed UI.
     pub fn set_server_ui(&mut self, id: SourceId, on: bool) -> bool {
-        let Some(p) = self.profiles.iter_mut().find(|p| p.id == id) else {
-            return false;
-        };
-        p.server_ui = on;
-        true
+        self.set_ui_from(
+            Some(id),
+            if on {
+                UiFrom::SelfServer
+            } else {
+                UiFrom::Nocturne
+            },
+        )
     }
 
     pub fn set_enabled(&mut self, id: SourceId, on: bool) {
@@ -485,6 +660,82 @@ mod tests {
             user_id: "u1".into(),
             user_name: "Ann".into(),
         }
+    }
+
+    #[test]
+    fn version_1_server_ui_becomes_ui_from_self() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("sources.toml");
+        std::fs::write(
+            &p,
+            "version = 1\nnext_id = 4\n\
+             [[profile]]\nid = 1\nlabel = \"A\"\nkind = \"jellyfin\"\nurl = \"https://a.test\"\nuser_id = \"u\"\nuser_name = \"n\"\nserver_ui = true\n\
+             [[profile]]\nid = 2\nlabel = \"B\"\nkind = \"jellyfin\"\nurl = \"https://b.test\"\nuser_id = \"u\"\nuser_name = \"n\"\n\
+             [[profile]]\nid = 3\nlabel = \"L\"\nkind = \"local\"\nroots = []\nserver_ui = true\n",
+        )
+        .unwrap();
+        let s = Sources::load_from(&p).unwrap().unwrap();
+        assert_eq!(s.version, VERSION);
+        assert_eq!(s.ui_of(Some(SourceId(1))), UiFrom::SelfServer);
+        assert_eq!(s.ui_of(Some(SourceId(2))), UiFrom::Nocturne);
+        assert_eq!(
+            s.ui_of(Some(SourceId(3))),
+            UiFrom::Nocturne,
+            "a folder has no UI of its own"
+        );
+        assert!(s.profiles[0].server_ui && !s.profiles[1].server_ui && !s.profiles[2].server_ui);
+        // saved as version 2: `ui_from` holds it, the old key is gone, and it reads back the same
+        s.save_to(&p).unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(
+            text.contains("version = 2")
+                && text.contains("[ui_from]")
+                && text.contains("1 = \"self\""),
+            "{text}"
+        );
+        assert!(!text.contains("server_ui"), "{text}");
+        assert_eq!(Sources::load_from(&p).unwrap().unwrap(), s);
+        // a file from a newer NOCTURNE is refused, not rewritten
+        std::fs::write(&p, "version = 3\n").unwrap();
+        assert!(Sources::load_from(&p).is_err());
+    }
+
+    #[test]
+    fn ui_from_text_round_trips_and_bad_values_are_the_default() {
+        for v in [
+            UiFrom::Nocturne,
+            UiFrom::SelfServer,
+            UiFrom::Source(SourceId(7)),
+        ] {
+            assert_eq!(UiFrom::parse(&v.text()), v);
+        }
+        assert_eq!(UiFrom::parse("banana"), UiFrom::Nocturne);
+        let mut s = Sources::default();
+        let a = s.add("A", jf("https://a.test"));
+        let b = s.add("B", jf("https://b.test"));
+        s.set_ui_from(None, UiFrom::Source(a));
+        s.set_ui_from(Some(b), UiFrom::Source(a));
+        let text = toml::to_string_pretty(&s).unwrap();
+        let back: Sources = toml::from_str(&text).unwrap();
+        assert_eq!(back.ui_of(None), UiFrom::Source(a));
+        assert_eq!(back.ui_of(Some(b)), UiFrom::Source(a));
+        // garbage and dangling entries are dropped on load
+        let mut bad = back.clone();
+        bad.ui_from.insert("77".into(), UiFrom::SelfServer);
+        bad.ui_from.insert("nonsense".into(), UiFrom::SelfServer);
+        bad.ui_from
+            .insert(a.0.to_string(), UiFrom::Source(SourceId(50)));
+        bad.migrate();
+        assert_eq!(bad.ui_from.len(), 2, "{:?}", bad.ui_from);
+        assert_eq!(
+            s.ui_choices(Some(a)),
+            [UiFrom::Nocturne, UiFrom::SelfServer, UiFrom::Source(b)]
+        );
+        let l = s.ensure_local();
+        assert_eq!(
+            s.ui_choices(Some(l)),
+            [UiFrom::Nocturne, UiFrom::Source(a), UiFrom::Source(b)]
+        );
     }
 
     #[test]

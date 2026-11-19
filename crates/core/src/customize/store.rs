@@ -649,7 +649,10 @@ mod tests {
         assert!(s.needs_resolve(text), "turning it back on fetches again");
         // only a few copies are kept
         for i in 0..20 {
-            s.set_resolved(&format!("@import 'https://e.example/{i}';"), Resolved::default());
+            s.set_resolved(
+                &format!("@import 'https://e.example/{i}';"),
+                Resolved::default(),
+            );
         }
         assert!(s.resolved.len() <= KEPT_RESOLVED);
         // never written to themes.toml
