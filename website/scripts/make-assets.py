@@ -18,7 +18,7 @@ WIDTHS = (640, 1280, 1920, 2560, 3840)
 # The full-bleed stills are up to 1680 css px (3360 px at 2x), so they keep the native 3840.
 MAX_W = {"01-home": 3840, "06-playback": 3840}
 DEFAULT_MAX = 2560
-SKIP_FULL = {"picker", "05-search", "03-movie-detail", "smart-menu", "downloads", "hdr", "trakt"}  # close-ups only
+SKIP_FULL = {"picker", "05-search", "03-movie-detail", "smart-menu", "downloads", "hdr", "trakt", "sections"}  # close-ups only
 
 # Close-ups, as fractions (x0, y0, x1, y1) of the capture so they do not depend on its resolution, plus the widest
 # variant. Framed on the 3840x2160 captures; check by eye after a recapture (open sized/*-crop-*.webp).
@@ -42,8 +42,11 @@ CROPS = {
     "downloads-crop": ("downloads", (0.30, 0.30, 0.70, 0.70), 1536),
     # the HDR question in the player, 16:9
     "hdr-crop": ("hdr", (0.30, 0.30, 0.70, 0.70), 1536),
-    # the Trakt dialog over Settings (not signed in)
-    "trakt-crop": ("trakt", (0.33, 0.25, 0.67, 0.75), 1536),
+    # the default Trakt dialog over Settings (not signed in): Connect Trakt, the advanced own-Client-ID option
+    "trakt-crop": ("trakt", (0.342, 0.288, 0.658, 0.712), 1536),
+    # 0.5 captures (same setup)
+    # the Sections editor of one server (Settings, Sources), view-only while server changes are off
+    "sections-crop": ("sections", (0.355, 0.19, 0.645, 0.81), 1280),
 }
 
 
