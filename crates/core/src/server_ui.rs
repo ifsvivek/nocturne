@@ -3,7 +3,10 @@
 //! user's library order and exclusions shape the "My media" tiles and the Latest rows. See
 //! `docs/dev/SERVER_UI_PLAN.md`. No I/O; the reads live in `nocturne-jellyfin`, the write in
 //! `nocturne-jellyfin-user`.
+use crate::profile::{ProfileKind, Sources, UiFrom};
+use crate::source::SourceId;
 use nocturne_jellyfin::{Branding, DisplayPrefs, UserConfig};
+use std::collections::HashMap;
 
 /// jellyfin-web's `MAX_SECTIONS`.
 pub const SLOTS: usize = 10;
@@ -235,6 +238,174 @@ impl Editor {
     }
 }
 
+/// What the app knows about a server whose UI might be used, right now.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Avail {
+    /// Its `ServerUi` is loaded.
+    Ready,
+    /// Being fetched: the NOCTURNE layout shows meanwhile, without a note.
+    Loading,
+    SignedOut,
+    Unreachable,
+}
+
+/// Why the NOCTURNE layout is shown although another UI was chosen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UiNote {
+    SignedOut(SourceId),
+    Unreachable(SourceId),
+    /// The source is switched off in Settings > Sources.
+    Disabled(SourceId),
+    /// The chosen source is gone or is not a server (the saved choice is reset on load).
+    Removed,
+}
+
+impl UiNote {
+    /// One visible line for the banner or the settings page; `label` names a source.
+    pub fn message(self, label: &dyn Fn(SourceId) -> String) -> String {
+        match self {
+            Self::SignedOut(i) => format!(
+                "{} is signed out, so the NOCTURNE layout is shown.",
+                label(i)
+            ),
+            Self::Unreachable(i) => format!(
+                "{} cannot be reached, so the NOCTURNE layout is shown.",
+                label(i)
+            ),
+            Self::Disabled(i) => format!(
+                "{} is switched off, so the NOCTURNE layout is shown.",
+                label(i)
+            ),
+            Self::Removed => {
+                "The server whose layout was chosen is gone, so the NOCTURNE layout is shown."
+                    .into()
+            }
+        }
+    }
+}
+
+/// Whose UI to show for one browsing context.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Pick {
+    /// The server whose layout and branding apply; `None` is the NOCTURNE layout.
+    pub from: Option<SourceId>,
+    /// `from` is the very server being browsed, so its library order and exclusions apply too.
+    pub own: bool,
+    /// Set when `from` is `None` although another UI was chosen.
+    pub note: Option<UiNote>,
+}
+
+impl Pick {
+    /// The server whose branding CSS is the theme layer (the `ui` argument of
+    /// `customize::Store::active_with`).
+    pub fn branding_from(&self) -> Option<SourceId> {
+        self.from
+    }
+
+    /// The only server the home-sections editor may be offered for: the one being browsed with its
+    /// own UI. A borrowed UI is read-only, and nothing is ever written to its server.
+    pub fn editable(&self) -> Option<SourceId> {
+        self.from.filter(|_| self.own)
+    }
+}
+
+/// Choose the UI for browsing `ctx` (a source, or `None` for "All"). `item_server` is the server
+/// of the item or row at hand, used when "All" is set to each item's own server. Pure: `avail`
+/// is how the app reports each server. Anything that cannot be honoured falls back to the NOCTURNE
+/// layout with a note (except while loading).
+pub fn pick(
+    sources: &Sources,
+    ctx: Option<SourceId>,
+    item_server: Option<SourceId>,
+    avail: &dyn Fn(SourceId) -> Avail,
+) -> Pick {
+    let target = match sources.ui_of(ctx) {
+        UiFrom::Nocturne => return Pick::default(),
+        UiFrom::SelfServer => match ctx {
+            Some(c) => c,
+            None => match item_server {
+                Some(i) => i,
+                None => return Pick::default(),
+            },
+        },
+        UiFrom::Source(t) => t,
+    };
+    let fallback = |note| Pick {
+        from: None,
+        own: false,
+        note,
+    };
+    let Some(p) = sources
+        .get(target)
+        .filter(|p| matches!(p.kind, ProfileKind::Jellyfin { .. }))
+    else {
+        return fallback(Some(UiNote::Removed));
+    };
+    if !p.enabled {
+        return fallback(Some(UiNote::Disabled(target)));
+    }
+    match avail(target) {
+        Avail::Ready => Pick {
+            from: Some(target),
+            own: ctx == Some(target),
+            note: None,
+        },
+        Avail::Loading => fallback(None),
+        Avail::SignedOut => fallback(Some(UiNote::SignedOut(target))),
+        Avail::Unreachable => fallback(Some(UiNote::Unreachable(target))),
+    }
+}
+
+/// The servers whose `ServerUi` the app has to load: every enabled server some choice points at
+/// (and every enabled server while "All" uses each item's own UI).
+pub fn wanted(sources: &Sources) -> Vec<SourceId> {
+    let mut v: Vec<SourceId> = vec![];
+    let enabled = |i: SourceId| {
+        sources
+            .get(i)
+            .is_some_and(|p| p.enabled && matches!(p.kind, ProfileKind::Jellyfin { .. }))
+    };
+    let mut add = |i: SourceId| {
+        if enabled(i) && !v.contains(&i) {
+            v.push(i);
+        }
+    };
+    for (k, to) in &sources.ui_from {
+        let ctx = k.parse().ok().map(SourceId);
+        match *to {
+            UiFrom::Source(t) => add(t),
+            UiFrom::SelfServer => match ctx {
+                Some(c) => add(c),
+                None => sources.ids().into_iter().for_each(&mut add),
+            },
+            UiFrom::Nocturne => {}
+        }
+    }
+    v.sort();
+    v
+}
+
+/// The layout to use for `pick`: the chosen server's sections and branding, and its library order
+/// and exclusions only when it is the server being browsed. `None`: the NOCTURNE layout.
+pub fn effective(pick: &Pick, loaded: &HashMap<SourceId, ServerUi>) -> Option<ServerUi> {
+    let ui = loaded.get(&pick.from?)?;
+    Some(if pick.own { ui.clone() } else { ui.foreign() })
+}
+
+impl ServerUi {
+    /// This server's UI applied to another source's data: the section list and CSS carry over;
+    /// the library order, exclusions and "hide played" belong to this server's libraries and
+    /// users, so they are dropped.
+    pub fn foreign(&self) -> ServerUi {
+        ServerUi {
+            sections: self.sections.clone(),
+            css: self.css.clone(),
+            disclaimer: self.disclaimer.clone(),
+            ..Default::default()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,6 +478,174 @@ mod tests {
         assert!(ui.css.is_none());
         assert_eq!(ui.disclaimer.as_deref(), Some("Hello"));
         assert!(!ui.shown().contains(&LiveTv) && ui.shown().contains(&Resume));
+    }
+
+    // ---- one server's UI over another ----
+
+    fn setup() -> (Sources, SourceId, SourceId, SourceId) {
+        let jf = |u: &str| ProfileKind::Jellyfin {
+            url: u.into(),
+            user_id: "u".into(),
+            user_name: "n".into(),
+        };
+        let mut s = Sources::default();
+        let a = s.add("A", jf("https://a.test"));
+        let b = s.add("B", jf("https://b.test"));
+        let l = s.add("Local", ProfileKind::Local { roots: vec![] });
+        (s, a, b, l)
+    }
+
+    fn ready(_: SourceId) -> Avail {
+        Avail::Ready
+    }
+
+    #[test]
+    fn default_is_nocturne_and_self_is_the_old_switch() {
+        let (mut s, a, b, _) = setup();
+        assert_eq!(pick(&s, Some(a), None, &ready), Pick::default());
+        assert!(s.set_server_ui(a, true));
+        let p = pick(&s, Some(a), None, &ready);
+        assert_eq!((p.from, p.own, p.note), (Some(a), true, None));
+        assert_eq!(p.editable(), Some(a));
+        assert_eq!(pick(&s, Some(b), None, &ready), Pick::default());
+    }
+
+    #[test]
+    fn a_server_ui_over_another_server_all_and_local() {
+        let (mut s, a, b, l) = setup();
+        // A's UI over B
+        assert!(s.set_ui_from(Some(b), UiFrom::Source(a)));
+        let p = pick(&s, Some(b), None, &ready);
+        assert_eq!((p.from, p.own), (Some(a), false));
+        assert_eq!(p.branding_from(), Some(a));
+        assert_eq!(p.editable(), None, "a borrowed UI is never editable");
+        // "All" and the local folder use B's UI
+        assert!(s.set_ui_from(None, UiFrom::Source(b)));
+        assert!(s.set_ui_from(Some(l), UiFrom::Source(b)));
+        for ctx in [None, Some(l)] {
+            let p = pick(&s, ctx, None, &ready);
+            assert_eq!((p.from, p.own), (Some(b), false));
+        }
+        // "All" on `self` means the server of the item at hand, nothing without one
+        assert!(s.set_ui_from(None, UiFrom::SelfServer));
+        assert_eq!(pick(&s, None, Some(a), &ready).from, Some(a));
+        assert_eq!(pick(&s, None, None, &ready), Pick::default());
+        // choosing a source's own id is `self`; a local folder cannot use its own UI
+        assert!(s.set_ui_from(Some(a), UiFrom::Source(a)));
+        assert_eq!(s.ui_of(Some(a)), UiFrom::SelfServer);
+        assert!(!s.set_ui_from(Some(l), UiFrom::SelfServer));
+        assert!(
+            !s.set_ui_from(Some(b), UiFrom::Source(l)),
+            "only servers can lend a UI"
+        );
+    }
+
+    #[test]
+    fn unavailable_ui_sources_fall_back_with_a_visible_note() {
+        let (mut s, a, b, _) = setup();
+        s.set_ui_from(Some(b), UiFrom::Source(a));
+        let p = pick(&s, Some(b), None, &|_| Avail::SignedOut);
+        assert_eq!((p.from, p.note), (None, Some(UiNote::SignedOut(a))));
+        let p = pick(&s, Some(b), None, &|_| Avail::Unreachable);
+        assert_eq!(p.note, Some(UiNote::Unreachable(a)));
+        // still loading: NOCTURNE layout, no flashing note
+        assert_eq!(
+            pick(&s, Some(b), None, &|_| Avail::Loading),
+            Pick::default()
+        );
+        s.profiles[0].enabled = false;
+        assert_eq!(
+            pick(&s, Some(b), None, &ready).note,
+            Some(UiNote::Disabled(a))
+        );
+        let m = UiNote::SignedOut(a).message(&|_| "Server A".into());
+        assert!(m.contains("Server A") && m.contains("NOCTURNE layout"));
+        // a dangling choice (hand-edited file) is handled too
+        let mut d = Sources::default();
+        d.ui_from.insert("all".into(), UiFrom::Source(SourceId(99)));
+        assert_eq!(pick(&d, None, None, &ready).note, Some(UiNote::Removed));
+    }
+
+    #[test]
+    fn removing_the_ui_source_resets_the_choice() {
+        let (mut s, a, b, _) = setup();
+        s.set_ui_from(Some(b), UiFrom::Source(a));
+        s.set_ui_from(None, UiFrom::Source(a));
+        s.set_ui_from(Some(a), UiFrom::SelfServer);
+        assert!(s.remove(a));
+        assert!(s.ui_from.is_empty(), "{:?}", s.ui_from);
+        assert_eq!(pick(&s, Some(b), None, &ready), Pick::default());
+        assert_eq!(s.ui_of(None), UiFrom::Nocturne);
+    }
+
+    #[test]
+    fn the_layout_is_the_servers_and_the_data_is_the_browsed_sources() {
+        let (_, a, b, _) = setup();
+        let ui = ServerUi {
+            sections: vec![Section::Latest, Section::Resume],
+            ordered_views: vec!["z".into()],
+            my_media_excludes: vec!["x".into()],
+            latest_excludes: vec!["y".into()],
+            hide_played_in_latest: true,
+            css: Some("a{}".into()),
+            disclaimer: Some("d".into()),
+        };
+        let loaded = HashMap::from([(a, ui.clone())]);
+        let libs = || ["x", "y", "z"].map(String::from).to_vec();
+        // the server's own UI: everything applies
+        let own = effective(
+            &Pick {
+                from: Some(a),
+                own: true,
+                note: None,
+            },
+            &loaded,
+        )
+        .unwrap();
+        assert_eq!(own, ui);
+        assert_eq!(own.tiles(libs(), |s| s.as_str()), ["z", "y"]);
+        // over another server: sections and CSS only, that server's libraries untouched
+        let foreign = effective(
+            &Pick {
+                from: Some(a),
+                own: false,
+                note: None,
+            },
+            &loaded,
+        )
+        .unwrap();
+        assert_eq!(foreign.shown(), [Section::Latest, Section::Resume]);
+        assert_eq!(foreign.css.as_deref(), Some("a{}"));
+        assert_eq!(foreign.tiles(libs(), |s| s.as_str()), libs());
+        assert_eq!(foreign.latest_libs(libs(), |s| s.as_str()), libs());
+        assert!(!foreign.hide_played_in_latest && foreign.ordered_views.is_empty());
+        // NOCTURNE layout, or a UI that is not loaded yet
+        assert!(effective(&Pick::default(), &loaded).is_none());
+        assert!(
+            effective(
+                &Pick {
+                    from: Some(b),
+                    own: false,
+                    note: None
+                },
+                &loaded
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn wanted_lists_the_servers_to_load() {
+        let (mut s, a, b, l) = setup();
+        assert!(wanted(&s).is_empty());
+        s.set_ui_from(Some(l), UiFrom::Source(b));
+        assert_eq!(wanted(&s), [b]);
+        s.set_ui_from(Some(a), UiFrom::SelfServer);
+        assert_eq!(wanted(&s), [a, b]);
+        s.set_ui_from(None, UiFrom::SelfServer);
+        assert_eq!(wanted(&s), [a, b]);
+        s.profiles[1].enabled = false;
+        assert_eq!(wanted(&s), [a]);
     }
 
     #[test]

@@ -2,7 +2,8 @@
 //! Only the CSS text is stored; tokens are re-read from it on load (parsing is milliseconds), so a
 //! better engine later improves old themes. Selection is global with an optional per-source
 //! override keyed by the source id of `sources.toml`; see `docs/dev/CUSTOMIZATION_PLAN.md`.
-use super::{Theme, parse};
+use super::import::{LoadedFont, Resolved, has_remote, parse_resolved};
+use super::{Error, Parsed, Theme, parse};
 use crate::source::SourceId;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -38,6 +39,28 @@ pub struct Store {
     /// serialized, never turned into a saved theme.
     #[serde(skip)]
     pub branding: BTreeMap<String, String>,
+    /// The `remote_css` setting as the app last told us (session state). Off: resolved imports
+    /// are ignored and the plain parser warnings explain what was skipped.
+    #[serde(skip, default = "yes")]
+    remote: bool,
+    /// Expanded copies (imports inlined, fonts loaded) of stylesheets, keyed by a hash of the
+    /// original text, so edited text or changed branding is simply not found and asks for a new
+    /// fetch. Session state, newest last, only a few kept.
+    #[serde(skip)]
+    resolved: Vec<(u64, Resolved)>,
+}
+
+fn yes() -> bool {
+    true
+}
+
+const KEPT_RESOLVED: usize = 8;
+
+fn text_hash(css: &str) -> u64 {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    css.hash(&mut h);
+    h.finish()
 }
 
 /// Which layer decides the look for a source; compared to skip redundant `theme::set` calls.
@@ -59,6 +82,8 @@ impl Default for Store {
             global: None,
             server_theme: BTreeMap::new(),
             branding: BTreeMap::new(),
+            remote: true,
+            resolved: vec![],
         }
     }
 }
@@ -166,28 +191,48 @@ impl Store {
     }
 
     /// Which layer applies, in order: the source's own assignment (an explicit choice), the
-    /// server's branding (Server UI mode), the global theme. The shell (settings, header) and
-    /// local folders follow the global theme.
+    /// branding CSS of the UI source (Server UI mode), the global theme. The shell (settings,
+    /// header) and local folders follow the global theme.
     pub fn active(&self, source: Option<SourceId>) -> Active {
-        if let Some(s) = source {
-            if let Some(i) = self.override_of(s) {
-                return Active::Override(i);
-            }
-            if let Some(c) = self.branding_of(s) {
-                use std::hash::{DefaultHasher, Hash, Hasher};
-                let mut h = DefaultHasher::new();
-                c.hash(&mut h);
-                return Active::Branding(h.finish());
-            }
+        self.active_with(source, source)
+    }
+
+    /// As [`Store::active`] when the UI of another source is used: the override belongs to
+    /// `source` (what is browsed), the branding layer to `ui` (whose UI is shown); see
+    /// `server_ui::pick`. The user's own per-source theme always wins over the branding.
+    pub fn active_with(&self, source: Option<SourceId>, ui: Option<SourceId>) -> Active {
+        if let Some(i) = source.and_then(|s| self.override_of(s)) {
+            return Active::Override(i);
+        }
+        if let Some(c) = ui.and_then(|u| self.branding_of(u)) {
+            return Active::Branding(text_hash(c));
         }
         self.global.map_or(Active::Default, Active::Global)
     }
 
-    /// `active` as one comparable number (the type itself is not exported).
+    /// The stylesheet text of the layer that applies (before imports are expanded).
+    pub fn active_css(&self, source: Option<SourceId>, ui: Option<SourceId>) -> Option<&str> {
+        match self.active_with(source, ui) {
+            Active::Override(i) | Active::Global(i) => self.get(i).map(|t| t.css.as_str()),
+            Active::Branding(_) => ui.and_then(|u| self.branding_of(u)),
+            Active::Default => None,
+        }
+    }
+
+    /// `active` as one comparable number (the type itself is not exported). It also changes when
+    /// the imports of the active text arrive, so the new look is applied.
     pub fn active_key(&self, source: Option<SourceId>) -> u64 {
+        self.active_key_with(source, source)
+    }
+
+    pub fn active_key_with(&self, source: Option<SourceId>, ui: Option<SourceId>) -> u64 {
         use std::hash::{DefaultHasher, Hash, Hasher};
         let mut h = DefaultHasher::new();
-        self.active(source).hash(&mut h);
+        self.active_with(source, ui).hash(&mut h);
+        self.active_css(source, ui)
+            .and_then(|c| self.resolved_for(c))
+            .is_some()
+            .hash(&mut h);
         h.finish()
     }
 
@@ -198,14 +243,76 @@ impl Store {
 
     /// Tokens and layout of the theme that applies (both built-in when nothing is assigned).
     pub fn resolve_all(&self, source: Option<SourceId>) -> (Theme, super::Layout) {
-        let css = match self.active(source) {
-            Active::Override(i) | Active::Global(i) => self.get(i).map(|t| t.css.as_str()),
-            Active::Branding(_) => source.and_then(|s| self.branding_of(s)),
-            Active::Default => None,
-        };
-        css.and_then(|c| parse(c).ok())
+        self.resolve_all_with(source, source)
+    }
+
+    pub fn resolve_all_with(
+        &self,
+        source: Option<SourceId>,
+        ui: Option<SourceId>,
+    ) -> (Theme, super::Layout) {
+        self.active_css(source, ui)
+            .and_then(|c| self.parse_text(c).ok())
             .map(|p| (p.theme, p.layout))
             .unwrap_or_default()
+    }
+
+    // ---- remote imports and fonts ----
+
+    /// The `remote_css` setting changed. Turning it off forgets everything fetched this session.
+    pub fn set_remote(&mut self, on: bool) {
+        self.remote = on;
+        if !on {
+            self.resolved.clear();
+        }
+    }
+
+    pub fn remote(&self) -> bool {
+        self.remote
+    }
+
+    /// Store the result of `import::resolve(original, ..)`.
+    pub fn set_resolved(&mut self, original: &str, r: Resolved) {
+        let k = text_hash(original);
+        self.resolved.retain(|(h, _)| *h != k);
+        self.resolved.push((k, r));
+        if self.resolved.len() > KEPT_RESOLVED {
+            self.resolved.remove(0);
+        }
+    }
+
+    /// Forget fetched copies (a manual Refresh, before resolving again).
+    pub fn clear_resolved(&mut self) {
+        self.resolved.clear();
+    }
+
+    pub fn resolved_for(&self, css: &str) -> Option<&Resolved> {
+        if !self.remote {
+            return None;
+        }
+        let k = text_hash(css);
+        self.resolved.iter().find(|(h, _)| *h == k).map(|(_, r)| r)
+    }
+
+    /// Does `css` have imports or fonts that still have to be fetched? True once per text; the
+    /// app then runs `import::resolve` through the bridge and hands the result to `set_resolved`.
+    /// Never true with the setting off, and nothing polls: a theme is only fetched when it is
+    /// applied, refreshed by hand, or when its text changed.
+    pub fn needs_resolve(&self, css: &str) -> bool {
+        self.remote && has_remote(css) && self.resolved_for(css).is_none()
+    }
+
+    /// Parse a stylesheet with its fetched imports when there are any.
+    pub fn parse_text(&self, css: &str) -> Result<Parsed, Error> {
+        match self.resolved_for(css) {
+            Some(r) => parse_resolved(r),
+            None => parse(css),
+        }
+    }
+
+    /// Fonts fetched for `css`, to register with the UI.
+    pub fn fonts_for(&self, css: &str) -> &[LoadedFont] {
+        self.resolved_for(css).map_or(&[], |r| &r.fonts)
     }
 
     fn prune(&mut self) {
@@ -480,6 +587,76 @@ mod tests {
         let big = serve("Content-Type: text/css\r\n", big).await;
         assert!(fetch(&big).await.unwrap_err().contains("larger"));
         assert!(fetch("http://example.com/x.css").await.is_err());
+    }
+
+    #[test]
+    fn another_sources_branding_sits_below_the_own_theme_and_above_global() {
+        let (a, b, c) = (SourceId(1), SourceId(2), SourceId(3));
+        let mut s = Store::default();
+        let g = s.add("g", ":root{--nocturne-accent:#010101}", None);
+        let own = s.add("own", ":root{--nocturne-accent:#020202}", None);
+        s.set_global(Some(g));
+        s.set_branding(a, Some(":root{--nocturne-accent:#0a0a0a}".into()));
+        // browsing b (or All, or local) with a's UI: a's branding replaces global
+        let accent = |s: &Store, src, ui| s.resolve_all_with(src, ui).0.accent;
+        assert_ne!(accent(&s, Some(b), Some(a)), accent(&s, Some(b), None));
+        assert_eq!(accent(&s, None, Some(a)), accent(&s, Some(a), Some(a)));
+        assert_eq!(accent(&s, Some(b), None), accent(&s, Some(c), None));
+        // the user's own theme for b wins over a's branding
+        s.set_override(b, Some(own));
+        assert_eq!(accent(&s, Some(b), Some(a)), accent(&s, Some(b), None));
+        // the old single-source API is the same thing with ui == source
+        assert_eq!(s.active(Some(a)), s.active_with(Some(a), Some(a)));
+        assert_eq!(s.active_key(Some(a)), s.active_key_with(Some(a), Some(a)));
+        // a source without branding of its own does not borrow one
+        assert_eq!(s.active(Some(c)), Active::Global(g));
+    }
+
+    #[test]
+    fn fetched_imports_are_used_per_text_and_respect_the_setting() {
+        use super::super::import::Resolved;
+        let mut s = Store::default();
+        let a = SourceId(1);
+        let text = "@import url(\"https://example.com/a.css\");";
+        s.set_branding(a, Some(text.into()));
+        assert!(s.needs_resolve(text) && !s.needs_resolve(":root{}"));
+        let k0 = s.active_key(Some(a));
+        assert!(s.resolve(Some(a)).accent.is_none());
+        let r = Resolved {
+            css: ":root{--nocturne-accent:#123456}".into(),
+            ..Default::default()
+        };
+        s.set_resolved(text, r);
+        assert!(!s.needs_resolve(text), "fetched once, never polled");
+        assert!(s.resolve(Some(a)).accent.is_some());
+        assert_ne!(k0, s.active_key(Some(a)), "arrival re-applies the theme");
+        // changed branding text is a new text: it asks for a fetch again
+        let edited = format!("{text} ");
+        assert!(s.needs_resolve(&edited));
+        assert!(s.parse_text(&edited).unwrap().theme.accent.is_none());
+        // setting off: ignored and forgotten, nothing is wanted
+        s.set_remote(false);
+        assert!(s.resolved_for(text).is_none() && !s.needs_resolve(text));
+        assert!(s.resolve(Some(a)).accent.is_none());
+        assert!(
+            s.parse_text(text)
+                .unwrap()
+                .warnings
+                .iter()
+                .any(|w| w.message.contains("`@import` is not fetched"))
+        );
+        s.set_remote(true);
+        assert!(s.needs_resolve(text), "turning it back on fetches again");
+        // only a few copies are kept
+        for i in 0..20 {
+            s.set_resolved(
+                &format!("@import 'https://e.example/{i}';"),
+                Resolved::default(),
+            );
+        }
+        assert!(s.resolved.len() <= KEPT_RESOLVED);
+        // never written to themes.toml
+        assert!(!toml::to_string(&s).unwrap().contains("resolved"));
     }
 
     #[test]

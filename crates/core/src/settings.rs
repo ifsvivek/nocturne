@@ -148,6 +148,10 @@ pub struct Settings {
     pub trakt_history: bool,
     /// Look for a newer NOCTURNE at most once a day (one GET of a small file; only the version is sent). docs/dev/UPDATER_PLAN.md.
     pub check_updates: bool,
+    /// Themes may fetch what they link to: `@import`ed stylesheets and `@font-face` fonts, over
+    /// https only, once, with size and time limits (docs/dev/CUSTOMIZATION_PLAN.md section 15).
+    /// Off: nothing is fetched and those parts are ignored with a warning.
+    pub remote_css: bool,
     /// Last first-run walkthrough the user finished or skipped (0 = never). Internal state, no Settings row.
     pub onboarding: u32,
     pub audio_lang: Option<String>,
@@ -188,6 +192,7 @@ impl Default for Settings {
             trakt_scrobble: false,
             trakt_history: false,
             check_updates: true,
+            remote_css: true,
             onboarding: 0,
             audio_lang: None,
             sub_lang: None,
@@ -257,7 +262,7 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 25;
+pub const ROWS: usize = 26;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
 pub const PROFILE_ROW: usize = 22;
@@ -267,6 +272,9 @@ pub const COUCH_ROW: usize = 23;
 
 /// The "Check for updates" row.
 pub const UPDATES_ROW: usize = 24;
+
+/// The "Themes may load from the web" row.
+pub const REMOTE_CSS_ROW: usize = 25;
 
 /// The "Trakt account" row: not a toggle, it opens the connect dialog.
 pub const TRAKT_ROW: usize = 19;
@@ -284,6 +292,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         22 => Some("Profiles"),
         23 => Some("Living room"),
         24 => Some("Updates"),
+        25 => Some("Themes"),
         _ => None,
     }
 }
@@ -493,6 +502,11 @@ impl Settings {
                 "Once a day NOCTURNE asks nocturne.ifsvivek.in whether a newer version exists and says so here. It sends nothing but the version number (and, unavoidably, your IP address). Never downloads or installs anything by itself.",
                 onoff(self.check_updates),
             ),
+            r(
+                "Themes may load from the web",
+                "A theme or a server's own style can link to other stylesheets and fonts. When on, NOCTURNE downloads them once (https only, no cookies or sign-in, size and time limits, kept on disk) and again only when you press Refresh or the text changes. Off: nothing is downloaded and those parts are ignored.",
+                onoff(self.remote_css),
+            ),
         ]
     }
 
@@ -626,6 +640,7 @@ impl Settings {
             20 => self.trakt_scrobble ^= true,
             21 => self.trakt_history ^= true,
             UPDATES_ROW => self.check_updates ^= true,
+            REMOTE_CSS_ROW => self.remote_css ^= true,
             COUCH_ROW => {
                 let i = COUCH.iter().position(|(m, _)| *m == self.couch);
                 let i = (i.unwrap_or(0) as i32 + d).rem_euclid(COUCH.len() as i32) as usize;
@@ -985,6 +1000,21 @@ mod tests {
     }
 
     #[test]
+    fn remote_css_row_is_on_by_default_and_persists() {
+        let mut s = Settings::default();
+        assert!(s.remote_css);
+        assert_eq!(s.rows().len(), ROWS);
+        assert_eq!(s.rows()[REMOTE_CSS_ROW].value, "On");
+        assert_eq!(head(REMOTE_CSS_ROW), Some("Themes"));
+        s.cycle(REMOTE_CSS_ROW, 1);
+        assert!(!s.remote_css && s.rows()[REMOTE_CSS_ROW].value == "Off");
+        assert!(toml::to_string(&s).unwrap().contains("remote_css = false"));
+        // Older files have no such field: they load with it on.
+        let old: Settings = toml::from_str("version = 2\n").unwrap();
+        assert!(old.remote_css);
+    }
+
+    #[test]
     fn hdr_video_row_cycles_and_persists() {
         let mut s = Settings::default();
         assert_eq!(s.hdr, HdrMode::Ask);
@@ -1013,12 +1043,12 @@ mod tests {
 
     #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22 and 23.
+        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24 and 25.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
         assert_eq!(scroll_child(11), 15);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 10);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 11);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));
         assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));
