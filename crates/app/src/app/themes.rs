@@ -904,7 +904,7 @@ impl App {
             let mut r = row![].spacing(t::S2).align_y(Alignment::Center);
             if previewing {
                 r = r.push(
-                    text("Previewing on the whole app. Keep or Revert is at the bottom of the window.")
+                    text("Previewing on the whole app")
                         .size(t::CAPTION)
                         .color(t::text_secondary()),
                 );

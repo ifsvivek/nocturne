@@ -23,7 +23,7 @@ Seerr requests, play and save links with yt-dlp, and the native flex/grid theme 
 
 ## Debug hooks for QA
 
-Themes: `NOCTURNE_KEYS=open-themes@ms,theme-path@ms,theme-import@ms,theme-preview@ms,theme-apply@ms` with `NOCTURNE_THEME_FILE=/path/x.css`. Server UI: `NOCTURNE_KEYS=cycle-filter@ms,layout-1@ms,sections-1@ms,sec-down-0@ms,sec-save@ms`. Real keyboard input: `scripts/headless-session.sh` and `scripts/headless-input-check.sh`.
+Themes: `NOCTURNE_KEYS=open-themes@ms,theme-safe@ms,layout-all@ms,layout-2@ms (cycle whose UI),theme-path@ms,theme-import@ms,theme-preview@ms,theme-apply@ms` with `NOCTURNE_THEME_FILE=/path/x.css`. Server UI: `NOCTURNE_KEYS=cycle-filter@ms,layout-1@ms,sections-1@ms,sec-down-0@ms,sec-save@ms`. Real keyboard input: `scripts/headless-session.sh` and `scripts/headless-input-check.sh`.
 
 ## Decisions
 
