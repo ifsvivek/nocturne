@@ -193,13 +193,18 @@ impl Store {
 
     /// The tokens that apply (the built-in look when nothing is assigned).
     pub fn resolve(&self, source: Option<SourceId>) -> Theme {
+        self.resolve_all(source).0
+    }
+
+    /// Tokens and layout of the theme that applies (both built-in when nothing is assigned).
+    pub fn resolve_all(&self, source: Option<SourceId>) -> (Theme, super::Layout) {
         let css = match self.active(source) {
             Active::Override(i) | Active::Global(i) => self.get(i).map(|t| t.css.as_str()),
             Active::Branding(_) => source.and_then(|s| self.branding_of(s)),
             Active::Default => None,
         };
         css.and_then(|c| parse(c).ok())
-            .map(|p| p.theme)
+            .map(|p| (p.theme, p.layout))
             .unwrap_or_default()
     }
 
