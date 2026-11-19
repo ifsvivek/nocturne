@@ -7,7 +7,7 @@
     ["Your sources", "Local files are read where they sit on disk. Jellyfin servers are only read from while you browse and play.", true],
     ["Controls, drawn on the GPU", "The whole interface is a native Rust app rendered on the GPU: libraries, details, the player controls and the admin dashboard."],
     ["A transparent window", "The window is transparent and paints nothing where the video sits, so the picture underneath shows through."],
-    ["Video, by libmpv", "libmpv decodes and renders through OpenGL and EGL into a Wayland subsurface below the window. On X11, video plays in an external mpv window instead."],
+    ["Video, by libmpv", "libmpv decodes and renders through OpenGL and EGL into a Wayland subsurface below the window. If that cannot start, video plays in an external mpv window instead."],
     ["Loaded at run time", "NOCTURNE starts without libmpv. If it is missing, video plays in the external mpv player, or the app tells you which package to install.", true],
     ["One window", "Opening NOCTURNE again brings the window that is already open to the front instead of starting a second copy."],
   ];

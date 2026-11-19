@@ -5,9 +5,10 @@
   const specs = [
     ["Platform", "Linux, x86_64: signed repositories for Arch Linux (pacman), Debian 13 and Ubuntu 24.04 or newer (apt) and Fedora (dnf, with RPM Fusion for mpv-libs), and the tarball. No AppImage; Flatpak is being evaluated. macOS and Windows are planned, not available.", "Linux only today", "0.4.0"],
     ["libmpv", "Comes with the package: the Arch package depends on mpv, and the tarball installer installs it with your distribution's package manager. NOCTURNE also starts without it and tells you what to install.", "mpv 0.41 tested; 0.42's certificate check needs no change", "0.3.0"],
-    ["Display", "Wayland for in-window video. On X11 the UI runs and video plays in an external mpv window (NOCTURNE_VIDEO=external forces that anywhere).", "Wayland and X11 fallback verified"],
+    ["Display", "A Wayland session (GNOME, KDE Plasma, Sway and others). X11 sessions are not supported: NOCTURNE says so and exits. Video plays in the window; NOCTURNE_VIDEO=external opens it in an external mpv window instead.", "Wayland only"],
     ["Graphics", "A Vulkan driver for the UI, OpenGL/EGL for video.", "Other GPU setups not yet tested"],
     ["Media", "Local folders you can read, a Jellyfin server, several servers, or any mix. None of them is required on its own.", "Jellyfin developed against 12.x", "0.3.0"],
+    ["Updates", "Package installs update with pacman, apt or dnf, and NOCTURNE shows the command when a new version is out. A per-user install, such as the tarball under ~/.local, updates itself: Download and install, then Restart to update, after a signature check. At most one check a day.", "Off in Settings, Updates", "0.5.0"],
     ["Keyring", "A Secret Service provider (gnome-keyring, KWallet or KeePassXC) to remember server sign-ins.", "Required to stay signed in to a server"],
     ["Distribution", "The Arch package is tested on Arch. The .deb and .rpm are built in Debian and Fedora containers and install-tested in clean ones, not yet on a full desktop install. The tarball is built on current Arch, so it needs a current glibc.", "Ubuntu 24.04: video in an external mpv window (libmpv 0.37); openSUSE untested", "0.4.0"],
   ];
@@ -45,7 +46,7 @@ sudo dnf install nocturne</code></pre>{/if}
       </div>
       <div>
         <h3 class="role text-ink">Tarball</h3>
-        <p class="m-0 mt-3 text-ink-2">A generic x86_64 build with an install script. Installs to <code>/usr/local</code>, and the same script uninstalls. It also installs the runtime packages, mpv included. <Next /></p>
+        <p class="m-0 mt-3 text-ink-2">A generic x86_64 build with an install script. Installs to <code>/usr/local</code>, and the same script uninstalls. It also installs the runtime packages, mpv included. <Next /> Installed with <code>PREFIX=~/.local</code> instead, it updates itself from inside the app. <Next v="0.5.0" /></p>
         {#if RELEASED}<pre class="code"><code>tar xf nocturne-{VERSION}-x86_64-linux.tar.gz
 cd nocturne-{VERSION}-x86_64-linux
 sudo ./install.sh</code></pre>

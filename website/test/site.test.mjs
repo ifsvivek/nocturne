@@ -61,7 +61,7 @@ test("package repository page: exact pacman, apt and dnf steps, signing key, oth
   ]) assert.ok(h.includes(s), s);
   assert.equal((h.match(/5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B/g) || []).length, 1, "one fingerprint for all three repositories");
   // One-file alternative: download from the release, install with the distribution's tool; the file names follow the version.
-  for (const [d, ver] of [[v03, "0.4.0"], [v04, "0.4.0"]]) {
+  for (const [d, ver] of [[v03, "0.4.0"], [v04, "0.4.0"], [on, "0.5.0"]]) {
     const t = read(d, "repo.html").replace(/&#39;/g, "'").replace(/&amp;/g, "&");
     const rel = `https://github.com/ifsvivek/nocturne/releases/download/v${ver}`;
     for (const x of [`href="${rel}/nocturne_${ver}_amd64.deb"`, `sudo apt install ./nocturne_${ver}_amd64.deb`,
@@ -100,7 +100,7 @@ test("0.4 copy is marked before 0.4.0 and unmarked from it; credits wherever a s
   const h = read(v03, "index.html"), n = read(v04, "index.html");
   assert.ok((h.match(/Coming in 0\.4/g) || []).length >= 15, "marks in the 0.3.0 build");
   for (const s of ["Living room", "Across services", "HDR pop-out window", "mpv 0.42 or newer", "Smart collections", "second source", "Included in".toLowerCase()]) assert.ok(h.toLowerCase().includes(s.toLowerCase()), s);
-  for (const f of ["index.html", "repo.html", "privacy.html"]) assert.doesNotMatch(read(v04, f), /Coming in/, f);
+  for (const f of ["index.html", "repo.html", "privacy.html"]) assert.doesNotMatch(read(v04, f), /Coming in 0\.4/, f);
   assert.ok(n.includes("Version 0.4.0"));
   for (const d of [v03, v04, on]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
     const t = readFileSync(f, "utf8").replace(/<head>[\s\S]*<\/head>/, "");
@@ -108,6 +108,20 @@ test("0.4 copy is marked before 0.4.0 and unmarked from it; credits wherever a s
     if (/TVmaze/.test(t)) assert.ok(t.includes("TV data from TVmaze.com, licensed CC BY-SA 4.0."), `${f}: TVmaze credit`);
     if (/Trakt/.test(t)) assert.ok(t.includes("Trakt is a trademark of Trakt, Inc. NOCTURNE uses the Trakt API but is not affiliated with or endorsed by Trakt."), `${f}: Trakt credit`);
   }
+});
+
+test("0.5 copy is marked before 0.5.0 and unmarked from it; Wayland only", () => {
+  const h = read(v04, "index.html"), n = read(on, "index.html");
+  assert.ok((h.match(/Coming in 0\.5/g) || []).length >= 8, "marks in the 0.4.0 build");
+  assert.match(read(v04, "privacy.html"), /Coming in 0\.5/);
+  for (const f of ["index.html", "repo.html", "privacy.html"]) assert.doesNotMatch(read(on, f), /Coming in/, f);
+  assert.ok(n.includes("Version 0.5.0") && n.includes("Early software, version 0.5.0."));
+  for (const s of ["Your look", "Marquee and Feed", "with no browser inside", "a Jellyfin web theme applies only partly", "Letter spacing is read but not drawn", "Server UI", "branding CSS",
+    "Settings, Sources, Sections", "Every text field edits like any other", "Connect Trakt", "Download and install, then Restart to update", "PREFIX=~/.local", "ed25519 signature",
+    "X11 sessions are not supported", "In-app update on macOS is planned", "hover zoom has not been tried with a real pointer", "Server UI has not been tried with several servers"]) assert.ok(n.includes(s), s);
+  // Linux is Wayland-only from 0.5: X11 is named only as unsupported.
+  for (const f of ["index.html", "repo.html", "privacy.html"]) for (const m of read(on, f).matchAll(/X11/g)) assert.match(read(on, f).slice(m.index - 40, m.index + 60), /not supported|needs Wayland/, f);
+  assert.match(read(on, "privacy.html"), /Once a day it asks this site/, "privacy names the update check");
 });
 
 test("content hygiene: no em dashes, no GPU model or compositor advice, every img has alt and size", () => {
@@ -131,7 +145,7 @@ test("required copy, no JS, no inline style", () => {
     assert.doesNotMatch(readFileSync(f, "utf8"), /<script\b|<style\b|\sstyle=/i, f);
   }
   // Other platforms may only be named as previews or planned, never as finished (0.4 ships unsigned Windows and macOS previews on the GitHub release).
-  for (const t of [h, read(on, "repo.html"), read(v04, "index.html")]) for (const m of t.matchAll(/\b(Windows|macOS)\b/g)) assert.match(t.slice(m.index, m.index + 160), /planned|preview/, `${m[0]} named without "preview" or "planned"`);
+  for (const t of [h, read(on, "index.html"), read(on, "repo.html"), read(on, "privacy.html"), read(v04, "index.html")]) for (const m of t.matchAll(/\b(Windows|macOS)\b/g)) assert.match(t.slice(m.index, m.index + 160), /planned|preview/, `${m[0]} named without "preview" or "planned"`);
   // One self-hosted font, preloaded, and the stylesheet points at the same hashed file.
   const font = h.match(/<link rel="preload" href="([^"]+\.woff2)" as="font"/)?.[1];
   assert.ok(font && existsSync(join(off, font)), "preloaded font file");
