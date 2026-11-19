@@ -69,7 +69,7 @@ What NOCTURNE does: 0.3.0 is released; entries marked **(0.4)** are on the unrel
 
 ## Settings
 - [x] Settings screen: server-changes master switch, progress sync, buffering, grid density, home sections, language preferences, reduce motion (follows the desktop by default)
-- [x] Themes (Settings > Themes): colours, corner radii, window background and font family from imported CSS, global with an optional per-server override, 15 second preview. Not yet: spacing density, type size, backdrop blur; the font applies from the next launch. Unit-tested and checked in the app on a local library; not tried against a real Jellyfin theme from the web or two servers at once ([CUSTOMIZATION_PLAN.md](dev/CUSTOMIZATION_PLAN.md))
+- [x] Themes (Settings > Themes): colours, corner radii, window background and font family from imported CSS, global with an optional per-server override, 15 second preview. Layout CSS on named parts (cards, rows, Home sections and hero, header, buttons, player bar) with built-in Marquee and Feed examples; density, type size (whole-UI zoom) and backdrop blur (blurhash stand-in) are applied approximately; the font applies from the next launch. Unit-tested and checked in the app on a local library; not tried against a real Jellyfin theme from the web or two servers at once ([CUSTOMIZATION_PLAN.md](dev/CUSTOMIZATION_PLAN.md))
 - [ ] Subtitle appearance presets
 
 ## Admin (administrator accounts only)
