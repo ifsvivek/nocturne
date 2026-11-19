@@ -21,9 +21,9 @@ Implemented state (0.5.1): Linux is built, run and tested. Windows and macOS hav
 | Local library identity | `(dev, inode)` + size/mtime | same | no stable file index in `std`: directories by canonical-path hash, files by size + content hash only |
 | Window subsystem | n/a | n/a | `windows_subsystem = "windows"` in release builds |
 
-One path helper: `nocturne_session::paths` (re-exported as `nocturne_core::paths`), pure `resolve(os, kind, env)` unit-tested for all three OSes. Code layout: `crates/player` keeps the per-OS IPC and libmpv loading; `platform.rs` and `single.rs` in the UI crate hold signals, window-handle extraction and the single-instance guard; `crates/session` picks the keyring backend by target.
+One path helper: `nocturne_session::paths` (re-exported as `nocturne_core::paths`), pure `resolve(os, kind, env)` unit-tested for all three OSes. Code layout: `crates/player` keeps the per-OS IPC, the Windows child window (`surface.rs`) and libmpv loading; `platform.rs` and `single.rs` in the UI crate hold signals, window-handle extraction and the single-instance guard; `crates/session` picks the keyring backend by target.
 
-Tried on a real Windows PC and a Mac by the maintainer (2026-11-19): they install and work. Remaining for macOS/Windows: code signing, native in-window video (video plays in mpv's own window until then), media keys / now playing, reduced-motion detection, file picker and keyring behaviour verified on real machines, code signing (the previews are unsigned, so SmartScreen and Gatekeeper warn on first start).
+Tried on a real Windows PC and a Mac by the maintainer (2026-11-19): they install and work. Windows (0.5.2, written and cross-checked, not yet run on a real PC): the picture plays in a child window of the app window (`VideoSurface`, `--wid`), see [video-embedding.md](video-embedding.md); macOS still plays in mpv's own window. Remaining for macOS/Windows: code signing, macOS in-window video, media keys / now playing, reduced-motion detection, file picker and keyring behaviour verified on real machines, code signing (the previews are unsigned, so SmartScreen and Gatekeeper warn on first start).
 
 ## Packages
 
@@ -34,7 +34,7 @@ Tried on a real Windows PC and a Mac by the maintainer (2026-11-19): they instal
 | `.deb` (Debian 13, Ubuntu 24.04+) | shipping; signed apt repository (`/repo/deb`); install-tested in clean containers | `Depends: libmpv2` (Ubuntu 24.04's 0.37 plays in an external mpv window) |
 | `.rpm` (Fedora) | shipping; signed dnf repository (`/repo/rpm`); install-tested in a clean container | `Requires: mpv-libs` (RPM Fusion) |
 | AppImage | experimental: a best-effort job in `release.yml`, not recommended or supported (large; libmpv and glibc conflicts, see PACKAGING.md) | bundled |
-| Windows `.exe` setup + portable `.zip` | unsigned preview on the GitHub release; per-user install; built and smoke-tested in CI, wine-tested, never run on a real PC | bundles a pinned `mpv.exe` (external window) |
+| Windows `.exe` setup + portable `.zip` | unsigned preview on the GitHub release; per-user install; built and smoke-tested in CI, wine-tested, never run on a real PC | bundles a pinned `mpv.exe` (drawn into a child window of the app, or its own window as the fallback) |
 | macOS `.dmg` (Apple Silicon) + `.tar.gz` | unsigned preview on the GitHub release (ad-hoc signed bundle: right-click > Open); built and smoke-tested in CI, never run on a real Mac; the `.tar.gz` is what the in-app updater installs | bundled libmpv + mpv (dylibbundler) |
 | Flatpak | being evaluated | n/a |
 

@@ -102,7 +102,7 @@ fn run() -> iced::Result {
     // The saved global theme, before the first frame (and the only moment its font family is read).
     let (th, lay) = nocturne_core::customize::Store::load().resolve_all(None);
     theme::set(&th, &lay);
-    iced::application(move || App::boot(cfg.clone()), App::update, App::view)
+    let app = iced::application(move || App::boot(cfg.clone()), App::update, App::view)
         .title(App::title)
         .subscription(App::subscription)
         // Transparent app background: every screen paints its own opaque backdrop, only the
@@ -122,7 +122,10 @@ fn run() -> iced::Result {
             platform_specific: crate::platform::window_settings(),
             exit_on_close_request: false,
             ..Default::default()
-        })
+        });
+    theme::BUNDLED_FONTS
+        .iter()
+        .fold(app, |a, f| a.font(*f))
         .run()
 }
 

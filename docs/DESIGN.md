@@ -51,7 +51,7 @@ Do not hard-code text colours outside `theme.rs`; new text colours must be added
 ## Typography
 
 - Sans: Noto Sans (system font; not bundled)
-- Mono: JetBrainsMono Nerd Font, for micro labels and annotations
+- Mono: JetBrains Mono (bundled, with Noto Sans), for micro labels and annotations
 - Scale (px): micro 11 (mono annotations only), caption 12, body 15, body-large 16, heading 22, display 56. Everything except mono micro labels is at least 12.
 
 ## Spacing and shape

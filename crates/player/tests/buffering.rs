@@ -149,11 +149,17 @@ fn run(url: &str, st: &Stats, b: Buffering, pre: &[(&str, &str)]) -> Report {
         .map(|n| {
             (
                 n.to_string(),
-                p.prop(n).and_then(|v| v.as_f64()).unwrap_or(-1.0),
+                p.prop_blocking(n, std::time::Duration::from_millis(500))
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(-1.0),
             )
         })
         .collect();
-    assert_eq!(p.prop("cache").unwrap(), true); // yes -> true
+    assert_eq!(
+        p.prop_blocking("cache", std::time::Duration::from_millis(500))
+            .unwrap(),
+        true
+    ); // yes -> true
     for (k, v) in pre {
         p.command(&["set", k, v]).unwrap();
     }
@@ -168,11 +174,14 @@ fn run(url: &str, st: &Stats, b: Buffering, pre: &[(&str, &str)]) -> Report {
         assert!(t0.elapsed() < Duration::from_secs(60), "timeout");
         std::thread::sleep(Duration::from_millis(50));
         let buf = p
-            .prop("demuxer-cache-duration")
+            .prop_blocking(
+                "demuxer-cache-duration",
+                std::time::Duration::from_millis(500),
+            )
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
         let tb = p
-            .prop("demuxer-cache-state")
+            .prop_blocking("demuxer-cache-state", std::time::Duration::from_millis(500))
             .and_then(|v| v["total-bytes"].as_u64())
             .unwrap_or(0);
         samples += 1;

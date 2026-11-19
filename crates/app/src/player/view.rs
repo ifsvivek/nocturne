@@ -21,7 +21,7 @@ use nocturne_core::video::MenuAct;
 impl Player {
     pub fn view(&self) -> Element<'_, Msg> {
         let shown = self.controls_visible();
-        let black = !self.loaded || !self.video;
+        let black = !self.loaded || !self.video || self.surface.is_some();
         let mut layers: Vec<Element<Msg>> = vec![hole(self.hole, black, Msg::Hole)];
 
         // Clicks on the picture: pause, fullscreen on double-click, context menu on right-click.

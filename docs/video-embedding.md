@@ -63,6 +63,17 @@ With `NOCTURNE_VIDEO=external`, or when embedded setup fails (no Wayland handles
 
 Known gaps: the first frames can show black before the first video frame; AMD- or Intel-only machines and fractional scales are untested; the mini player cannot stay on top (no Wayland API; a compositor window rule for app id `nocturne` can pin it); mpv's own key bindings stay active in the external window.
 
+## Windows: a child window
+
+The Windows build runs the bundled `mpv.exe` as a child process like the external fallback, but draws it into a child window of the app's HWND (`crates/player/src/surface.rs`, `--wid`, created on the UI thread with `CreateWindowExW`, `WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN`). Differences from Linux that matter:
+
+- The UI toolkit cannot draw over a child window, so the video rectangle is the hole minus the controls band while the controls show (`logic::video_rect`), and the window is hidden while a menu, prompt, queue, stats, help, the loading overlay or a stall overlay needs the pixels. Transient text (the OSD, toasts) that overlaps the picture is hidden under it. An owned layered popup for overlay controls was considered and not built: it needs input forwarding and focus handling that cannot be tested without a Windows machine.
+- The picture's window belongs to another process, so the toolkit never sees the pointer over it. mpv runs with `--input-conf` bindings that forward move, click, double click and right click with the position as `script-message nocturne-in ...`; the reader turns them into `Event::Input` and the player page handles them like its own mouse events. Keyboard focus is given back to the app window after a click. mpv's own OSD, OSC and default bindings are off.
+- Resizing posts to mpv's window with `SWP_ASYNCWINDOWPOS` so a stuck mpv cannot freeze the UI. `NOCTURNE_VO` defaults to `gpu-next,gpu,` there (falls back to `gpu` when `gpu-next` cannot start, e.g. on a virtual GPU).
+- Failure degrades: if the child window cannot be created, or mpv exits before the first frame, the separate mpv window opens with a one-line notice. HDR is tone-mapped to SDR in the window; the HDR pop-out (a separate fullscreen mpv) works as on Linux.
+
+The IPC never blocks the UI thread (`crates/player/src/external.rs`): a session thread starts mpv, connects (up to 30 s), then writes queued lines; a reader thread parses output into the state, the property cache (`observe_property`), and events. `Player::prop` is a cache read; `Loaded` is emitted after the track and chapter lists are cached.
+
 ## Risks
 
 - Raw-handle coupling: the video path reads the window's `wl_display` / `wl_surface` through winit. The `wayland-*` crates are pinned exactly in `crates/player/Cargo.toml`; re-test video on any Iced, winit or `wayland-*` bump.

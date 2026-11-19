@@ -171,6 +171,8 @@ pub struct Player {
     pub queue: Vec<Media>,
     pub qi: usize,
     pub playback: Option<Playback>,
+    /// Windows: the child window mpv draws into (declared after `playback`, so mpv goes first).
+    surface: Option<nocturne_player::VideoSurface>,
     /// Stream waiting for the backend to exist (the window handles arrive asynchronously).
     pending: Option<(String, Vec<String>)>,
     /// The target of the current item as the backend resolved it.
@@ -294,8 +296,8 @@ impl Player {
 
     fn build(ctx: PlayerCtx, group: Option<f64>) -> (Self, Task<Msg>) {
         let env = std::env::var("NOCTURNE_VIDEO").ok();
-        let wl = std::env::var_os("WAYLAND_DISPLAY").is_some();
-        let embed = video::choose(env.as_deref(), wl) == video::Choice::Embedded;
+        let embed =
+            video::choose(env.as_deref(), crate::platform::can_embed()) == video::Choice::Embedded;
         let now = Instant::now();
         let media = ctx.media.clone();
         let mut queue = ctx.queue.clone();
@@ -317,6 +319,7 @@ impl Player {
             queue,
             qi,
             playback: None,
+            surface: None,
             pending: None,
             target: Some(target),
             embed,
@@ -548,18 +551,24 @@ impl Player {
             return;
         }
         self.handles = Some(h);
-        let libmpv = nocturne_player::libmpv_available();
-        if let (true, Handles::Wayland { display, surface }, Ok(())) = (self.embed, h, &libmpv) {
-            self.compositor_cm = nocturne_player::colour_management_available(display as *mut _);
-            match self.new_embedded(display, surface) {
-                Ok(p) => self.playback = Some(Playback::Embedded(p)),
-                Err(e) => eprintln!("video: embedded unavailable ({e}), using the external player"),
+        if let (true, Handles::Win32 { hwnd }) = (self.embed, h) {
+            self.make_surface_backend(hwnd);
+        } else if let (true, Handles::Wayland { display, surface }) = (self.embed, h) {
+            match nocturne_player::libmpv_available() {
+                Ok(()) => {
+                    self.compositor_cm =
+                        nocturne_player::colour_management_available(display as *mut _);
+                    match self.new_embedded(display, surface) {
+                        Ok(p) => self.playback = Some(Playback::Embedded(p)),
+                        Err(e) => eprintln!(
+                            "video: embedded unavailable ({e}), using the external player"
+                        ),
+                    }
+                }
+                Err(e) => eprintln!("video: libmpv unavailable ({e}), using the external player"),
             }
         } else if self.embed {
-            match &libmpv {
-                Err(e) => eprintln!("video: libmpv unavailable ({e}), using the external player"),
-                Ok(()) => eprintln!("video: no Wayland window handle, using the external player"),
-            }
+            eprintln!("video: no window handle to attach to, using the external player");
         }
         if self.playback.is_none() {
             self.embed = false;
@@ -596,6 +605,88 @@ impl Player {
         }
     }
 
+    /// Windows: mpv draws into a child window of the app window. If that cannot be set up the
+    /// separate mpv window is used (the caller continues with the external path).
+    fn make_surface_backend(&mut self, hwnd: isize) {
+        if !nocturne_player::mpv_binary_available() {
+            return; // the external path reports the missing mpv
+        }
+        let Some(surface) = nocturne_player::VideoSurface::create(hwnd) else {
+            eprintln!("video: could not create the child window, using mpv's own window");
+            self.toast("Could not play inside the window, using a separate mpv window.");
+            return;
+        };
+        match ExternalPlayer::new(Options {
+            buffering: self.ctx.buffering,
+            wid: Some(surface.hwnd()),
+            ..Default::default()
+        }) {
+            Ok(p) => {
+                self.surface = Some(surface);
+                self.playback = Some(Playback::External(p));
+                self.sync_surface();
+            }
+            Err(e) => eprintln!("video: in-window mpv failed to start ({e})"),
+        }
+    }
+
+    /// The picture could not be shown inside the window (mpv left before the first frame):
+    /// continue in mpv's own window and say so.
+    fn fall_back_to_window(&mut self) -> Task<Msg> {
+        eprintln!("video: in-window playback failed, using mpv's own window");
+        self.playback = None;
+        self.surface = None;
+        self.embed = false;
+        self.video = false;
+        match self.new_popout_window() {
+            Ok(p) => self.playback = Some(p),
+            Err(e) => {
+                self.problem = Some(format!("Could not start mpv: {e}"));
+                return Task::none();
+            }
+        }
+        self.switched = true;
+        self.toast("Could not play inside the window, using a separate mpv window.");
+        self.reload_at(0.0)
+    }
+
+    /// mpv's own window (no HDR pop-out behaviour, not fullscreen).
+    fn new_popout_window(&self) -> Result<Playback, String> {
+        ExternalPlayer::new(Options {
+            buffering: self.ctx.buffering,
+            hdr_output: true,
+            ..Default::default()
+        })
+        .map(Playback::External)
+        .map_err(|e| e.to_string())
+    }
+
+    /// Windows: places the child window; hidden while the UI needs those pixels.
+    fn sync_surface(&mut self) {
+        if self.surface.is_none() {
+            return;
+        }
+        let covered = self.splash
+            || self.popout
+            || self.light
+            || self.problem.is_some()
+            || self.pop.is_some()
+            || self.queue_open
+            || self.ctx_menu.is_some()
+            || self.resume_prompt.is_some()
+            || self.hdr_prompt.is_some()
+            || self.stats
+            || self.help;
+        let r = logic::video_rect(self.hole, BAR_H, self.controls_visible(), covered);
+        let scale = self.scale;
+        if let Some(s) = self.surface.as_mut() {
+            match r {
+                Some(r) => s.set_bounds(r.x, r.y, r.width, r.height, scale),
+                None => s.set_visible(false),
+            }
+        }
+    }
+
     /// The in-window player on the window's video surface, sized to the hole.
     fn new_embedded(
         &self,
@@ -623,6 +714,7 @@ impl Player {
         if let Some(Playback::Embedded(p)) = self.playback.as_mut() {
             p.set_bounds(r.x, r.y, r.width, r.height, s);
         }
+        self.sync_surface();
     }
 
     fn start(&self, url: &str, headers: &[String]) -> Result<(), ()> {
@@ -1256,8 +1348,8 @@ impl Player {
 
     pub fn add_delay(&mut self, prop: &str, name: &str, d: f64) {
         let Some(p) = &self.playback else { return };
+        let v = self.num(prop).unwrap_or(0.0) + d;
         let _ = p.command(&["add", prop, &d.to_string()]);
-        let v = self.num(prop).unwrap_or(0.0);
         self.osd(format!("{name} delay {}", video::fmt_delay(v)));
     }
 
@@ -2103,6 +2195,15 @@ impl Player {
     }
 
     fn new_window(&self) -> Result<Playback, String> {
+        if let Some(sf) = &self.surface {
+            return ExternalPlayer::new(Options {
+                buffering: self.ctx.buffering,
+                wid: Some(sf.hwnd()),
+                ..Default::default()
+            })
+            .map(Playback::External)
+            .map_err(|e| e.to_string());
+        }
         let Some(Handles::Wayland { display, surface }) = self.handles else {
             return Err("no window to play in".into());
         };
@@ -2256,21 +2357,33 @@ impl Player {
             return Task::batch(tasks);
         };
         let (mut failed, mut gone, mut loaded_now) = (false, false, false);
+        let (mut tracks, mut input) = (false, vec![]);
         for ev in p.events().try_iter() {
             match ev {
                 Event::Loaded => loaded_now = true,
                 Event::Failed(_) => failed = true,
                 Event::Closed => gone = true,
+                Event::Tracks => tracks = true,
+                Event::Input(s) => input.push(s),
                 _ => {}
             }
+        }
+        if (failed || gone) && !self.loaded && self.surface.is_some() {
+            tasks.push(self.fall_back_to_window());
+            return Task::batch(tasks);
         }
         let st = p.state();
         self.volume = st.volume;
         failed |= !self.loaded && st.idle && self.started.elapsed() > Duration::from_secs(5);
         self.ended = st.eof;
         self.state = Some(st);
+        for s in input {
+            tasks.push(self.surface_input(&s));
+        }
         if loaded_now {
             self.on_loaded();
+        } else if tracks && self.loaded {
+            self.refresh_meta();
         }
         self.poll_extras();
         self.overlay_tick();
@@ -2280,6 +2393,7 @@ impl Player {
             tasks.push(self.check_hdr());
         }
         self.publish();
+        self.sync_surface();
         if failed {
             tasks.push(self.fail());
         } else if gone {
@@ -2459,6 +2573,28 @@ impl Player {
             }
         }
         Task::none()
+    }
+
+    /// Pointer input mpv forwarded from the child window, handled like the UI's own events.
+    fn surface_input(&mut self, s: &str) -> Task<Msg> {
+        let Some((kind, p)) = logic::parse_input(s) else {
+            return Task::none();
+        };
+        let (scale, origin) = (self.scale.max(0.1), self.hole.position());
+        self.mouse = Point::new(origin.x + p.x / scale, origin.y + p.y / scale);
+        self.poke();
+        if kind != "move" {
+            // The picture's window may have taken the keyboard focus with the click.
+            if let Some(sf) = &self.surface {
+                sf.focus_parent();
+            }
+        }
+        match kind {
+            "click" => self.act(Act::VideoPress),
+            "dbl" => self.act(Act::VideoDouble),
+            "right" => self.act(Act::VideoRight),
+            _ => Task::none(),
+        }
     }
 
     fn poll_extras(&mut self) {

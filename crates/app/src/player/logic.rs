@@ -1,6 +1,6 @@
 //! Pure rules of the player page that need neither a window nor mpv: how the loading overlay's
 //! fill follows mpv's cache state, when the overlay leaves, list navigation and menu placement.
-use iced::{Point, Size};
+use iced::{Point, Rectangle, Size};
 use std::time::Duration;
 
 /// Seconds of read-ahead that count as "enough to start" for the opening fill.
@@ -54,6 +54,30 @@ pub fn menu_origin(at: Point, win: Size, w: f32, h: f32) -> Point {
 /// Left edge of a tooltip `w` wide centred on `x`, kept inside a window `win_w` wide.
 pub fn tip_left(x: f32, w: f32, win_w: f32) -> f32 {
     (x - w / 2.0).clamp(8.0, (win_w - w - 8.0).max(8.0))
+}
+
+/// The rectangle the in-window video (a Windows child window the UI cannot draw over) may take:
+/// the hole, less the controls band at its bottom while the controls show. `None` while the UI
+/// has something to draw over the picture (menus, prompts, the loading overlay): the window is
+/// hidden then.
+pub fn video_rect(
+    hole: Rectangle,
+    bar_h: f32,
+    bar_shown: bool,
+    covered: bool,
+) -> Option<Rectangle> {
+    let h = hole.height - if bar_shown { bar_h } else { 0.0 };
+    (!covered && hole.width >= 2.0 && h >= 2.0).then_some(Rectangle { height: h, ..hole })
+}
+
+/// A pointer event forwarded by mpv from the embedded picture: `"move x y"`, `"click x y"`,
+/// `"dbl x y"` or `"right x y"` (device pixels inside the picture window).
+pub fn parse_input(s: &str) -> Option<(&str, Point)> {
+    let mut it = s.split_whitespace();
+    let kind = it.next()?;
+    let mut n = || it.next().and_then(|v| v.parse::<f32>().ok());
+    let (x, y) = (n().unwrap_or(0.0), n().unwrap_or(0.0));
+    matches!(kind, "move" | "click" | "dbl" | "right").then_some((kind, Point::new(x, y)))
 }
 
 #[cfg(test)]
@@ -120,5 +144,26 @@ mod tests {
         assert_eq!(tip_left(0.0, 200.0, 800.0), 8.0);
         assert_eq!(tip_left(800.0, 200.0, 800.0), 592.0);
         assert_eq!(tip_left(400.0, 200.0, 800.0), 300.0);
+    }
+
+    #[test]
+    fn video_rect_leaves_room_for_the_bar_and_hides_under_overlays() {
+        let hole = Rectangle::new(Point::new(0.0, 0.0), Size::new(1280.0, 800.0));
+        assert_eq!(video_rect(hole, 96.0, false, false), Some(hole));
+        assert_eq!(video_rect(hole, 96.0, true, false).unwrap().height, 704.0);
+        assert_eq!(video_rect(hole, 96.0, false, true), None);
+        let tiny = Rectangle::new(Point::ORIGIN, Size::new(1280.0, 50.0));
+        assert_eq!(video_rect(tiny, 96.0, true, false), None);
+    }
+
+    #[test]
+    fn forwarded_pointer_events_parse() {
+        assert_eq!(
+            parse_input("click 12 34"),
+            Some(("click", Point::new(12.0, 34.0)))
+        );
+        assert_eq!(parse_input("move"), Some(("move", Point::ORIGIN)));
+        assert_eq!(parse_input("key a"), None);
+        assert_eq!(parse_input(""), None);
     }
 }
