@@ -50,7 +50,7 @@ test("package repository page: exact pacman, apt and dnf steps, signing key, oth
     "printf '%s\\n' '' '[nocturne]' 'SigLevel = Required TrustedOnly' 'Server = https://nocturne.ifsvivek.in/repo/arch/$arch' | sudo tee -a /etc/pacman.conf",
     "sudo pacman -Syu nocturne", "sudo pacman -Syu",
     "5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B", "ed25519, valid until 2029-11-15",
-    "CachyOS, EndeavourOS and Manjaro", 'rel="canonical" href="https://nocturne.ifsvivek.in/repo"', "macOS and Windows are planned, not available",
+    "CachyOS, EndeavourOS and Manjaro", 'rel="canonical" href="https://nocturne.ifsvivek.in/repo"', "Windows (x64) and macOS (Apple Silicon) are previews on the",
     // apt and dnf, exactly as in the root README's Install section.
     "curl -fsSL https://nocturne.ifsvivek.in/repo/NOCTURNE-GPG-KEY.gpg | sudo tee /usr/share/keyrings/nocturne.gpg >/dev/null",
     "echo 'deb [signed-by=/usr/share/keyrings/nocturne.gpg] https://nocturne.ifsvivek.in/repo/deb stable main' | sudo tee /etc/apt/sources.list.d/nocturne.list",
