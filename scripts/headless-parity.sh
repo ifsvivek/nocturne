@@ -30,7 +30,7 @@ run() {
     scripts/run-isolated.sh ${keep:+--keep "$keep"} "$BIN" >"$OUT/$name.log" 2>&1 &
   pid=$!
   for _ in $(seq 120); do [ -s "$last" ] && break; sleep 1; done
-  sleep 1; kill "$pid" 2>/dev/null; pid=""
+  sleep 1; kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; pid=""
 }
 
 theme() { # <name> <css file>: a throwaway config dir with that theme as the global one

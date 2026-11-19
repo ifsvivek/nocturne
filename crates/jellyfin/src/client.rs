@@ -40,6 +40,9 @@ impl ImageType {
 /// Extra field every list read asks for so items can be matched across servers (GET parameter only).
 const ID_FIELDS: &str = "ProviderIds";
 
+/// The Home rows also feed the hero banner, which shows the overview and the genres.
+const HOME_FIELDS: &str = "ProviderIds,Overview,Genres";
+
 /// Parameters for `GET /Items`.
 #[derive(Debug, Clone, Default)]
 pub struct ItemsQuery {
@@ -254,7 +257,7 @@ impl Client {
                 ("userId", user_id.to_string()),
                 ("limit", limit.to_string()),
                 ("mediaTypes", "Video".into()),
-                ("fields", ID_FIELDS.into()),
+                ("fields", HOME_FIELDS.into()),
             ],
         )
         .await
@@ -270,7 +273,7 @@ impl Client {
                 ("parentId", parent_id.to_string()),
                 ("limit", limit.to_string()),
                 ("groupItems", "true".into()),
-                ("fields", ID_FIELDS.into()),
+                ("fields", HOME_FIELDS.into()),
             ],
         )
         .await
@@ -533,7 +536,7 @@ fn next_up_pairs(user_id: &str, limit: u32) -> [(&'static str, String); 3] {
     [
         ("userId", user_id.into()),
         ("limit", limit.to_string()),
-        ("fields", ID_FIELDS.into()),
+        ("fields", HOME_FIELDS.into()),
     ]
 }
 
@@ -802,7 +805,11 @@ mod tests {
     fn next_up_request_and_fixture() {
         assert_eq!(
             next_up_pairs("u1", 12).map(|(k, v)| format!("{k}={v}")),
-            ["userId=u1", "limit=12", "fields=ProviderIds"]
+            [
+                "userId=u1",
+                "limit=12",
+                "fields=ProviderIds,Overview,Genres"
+            ]
         );
         let j = r#"{"Items":[{"Id":"e9","Name":"Pilot","Type":"Episode","SeriesName":"Invented Show",
             "ParentIndexNumber":2,"IndexNumber":9,"ImageTags":{"Primary":"t"},"New":1}],"TotalRecordCount":1}"#;

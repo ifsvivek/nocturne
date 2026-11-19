@@ -133,6 +133,17 @@ pub enum Message {
     /// The Theme Studio's panel and pick mode.
     #[cfg(feature = "theme-engine")]
     Studio(super::studio::Msg),
+    /// The hero carousel of the engine's Home: previous (-1) or next (1) slide, a dot, the description's open state, and the facts the timer pauses on (window focus, a pressed pointer).
+    #[cfg(feature = "theme-engine")]
+    HeroStep(isize),
+    #[cfg(feature = "theme-engine")]
+    HeroGoto(usize),
+    #[cfg(feature = "theme-engine")]
+    HeroToggle,
+    #[cfg(feature = "theme-engine")]
+    WinFocus(bool),
+    #[cfg(feature = "theme-engine")]
+    Pointer(bool),
     CloseRequested(window::Id),
     Back,
     Forward,

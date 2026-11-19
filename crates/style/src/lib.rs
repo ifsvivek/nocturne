@@ -103,7 +103,10 @@ fn engine_sheet(css: &str) -> bool {
 }
 
 /// Built-in starting points for the Themes page: engine stylesheets written on the vocabulary the tree builders emit.
-pub const STARTERS: &[(&str, &str)] = &[("Spotlight", include_str!("../themes/spotlight.css"))];
+pub const STARTERS: &[(&str, &str)] = &[
+    ("Spotlight", include_str!("../themes/spotlight.css")),
+    ("Glass", include_str!("../themes/glass.css")),
+];
 
 #[cfg(test)]
 mod tests;

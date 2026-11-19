@@ -186,6 +186,9 @@ impl App {
             "Spotlight" => {
                 "Full-bleed backdrop under a floating rounded header, light primary and glass secondary pill buttons, accent bars before section titles."
             }
+            "Glass" => {
+                "Black canvas, a glass header pill, a rotating full-bleed hero with the title as logo art, light and glass pill buttons, accent rails and squircle cards."
+            }
             "Marquee" => "A large billboard hero and wide rows: the cinematic look.",
             "Feed" => "One column of big cards, like a feed.",
             "Classic" => "A compact grid with the plain NOCTURNE chrome.",
@@ -802,6 +805,20 @@ fn wire<'a>(name: &str) -> El<'a> {
             block(104.0, 34.0, b, 2.0),
             row![block(22.0, 8.0, t::text(), 4.0), block(22.0, 8.0, c, 4.0)].spacing(4),
             row![block(3.0, 8.0, a, 1.0), block(40.0, 8.0, c, 2.0)].spacing(3),
+        ]
+        .spacing(4)
+        .align_x(Alignment::Center)
+        .into(),
+        "Glass" => column![
+            block(104.0, 5.0, c, 2.0),
+            block(104.0, 30.0, b, 2.0),
+            row![block(22.0, 8.0, t::text(), 4.0), block(22.0, 8.0, c, 4.0)].spacing(4),
+            row![
+                block(24.0, 22.0, c, 5.0),
+                block(24.0, 22.0, c, 5.0),
+                block(24.0, 22.0, c, 5.0)
+            ]
+            .spacing(3),
         ]
         .spacing(4)
         .align_x(Alignment::Center)
