@@ -40,5 +40,45 @@ pub const THEMES: &[(&str, &str)] = &[
     ("dock", include_str!("../themes/dock.css")),
 ];
 
+/// Does this stylesheet use the vocabulary only the element trees emit (classes of the detail page, the player's bar, the section titles...)? Stage-1 themes (Marquee, Feed, Classic and the like) keep running through the tree builders' translator; a sheet like this one is layered over the default sheet as it is. Interim rule until the Theme Studio marks a theme as an engine theme.
+pub fn is_engine_sheet(css: &str) -> bool {
+    // `.detail-title`, `.detail-text`, `.detail-backdrop` and `.section-latest` are stage-1 names and do not count.
+    const MARKS: &[&str] = &[
+        ".detail-hero",
+        ".detail-actions",
+        ".detail-summary",
+        ".detail-meta",
+        ".detail-genres",
+        ".detail-chips",
+        ".detail-more",
+        ".detail-top",
+        ".detail-body",
+        ".detail-col",
+        ".detail-art",
+        ".detail-logo",
+        ".detail-tags",
+        ".detail-facts",
+        ".detail-about",
+        ".detail-info",
+        ".section-title",
+        ".section-head",
+        ".section-box",
+        ".section-strip",
+        ".section-text",
+        ".poster",
+        ".episode",
+        ".entry",
+        ".player-",
+        ".header-bar",
+        ".button-primary",
+        ".round",
+        ".tab",
+    ];
+    MARKS.iter().any(|m| css.contains(m))
+}
+
+/// Built-in starting points for the Themes page: engine stylesheets written on the vocabulary the tree builders emit.
+pub const STARTERS: &[(&str, &str)] = &[("Spotlight", include_str!("../themes/spotlight.css"))];
+
 #[cfg(test)]
 mod tests;

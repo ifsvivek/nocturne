@@ -532,4 +532,15 @@ mod tests {
         let _ = d.eng_nav(Nav::Activate);
         assert!(d.expanded.is_open(&d.expand_key()));
     }
+
+    #[test]
+    fn the_starters_apply_without_a_single_warning() {
+        for (name, css) in nocturne_style::STARTERS {
+            let mut d = page(&"word ".repeat(200));
+            d.set_user_css(Some((*css).into()));
+            let r = d.eng.as_ref().unwrap().scene.as_ref().unwrap().warnings();
+            assert!(r.is_empty(), "{name}: {r:?}");
+            assert_eq!(classes(&d, "detail-hero"), 1);
+        }
+    }
 }

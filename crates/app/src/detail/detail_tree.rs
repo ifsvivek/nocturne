@@ -132,8 +132,16 @@ impl Detail {
         let m = &self.media;
         let mut t_ = DTree::new(kind_attr(m.kind));
         let full = self.full.as_ref().cloned().unwrap_or_default();
-        let top = t_.doc.add(0, "div.detail-top");
-        t_.doc.inline(top, &format!("height: {}", px(geom::top())));
+        t_.doc.add(0, "div.detail-top");
+        // The sizes the hand-written page fixes are tokens on the page, so a theme can change the rule that uses them.
+        t_.doc.inline(
+            0,
+            &format!(
+                "--nocturne-detail-top: {}; --nocturne-detail-hero: {}",
+                px(geom::top()),
+                px(geom::hero_h(self.win))
+            ),
+        );
         self.hero_nodes(&mut t_);
         t_.doc.add(0, "div.band-rule");
         self.facts_nodes(&mut t_, &full);
@@ -214,11 +222,9 @@ impl Detail {
 
     fn hero_nodes(&self, t_: &mut DTree) {
         let m = &self.media;
-        let h = geom::hero_h(self.win);
         let w = self.win.width;
         let hero = t_.doc.add(0, "section.detail.detail-hero");
         t_.doc.attr(hero, "data-kind", kind_attr(m.kind));
-        t_.doc.inline(hero, &format!("height: {}", px(h)));
         let art = geom::hero_art(m);
         // Iced cannot blur an image: a theme's backdrop blur shows the item's blurhash stand-in.
         let (sharp, soft) = (self.img(m, art, 1920), self.blur(m, art));
@@ -603,8 +609,9 @@ impl Detail {
         let head = t_.doc.add(parent, "div.section-head");
         let titles = t_.doc.add(head, "div.section-titles");
         let ti = t_.doc.add(titles, "div.section-title");
-        t_.doc.text(ti, title);
         t_.doc.attr(ti, "data-section", name);
+        let tx = t_.doc.add(ti, "span.section-title-text");
+        t_.doc.text(tx, title);
         if !body.is_empty() {
             let b = t_.doc.add(titles, "div.section-text");
             t_.doc.text(b, body);

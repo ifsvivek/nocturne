@@ -11,7 +11,7 @@ What 0.5 added: native CSS themes with layout on named parts (`crates/core/src/c
 
 ## 0.5.2 in progress: the theme engine
 
-On the branch `theme-engine` (cargo feature `theme-engine`, off in every normal build): the engine (`crates/style`, step B) and Home plus the shared header as element trees (`app/home_tree.rs`, `app/header_tree.rs`, `app/engine_ui.rs`, `crates/style/themes/default.css`, step D) with pixel parity to the hand-written pages, numbers and what differs in [THEME_ENGINE_PLAN.md](THEME_ENGINE_PLAN.md) section 10. `scripts/headless-parity.sh` repeats the comparison.
+On the branch `theme-engine` (cargo feature `theme-engine`, off in every normal build): the engine (`crates/style`, step B) and Home plus the shared header as element trees (`app/home_tree.rs`, `app/header_tree.rs`, `app/engine_ui.rs`, `crates/style/themes/default.css`, step D) with pixel parity to the hand-written pages, numbers and what differs in [THEME_ENGINE_PLAN.md](THEME_ENGINE_PLAN.md) section 10. `scripts/headless-parity.sh` repeats the comparison. Step F2 adds the Detail page and the player's controls bar as trees (`detail/detail_tree.rs`, `detail/engine.rs`, `player/bar_tree.rs`) and the Spotlight starter (`crates/style/themes/spotlight.css`): section 12.
 
 ## Still open after 0.5.1
 

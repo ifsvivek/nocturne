@@ -397,7 +397,11 @@ impl App {
                 return self.set_text(&saved.map(|s| s.css).unwrap_or_default());
             }
             Msg::Preset(i) => {
-                let Some((name, css)) = cz::PRESETS.get(i) else {
+                #[cfg(feature = "theme-engine")]
+                let all = cz::PRESETS.iter().chain(nocturne_style::STARTERS);
+                #[cfg(not(feature = "theme-engine"))]
+                let all = cz::PRESETS.iter();
+                let Some((name, css)) = all.into_iter().nth(i) else {
                     return Task::none();
                 };
                 self.end_preview();
@@ -690,7 +694,11 @@ impl App {
             ));
         }
         let mut presets = column![].spacing(2);
-        for (i, (name, _)) in cz::PRESETS.iter().enumerate() {
+        #[cfg(feature = "theme-engine")]
+        let all = cz::PRESETS.iter().chain(nocturne_style::STARTERS);
+        #[cfg(not(feature = "theme-engine"))]
+        let all = cz::PRESETS.iter();
+        for (i, (name, _)) in all.enumerate() {
             presets = presets.push(entry(
                 format!("{name}  \u{b7}  use as starting point"),
                 false,

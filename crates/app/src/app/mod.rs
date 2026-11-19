@@ -578,6 +578,8 @@ impl App {
             Message::Tick(now) => {
                 self.now = now;
                 self.sync_detail();
+                #[cfg(feature = "theme-engine")]
+                self.sync_player_css();
                 self.sync_ob();
                 Task::batch([
                     self.tick(),
