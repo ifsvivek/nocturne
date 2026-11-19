@@ -1,0 +1,26 @@
+# 0.5.2 plan: the full theme engine, the server's UI, and one server's UI over another
+
+Maintainer request (2026-11-19): "0.5.2: the full theming engine that can read the UI from the Jellyfin server; also let us apply one server's UI over another, just for us in the app." Technical basis: `docs/dev/THEME_ENGINE_PLAN.md` on the local branch `theme-engine-spike` (moves to main with step B) (spike verdict: go with limits), [CUSTOMIZATION_PLAN.md](CUSTOMIZATION_PLAN.md) (stage 1, shipped in 0.5), [SERVER_UI_PLAN.md](SERVER_UI_PLAN.md) (Server UI, shipped in 0.5). Rules that do not change: no WebView, browser engine, HTML renderer or JavaScript; the server is only read (editing home sections stays behind server writes); Settings, Admin, onboarding and the other form screens stay hand-written and take colours, radii and fonts from the tokens.
+
+## What 0.5.2 delivers
+
+1. **The engine in the product.** Every Home, header, Library and Search screen becomes a styled element tree: a real CSS cascade (selectors incl. `:is`, `:where`, `:not` lists, `:hover`, `:focus`, attribute and sibling combinators, `@media` on the window size, `var()`), laid out by Taffy (flexbox, grid with areas, absolute and fixed positioning, `order`, `z-index`, overflow scrolling), painted by one Iced widget with slots for real Iced widgets (text inputs, the video Hole, virtualised grids). With no theme the look is identical to today (parity tests are the oracle).
+2. **Reading the server's UI.** Server UI mode (0.5) already reads the server's home sections, library order and branding CSS. 0.5.2 makes that CSS mean something: `@import` is followed (https only, size, time, depth and count limits, CSS only, disk cache with manual Refresh, a setting to turn remote imports off), and the element tree carries a **Jellyfin compatibility class map** (about 60 aliases with the real nesting of the most used components: `a.card.cardBox > div.cardScalable > div.cardPadder + div.cardImageContainer.cardContent`, `div.cardFooter > div.cardText`, `.skinHeader`, `.sectionTitle`, `.itemsContainer`, `.emby-button`, `layout-desktop`/`layout-tv` on the root), so Jellyfin web themes (ElegantFin-style, variable-driven) apply far beyond colours. Expected coverage stays honest: high for restyling themes, partial for themes that depend on jellyfin-web's exact DOM; every skipped rule is listed in the Themes page.
+3. **One server's UI over another.** A per-app choice "Use the UI of: NOCTURNE / this server / <another signed-in server>" for each source and for "All" and local folders. Applying server A's UI to server B uses A's section layout (kinds and order) and A's branding CSS, filled with B's own items and libraries (A's library order applies only to A). Local and read-only: nothing is written to either server. Stored per source in `sources.toml` (`ui_from = "<source id>" | "self" | "nocturne"`), default unchanged ("nocturne" for new servers).
+4. **The "Classic" preset and the missing parts** (already in progress): unplayed badges, progress inside the image, episode lines, centred captions, row arrows, left-aligned header with brand and library icons, My media tile labels. Under the engine these become plain classes in the tree and the default stylesheet.
+
+Detail page and player overlay stay on the stage-1 parts in 0.5.2 (engine phase 4 follows in 0.5.3), as do the hand-written screens.
+
+## Order of work (at most two workers; no overlapping files)
+
+| Step | Work | Branch | Depends on |
+|---|---|---|---|
+| A | Classic preset + missing parts (running) | main | none |
+| B | Engine phase 1: `crates/style` from the spike made production-grade (typed declarations, style cache, incremental restyle on hover/focus, limits and `catch_unwind`, `:is/:where`, `@media`, grid areas, focus order and spatial navigation from the scene, safe mode), `widget/styled.rs` with slots (proven with a `text_input` and the Hole), virtual container | `theme-engine` | none |
+| C | `@import` following + one server's UI over another (core store + server_ui resolution + Settings > Sources choice) | main | A merged (shared app files) |
+| D | Engine phase 2: Home + header as trees, default stylesheet reproducing today, stage-1 translator (Marquee, Feed, Classic keep working), parity tests | `theme-engine` | A, B |
+| E | Engine phase 3: Library and Search grids on the virtual container, card images, 5,000-item grid under the frame budget | `theme-engine` | D |
+| F | Jellyfin compatibility class map + `::before/::after` text, `transform`, `transition`, element inspector on the Themes page; coverage test against a small hand-written sample | `theme-engine` | D, C |
+| G | Full QA in the headless session (default parity, every preset, a Jellyfin web theme through the user's server branding read-only, cross-server UI, keyboard and couch navigation, performance budgets), docs, website, release 0.5.2 | main | all |
+
+Every step: fmt, clippy `-D warnings`, tests, the headless input check, captures from demo data only, master review before merge. Release only after G passes; Windows and macOS stay previews.
