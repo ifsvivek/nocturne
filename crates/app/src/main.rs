@@ -16,8 +16,6 @@ mod player;
 mod queue;
 mod single;
 mod snap;
-#[cfg(feature = "theme-spike")]
-mod spike;
 mod style;
 mod syncplay;
 mod task;
@@ -67,10 +65,10 @@ fn run() -> iced::Result {
         timing::mark("fonts loaded");
     });
     platform::install_term_handlers();
-    // Feature `theme-spike` only: the element-tree theme engine on a static Home screen (see spike.rs).
-    #[cfg(feature = "theme-spike")]
-    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("theme-spike") {
-        return spike::run();
+    // Feature `theme-engine` only: the element-tree theme engine on a static Home screen (see widget/styled_preview.rs).
+    #[cfg(feature = "theme-engine")]
+    if std::env::var("NOCTURNE_PREVIEW").as_deref() == Ok("theme-engine") {
+        return widget::styled_preview::run();
     }
     // Debug builds only: run the player page alone on a local file (see player/preview.rs).
     #[cfg(debug_assertions)]
