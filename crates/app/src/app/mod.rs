@@ -35,6 +35,10 @@ mod server_ui;
 mod settings;
 pub(crate) mod smart;
 mod sources;
+#[cfg(feature = "theme-engine")]
+pub(crate) mod studio;
+#[cfg(feature = "theme-engine")]
+mod studio_view;
 pub(crate) mod themes;
 pub(crate) mod trakt;
 
@@ -220,6 +224,9 @@ pub struct App {
     th: themes::State,
     #[cfg(feature = "theme-engine")]
     eng: engine_ui::EngineUi,
+    /// The Theme Studio (pick mode, edit panel, working CSS).
+    #[cfg(feature = "theme-engine")]
+    studio: studio::Studio,
     /// Source whose removal waits for the confirmation dialog.
     confirm: Option<SourceId>,
     /// The extra-header dialog of a server.
@@ -367,6 +374,8 @@ impl App {
             th: Default::default(),
             #[cfg(feature = "theme-engine")]
             eng: Default::default(),
+            #[cfg(feature = "theme-engine")]
+            studio: Default::default(),
             confirm: None,
             hdr: None,
             server_ui: HashMap::new(),
@@ -591,6 +600,8 @@ impl App {
             Message::Key(k) => self.on_key(k),
             #[cfg(feature = "theme-engine")]
             Message::Eng(w, e) => self.eng_event(w, e),
+            #[cfg(feature = "theme-engine")]
+            Message::Studio(m) => self.studio_msg(m),
             Message::Tick(now) => {
                 self.now = now;
                 self.sync_detail();
@@ -1738,6 +1749,10 @@ impl App {
         if k.ctrl && k.shift && matches!(k.name.as_str(), "0" | ")") {
             return self.safe_theme();
         }
+        #[cfg(feature = "theme-engine")]
+        if let Some(t) = self.studio_key(&k) {
+            return t;
+        }
         // The remote's Menu key outside the player opens the account menu.
         if k.name == "menu" && self.player.is_none() {
             k.name = "a".into();
@@ -2231,6 +2246,15 @@ impl App {
                 .padding(t::S6)
                 .into(),
             );
+        }
+        #[cfg(feature = "theme-engine")]
+        if self.studio.open {
+            // The Theme Studio docks at the right; the live app keeps the rest of the window.
+            return iced::widget::row![
+                Element::from(Stack::with_children(layers)),
+                self.studio_panel()
+            ]
+            .into();
         }
         Stack::with_children(layers).into()
     }

@@ -6,10 +6,12 @@ pub mod calc;
 pub mod cascade;
 pub mod compat;
 pub mod compat_map;
+pub mod css_edit;
 pub mod demo;
 pub mod doc;
 pub mod engine;
 pub mod fonts;
+pub mod inspect;
 pub mod layout;
 pub mod nav;
 pub mod paint;
@@ -44,6 +46,10 @@ pub const THEMES: &[(&str, &str)] = &[
 
 /// Does this stylesheet use the vocabulary only the element trees emit (classes of the detail page, the player's bar, the section titles...)? Stage-1 themes (Marquee, Feed, Classic and the like) keep running through the tree builders' translator; a sheet like this one is layered over the default sheet as it is. Interim rule until the Theme Studio marks a theme as an engine theme.
 pub fn is_engine_sheet(css: &str) -> bool {
+    // The Theme Studio marks its themes.
+    if css.contains("nocturne:engine") {
+        return true;
+    }
     // `.detail-title`, `.detail-text`, `.detail-backdrop` and `.section-latest` are stage-1 names and do not count.
     const MARKS: &[&str] = &[
         ".detail-hero",

@@ -62,6 +62,14 @@ pub enum Nav {
     Activate,
 }
 
+/// An outline the Theme Studio draws over an element (pick mode): `selected` is the chosen one, the other the element under the pointer.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Mark {
+    pub node: Id,
+    pub label: Option<String>,
+    pub selected: bool,
+}
+
 pub struct Styled<'a, M> {
     scene: SceneRef<'a>,
     slots: Vec<Element<'a, M>>,
@@ -72,6 +80,7 @@ pub struct Styled<'a, M> {
     on_event: Box<dyn Fn(StyledEvent) -> M + 'a>,
     /// Tab, arrows, Enter, Space and the safe-look chord are this widget's (default); off, the keyboard belongs to the page around it.
     keys: bool,
+    marks: Vec<Mark>,
 }
 
 #[derive(Default)]
@@ -133,6 +142,7 @@ impl<'a, M: 'a> Styled<'a, M> {
             images: None,
             on_event: Box::new(on_event),
             keys: true,
+            marks: vec![],
         }
     }
 
@@ -150,6 +160,12 @@ impl<'a, M: 'a> Styled<'a, M> {
     /// Whether the widget takes the keyboard (Tab, arrows, Enter, Space, the safe-look chord). The player's controls leave it to the page.
     pub fn keys(mut self, on: bool) -> Self {
         self.keys = on;
+        self
+    }
+
+    /// Outlines drawn over the scene (the Theme Studio's pick mode).
+    pub fn marks(mut self, marks: Vec<Mark>) -> Self {
+        self.marks = marks;
         self
     }
 
@@ -1000,6 +1016,94 @@ impl<M> Styled<'_, M> {
         None
     }
 
+    /// The Theme Studio's outlines: a box around the element and a label with its tag and classes.
+    fn paint_marks(&self, r: &mut iced::Renderer, b: Rectangle, vis: Rectangle) {
+        for mk in &self.marks {
+            if mk.node >= self.scene.doc.len() {
+                continue;
+            }
+            let sr = self.scene.screen_rect(mk.node);
+            let rect = Rectangle::new(
+                Point::new(b.x + sr[0], b.y + sr[1]),
+                Size::new(sr[2].max(2.0), sr[3].max(2.0)),
+            );
+            let ink = if mk.selected {
+                theme::accent()
+            } else {
+                theme::text()
+            };
+            r.with_layer(vis, |r| {
+                r.fill_quad(
+                    Quad {
+                        bounds: rect,
+                        border: Border {
+                            color: ink,
+                            width: if mk.selected { 2.0 } else { 1.0 },
+                            radius: border::radius(0.0),
+                        },
+                        shadow: Shadow::default(),
+                        snap: false,
+                    },
+                    Color {
+                        a: if mk.selected { 0.10 } else { 0.07 },
+                        ..ink
+                    },
+                );
+                let Some(label) = &mk.label else {
+                    return;
+                };
+                let ts = nocturne_style::TextStyle {
+                    size: theme::MICRO,
+                    weight: 400,
+                    italic: false,
+                    font: FontChoice::Monospace,
+                    line_height: 1.3,
+                    lines: None,
+                    letter_spacing: 0.0,
+                    ellipsis: false,
+                };
+                let (tw, th) = crate::widget::styled_preview::shape(label, &ts, None);
+                let (w, h) = (tw + 8.0, th + 4.0);
+                // Above the box when there is room, inside its top edge otherwise.
+                let y = if rect.y - h >= vis.y {
+                    rect.y - h
+                } else {
+                    rect.y
+                };
+                let x = rect.x.clamp(vis.x, (vis.x + vis.width - w).max(vis.x));
+                r.fill_quad(
+                    Quad {
+                        bounds: Rectangle::new(Point::new(x, y), Size::new(w, h)),
+                        border: Border::default(),
+                        shadow: Shadow::default(),
+                        snap: false,
+                    },
+                    ink,
+                );
+                r.fill_text(
+                    Text {
+                        content: label.clone(),
+                        bounds: Size::new(tw + 1.0, th),
+                        size: Pixels(ts.size),
+                        line_height: LineHeight::Relative(ts.line_height),
+                        font: font_for(400, false, &FontChoice::Monospace),
+                        align_x: Alignment::Left,
+                        align_y: alignment::Vertical::Top,
+                        shaping: Shaping::Advanced,
+                        wrapping: Wrapping::None,
+                    },
+                    Point::new(x + 4.0, y + 2.0),
+                    if mk.selected {
+                        theme::on_accent()
+                    } else {
+                        theme::frame()
+                    },
+                    vis,
+                );
+            });
+        }
+    }
+
     /// A small tooltip under the element (the look of the hand-written `tip`): drawn over everything in the window, so it can leave the scene's own box (a header is only as tall as its bar).
     fn paint_tip(&self, tree: &Tree, r: &mut iced::Renderer, b: Rectangle, window: Rectangle) {
         let st = tree.state.downcast_ref::<State>();
@@ -1555,6 +1659,7 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
         self.paint_bars(tree, r, b, vis);
         self.paint_chevrons(r, b, cursor, vis);
         self.paint_tip(tree, r, b, *viewport);
+        self.paint_marks(r, b, vis);
         if stats_on() {
             eprintln!(
                 "engine: draw {} us ({} images, {} passes)",

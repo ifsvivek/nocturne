@@ -58,6 +58,9 @@ pub fn on_boot() -> Task<Message> {
             "theme-report" => Some(Message::Themes(crate::app::themes::Msg::Report(
                 std::env::var("NOCTURNE_THEME_REPORT").unwrap_or_default(),
             ))),
+            // Theme Studio QA: runs the file in `NOCTURNE_STUDIO_SCRIPT` (see `app::studio::script_msgs`).
+            #[cfg(feature = "theme-engine")]
+            "studio-script" => Some(Message::Studio(crate::app::studio::Msg::Script)),
             "theme-safe" => Some(Message::Themes(crate::app::themes::Msg::Safe)),
             n if n.starts_with("sections-") => n[9..].parse().ok().map(|i| {
                 Message::Src(crate::app::message::SrcAct::Sections(

@@ -49,6 +49,19 @@ impl Fonts {
         self.generation += 1;
     }
 
+    /// Every family the app can use by name, sorted (for the Studio's font list).
+    pub fn names(&self) -> Vec<String> {
+        let mut v: Vec<String> = self
+            .registered
+            .values()
+            .chain(self.installed.values())
+            .map(|n| n.to_string())
+            .collect();
+        v.sort_by_key(|n| n.to_lowercase());
+        v.dedup();
+        v
+    }
+
     pub fn has(&self, name: &str) -> bool {
         let k = name.trim().to_lowercase();
         self.registered.contains_key(&k) || self.installed.contains_key(&k)

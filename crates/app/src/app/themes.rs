@@ -79,9 +79,9 @@ pub enum Msg {
 
 pub struct State {
     pub open: bool,
-    sel: Option<u32>,
-    name: String,
-    content: text_editor::Content,
+    pub(super) sel: Option<u32>,
+    pub(super) name: String,
+    pub(super) content: text_editor::Content,
     path: String,
     url: String,
     parsed: Option<Arc<Parsed>>,
@@ -363,7 +363,7 @@ impl App {
         self.th.applied = None;
     }
 
-    fn set_text(&mut self, s: &str) -> Task<Message> {
+    pub(super) fn set_text(&mut self, s: &str) -> Task<Message> {
         self.th.content = text_editor::Content::with_text(s);
         self.reparse()
     }
@@ -983,6 +983,18 @@ impl App {
                         false,
                         msg(Msg::Reset),
                     ));
+                // The Theme Studio edits what is in the editor, over the live app.
+                #[cfg(feature = "theme-engine")]
+                {
+                    r = r.push(action_button(
+                        "Open Studio",
+                        true,
+                        false,
+                        false,
+                        false,
+                        Message::Studio(super::studio::Msg::Open),
+                    ));
+                }
                 if th.safe {
                     r = r.push(action_button(
                         "Leave safe look",
