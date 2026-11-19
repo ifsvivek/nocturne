@@ -136,6 +136,11 @@ pub enum Message {
     UpdateInstalled(Result<std::path::PathBuf, String>),
     /// Banner "Restart to update".
     UpdateRestart,
+    /// Whether PackageKit can be asked to update a system-package install (asked once, when the banner first applies).
+    UpdatePkAvailable(bool),
+    /// Banner "Update now": the version to update to.
+    UpdatePk(String),
+    UpdatePkDone(Result<(), String>),
     Account(account::Msg),
     PickerAct(picker::Act),
     Switched {
