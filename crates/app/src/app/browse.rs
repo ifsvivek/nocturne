@@ -172,7 +172,7 @@ impl Browse {
         lv::filter_rows(&self.prefs.filters, self.options.as_ref())
     }
 
-    fn show_letters(&self) -> bool {
+    pub(super) fn show_letters(&self) -> bool {
         self.smart.is_none()
             && self.prefs.sort == SortKey::Name
             && matches!(
@@ -860,9 +860,10 @@ impl App {
             "r" if br.tab == Tab::Random || br.prefs.sort == SortKey::Random => {
                 Task::done(Message::PageRetry)
             }
-            "up" | "down" | "left" | "right" | "enter" => {
+            "up" | "down" | "left" | "right" | "enter" | "pageup" | "pagedown" | "home" | "end" => {
                 let n = br.len();
                 let sel = p.sel;
+                let vh = br.viewport(win.height);
                 let dir = match key {
                     "up" => Some(Dir::Up),
                     "down" => Some(Dir::Down),
@@ -870,10 +871,21 @@ impl App {
                     "right" => Some(Dir::Right),
                     _ => None,
                 };
-                if let Some(d) = dir {
-                    let vh = br.viewport(win.height);
+                // Page keys move by the rows in view; Home and End go to the ends.
+                let page = ((vh / m.row_h).floor() as usize).max(1) * m.cols;
+                let jump = match key {
+                    "pageup" => Some(sel.saturating_sub(page)),
+                    "pagedown" => Some((sel + page).min(n.saturating_sub(1))),
+                    "home" => Some(0),
+                    "end" => Some(n.saturating_sub(1)),
+                    _ => None,
+                };
+                if dir.is_some() || jump.is_some() {
                     let off = br.off;
-                    let to = nav::step(sel, m.cols, n, d);
+                    let to = match dir {
+                        Some(d) => nav::step(sel, m.cols, n, d),
+                        None => jump.unwrap_or(sel),
+                    };
                     if let Some(p) = self.stack.last_mut() {
                         p.sel = to;
                     }
@@ -915,28 +927,8 @@ impl App {
             names_tab,
         );
         let n = br.len();
-        let loading = n == 0
-            && !br.failed
-            && !names_tab
-            && match (&br.merged, br.smart) {
-                (_, Some((_, loading))) => loading,
-                (Some(g), _) => g.loading(),
-                (None, _) => br.epoch == 0 || br.pending.contains(&0),
-            };
-        let count = if br.failed {
-            "unavailable".to_string()
-        } else if names_tab {
-            format!("{} entries", lv::thousands(n))
-        } else if loading {
-            "loading".to_string()
-        } else if br.merged.as_ref().is_some_and(Merged::loading) || br.smart.is_some_and(|s| s.1) {
-            format!("{} items, loading more", lv::thousands(n))
-        } else {
-            format!(
-                "{} items",
-                lv::thousands(if br.is_merged() { n } else { br.total })
-            )
-        };
+        let loading = Self::browse_loading(br);
+        let count = Self::browse_count(br, loading);
         let body: El = if br.failed {
             self.failed_view("This couldn't be loaded.")
         } else if loading {
@@ -1033,11 +1025,11 @@ impl App {
             .into()
     }
 
-    fn browse_toolbar<'a>(&'a self, br: &'a Browse, pid: u64, count: String) -> El<'a> {
-        let (sort, desc, view, menu) = (br.prefs.sort, br.prefs.desc, br.prefs.view, br.menu);
+    /// The label of the Sort button, and whether the order is fixed by the tab (Recent, Random).
+    pub(super) fn sort_label(br: &Browse) -> (String, bool) {
+        let (sort, desc) = (br.prefs.sort, br.prefs.desc);
         let fixed = matches!(br.tab, Tab::Recent | Tab::Random);
-        let nfilters = br.prefs.filters.active();
-        let sort_label = if fixed {
+        let label = if fixed {
             if br.tab == Tab::Recent {
                 "Last played".to_string()
             } else {
@@ -1056,138 +1048,224 @@ impl App {
                 }
             )
         };
-        let mut bar = row![].spacing(t::S3).align_y(Alignment::Center);
-        if !br.tab.is_names() {
-            let sort_btn = action_button(
-                &format!("Sort: {sort_label}"),
-                false,
-                false,
-                menu == Menu::Sort,
-                fixed,
-                Message::Browse(
-                    pid,
-                    if fixed {
-                        BMsg::Menu(Menu::None)
-                    } else {
-                        BMsg::Menu(Menu::Sort)
-                    },
-                ),
-            );
-            let sort_pop = (menu == Menu::Sort).then(|| {
-                let items: Vec<El> = SortKey::ALL
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, k)| {
-                        let cur = k == sort;
-                        menu_row(
-                            row![
-                                text(k.label()).size(t::BODY).color(if cur {
-                                    t::accent_text()
-                                } else {
-                                    t::text()
-                                }),
-                                space().width(Length::Fill),
-                                mono(if cur && k != SortKey::Random {
-                                    if desc { "\u{2193}" } else { "\u{2191}" }
-                                } else {
-                                    ""
-                                }),
-                            ]
-                            .spacing(t::S3),
-                            i == br.msel,
-                            false,
-                            Message::Browse(pid, BMsg::Sort(k)),
-                        )
-                    })
-                    .collect();
-                container(column(items).spacing(2))
-                    .width(240)
-                    .padding(t::S2)
-                    .style(style::panel)
-                    .into()
-            });
-            let own_order = br.smart.is_some();
-            bar = bar.extend((!own_order).then(|| -> El<'_> {
-                Popover::new(
-                    sort_btn,
-                    sort_pop,
-                    Message::Browse(pid, BMsg::Menu(Menu::None)),
-                )
-                .left()
-                .into()
-            }));
-            let filter_btn = action_button(
-                &if nfilters > 0 {
-                    format!("Filters ({nfilters})")
+        (format!("Sort: {label}"), fixed)
+    }
+
+    pub(super) fn filters_label(br: &Browse) -> String {
+        match br.prefs.filters.active() {
+            0 => "Filters".to_string(),
+            n => format!("Filters ({n})"),
+        }
+    }
+
+    /// The Sort button with its pop-over.
+    pub(super) fn sort_control<'a>(&'a self, br: &'a Browse, pid: u64) -> El<'a> {
+        let (sort, desc, menu) = (br.prefs.sort, br.prefs.desc, br.menu);
+        let (label, fixed) = Self::sort_label(br);
+        let sort_btn = action_button(
+            &label,
+            false,
+            false,
+            menu == Menu::Sort,
+            fixed,
+            Message::Browse(
+                pid,
+                if fixed {
+                    BMsg::Menu(Menu::None)
                 } else {
-                    "Filters".to_string()
+                    BMsg::Menu(Menu::Sort)
                 },
-                nfilters > 0,
-                false,
-                menu == Menu::Filter,
-                false,
-                Message::Browse(pid, BMsg::Menu(Menu::Filter)),
-            );
-            let filter_pop = (menu == Menu::Filter).then(|| {
-                let mut items: Vec<El> = vec![];
-                for (i, r) in br.rows().into_iter().enumerate() {
-                    let Some(act) = r.act.clone() else {
-                        items.push(
-                            container(label(&r.label))
-                                .padding(Padding {
-                                    left: t::S3,
-                                    top: t::S3,
-                                    bottom: t::S1,
-                                    ..Padding::ZERO
-                                })
-                                .into(),
-                        );
-                        continue;
-                    };
-                    items.push(menu_row(
+            ),
+        );
+        let sort_pop = (menu == Menu::Sort).then(|| {
+            let items: Vec<El> = SortKey::ALL
+                .into_iter()
+                .enumerate()
+                .map(|(i, k)| {
+                    let cur = k == sort;
+                    menu_row(
                         row![
-                            text(r.label).size(t::BODY).color(if r.on {
+                            text(k.label()).size(t::BODY).color(if cur {
                                 t::accent_text()
                             } else {
                                 t::text()
                             }),
                             space().width(Length::Fill),
-                            mono(if r.on { "\u{2713}" } else { "" }),
+                            mono(if cur && k != SortKey::Random {
+                                if desc { "\u{2193}" } else { "\u{2191}" }
+                            } else {
+                                ""
+                            }),
                         ]
                         .spacing(t::S3),
                         i == br.msel,
                         false,
-                        Message::Browse(pid, BMsg::Filter(act)),
-                    ));
-                }
-                container(
-                    scrollable::Scrollable::new(column(items).spacing(2)).style(style::scroll),
-                )
+                        Message::Browse(pid, BMsg::Sort(k)),
+                    )
+                })
+                .collect();
+            container(column(items).spacing(2))
+                .width(240)
+                .padding(t::S2)
+                .style(style::panel)
+                .into()
+        });
+        Popover::new(
+            sort_btn,
+            sort_pop,
+            Message::Browse(pid, BMsg::Menu(Menu::None)),
+        )
+        .left()
+        .into()
+    }
+
+    /// The Filters button with its pop-over.
+    pub(super) fn filter_control<'a>(&'a self, br: &'a Browse, pid: u64) -> El<'a> {
+        let menu = br.menu;
+        let nfilters = br.prefs.filters.active();
+        let filter_btn = action_button(
+            &Self::filters_label(br),
+            nfilters > 0,
+            false,
+            menu == Menu::Filter,
+            false,
+            Message::Browse(pid, BMsg::Menu(Menu::Filter)),
+        );
+        let filter_pop = (menu == Menu::Filter).then(|| {
+            let mut items: Vec<El> = vec![];
+            for (i, r) in br.rows().into_iter().enumerate() {
+                let Some(act) = r.act.clone() else {
+                    items.push(
+                        container(label(&r.label))
+                            .padding(Padding {
+                                left: t::S3,
+                                top: t::S3,
+                                bottom: t::S1,
+                                ..Padding::ZERO
+                            })
+                            .into(),
+                    );
+                    continue;
+                };
+                items.push(menu_row(
+                    row![
+                        text(r.label).size(t::BODY).color(if r.on {
+                            t::accent_text()
+                        } else {
+                            t::text()
+                        }),
+                        space().width(Length::Fill),
+                        mono(if r.on { "\u{2713}" } else { "" }),
+                    ]
+                    .spacing(t::S3),
+                    i == br.msel,
+                    false,
+                    Message::Browse(pid, BMsg::Filter(act)),
+                ));
+            }
+            container(scrollable::Scrollable::new(column(items).spacing(2)).style(style::scroll))
                 .width(300)
                 .max_height(420)
                 .padding(t::S2)
                 .style(style::panel)
                 .into()
-            });
-            bar = bar.extend((!own_order).then(|| -> El<'_> {
-                Popover::new(
-                    filter_btn,
-                    filter_pop,
-                    Message::Browse(pid, BMsg::Menu(Menu::None)),
-                )
-                .left()
-                .into()
-            }));
+        });
+        Popover::new(
+            filter_btn,
+            filter_pop,
+            Message::Browse(pid, BMsg::Menu(Menu::None)),
+        )
+        .left()
+        .into()
+    }
+
+    /// One button of the view switch (poster, landscape, list).
+    pub(super) fn view_button<'a>(br: &Browse, pid: u64, v: ViewKind) -> El<'a> {
+        action_button(
+            v.label(),
+            v == br.prefs.view,
+            false,
+            false,
+            false,
+            Message::Browse(pid, BMsg::View(v)),
+        )
+    }
+
+    /// One letter of the A-Z bar.
+    pub(super) fn az_button<'a>(br: &Browse, pid: u64, c: char) -> El<'a> {
+        let on = br.letter == Some(c);
+        Press::new(
+            container(text(c.to_string()).font(t::MONO).size(t::MICRO + 1.0)).center(Length::Fill),
+        )
+        .width(24)
+        .height(22)
+        .on_press(Message::Browse(
+            pid,
+            BMsg::Letter(if on { None } else { Some(c) }),
+        ))
+        .style(move |s| iced::widget::button::Style {
+            background: if on {
+                Some(t::accent().into())
+            } else if matches!(
+                s,
+                iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+            ) {
+                Some(t::GLASS.into())
+            } else {
+                None
+            },
+            text_color: if on {
+                t::on_accent()
+            } else {
+                t::text_secondary()
+            },
+            border: border(t::NONE, 0.0, t::r_card()),
+            ..Default::default()
+        })
+        .into()
+    }
+
+    /// The count at the right end of the toolbar.
+    pub(super) fn browse_count(br: &Browse, loading: bool) -> String {
+        let n = br.len();
+        if br.failed {
+            "unavailable".to_string()
+        } else if br.tab.is_names() {
+            format!("{} entries", lv::thousands(n))
+        } else if loading {
+            "loading".to_string()
+        } else if br.merged.as_ref().is_some_and(Merged::loading) || br.smart.is_some_and(|s| s.1) {
+            format!("{} items, loading more", lv::thousands(n))
+        } else {
+            format!(
+                "{} items",
+                lv::thousands(if br.is_merged() { n } else { br.total })
+            )
+        }
+    }
+
+    /// No items yet and the first answer is still on its way.
+    pub(super) fn browse_loading(br: &Browse) -> bool {
+        br.len() == 0
+            && !br.failed
+            && !br.tab.is_names()
+            && match (&br.merged, br.smart) {
+                (_, Some((_, loading))) => loading,
+                (Some(g), _) => g.loading(),
+                (None, _) => br.epoch == 0 || br.pending.contains(&0),
+            }
+    }
+
+    fn browse_toolbar<'a>(&'a self, br: &'a Browse, pid: u64, count: String) -> El<'a> {
+        let mut bar = row![].spacing(t::S3).align_y(Alignment::Center);
+        if !br.tab.is_names() {
+            if br.smart.is_none() {
+                bar = bar.push(self.sort_control(br, pid));
+                bar = bar.push(self.filter_control(br, pid));
+            }
             let mut seg = row![].spacing(t::S1);
             for v in ViewKind::ALL {
-                seg = seg.push(action_button(
-                    v.label(),
-                    v == view,
-                    false,
-                    false,
-                    false,
-                    Message::Browse(pid, BMsg::View(v)),
-                ));
+                seg = seg.push(Self::view_button(br, pid, v));
             }
             bar = bar.push(seg);
         }
@@ -1196,39 +1274,7 @@ impl App {
         if br.show_letters() {
             let mut az = row![].spacing(2);
             for c in lv::letters() {
-                let on = br.letter == Some(c);
-                az = az.push(
-                    Press::new(
-                        container(text(c.to_string()).font(t::MONO).size(t::MICRO + 1.0))
-                            .center(Length::Fill),
-                    )
-                    .width(24)
-                    .height(22)
-                    .on_press(Message::Browse(
-                        pid,
-                        BMsg::Letter(if on { None } else { Some(c) }),
-                    ))
-                    .style(move |s| iced::widget::button::Style {
-                        background: if on {
-                            Some(t::accent().into())
-                        } else if matches!(
-                            s,
-                            iced::widget::button::Status::Hovered
-                                | iced::widget::button::Status::Pressed
-                        ) {
-                            Some(t::GLASS.into())
-                        } else {
-                            None
-                        },
-                        text_color: if on {
-                            t::on_accent()
-                        } else {
-                            t::text_secondary()
-                        },
-                        border: border(t::NONE, 0.0, t::r_card()),
-                        ..Default::default()
-                    }),
-                );
+                az = az.push(Self::az_button(br, pid, c));
             }
             col = col.push(az);
         }

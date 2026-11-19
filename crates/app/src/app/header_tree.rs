@@ -26,6 +26,12 @@ pub enum Slot {
     People,
     Filter,
     Avatar,
+    /// The library page's Sort button, Filters button and one button of the view switch (poster, thumb, list), with their pop-overs.
+    Sort,
+    Filters,
+    View(nocturne_core::libview::ViewKind),
+    /// The search overlay's query field.
+    SearchInput,
     /// The small icon in front of a header link (`--header-link-icons: on`).
     Icon {
         name: &'static str,
@@ -47,14 +53,39 @@ pub struct Tree {
     /// The `.row` element of a strip, by layout row.
     pub bands: HashMap<usize, Id>,
     pub nav: Option<Id>,
+    /// The element a list's selection sits on (the search overlay's current hit).
+    pub sel: Option<Id>,
+    /// The scrolling list of a screen with one (the search results).
+    pub list: Option<Id>,
     pub slots: Vec<Slot>,
+    /// The picture nodes of the tree by cache key, so an image that arrives later is a targeted update (no rebuild).
+    pub pics: Vec<PicSlot>,
+    /// Picture ids that already show the real image (a late blurhash stand-in must not replace it).
+    pub done: std::collections::HashSet<u32>,
+    /// Item builders of the virtual containers (the library grid).
+    pub builders: nocturne_style::Builders,
+    /// The library grid: its container and the card data its builder reads.
+    pub grid: Option<super::browse_tree::GridRef>,
     next_image: u32,
+}
+
+/// One picture node waiting for (or showing) pixels: the cache key of the real image and of its blurhash stand-in.
+#[derive(Clone, Debug)]
+pub struct PicSlot {
+    pub id: u32,
+    pub key: String,
+    pub blur: Option<String>,
 }
 
 impl Tree {
     pub fn new() -> Self {
+        Self::screen("home")
+    }
+
+    /// An empty tree for the screen named `name` (`data-screen` on the root).
+    pub fn screen(name: &str) -> Self {
         let mut doc = Doc::new("page");
-        doc.attr(0, "data-screen", "home");
+        doc.attr(0, "data-screen", name);
         Self {
             doc,
             images: HashMap::new(),
@@ -64,7 +95,13 @@ impl Tree {
             strips: HashMap::new(),
             bands: HashMap::new(),
             nav: None,
+            sel: None,
+            list: None,
             slots: vec![],
+            pics: vec![],
+            done: Default::default(),
+            builders: nocturne_style::Builders::new(),
+            grid: None,
             next_image: 1,
         }
     }
@@ -73,6 +110,27 @@ impl Tree {
         let id = self.next_image;
         self.next_image += 1;
         self.images.insert(id, h);
+        id
+    }
+
+    /// A picture node's id: its handle (when decoded) goes in `images`, and `key` (with the blurhash stand-in's key) is remembered so that `Hosted::image_arrived` can fill it in later.
+    pub fn pic(
+        &mut self,
+        key: Option<(String, Option<String>)>,
+        pic: &crate::widget::cell::Pic,
+    ) -> u32 {
+        use crate::widget::cell::Pic;
+        let id = self.next_image;
+        self.next_image += 1;
+        if let Pic::Ready(h) | Pic::Blur(h) = pic {
+            self.images.insert(id, h.clone());
+        }
+        if matches!(pic, Pic::Ready(_)) {
+            self.done.insert(id);
+        }
+        if let Some((key, blur)) = key {
+            self.pics.push(PicSlot { id, key, blur });
+        }
         id
     }
 
@@ -179,6 +237,8 @@ impl App {
             },
         );
         tree.nav = Some(nav);
+        // Chevrons and fades at the ends of the strip when links are hidden past them.
+        d.attr(nav, "data-chevrons", "");
         for (n, link) in self.nav_links().into_iter().enumerate() {
             let focused = nav_focus == Some(n);
             let on = |b: bool| b && !at_home && !blur;
@@ -286,6 +346,7 @@ impl App {
             let s = d.add(right, "a.header-search");
             d.essential(s);
             d.focusable(s);
+            d.attr(s, "title", "Search (Ctrl+K or /)");
             let l = d.add(s, "span.header-search-label");
             d.text(l, "Search");
             d.inline(l, "font-size: 13px; color: var(--nocturne-text-secondary)");
@@ -316,7 +377,7 @@ pub fn dims(h: &iced::widget::image::Handle) -> (u32, u32) {
 }
 
 /// Width of `s` as the real shaper measures it (for slots whose Iced element sizes itself).
-fn text_w(s: &str, size: f32, weight: u16) -> f32 {
+pub(super) fn text_w(s: &str, size: f32, weight: u16) -> f32 {
     use nocturne_style::{FontChoice, TextStyle};
     crate::widget::styled_preview::shape(
         s,
