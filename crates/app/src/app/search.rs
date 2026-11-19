@@ -318,7 +318,7 @@ impl App {
                         column![
                             text(m.title.clone())
                                 .size(t::BODY)
-                                .font(t::SEMIBOLD)
+                                .font(t::semibold())
                                 .wrapping(text::Wrapping::None),
                             mono(sub.join(" \u{b7} ")).wrapping(text::Wrapping::None),
                         ]
@@ -342,10 +342,10 @@ impl App {
             .style(|_, _| text_input::Style {
                 background: iced::Background::Color(t::NONE),
                 border: border(t::NONE, 0.0, 0.0),
-                icon: t::TEXT_SECONDARY,
-                placeholder: t::TEXT_TERTIARY,
-                value: t::TEXT,
-                selection: t::ACCENT_TINT,
+                icon: t::text_secondary(),
+                placeholder: t::text_tertiary(),
+                value: t::text(),
+                selection: t::accent_tint(),
             });
         let head = container(
             row![
@@ -405,20 +405,20 @@ fn hit_row<'a>(content: El<'a>, on: bool, m: Message) -> El<'a> {
         .on_press(m)
         .style(move |s| Style {
             background: if on {
-                Some(t::ACCENT_TINT.into())
+                Some(t::accent_tint().into())
             } else if matches!(s, Status::Hovered | Status::Pressed) {
                 Some(t::GLASS.into())
             } else {
                 None
             },
-            text_color: t::TEXT,
+            text_color: t::text(),
             ..Default::default()
         })
         .into()
 }
 
 fn note<'a>(s: &str) -> El<'a> {
-    container(text(s.to_string()).size(t::BODY).color(t::TEXT_SECONDARY))
+    container(text(s.to_string()).size(t::BODY).color(t::text_secondary()))
         .padding(t::S4)
         .into()
 }

@@ -7,8 +7,8 @@ use crate::theme as t;
 use crate::widget::press::Press;
 use crate::widget::{action_button, label, mono, pulse, tip, tracked, wordmark};
 use iced::widget::button::Status;
-use iced::widget::{column, container, opaque, row, space, text};
-use iced::{Alignment, Color, Element, Length, Shadow};
+use iced::widget::{column, container, opaque, row, space, text, text_input};
+use iced::{Alignment, Color, Element, Length};
 use std::time::Instant;
 
 /// Where the README's getting-started section lives.
@@ -42,7 +42,7 @@ fn panel<'a>(w: f32, items: Vec<El<'a>>) -> El<'a> {
 fn heading<'a>(eyebrow: &str, title: String, body: Option<String>) -> El<'a> {
     let mut c = column![
         mono(tracked(eyebrow)),
-        text(title).size(t::HEADING).font(t::BOLD),
+        text(title).size(t::HEADING).font(t::bold()),
     ]
     .spacing(t::S2);
     if let Some(b) = body {
@@ -50,7 +50,7 @@ fn heading<'a>(eyebrow: &str, title: String, body: Option<String>) -> El<'a> {
             text(b)
                 .size(t::BODY)
                 .line_height(1.5)
-                .color(t::TEXT_SECONDARY),
+                .color(t::text_secondary()),
         );
     }
     c.into()
@@ -63,7 +63,7 @@ fn steps<'a>() -> El<'a> {
             mono(n),
             text(s)
                 .size(t::BODY)
-                .color(t::TEXT_SECONDARY)
+                .color(t::text_secondary())
                 .width(Length::Fill)
         ]
         .spacing(t::S3)
@@ -85,41 +85,29 @@ fn steps<'a>() -> El<'a> {
 }
 
 fn note<'a>(msg: Option<&'static str>) -> Option<El<'a>> {
-    msg.map(|m| text(m).size(t::BODY).line_height(1.4).color(t::WARN).into())
+    msg.map(|m| {
+        text(m)
+            .size(t::BODY)
+            .line_height(1.4)
+            .color(t::warn())
+            .into()
+    })
 }
 
 fn rule<'a>() -> El<'a> {
     crate::widget::rule()
 }
 
-fn field<'a>(f: &Fld, focused: bool, w: Where) -> El<'a> {
-    let shown = if f.secret {
-        "\u{2022}".repeat(f.value.chars().count())
-    } else {
-        f.value.clone()
-    };
-    let shown = format!("{shown}{}", if focused { "\u{2595}" } else { "" });
-    let input = Press::new(
-        container(
-            text(shown)
-                .font(t::MONO)
-                .size(t::BODY)
-                .wrapping(text::Wrapping::None),
-        )
-        .center_y(Length::Fill)
-        .clip(true),
-    )
-    .width(Length::Fill)
-    .height(40)
-    .padding([0.0, t::S3])
-    .on_press(Msg::Focus(w))
-    .style(move |_| iced::widget::button::Style {
-        background: None,
-        text_color: t::TEXT,
-        border: border(if focused { t::ACCENT } else { t::EDGE }, 1.0, 6.0),
-        shadow: Shadow::default(),
-        snap: false,
-    });
+fn field<'a>(f: &Fld, w: Where) -> El<'a> {
+    let input = text_input("", &f.value)
+        .id(w.id())
+        .on_input(move |s| Msg::Input(w, s))
+        .on_submit(Msg::Submit(w))
+        .secure(f.secret)
+        .font(t::MONO)
+        .size(t::BODY)
+        .padding([t::S3, t::S3])
+        .style(style::input);
     column![mono(f.label), input].spacing(t::S1).into()
 }
 
@@ -127,7 +115,7 @@ fn pulsing<'a>(s: &'static str, now: Instant, period: u128) -> El<'a> {
     mono(s)
         .color(Color {
             a: pulse(now, period),
-            ..t::TEXT_TERTIARY
+            ..t::text_tertiary()
         })
         .into()
 }
@@ -142,7 +130,7 @@ fn connect_screen(a: &Accounts, now: Instant) -> El<'_> {
             Some("Enter the address of your server.".into()),
         ),
         steps(),
-        field(&form.fields[0], form.focus == 0, Where::Connect),
+        field(&form.fields[0], Where::Connect),
     ];
     items.extend(note(st.msg));
     let mut go = row![action_button(
@@ -170,9 +158,9 @@ fn connect_screen(a: &Accounts, now: Instant) -> El<'_> {
                     .on_press(Msg::Forget(i))
                     .style(|s| iced::widget::button::Style {
                         text_color: if matches!(s, Status::Hovered | Status::Pressed) {
-                            t::DANGER
+                            t::danger()
                         } else {
-                            t::TEXT_SECONDARY
+                            t::text_secondary()
                         },
                         ..Default::default()
                     }),
@@ -181,7 +169,7 @@ fn connect_screen(a: &Accounts, now: Instant) -> El<'_> {
             items.push(
                 Press::new(
                     row![
-                        mono(s.clone()).color(t::TEXT),
+                        mono(s.clone()).color(t::text()),
                         space().width(Length::Fill),
                         forget
                     ]
@@ -193,14 +181,14 @@ fn connect_screen(a: &Accounts, now: Instant) -> El<'_> {
                 .on_press(Msg::Pick(i))
                 .style(move |st| iced::widget::button::Style {
                     background: if on {
-                        Some(t::ACCENT_TINT.into())
+                        Some(t::accent_tint().into())
                     } else if matches!(st, Status::Hovered) {
                         Some(t::GLASS.into())
                     } else {
                         None
                     },
-                    text_color: t::TEXT,
-                    border: border(if on { t::ACCENT } else { t::EDGE }, 1.0, 6.0),
+                    text_color: t::text(),
+                    border: border(if on { t::accent() } else { t::edge() }, 1.0, 6.0),
                     ..Default::default()
                 })
                 .into(),
@@ -213,9 +201,9 @@ fn connect_screen(a: &Accounts, now: Instant) -> El<'_> {
             .on_press(Msg::OpenDocs)
             .style(|s| iced::widget::button::Style {
                 text_color: if matches!(s, Status::Hovered | Status::Pressed) {
-                    t::ACCENT_TEXT
+                    t::accent_text()
                 } else {
-                    t::TEXT_SECONDARY
+                    t::text_secondary()
                 },
                 ..Default::default()
             }),
@@ -235,9 +223,19 @@ fn login_screen(a: &Accounts, now: Instant) -> El<'_> {
     let f = &st.login;
     let mut items: Vec<El> = vec![
         heading("Sign in", st.server_name.clone(), Some(st.url.clone())),
-        field(&f.fields[0], f.focus == 0, Where::Login(0)),
-        field(&f.fields[1], f.focus == 1, Where::Login(1)),
+        field(&f.fields[0], Where::Login(0)),
+        field(&f.fields[1], Where::Login(1)),
     ];
+    if let Some(d) = &st.disclaimer {
+        items.insert(
+            1,
+            text(d.clone())
+                .size(t::CAPTION)
+                .line_height(1.5)
+                .color(t::text_tertiary())
+                .into(),
+        );
+    }
     items.extend(note(st.msg));
     let mut r = row![action_button(
         "Sign in",
@@ -285,8 +283,8 @@ fn qc_panel<'a>(code: Option<String>, now: Instant) -> El<'a> {
     .center_x(Length::Fill)
     .center_y(88)
     .style(|_| iced::widget::container::Style {
-        background: Some(t::ACCENT_TINT.into()),
-        border: border(t::ACCENT, 1.0, 6.0),
+        background: Some(t::accent_tint().into()),
+        border: border(t::accent(), 1.0, 6.0),
         ..Default::default()
     });
     panel(
@@ -348,7 +346,7 @@ fn pw_dialog(d: &Dialog) -> El<'_> {
     };
     let mut items: Vec<El> = vec![heading("Please confirm", title.into(), Some(body.into()))];
     for (i, fld) in f.fields.iter().enumerate() {
-        items.push(field(fld, f.focus == i, Where::Dialog(i)));
+        items.push(field(fld, Where::Dialog(i)));
     }
     let (ci, oi) = (f.fields.len(), f.fields.len() + 1);
     items.extend(note(d.msg));

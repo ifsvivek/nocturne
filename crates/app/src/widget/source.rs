@@ -10,11 +10,11 @@ use nocturne_core::profile::ProfileKind;
 /// Dot colour of a source status: calm blue when fine, amber when unreachable, red when signed out.
 pub fn status_color(s: &Status) -> Color {
     match s {
-        Status::Online => t::ACCENT_TEXT,
-        Status::Connecting | Status::Indexing { .. } => t::TEXT_SECONDARY,
-        Status::Offline { .. } => t::WARN,
-        Status::SignedOut => t::DANGER,
-        Status::Disabled => t::TEXT_TERTIARY,
+        Status::Online => t::accent_text(),
+        Status::Connecting | Status::Indexing { .. } => t::text_secondary(),
+        Status::Offline { .. } => t::warn(),
+        Status::SignedOut => t::danger(),
+        Status::Disabled => t::text_tertiary(),
     }
 }
 
@@ -44,9 +44,9 @@ pub fn source_mark<'a, M: 'a>(slot: &Slot, item_available: bool) -> Element<'a, 
     let c = if item_available {
         status_color(&slot.status)
     } else {
-        t::WARN
+        t::warn()
     };
-    row![dot(c), mono(mark_text(slot)).color(t::TEXT_SECONDARY)]
+    row![dot(c), mono(mark_text(slot)).color(t::text_secondary())]
         .spacing(t::S1 + 2.0)
         .align_y(Alignment::Center)
         .into()
@@ -66,6 +66,7 @@ mod tests {
                 label: label.into(),
                 enabled: true,
                 online: Default::default(),
+                server_ui: false,
                 kind,
             },
             backend: None,

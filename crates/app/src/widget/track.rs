@@ -199,14 +199,14 @@ impl<M> Widget<M, iced::Theme, iced::Renderer> for Track<'_, M> {
                 false,
             );
         }
-        quad(b.x, b.width * self.frac, y, th, t::ACCENT, true);
+        quad(b.x, b.width * self.frac, y, th, t::accent(), true);
         for (s, w) in &self.segs {
             quad(
                 b.x + b.width * s,
                 b.width * w,
                 y + th + 1.0,
                 2.0,
-                t::ACCENT,
+                t::accent(),
                 false,
             );
         }
@@ -218,7 +218,7 @@ impl<M> Widget<M, iced::Theme, iced::Renderer> for Track<'_, M> {
                 th,
                 Color {
                     a: 0.82,
-                    ..t::FRAME
+                    ..t::frame()
                 },
                 false,
             );

@@ -26,16 +26,16 @@ pub fn label<'a>(s: &str) -> Text<'a> {
     text(tracked(s))
         .shaping(Shaping::Advanced)
         .size(t::CAPTION)
-        .font(t::MEDIUM)
-        .color(t::TEXT_TERTIARY)
+        .font(t::medium())
+        .color(t::text_tertiary())
 }
 
 pub fn wordmark<'a>(size: f32) -> Text<'a> {
     text(tracked("Nocturne"))
         .shaping(Shaping::Advanced)
         .size(size)
-        .font(t::BOLD)
-        .color(t::TEXT)
+        .font(t::bold())
+        .color(t::text())
 }
 
 /// Tiny monospace annotation (the only text allowed below 12 px).
@@ -44,7 +44,7 @@ pub fn mono<'a>(s: impl iced::widget::text::IntoFragment<'a>) -> Text<'a> {
         .shaping(Shaping::Advanced)
         .font(t::MONO)
         .size(t::MICRO)
-        .color(t::TEXT_TERTIARY)
+        .color(t::text_tertiary())
 }
 
 pub fn initial(title: &str) -> String {

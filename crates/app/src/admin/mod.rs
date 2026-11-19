@@ -37,8 +37,8 @@ mod view;
 use crate::keys::Key;
 use crate::task::{Handoff, after, run};
 use iced::widget::image::Handle;
-use iced::widget::{operation, scrollable::AbsoluteOffset};
-use iced::{Element, Task, clipboard};
+use iced::widget::{self, operation, scrollable::AbsoluteOffset};
+use iced::{Element, Task};
 use nocturne_core::admin::act::{self, Act};
 use nocturne_core::admin::confirm::{Dialog, Out};
 use nocturne_core::admin::model::{self, Btn};
@@ -84,15 +84,25 @@ pub enum Msg {
     Side(Section),
     Row(usize, bool),
     Press(Scope, usize),
-    /// Dialog element `ix` clicked (an input, Cancel or Confirm).
+    /// Dialog button `ix` clicked (Cancel or Confirm).
     DialogClick(usize),
-    Paste(Option<String>),
+    DialogInput(usize, String),
+    DialogSubmit(usize),
+    /// Tab, arrows or Enter reached the root; the id is the input that really has the cursor.
+    DialogNav(&'static str, Option<widget::Id>),
+    /// Put the cursor where the dialog's focus is.
+    DialogFocus,
     Wrote(u64, bool, &'static str),
     NoteGone(u64),
     Pic(String, String, Option<Handle>),
     Scrolled(f32, f32),
     Choose(usize),
     OpenSettings,
+}
+
+/// Id of dialog input `i`.
+pub(crate) fn field_id(i: usize) -> widget::Id {
+    widget::Id::from(format!("admin-dlg-{i}"))
 }
 
 pub struct Admin {
@@ -409,8 +419,24 @@ impl Admin {
             }
             Msg::Press(scope, i) => self.press(scope, i),
             Msg::DialogClick(ix) => self.dialog_click(ix),
-            Msg::Paste(Some(text)) => self.paste(&text),
-            Msg::Paste(None) => Task::none(),
+            Msg::DialogInput(i, s) => {
+                if let Some(d) = &mut self.dialog {
+                    d.input(i, &s);
+                }
+                Task::none()
+            }
+            Msg::DialogSubmit(i) => self.update(Msg::DialogNav("enter", Some(field_id(i)))),
+            Msg::DialogNav(key, id) => {
+                let Some(d) = &mut self.dialog else {
+                    return Task::none();
+                };
+                if let Some(i) = (0..d.fields.len()).find(|&i| id == Some(field_id(i))) {
+                    d.focus = i;
+                }
+                let out = d.key(key);
+                Task::batch([self.dialog_focus(), self.dialog_out(out)])
+            }
+            Msg::DialogFocus => self.dialog_focus(),
             Msg::Wrote(g, ok, text) => {
                 self.writing = false;
                 let mut t = vec![self.toast(text)];
@@ -478,11 +504,26 @@ impl Admin {
     /// Keyboard entry point (every key while the admin page is current).
     pub fn key(&mut self, k: &Key) -> Task<Msg> {
         if let Some(d) = &mut self.dialog {
-            if k.is_paste() {
-                return clipboard::read().map(Msg::Paste);
-            }
-            let out = d.key(&k.name, k.typed());
-            return self.dialog_out(out);
+            return match k.name.as_str() {
+                n @ ("tab" | "up" | "down" | "enter") => {
+                    let n = if n == "tab" && k.shift { "up" } else { n };
+                    let n: &'static str = match n {
+                        "tab" => "tab",
+                        "up" => "up",
+                        "down" => "down",
+                        _ => "enter",
+                    };
+                    iced::advanced::widget::operate(
+                        iced::advanced::widget::operation::focusable::find_focused(),
+                    )
+                    .collect()
+                    .map(move |v| Msg::DialogNav(n, v.into_iter().next()))
+                }
+                n => {
+                    let out = d.key(n);
+                    self.dialog_out(out)
+                }
+            };
         }
         let name = k.name.as_str();
         if name == "tab" && self.probes.len() > 1 {
@@ -582,7 +623,8 @@ impl Admin {
             }),
             a if self.writes => {
                 self.dialog = Some(a.dialog());
-                Task::none()
+                // The input exists only once the dialog has been drawn.
+                after(Duration::from_millis(60), Msg::DialogFocus)
             }
             _ => self.toast(NEED_WRITES),
         }
@@ -599,15 +641,16 @@ impl Admin {
         }
     }
 
-    fn paste(&mut self, text: &str) -> Task<Msg> {
-        if let Some(d) = &mut self.dialog {
-            // Through the same per-character path as typing: numeric and control rules apply.
-            for c in text.chars().filter(|c| !c.is_control()) {
-                let s = c.to_string();
-                d.key(&s, Some(&s));
-            }
-        }
-        Task::none()
+    /// The cursor goes to the focused input, or leaves the inputs when a button has the focus.
+    fn dialog_focus(&self) -> Task<Msg> {
+        let Some(d) = &self.dialog else {
+            return Task::none();
+        };
+        operation::focus(if d.focus < d.fields.len() {
+            field_id(d.focus)
+        } else {
+            widget::Id::from("admin-dlg-none")
+        })
     }
 
     /// THE single choke point for admin writes: the only place the `Confirmed` token is minted.
@@ -648,5 +691,7 @@ impl Admin {
     }
 }
 
+#[cfg(test)]
+mod input_tests;
 #[cfg(test)]
 mod tests;

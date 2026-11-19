@@ -19,6 +19,7 @@ What NOCTURNE does: 0.3.0 is released; entries marked **(0.4)** are on the unrel
 - [x] (0.4) Smart collections: saved rules (watched state, genres, years, rating, added within N days, resolution, runtime, sources) over every source; local only. Unit-tested; resolution rules apply to servers only
 - [x] (0.4) One watched state across sources (opt-in, write-gated), matched by provider ids only. Verified on a throwaway server with a local copy of the same title (setting off: nothing follows; on with server changes: the server copy follows; on without: only local copies; unrelated titles never touched). Not yet tried with two real servers
 - [x] (0.4) Optional extra HTTP header per server (keyring). Verified on a throwaway server
+- [x] (0.5) Server UI per server (Settings > Sources > Layout): Home in the server's own section order with a My media row and the server's library order and hidden libraries, and the server's branding CSS as that server's theme layer; a home-sections editor (reorder, on / off) that writes back only the `homesection` entries, behind server changes. Verified on a throwaway server (layout, editor with writes off and on, reload); not tried against a server with custom branding CSS or Live TV. Not shown natively: Live TV and recordings rows, audio and book continue rows, web-client plugins
 
 ## Accounts and connection
 - [x] Sign in with username and password, Quick Connect, sign out, change own password
@@ -47,13 +48,13 @@ What NOCTURNE does: 0.3.0 is released; entries marked **(0.4)** are on the unrel
 - [ ] HDR filter (the server exposes none)
 
 ## Playback
-- [x] In-window GPU video through libmpv with hardware decoding (Wayland); external mpv window on X11 and as a fallback
+- [x] In-window GPU video through libmpv with hardware decoding (Wayland); external mpv window as a fallback. Linux is Wayland-only (X11 sessions are refused with a message)
 - [x] libmpv is loaded at run time: without it the app still starts and falls back to the `mpv` program or shows what to install
 - [x] Player loading overlay (Stremio-style: backdrop, logo filling with the buffer) when a stream opens, a lighter version on stalls
 - [~] HDR video is tone-mapped to SDR in the window. (0.4) HDR pop-out window (mpv `gpu-next`, fullscreen, driven from the app) with an Ask / SDR / Pop-out setting: needs HDR hardware, **no HDR display has been tested** ([HDR.md](HDR.md))
 - [x] (0.4) Secondary subtitle; audio and subtitle language remembered per show across restarts (local file, "Original audio" option); player menus by keyboard (T, V, O, Q). Built and unit-tested; not checked against a long real series
 - [x] (0.4) Truthful playback reports (play method, media source, session id), visible notice on failure, final "stopped" retried once
-- [x] (0.4) Trakt (opt-in, your own Trakt app): scrobble and watched-history import. Verified live against a real Trakt account (2026-11-17): browser sign-in with PKCE through the local redirect `http://127.0.0.1:38917/callback`, username, history read, scrobble start/stop ([TRAKT.md](TRAKT.md))
+- [x] (0.4) Trakt (opt-in, one-click connect with the built-in client id; your own Trakt app stays an advanced option): scrobble and watched-history import. Verified live against a real Trakt account (2026-11-17): browser sign-in with PKCE through the local redirect `http://127.0.0.1:38917/callback`, username, history read, scrobble start/stop ([TRAKT.md](TRAKT.md))
 - [~] (0.4) Remote control from other Jellyfin apps (opt-in, needs server changes on). Verified on a throwaway 12.x server: the session shows as controllable, and Play, Pause, Unpause, Seek, Next and Stop sent through the server's API took effect; with the setting off the session is not controllable. Not yet tried from a phone app ([WRITES.md](WRITES.md))
 - [~] (0.4) Couch mode: 10-foot layout, keyboard / remote-key navigation, gamepad (`gilrs`). Layout and key paths checked; **no real gamepad or TV tested**
 - [x] Seek bar with chapters and trickplay hover thumbnails, volume, fullscreen, mini player
@@ -66,9 +67,15 @@ What NOCTURNE does: 0.3.0 is released; entries marked **(0.4)** are on the unrel
 - [x] Playlists you own: create (N on the Playlists page), add from any item or album (More), remove and reorder entries (x, [ ], ]), rename, delete (typed name); collections stay read only
 - [x] Music queue: queue panel (u) with reorder, remove, shuffle and repeat; kept for the session and started from the account menu
 
+## Updates
+
+- At most one check a day (setting `check_updates`, on by default) tells you when a newer version exists. Package-managed installs show the command (`sudo pacman -Syu`, `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade`) and never touch themselves.
+- Per-user installs (tarball under `~/.local`, Windows installer, macOS app in a folder you can write) update in the app: Download and install, then Restart to update. The download is checked against the announced size, its sha256 and an ed25519 signature made with the NOCTURNE update key before anything is replaced; if any step fails the current version stays as it was.
+
 ## Settings
 - [x] Settings screen: server-changes master switch, progress sync, buffering, grid density, home sections, language preferences, reduce motion (follows the desktop by default)
-- [ ] Theme and accent choice, subtitle appearance presets
+- [x] Themes (Settings > Themes): colours, corner radii, window background and font family from imported CSS, global with an optional per-server override, 15 second preview. Layout CSS on named parts (cards, rows, Home sections and hero, header, buttons, player bar) with built-in Marquee and Feed examples; density, type size (whole-UI zoom) and backdrop blur (blurhash stand-in) are applied approximately; the font applies from the next launch. Unit-tested and checked in the app on a local library; not tried against a real Jellyfin theme from the web or two servers at once ([CUSTOMIZATION_PLAN.md](dev/CUSTOMIZATION_PLAN.md))
+- [ ] Subtitle appearance presets
 
 ## Admin (administrator accounts only)
 - [x] Dashboard, activity, devices, sessions, logs, plugins (view), backups (list)

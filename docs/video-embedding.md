@@ -48,7 +48,7 @@ In-window costs about the same as the external mpv process. Decoded frames stay 
 - **dmabuf export into a UI texture**: no hook in the UI framework's renderer.
 - **Child mpv into the window (`--wid`)**: not possible on Wayland; subsurface parents are per connection and xdg-foreign only parents toplevels.
 - **Helper process rendering into dmabufs** (crash-isolated): the best alternative, an estimated 800-1200 lines; needed only if in-process GL ever proves flaky.
-- **XWayland `--wid`**: no transparent overlay, scaling blur; last resort only.
+- **XWayland `--wid`**: no transparent overlay, scaling blur; dropped together with X11 support (Linux is Wayland-only).
 
 ## Compositing notes
 
@@ -59,7 +59,7 @@ In-window costs about the same as the external mpv process. Decoded frames stay 
 
 ## Fallback and known gaps
 
-On X11, with `NOCTURNE_VIDEO=external`, or when embedded setup fails (no Wayland handles, no viewporter or subcompositor, EGL or mpv init errors), `Player` runs `mpv` as a child process with its own window over a private unix socket, using `NOCTURNE_VO` (default `gpu-next`, fine in a separate process). One calm log line says why; no URLs. Choice logic: `crates/core/src/video.rs`.
+With `NOCTURNE_VIDEO=external`, or when embedded setup fails (no Wayland handles, no viewporter or subcompositor, EGL or mpv init errors), `Player` runs `mpv` as a child process with its own window over a private unix socket, using `NOCTURNE_VO` (default `gpu-next`, fine in a separate process). One calm log line says why; no URLs. Choice logic: `crates/core/src/video.rs`.
 
 Known gaps: the first frames can show black before the first video frame; AMD- or Intel-only machines and fractional scales are untested; the mini player cannot stay on top (no Wayland API; a compositor window rule for app id `nocturne` can pin it); mpv's own key bindings stay active in the external window.
 

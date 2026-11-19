@@ -129,7 +129,7 @@ pub struct World {
     pub servers: Vec<Server>,
     pub writes: bool,
     pub sync: bool,
-    /// In-window video (Wayland) or the external mpv window (X11).
+    /// In-window video, or the external mpv window.
     pub embedded_video: bool,
 }
 

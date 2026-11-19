@@ -1,7 +1,7 @@
 //! The detail page body: hero, facts, chips, about, the episode / track list, strips, media info.
 //! Every band has the height `geom` says, so focus can scroll rows into view without measuring.
 use super::cells::{self, Cell, g};
-use super::geom::{self, TOP};
+use super::geom::{self, top};
 use super::model::{self, Chip, DAct, DRow, Sec};
 use super::{Detail, Load, Msg};
 use crate::style::{self, border};
@@ -40,7 +40,7 @@ pub(super) fn caption(m: &Media) -> String {
 }
 
 fn frame(a: f32) -> Color {
-    Color { a, ..t::FRAME }
+    Color { a, ..t::frame() }
 }
 
 impl Detail {
@@ -61,7 +61,7 @@ impl Detail {
         let cur = shape.current(&self.focus);
         let at = |r: DRow| (cur == r).then_some(self.focus.col);
         let mut page = column![
-            space().height(TOP),
+            space().height(top()),
             self.hero(at(DRow::Actions)),
             rule(),
             band(self.facts(full)),
@@ -88,11 +88,11 @@ impl Detail {
                     mono("loading").into()
                 } else if all.iter().any(|l| matches!(l, Load::Failed)) {
                     g("This couldn't be loaded.")
-                        .color(t::TEXT_SECONDARY)
+                        .color(t::text_secondary())
                         .into()
                 } else {
                     g("Nothing in your library features this person.")
-                        .color(t::TEXT_SECONDARY)
+                        .color(t::text_secondary())
                         .into()
                 };
                 page = page.push(band(container(note).padding(t::S6).height(geom::MSG_H)));
@@ -100,7 +100,7 @@ impl Detail {
         }
         if !full.info.is_empty() {
             page = page.push(band(
-                container(info_table(full)).padding([t::S8, t::PAGE_PAD]),
+                container(info_table(full)).padding([t::S8, t::page_pad()]),
             ));
         }
         page = page.push(space().height(t::S8 * 2.0));
@@ -120,11 +120,19 @@ impl Detail {
         let h = geom::hero_h(self.win);
         let w = self.win.width;
         let art = geom::hero_art(m);
-        let backdrop: El = match (self.img(m, art, 1920), self.blur(m, art)) {
+        // Iced cannot blur an image: a theme's backdrop blur shows the item's blurhash stand-in.
+        let (sharp, soft) = (self.img(m, art, 1920), self.blur(m, art));
+        let sharp = if t::backdrop_blur() > 0.0 && soft.is_some() {
+            None
+        } else {
+            sharp
+        };
+        let backdrop: El = match (sharp, soft) {
             (Some(i), _) | (None, Some(i)) => image(i.clone())
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .content_fit(ContentFit::Cover)
+                .opacity(t::backdrop_opacity())
                 .into(),
             _ => cells::tile(None, None, "", 0.0),
         };
@@ -175,7 +183,7 @@ impl Detail {
             head = head.push(
                 row![
                     crate::widget::dot(k.color),
-                    mono(k.label.clone()).color(t::TEXT_SECONDARY)
+                    mono(k.label.clone()).color(t::text_secondary())
                 ]
                 .spacing(t::S1 + 2.0)
                 .align_y(Alignment::Center),
@@ -187,8 +195,8 @@ impl Detail {
             text_col = text_col.push(
                 g(m.title.clone())
                     .size(t::HEADING)
-                    .font(t::SEMIBOLD)
-                    .color(t::TEXT),
+                    .font(t::semibold())
+                    .color(t::text()),
             );
         }
         text_col = text_col.push(
@@ -196,7 +204,7 @@ impl Detail {
                 g(sub)
                     .size(t::BODY_LG)
                     .line_height(1.6)
-                    .color(t::TEXT_SECONDARY),
+                    .color(t::text_secondary()),
             )
             .max_width(560)
             .height(3.0 * t::BODY_LG * 1.6)
@@ -204,9 +212,9 @@ impl Detail {
         );
         text_col = text_col.push(self.buttons(focus));
         if let Some(e) = self.play_err {
-            text_col = text_col.push(g(e.message()).size(t::BODY).color(t::WARN));
+            text_col = text_col.push(g(e.message()).size(t::BODY).color(t::warn()));
         } else if !m.available {
-            text_col = text_col.push(g(PlayError::Unavailable.message()).color(t::WARN));
+            text_col = text_col.push(g(PlayError::Unavailable.message()).color(t::warn()));
         }
         let shade = |deg: f32, from: (f32, Color), to: (f32, Color)| {
             container(space())
@@ -226,7 +234,7 @@ impl Detail {
             container(space())
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .style(style::fill(t::SURFACE))
+                .style(style::fill(t::surface()))
                 .into(),
             backdrop,
             shade(90.0, (0.0, frame(0.94)), (0.65, frame(0.0))).into(),
@@ -236,7 +244,7 @@ impl Detail {
                 .height(Length::Fill)
                 .align_y(Alignment::End)
                 .padding(Padding {
-                    left: t::PAGE_PAD,
+                    left: t::page_pad(),
                     bottom: t::S8,
                     ..Padding::ZERO
                 })
@@ -248,11 +256,10 @@ impl Detail {
     }
 
     fn title_text(&self, size: f32) -> El<'_> {
-        g(self.media.title.clone())
-            .size(size)
-            .line_height(1.08)
-            .font(t::BOLD)
-            .color(t::TEXT)
+        let p = t::parts(Some(nocturne_core::customize::Page::Detail), None);
+        t::typo(&p.detail_title, size, iced::font::Weight::Bold)
+            .with_line(1.08)
+            .text(&self.media.title, t::text())
             .into()
     }
 
@@ -290,7 +297,7 @@ impl Detail {
         }
         if m.kind == Kind::Book {
             r.push(
-                container(g("Not playable in NOCTURNE yet.").color(t::TEXT_SECONDARY))
+                container(g("Not playable in NOCTURNE yet.").color(t::text_secondary()))
                     .padding([t::S3, 0.0])
                     .into(),
             );
@@ -309,16 +316,16 @@ impl Detail {
                 .push(row![
                     g("\u{2605}".repeat(full as usize))
                         .size(t::BODY)
-                        .color(t::ACCENT_TEXT),
+                        .color(t::accent_text()),
                     g(if half { "\u{2605}" } else { "" })
                         .size(t::BODY)
                         .color(Color {
                             a: 0.5,
-                            ..t::ACCENT_TEXT
+                            ..t::accent_text()
                         }),
                     g("\u{2606}".repeat(empty as usize))
                         .size(t::BODY)
-                        .color(t::TEXT_TERTIARY),
+                        .color(t::text_tertiary()),
                 ])
                 .push(mono(format!("{r:.1}")));
         }
@@ -355,7 +362,7 @@ impl Detail {
             line = line.push(mono(format!("{n} items")));
         }
         container(line)
-            .padding([0.0, t::PAGE_PAD])
+            .padding([0.0, t::page_pad()])
             .height(geom::FACTS_H)
             .center_y(geom::FACTS_H)
             .into()
@@ -377,20 +384,20 @@ impl Detail {
                         let hot = matches!(s, Status::Hovered | Status::Pressed);
                         Style {
                             background: Some(Background::Color(if on {
-                                t::ACCENT_TINT
+                                t::accent_tint()
                             } else {
                                 t::GLASS
                             })),
                             text_color: if link {
-                                t::ACCENT_TEXT
+                                t::accent_text()
                             } else {
-                                t::TEXT_SECONDARY
+                                t::text_secondary()
                             },
                             border: border(
                                 if on || hot {
-                                    t::ACCENT
+                                    t::accent()
                                 } else {
-                                    t::HAIRLINE_STRONG
+                                    t::hairline_strong()
                                 },
                                 1.0,
                                 14.0,
@@ -404,8 +411,8 @@ impl Detail {
         }
         container(row(r).spacing(t::S2).wrap().vertical_spacing(t::S2))
             .padding(Padding {
-                left: t::PAGE_PAD,
-                right: t::PAGE_PAD,
+                left: t::page_pad(),
+                right: t::page_pad(),
                 bottom: t::S4,
                 top: t::S3,
             })
@@ -420,8 +427,8 @@ impl Detail {
             left = left.push(
                 g(tag.clone())
                     .size(t::BODY_LG)
-                    .font(t::SEMIBOLD)
-                    .color(t::ACCENT_TEXT),
+                    .font(t::semibold())
+                    .color(t::accent_text()),
             );
         }
         let overview = m
@@ -430,10 +437,13 @@ impl Detail {
             .unwrap_or_else(|| "No description available.".into());
         left = left.push(
             container(
-                g(overview)
-                    .size(t::BODY_LG)
-                    .line_height(1.6)
-                    .color(t::TEXT_SECONDARY),
+                t::typo(
+                    &t::parts(Some(nocturne_core::customize::Page::Detail), None).detail_text,
+                    t::BODY_LG,
+                    iced::font::Weight::Normal,
+                )
+                .with_line(1.6)
+                .text(&overview, t::text_secondary()),
             )
             .max_width(760),
         );
@@ -443,7 +453,7 @@ impl Detail {
                 row![
                     mono(k.to_uppercase()),
                     space().width(Length::Fill),
-                    container(g(v).size(t::CAPTION + 1.0).color(t::TEXT_SECONDARY))
+                    container(g(v).size(t::CAPTION + 1.0).color(t::text_secondary()))
                         .max_width(210)
                         .clip(true),
                 ]
@@ -457,7 +467,7 @@ impl Detail {
                     self.img(m, Art::Poster, 480),
                     self.blur(m, Art::Poster),
                     &m.title,
-                    t::R_XS,
+                    t::r_xs(),
                 ))
                 .width(180)
                 .height(240),
@@ -465,7 +475,7 @@ impl Detail {
         }
         let h = geom::about_h(m, f, self.win.width);
         container(r.push(left).push(right))
-            .padding([t::S6, t::PAGE_PAD])
+            .padding([t::S6, t::page_pad()])
             .height(h)
             .clip(true)
             .into()
@@ -515,12 +525,12 @@ impl Detail {
                 );
                 let on = on_tabs && i == self.focus.season;
                 tabs = tabs.push(container(t).style(move |_| container::Style {
-                    background: on.then_some(t::ACCENT_TINT.into()),
+                    background: on.then_some(t::accent_tint().into()),
                     ..Default::default()
                 }));
             }
             head = head.push(column![
-                container(tabs).padding([0.0, t::PAGE_PAD]).height(36),
+                container(tabs).padding([0.0, t::page_pad()]).height(36),
                 rule()
             ]);
         }
@@ -533,7 +543,7 @@ impl Detail {
                     .height(geom::MSG_H),
             )),
             Load::Failed => page.push(band(
-                container(g("This couldn't be loaded.").color(t::TEXT_SECONDARY))
+                container(g("This couldn't be loaded.").color(t::text_secondary()))
                     .padding(t::S6)
                     .height(geom::MSG_H),
             )),
@@ -544,7 +554,7 @@ impl Detail {
                     } else {
                         "Nothing in here yet."
                     })
-                    .color(t::TEXT_SECONDARY),
+                    .color(t::text_secondary()),
                 )
                 .padding(t::S6)
                 .height(geom::MSG_H),
@@ -573,7 +583,7 @@ impl Detail {
                     }
                     page = page.push(
                         container(line)
-                            .padding([0.0, t::PAGE_PAD])
+                            .padding([0.0, t::page_pad()])
                             .height(geom::card_h(w)),
                     );
                 }
@@ -620,7 +630,7 @@ impl Detail {
         }
         // The first cell's picture lines up with the page margin (cells carry their own padding).
         let strip = scrollable(container(cells_row).padding(Padding {
-            left: t::PAGE_PAD - t::S3,
+            left: t::page_pad() - t::S3,
             ..Padding::ZERO
         }))
         .id(strip_id(s))
@@ -663,7 +673,7 @@ pub(super) fn info_table<'a>(f: &Full) -> El<'a> {
             tbl = tbl.push(rule()).push(stream_row(s));
         }
         d = d.push(container(tbl).style(|_| container::Style {
-            border: border(t::HAIRLINE, 1.0, t::R_PANEL),
+            border: border(t::hairline(), 1.0, t::r_panel()),
             ..Default::default()
         }));
     }
@@ -674,7 +684,7 @@ fn stream_row<'a>(s: &StreamRow) -> El<'a> {
     let col = |x: String| -> El<'a> {
         container(
             g(x).size(t::CAPTION + 1.0)
-                .color(t::TEXT_SECONDARY)
+                .color(t::text_secondary())
                 .wrapping(text::Wrapping::None),
         )
         .width(Length::FillPortion(1))
@@ -687,7 +697,7 @@ fn stream_row<'a>(s: &StreamRow) -> El<'a> {
             container(
                 g(s.codec.clone())
                     .size(t::CAPTION + 1.0)
-                    .color(t::TEXT_SECONDARY)
+                    .color(t::text_secondary())
             )
             .width(72),
             col(s.title.clone()),

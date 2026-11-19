@@ -44,8 +44,8 @@ impl Form {
         self.fields.get(i).map_or("", |f| f.value.trim())
     }
 
-    /// `key` as the UI names it, `ch` the typed text (None for control keys or ctrl-chords).
-    pub fn key(&mut self, key: &str, ch: Option<&str>) -> Ev {
+    /// Moves between inputs and buttons; typing, backspace and paste belong to the text inputs.
+    pub fn key(&mut self, key: &str) -> Ev {
         let n = self.slots().max(1);
         match key {
             "tab" | "down" => self.focus = (self.focus + 1) % n,
@@ -58,24 +58,9 @@ impl Form {
                 }
             }
             "enter" => return Ev::Press(self.focus - self.fields.len()),
-            "backspace" => {
-                if let Some(f) = self.fields.get_mut(self.focus) {
-                    f.value.pop();
-                }
-            }
-            _ => {
-                if let Some(c) = ch.filter(|c| !c.chars().any(char::is_control)) {
-                    self.paste(c);
-                }
-            }
+            _ => {}
         }
         Ev::Stay
-    }
-
-    pub fn paste(&mut self, s: &str) {
-        if let Some(f) = self.fields.get_mut(self.focus) {
-            f.value.extend(s.chars().filter(|c| !c.is_control()));
-        }
     }
 
     pub fn clear(&mut self) {
@@ -108,6 +93,8 @@ pub enum LoginFail {
 pub struct Probe {
     pub name: String,
     pub quick_connect: bool,
+    /// The administrator's login disclaimer (public branding), plain text.
+    pub disclaimer: Option<String>,
     pub restored: bool,
     /// A stored session was rejected (401) and has been deleted.
     pub expired: bool,
@@ -159,6 +146,7 @@ pub struct Account {
     /// The server in use (set once a check passed).
     pub url: String,
     pub server_name: String,
+    pub disclaimer: Option<String>,
     pub connect: Form,
     pub login: Form,
     pub busy: bool,
@@ -197,6 +185,7 @@ impl Account {
             servers,
             url: String::new(),
             server_name: String::new(),
+            disclaimer: None,
             connect: Form::default(),
             login: Form::default(),
             busy: false,
@@ -278,6 +267,7 @@ impl Account {
             Ok(p) => {
                 self.url = url.into();
                 self.server_name = p.name;
+                self.disclaimer = p.disclaimer;
                 self.qc_available = p.quick_connect;
                 self.keyring_down |= p.keyring_down;
                 if p.restored {
@@ -460,10 +450,7 @@ mod tests {
     }
 
     fn type_into(a: &mut Account, text: &str) {
-        for c in text.chars() {
-            let s = c.to_string();
-            a.connect.key(&s, Some(&s));
-        }
+        a.connect.fields[0].value.push_str(text);
     }
 
     fn probe(qc: bool) -> Probe {
@@ -548,6 +535,21 @@ mod tests {
             (a.stage, a.msg, a.busy),
             (Stage::Connect, Some(MSG_NOT_SERVER), false)
         );
+    }
+
+    #[test]
+    fn the_servers_login_disclaimer_is_kept_for_its_sign_in_page() {
+        let mut a = acct();
+        let (e, u) = a.begin_check("http://a:1".into(), false).unwrap();
+        a.probed(
+            e,
+            Ok(Probe {
+                disclaimer: Some("Members only".into()),
+                ..probe(false)
+            }),
+            &u,
+        );
+        assert_eq!(a.disclaimer.as_deref(), Some("Members only"));
     }
 
     #[test]
@@ -708,25 +710,15 @@ mod tests {
             ],
             2,
         );
-        assert_eq!(f.key("a", Some("a")), Ev::Stay);
-        assert_eq!(
-            f.key("enter", None),
-            Ev::Stay,
-            "enter moves to the next input"
-        );
+        assert_eq!(f.key("enter"), Ev::Stay, "enter moves to the next input");
         assert_eq!(f.focus, 1);
-        f.key("x", Some("x"));
-        f.key("x", Some("\u{7f}")); // control chars never typed
-        assert_eq!((f.value(0), f.value(1)), ("a", "x"));
-        assert_eq!(f.key("enter", None), Ev::Submit);
-        f.key("tab", None);
-        assert_eq!(f.key("enter", None), Ev::Press(0));
-        f.key("down", None);
-        assert_eq!(f.key("enter", None), Ev::Press(1));
-        f.key("down", None);
+        assert_eq!(f.key("enter"), Ev::Submit);
+        f.key("tab");
+        assert_eq!(f.key("enter"), Ev::Press(0));
+        f.key("down");
+        assert_eq!(f.key("enter"), Ev::Press(1));
+        f.key("down");
         assert_eq!(f.focus, 0, "wraps");
-        f.key("backspace", None);
-        assert_eq!(f.value(0), "");
     }
 
     #[test]

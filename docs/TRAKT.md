@@ -1,6 +1,6 @@
 # Trakt (opt-in)
 
-Settings > Trakt. Off by default; nothing is sent until you connect and switch a row on. NOCTURNE ships **no** Trakt credentials and Trakt issues no client secret: create your own app at <https://trakt.tv/oauth/applications>, register `http://127.0.0.1:38917/callback` as its redirect URI and paste its **Client ID** into the dialog. The client id and the sign-in tokens are kept in the system keyring only.
+Settings > Trakt. Off by default; nothing is sent until you connect and switch a row on. NOCTURNE ships a public Trakt client id (`BUILTIN_CLIENT_ID` in `crates/core/src/trakt.rs`; PKCE needs no client secret), so the dialog just says **Connect Trakt**. To use your own app instead (Advanced, or the `NOCTURNE_TRAKT_CLIENT_ID` environment variable, which wins over the saved one), create it at <https://trakt.tv/oauth/applications>, register `http://127.0.0.1:38917/callback` as its redirect URI and paste its **Client ID** into the dialog. A build without a built-in id (the source tree ships a placeholder) always asks for one. The client id and the sign-in tokens are kept in the system keyring only.
 
 ## What happens
 

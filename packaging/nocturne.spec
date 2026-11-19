@@ -4,7 +4,7 @@
 %global __os_install_post %{nil}
 
 Name:           nocturne
-Version:        %{?pkgver}%{!?pkgver:0.4.0}
+Version:        %{?pkgver}%{!?pkgver:0.5.0}
 Release:        1%{?dist}
 Summary:        Native media center for local folders and Jellyfin servers
 License:        GPL-3.0-or-later
@@ -19,12 +19,6 @@ Requires:       vulkan-loader
 Requires:       libwayland-client
 Requires:       libwayland-egl
 Requires:       libxkbcommon
-Requires:       libxkbcommon-x11
-Requires:       libX11
-Requires:       libX11-xcb
-Requires:       libXcursor
-Requires:       libXi
-Requires:       libxcb
 Requires:       dbus-libs
 Recommends:     mesa-vulkan-drivers
 Recommends:     mpv

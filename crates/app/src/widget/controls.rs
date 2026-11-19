@@ -59,21 +59,21 @@ pub fn chip<'a, M: 'a>(s: &str, accent: bool) -> Element<'a, M> {
             .font(t::MONO)
             .size(t::MICRO)
             .color(if accent {
-                t::ACCENT_TEXT
+                t::accent_text()
             } else {
-                t::TEXT_SECONDARY
+                t::text_secondary()
             }),
     )
     .height(20)
     .padding([0.0, t::S2])
     .center_y(20)
     .style(move |_| iced::widget::container::Style {
-        background: Some(if accent { t::ACCENT_TINT } else { t::GLASS }.into()),
+        background: Some(if accent { t::accent_tint() } else { t::GLASS }.into()),
         border: border(
             if accent {
-                t::ACCENT
+                t::accent()
             } else {
-                t::HAIRLINE_STRONG
+                t::hairline_strong()
             },
             1.0,
             R_CHIP,
@@ -97,7 +97,7 @@ pub fn value_chip<'a, M: Clone + 'a>(
         container(
             text(value.to_string())
                 .size(t::CONTROL_TEXT)
-                .font(t::MEDIUM)
+                .font(t::medium())
                 .wrapping(text::Wrapping::None)
         )
         .max_width(180)
@@ -110,9 +110,9 @@ pub fn value_chip<'a, M: Clone + 'a>(
             if open { "caret_up" } else { "caret_down" },
             12.0,
             if open {
-                t::ACCENT_TEXT
+                t::accent_text()
             } else {
-                t::TEXT_SECONDARY
+                t::text_secondary()
             },
         ));
     }
@@ -127,15 +127,15 @@ pub fn value_chip<'a, M: Clone + 'a>(
                 Shadow::default()
             };
             let (mut bg, mut edge) = (
-                if open { t::ACCENT_TINT } else { t::CONTROL },
-                if lit { t::ACCENT } else { t::EDGE },
+                if open { t::accent_tint() } else { t::control() },
+                if lit { t::accent() } else { t::edge() },
             );
             match s {
-                Status::Hovered if !open => (bg, edge) = (t::CONTROL_HOVER, t::TEXT_SECONDARY),
-                Status::Pressed => (bg, edge) = (t::ACCENT_TINT, t::ACCENT),
+                Status::Hovered if !open => (bg, edge) = (t::control_hover(), t::text_secondary()),
+                Status::Pressed => (bg, edge) = (t::accent_tint(), t::accent()),
                 _ => {}
             }
-            st(Some(bg), t::TEXT, Some(edge), R_CTL, shadow)
+            st(Some(bg), t::text(), Some(edge), R_CTL, shadow)
         })
         .into()
 }
@@ -145,7 +145,14 @@ pub fn value_chip<'a, M: Clone + 'a>(
 pub fn switch<'a, M: Clone + 'a>(on: bool, focused: bool, on_press: M) -> Element<'a, M> {
     let knob =
         container(space().width(16).height(16)).style(move |_| iced::widget::container::Style {
-            background: Some(if on { t::ON_ACCENT } else { t::TEXT_SECONDARY }.into()),
+            background: Some(
+                if on {
+                    t::on_accent()
+                } else {
+                    t::text_secondary()
+                }
+                .into(),
+            ),
             border: border(t::NONE, 0.0, 8.0),
             ..Default::default()
         });
@@ -158,17 +165,17 @@ pub fn switch<'a, M: Clone + 'a>(on: bool, focused: bool, on_press: M) -> Elemen
             ..Padding::ZERO
         })
         .style(move |_| iced::widget::container::Style {
-            background: Some(if on { t::ACCENT } else { t::CONTROL }.into()),
-            border: border(if on { t::ACCENT } else { t::EDGE }, 1.0, 11.0),
+            background: Some(if on { t::accent() } else { t::control() }.into()),
+            border: border(if on { t::accent() } else { t::edge() }, 1.0, 11.0),
             ..Default::default()
         });
     let word = text(if on { "ON" } else { "OFF" })
         .size(t::CONTROL_TEXT)
-        .font(t::SEMIBOLD)
+        .font(t::semibold())
         .color(if on {
-            t::ACCENT_TEXT
+            t::accent_text()
         } else {
-            t::TEXT_SECONDARY
+            t::text_secondary()
         })
         .width(28);
     Press::new(mid(row![word, track]
@@ -179,7 +186,7 @@ pub fn switch<'a, M: Clone + 'a>(on: bool, focused: bool, on_press: M) -> Elemen
     .on_press(on_press)
     .style(move |s| {
         let bg = if focused {
-            Some(t::RAISED)
+            Some(t::raised())
         } else if matches!(s, Status::Hovered | Status::Pressed) {
             Some(t::GLASS)
         } else {
@@ -192,8 +199,8 @@ pub fn switch<'a, M: Clone + 'a>(on: bool, focused: bool, on_press: M) -> Elemen
         };
         let mut x = st(
             bg,
-            t::TEXT,
-            Some(if focused { t::ACCENT } else { t::NONE }),
+            t::text(),
+            Some(if focused { t::accent() } else { t::NONE }),
             R_CTL,
             shadow,
         );
@@ -242,7 +249,7 @@ fn pill<'a, M: Clone + 'a>(
         text(label.to_string())
             .shaping(iced::widget::text::Shaping::Advanced)
             .size(t::BODY)
-            .font(t::SEMIBOLD),
+            .font(t::semibold()),
     );
     let body = if shrink {
         container(r).center_y(Length::Fill)
@@ -264,12 +271,12 @@ fn pill<'a, M: Clone + 'a>(
             let mut x = if primary {
                 st(
                     Some(if focused || hot {
-                        t::ACCENT_HOVER
+                        t::accent_hover()
                     } else {
-                        t::ACCENT
+                        t::accent()
                     }),
-                    t::ON_ACCENT,
-                    Some(t::ACCENT),
+                    t::on_accent(),
+                    Some(t::accent()),
                     R_CTL,
                     shadow,
                 )
@@ -277,18 +284,18 @@ fn pill<'a, M: Clone + 'a>(
                 let bg = if hot {
                     Some(t::GLASS)
                 } else if focused {
-                    Some(t::ACCENT_TINT)
+                    Some(t::accent_tint())
                 } else {
                     None
                 };
                 let edge = if focused {
-                    t::ACCENT
+                    t::accent()
                 } else if hot {
-                    t::TEXT_TERTIARY
+                    t::text_tertiary()
                 } else {
-                    t::EDGE
+                    t::edge()
                 };
-                st(bg, t::TEXT, Some(edge), R_CTL, shadow)
+                st(bg, t::text(), Some(edge), R_CTL, shadow)
             };
             if s == Status::Pressed {
                 x.background = x.background.map(|b| match b {
@@ -320,13 +327,13 @@ pub fn action_button<'a, M: Clone + 'a>(
     on_press: M,
 ) -> Element<'a, M> {
     let (ink, edge) = match (primary, danger) {
-        (_, true) => (t::DANGER, t::DANGER),
-        (true, _) => (t::ON_ACCENT, t::ACCENT),
-        _ => (t::TEXT, t::EDGE),
+        (_, true) => (t::danger(), t::danger()),
+        (true, _) => (t::on_accent(), t::accent()),
+        _ => (t::text(), t::edge()),
     };
     Press::new(mid(text(label.to_string())
         .size(t::CAPTION + 1.0)
-        .font(t::SEMIBOLD)))
+        .font(t::semibold())))
     .height(32)
     .padding([0.0, t::S3])
     .on_press(on_press)
@@ -336,14 +343,18 @@ pub fn action_button<'a, M: Clone + 'a>(
         } else {
             Shadow::default()
         };
-        let ring = if focused && !danger { t::ACCENT } else { edge };
+        let ring = if focused && !danger {
+            t::accent()
+        } else {
+            edge
+        };
         let hot = matches!(s, Status::Hovered | Status::Pressed);
         let bg = if danger {
-            Some(t::DANGER_TINT)
+            Some(t::danger_tint())
         } else if primary {
-            Some(if hot { t::ACCENT_HOVER } else { t::ACCENT })
+            Some(if hot { t::accent_hover() } else { t::accent() })
         } else if focused {
-            Some(t::ACCENT_TINT)
+            Some(t::accent_tint())
         } else if hot {
             Some(t::GLASS)
         } else {
@@ -379,14 +390,19 @@ pub fn nav_link<'a, M: Clone + 'a>(
     focused: bool,
     on_press: M,
 ) -> Element<'a, M> {
-    let base = container(text(label.to_string()).size(t::BODY).font(t::MEDIUM))
-        .height(t::HEADER_H)
+    let ty = t::typo(
+        &t::parts(None, None).header_link,
+        t::BODY,
+        iced::font::Weight::Medium,
+    );
+    let base = container(ty.text_inherit(label))
+        .height(t::header_h())
         .padding([0.0, t::S3])
-        .center_y(t::HEADER_H);
+        .center_y(t::header_h());
     let dot: Element<'a, M> = if active || focused {
         container(
             container(space().width(4).height(4)).style(|_| iced::widget::container::Style {
-                background: Some(t::ACCENT.into()),
+                background: Some(t::accent().into()),
                 border: border(t::NONE, 0.0, 2.0),
                 ..Default::default()
             }),
@@ -407,11 +423,11 @@ pub fn nav_link<'a, M: Clone + 'a>(
         .on_press(on_press)
         .style(move |s| {
             let ink = if focused {
-                t::ACCENT_TEXT
+                t::accent_text()
             } else if matches!(s, Status::Hovered | Status::Pressed) || active {
-                t::TEXT
+                t::text()
             } else {
-                t::TEXT_SECONDARY
+                t::text_secondary()
             };
             st(None, ink, None, 0.0, Shadow::default())
         })
@@ -420,14 +436,14 @@ pub fn nav_link<'a, M: Clone + 'a>(
 
 /// Text tab: active = white with a blue underline.
 pub fn tab<'a, M: Clone + 'a>(label: &str, active: bool, on_press: M) -> Element<'a, M> {
-    let base = container(text(label.to_string()).size(t::BODY).font(t::MEDIUM))
+    let base = container(text(label.to_string()).size(t::BODY).font(t::medium()))
         .height(36)
         .padding([0.0, t::S3])
         .center_y(36);
     let bar = container(
         container(space().width(Length::Fill).height(2)).style(move |_| {
             iced::widget::container::Style {
-                background: Some(if active { t::ACCENT } else { t::NONE }.into()),
+                background: Some(if active { t::accent() } else { t::NONE }.into()),
                 ..Default::default()
             }
         }),
@@ -439,9 +455,9 @@ pub fn tab<'a, M: Clone + 'a>(label: &str, active: bool, on_press: M) -> Element
         .on_press(on_press)
         .style(move |s| {
             let ink = if active || matches!(s, Status::Hovered | Status::Pressed) {
-                t::TEXT
+                t::text()
             } else {
-                t::TEXT_SECONDARY
+                t::text_secondary()
             };
             st(None, ink, None, 0.0, Shadow::default())
         })
@@ -478,7 +494,7 @@ pub fn avatar<'a, M: 'a>(
         .center(size)
         .clip(true)
         .style(move |_| iced::widget::container::Style {
-            background: Some(t::RAISED.into()),
+            background: Some(t::raised().into()),
             border: border(ring, ring_w, size / 2.0),
             ..Default::default()
         })
@@ -489,7 +505,7 @@ pub fn avatar<'a, M: 'a>(
 pub fn tip<'a, M: 'a>(content: impl Into<Element<'a, M>>, label: &'static str) -> Element<'a, M> {
     tooltip(
         content,
-        container(mono(label).color(t::TEXT))
+        container(mono(label).color(t::text()))
             .padding([t::S1, t::S2])
             .style(style::tip),
         tooltip::Position::Bottom,
@@ -504,7 +520,7 @@ pub fn progress_bar<'a, M: 'a>(frac: f32, h: f32) -> Element<'a, M> {
         .girth(h)
         .style(|_| iced::widget::progress_bar::Style {
             background: t::PROGRESS_TRACK.into(),
-            bar: t::ACCENT.into(),
+            bar: t::accent().into(),
             border: iced::Border::default(),
         })
         .into()
@@ -523,7 +539,7 @@ pub fn menu_row<'a, M: Clone + 'a>(
         .on_press(on_press)
         .style(move |s| {
             let bg = if on {
-                Some(t::ACCENT_TINT)
+                Some(t::accent_tint())
             } else if matches!(s, Status::Hovered | Status::Pressed) {
                 Some(t::GLASS)
             } else {
@@ -531,7 +547,7 @@ pub fn menu_row<'a, M: Clone + 'a>(
             };
             let mut x = st(
                 bg,
-                if on { t::ACCENT_TEXT } else { t::TEXT },
+                if on { t::accent_text() } else { t::text() },
                 None,
                 R_CTL,
                 Shadow::default(),

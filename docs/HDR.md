@@ -10,7 +10,7 @@ In-window video uses libmpv's render API, which only offers an OpenGL target and
 
 When the content is HDR (from the stream info: PQ / HLG transfer, BT.2020) **and** the display path can show HDR, NOCTURNE can play it in mpv's own window instead of in the app window:
 
-- external `Player` (separate mpv process, already our X11 fallback) with `vo=gpu-next`, `target-colorspace-hint=yes`, fullscreen, hardware decoding as today;
+- external `Player` (separate mpv process, already our fallback player) with `vo=gpu-next`, `target-colorspace-hint=yes`, fullscreen, hardware decoding as today;
 - Linux: needs a Wayland compositor with the colour-management protocol (mpv 0.42 supports it; e.g. KDE Plasma 6, recent Hyprland, GNOME with HDR enabled); detection via mpv's reported target colourspace, never guessed;
 - Windows (later): `gpu-next` on D3D11 with HDR swapchains;
 - macOS (later): `gpu-next` EDR output (verify the mpv version and context at port time).

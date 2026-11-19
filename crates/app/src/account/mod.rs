@@ -7,7 +7,8 @@ mod view;
 
 use crate::keys::Key;
 use crate::task::{after, run};
-use iced::{Element, Task, clipboard};
+use iced::widget::{self, operation};
+use iced::{Element, Task};
 use nocturne_core::account::ops::*;
 pub use nocturne_core::account::state;
 use nocturne_jellyfin_user::{Error, Session, UserClient, UserConfirmed};
@@ -49,12 +50,38 @@ struct Dialog {
     msg: Option<&'static str>,
 }
 
-/// Which text field a click focuses.
+/// Which text field.
 #[derive(Clone, Copy, Debug)]
 pub enum Where {
     Connect,
     Login(usize),
     Dialog(usize),
+}
+
+fn field_id(scope: &str, i: usize) -> widget::Id {
+    widget::Id::from(format!("acct-{scope}-{i}"))
+}
+
+impl Where {
+    fn parts(self) -> (&'static str, usize) {
+        match self {
+            Where::Connect => ("connect", 0),
+            Where::Login(i) => ("login", i),
+            Where::Dialog(i) => ("dlg", i),
+        }
+    }
+
+    pub(super) fn id(self) -> widget::Id {
+        let (s, i) = self.parts();
+        field_id(s, i)
+    }
+}
+
+/// Asks which text input really has the cursor, then reports it with the navigation key.
+fn find_cursor(key: &'static str) -> Task<Msg> {
+    iced::advanced::widget::operate(iced::advanced::widget::operation::focusable::find_focused())
+        .collect()
+        .map(move |v| Msg::Nav(key, v.into_iter().next()))
 }
 
 #[derive(Clone)]
@@ -81,7 +108,14 @@ pub enum Msg {
     DialogDone(DlgKind, Result<(), &'static str>),
     /// Password dialog failure that also clears the current-password field.
     PwFailed(&'static str),
-    Focus(Where),
+    /// A text input changed.
+    Input(Where, String),
+    /// Enter inside a text input.
+    Submit(Where),
+    /// Whether the input we asked the cursor for really has it (see `focus_task`).
+    Focus(String, bool),
+    /// Tab, arrows or Enter reached the root; the id is the input that really has the cursor.
+    Nav(&'static str, Option<widget::Id>),
     ConnectGo,
     Pick(usize),
     Forget(usize),
@@ -91,7 +125,6 @@ pub enum Msg {
     BackToServers,
     DialogPress(usize),
     OpenDocs,
-    Paste(Option<String>),
     /// The server's current display language is known: open its dialog.
     OpenLanguage(UserClient, String),
 }
@@ -103,6 +136,10 @@ pub struct Accounts {
     dialog: Option<Dialog>,
     /// The sign-in form was opened from the profile picker, so Esc returns there.
     from_picker: bool,
+    /// The text input last asked to take the cursor (so it is asked once, not on every tick).
+    focused: Option<String>,
+    /// The cursor reached `focused`; until then every tick checks and asks again.
+    focus_ok: bool,
     pub events: Vec<Event>,
 }
 
@@ -117,6 +154,8 @@ impl Accounts {
             qc_secret: None,
             dialog: None,
             from_picker: false,
+            focused: None,
+            focus_ok: false,
             events: vec![],
         };
         let task = match last.and_then(|u| me.st.start_restore(&u)) {
@@ -221,15 +260,47 @@ impl Accounts {
                     d.msg = Some(m);
                 }
             }
-            Msg::Focus(w) => match w {
-                Where::Connect => self.st.connect.focus = 0,
-                Where::Login(i) => self.st.login.focus = i,
-                Where::Dialog(i) => {
-                    if let Some(d) = self.dialog.as_mut() {
-                        d.form.focus = i;
+            Msg::Input(w, v) => {
+                let (scope, i) = w.parts();
+                if self.scope() == Some(scope)
+                    && let Some(form) = self.form_mut()
+                    && let Some(f) = form.fields.get_mut(i)
+                {
+                    f.value = v;
+                    form.focus = i;
+                    self.focused = Some(format!("acct-{scope}-{i}"));
+                    self.focus_ok = true;
+                }
+            }
+            Msg::Submit(w) => {
+                let (scope, i) = w.parts();
+                if self.scope() != Some(scope) {
+                    return Task::none();
+                }
+                if let Some(f) = self.form_mut() {
+                    f.focus = i;
+                }
+                return self.form_key("enter");
+            }
+            Msg::Focus(id, ok) => {
+                if self.focused.as_deref() == Some(id.as_str()) {
+                    if ok {
+                        self.focus_ok = true;
+                    } else {
+                        return operation::focus(widget::Id::from(id));
                     }
                 }
-            },
+            }
+            Msg::Nav(key, id) => {
+                let scope = self.scope().unwrap_or_default();
+                if let Some(form) = self.form_mut()
+                    && let Some(i) =
+                        (0..form.fields.len()).find(|&i| id == Some(field_id(scope, i)))
+                {
+                    form.focus = i;
+                }
+                return self.form_key(key);
+            }
             Msg::ConnectGo => return self.connect_go(),
             Msg::Pick(i) => return self.pick(i),
             Msg::Forget(i) => self.forget(i),
@@ -243,22 +314,61 @@ impl Accounts {
                     .arg(view::DOCS_URL)
                     .spawn();
             }
-            Msg::Paste(Some(t)) => self.paste(&t),
-            Msg::Paste(None) => {}
             Msg::OpenLanguage(c, cur) => self.open_language(c, &cur),
         }
         Task::none()
     }
 
-    fn paste(&mut self, t: &str) {
+    /// The form on screen (the dialog's, else the current stage's).
+    fn form_mut(&mut self) -> Option<&mut Form> {
         if let Some(d) = self.dialog.as_mut() {
-            d.form.paste(t);
-            return;
+            return Some(&mut d.form);
         }
         match self.st.stage {
-            Stage::Connect => self.st.connect.paste(t),
-            Stage::Login => self.st.login.paste(t),
-            Stage::Active => {}
+            Stage::Connect => Some(&mut self.st.connect),
+            Stage::Login if self.st.qc == Qc::Off => Some(&mut self.st.login),
+            _ => None,
+        }
+    }
+
+    fn scope(&self) -> Option<&'static str> {
+        if self.dialog.is_some() {
+            return Some("dlg");
+        }
+        match self.st.stage {
+            Stage::Connect => Some("connect"),
+            Stage::Login if self.st.qc == Qc::Off => Some("login"),
+            _ => None,
+        }
+    }
+
+    /// Puts the cursor in the input the form's focus names (or takes it away when a button has the
+    /// focus). Called from the root tick; asks once per change.
+    pub fn focus_task(&mut self, shown: bool) -> Task<Msg> {
+        let scope = self.scope().filter(|_| shown);
+        let want = scope.and_then(|s| {
+            let f = self.form_mut()?;
+            Some(if f.focus < f.fields.len() {
+                format!("acct-{s}-{}", f.focus)
+            } else {
+                "acct-none".to_string()
+            })
+        });
+        if want == self.focused {
+            // The input may not have existed when the cursor was first asked for: check until it has it.
+            return match want {
+                Some(id) if !self.focus_ok && id != "acct-none" => {
+                    operation::is_focused(widget::Id::from(id.clone()))
+                        .map(move |ok| Msg::Focus(id.clone(), ok))
+                }
+                _ => Task::none(),
+            };
+        }
+        self.focused = want.clone();
+        self.focus_ok = false;
+        match want {
+            Some(id) => operation::focus(widget::Id::from(id)),
+            None => Task::none(),
         }
     }
 
@@ -642,23 +752,23 @@ impl Accounts {
 
     // ---- keyboard ----
 
-    /// Keyboard entry (the root calls this while an account screen or the dialog is up).
+    /// Keyboard entry (the root calls this while an account screen or the dialog is up). Typed text
+    /// never gets here while an input has the cursor: the text inputs take it.
     pub fn on_key(&mut self, k: &Key) -> Task<Msg> {
         let key = k.name.as_str();
-        let paste = k.is_paste();
-        let ch = k.typed();
+        let nav = match key {
+            "tab" if k.shift => Some("up"),
+            "tab" => Some("tab"),
+            "up" => Some("up"),
+            "down" => Some("down"),
+            "enter" => Some("enter"),
+            _ => None,
+        };
         if self.dialog.is_some() {
             if key == "escape" {
                 self.dialog = None;
-            } else if paste {
-                return clipboard::read().map(Msg::Paste);
-            } else if let Some(d) = self.dialog.as_mut() {
-                match d.form.key(key, ch) {
-                    // Enter on the last input moves to the button; only Enter on the button confirms.
-                    Ev::Submit => d.form.focus = d.form.fields.len() + 1,
-                    Ev::Press(n) => return self.dialog_press(n),
-                    Ev::Stay => {}
-                }
+            } else if let Some(n) = nav {
+                return find_cursor(n);
             }
             return Task::none();
         }
@@ -673,13 +783,8 @@ impl Accounts {
                 self.forget(self.st.connect.focus - self.st.connect.fields.len() - 1);
             }
             Stage::Connect => {
-                if paste {
-                    return clipboard::read().map(Msg::Paste);
-                }
-                match self.st.connect.key(key, ch) {
-                    Ev::Submit | Ev::Press(0) => return self.connect_go(),
-                    Ev::Press(n) => return self.pick(n - 1),
-                    Ev::Stay => {}
+                if let Some(n) = nav {
+                    return find_cursor(n);
                 }
             }
             Stage::Login if self.st.qc != Qc::Off => {
@@ -689,17 +794,44 @@ impl Accounts {
             }
             Stage::Login if key == "escape" => self.back_to_servers(),
             Stage::Login => {
-                if paste {
-                    return clipboard::read().map(Msg::Paste);
+                if let Some(n) = nav {
+                    return find_cursor(n);
                 }
+            }
+        }
+        Task::none()
+    }
+
+    /// A navigation key, applied to the form on screen.
+    fn form_key(&mut self, key: &str) -> Task<Msg> {
+        if let Some(d) = self.dialog.as_mut() {
+            match d.form.key(key) {
+                // Enter on the last input moves to the button; only Enter on the button confirms.
+                Ev::Submit => d.form.focus = d.form.fields.len() + 1,
+                Ev::Press(n) => return self.dialog_press(n),
+                Ev::Stay => {}
+            }
+            return Task::none();
+        }
+        if self.st.busy {
+            return Task::none();
+        }
+        match self.st.stage {
+            Stage::Connect => match self.st.connect.key(key) {
+                Ev::Submit | Ev::Press(0) => return self.connect_go(),
+                Ev::Press(n) => return self.pick(n - 1),
+                Ev::Stay => {}
+            },
+            Stage::Login if self.st.qc == Qc::Off => {
                 let last = self.st.login.buttons - 1;
-                match self.st.login.key(key, ch) {
+                match self.st.login.key(key) {
                     Ev::Submit | Ev::Press(0) => return self.login_go(),
                     Ev::Press(n) if n == last => self.back_to_servers(),
                     Ev::Press(_) => return self.qc_go(),
                     Ev::Stay => {}
                 }
             }
+            _ => {}
         }
         Task::none()
     }
@@ -726,6 +858,8 @@ mod tests {
             qc_secret: None,
             dialog: None,
             from_picker: false,
+            focused: None,
+            focus_ok: false,
             events: vec![],
         };
         a.dialog = Some(Dialog {
@@ -739,7 +873,7 @@ mod tests {
             name: n.into(),
             ..Default::default()
         };
-        let _ = a.on_key(&key("enter"));
+        let _ = a.update(Msg::Nav("enter", None));
         assert_eq!(
             a.dialog.as_ref().unwrap().form.focus,
             2,
@@ -747,5 +881,98 @@ mod tests {
         );
         let _ = a.on_key(&key("escape"));
         assert!(a.dialog.is_none());
+    }
+
+    /// Real input through Iced's headless harness (`iced_test`): the account views' text inputs.
+    mod input {
+        use super::*;
+        use iced::keyboard::{Key, key::Named};
+        use iced_test::{Simulator, selector};
+
+        fn accounts() -> Accounts {
+            Accounts {
+                st: Account::new(vec![], None),
+                servers: Servers::default(),
+                qc_secret: None,
+                dialog: None,
+                from_picker: false,
+                focused: None,
+                focus_ok: false,
+                events: vec![],
+            }
+        }
+
+        fn sign_in() -> Accounts {
+            let mut a = accounts();
+            a.st.stage = Stage::Login;
+            a.st.login = Form::new(
+                vec![
+                    Fld {
+                        label: "Username",
+                        ..Default::default()
+                    },
+                    Fld {
+                        label: "Password",
+                        secret: true,
+                        ..Default::default()
+                    },
+                ],
+                2,
+            );
+            a
+        }
+
+        /// Clicks the input, presses End (the click may land inside a long text), runs `f` on the simulator and applies
+        /// the produced messages through `update`.
+        fn act(a: &mut Accounts, w: Where, f: impl FnOnce(&mut Simulator<'_, Msg>)) -> Vec<Msg> {
+            let mut sim = Simulator::new(a.view(Instant::now()));
+            sim.click(selector::id(w.id())).expect("field is on screen");
+            sim.tap_key(Key::Named(Named::End));
+            f(&mut sim);
+            let msgs: Vec<Msg> = sim.into_messages().collect();
+            for m in msgs.iter().cloned() {
+                let _ = a.update(m);
+            }
+            msgs
+        }
+
+        /// One character at a time with a fresh view each time, like the real app's redraws.
+        fn type_into(a: &mut Accounts, w: Where, text: &str) {
+            for c in text.chars() {
+                act(a, w, |s| {
+                    s.typewrite(&c.to_string());
+                });
+            }
+        }
+
+        #[test]
+        fn typing_in_the_sign_in_form_updates_the_form_through_update() {
+            let mut a = sign_in();
+            type_into(&mut a, Where::Login(0), "alice");
+            type_into(&mut a, Where::Login(1), "s3cret");
+            assert_eq!(a.st.login.fields[0].value, "alice");
+            assert_eq!(a.st.login.fields[1].value, "s3cret");
+            assert_eq!(a.st.login.focus, 1);
+        }
+
+        #[test]
+        fn typing_the_server_address_reaches_the_connect_form() {
+            let mut a = accounts();
+            type_into(&mut a, Where::Connect, "http://192.168.1.10:8096");
+            assert_eq!(a.st.connect.fields[0].value, "http://192.168.1.10:8096");
+        }
+
+        #[test]
+        fn enter_in_a_field_submits_that_field() {
+            let mut a = sign_in();
+            let msgs = act(&mut a, Where::Login(1), |s| {
+                s.tap_key(Key::Named(Named::Enter));
+            });
+            assert!(
+                msgs.iter()
+                    .any(|m| matches!(m, Msg::Submit(Where::Login(1)))),
+                "Enter must submit the password field"
+            );
+        }
     }
 }

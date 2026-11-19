@@ -29,11 +29,11 @@ fn hist_button<'a>(glyph: &'static str, label: &'static str, enabled: bool, m: M
                 background: matches!(s, Status::Hovered | Status::Pressed)
                     .then_some(t::GLASS.into()),
                 text_color: if enabled {
-                    t::TEXT
+                    t::text()
                 } else {
                     iced::Color {
                         a: 0.5,
-                        ..t::TEXT_TERTIARY
+                        ..t::text_tertiary()
                     }
                 },
                 border: border(t::NONE, 0.0, 6.0),
@@ -100,7 +100,7 @@ impl App {
         }
         // Couch mode drops the pointer-sized history buttons (B goes back) and keeps the big tabs.
         let mut brand = row![].spacing(t::S1).align_y(Alignment::Center);
-        if !crate::couch::on() {
+        if !crate::couch::on() && t::header_item(t::HeaderItem::History) {
             brand = brand
                 .push(hist_button(
                     "\u{2039}",
@@ -130,7 +130,7 @@ impl App {
                 row![
                     text("Search")
                         .size(t::CAPTION + 1.0)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                     mono("/")
                 ]
                 .spacing(t::S3)
@@ -140,12 +140,12 @@ impl App {
             .padding([6.0, t::S3])
             .on_press(Message::OpenSearch)
             .style(|s| Style {
-                text_color: t::TEXT,
+                text_color: t::text(),
                 border: border(
                     if matches!(s, Status::Hovered | Status::Pressed) {
-                        t::ACCENT
+                        t::accent()
                     } else {
-                        t::EDGE
+                        t::edge()
                     },
                     1.0,
                     6.0,
@@ -167,14 +167,22 @@ impl App {
                 "Show one source or all",
             ));
         }
-        let right = right.push(search).push(self.avatar());
+        if t::header_item(t::HeaderItem::Search) {
+            right = right.push(search);
+        }
+        if t::header_item(t::HeaderItem::Account) {
+            right = right.push(self.avatar());
+        }
         let right = row![right].spacing(t::S4).align_y(Alignment::Center);
         let bar = row![left, right]
             .align_y(Alignment::Center)
-            .height(t::HEADER_H - 1.0);
-        let head = container(column![container(bar).padding([0.0, t::PAGE_PAD]), rule(),])
-            .width(Length::Fill)
-            .style(style::fill(t::HEADER_BG));
+            .height(t::header_h() - 1.0);
+        let head = container(column![
+            container(bar).padding([0.0, t::page_pad()]),
+            rule(),
+        ])
+        .width(Length::Fill)
+        .style(style::fill(t::header_bg()));
         container(head)
             .width(Length::Fill)
             .height(Length::Fill)
@@ -197,15 +205,15 @@ impl App {
             t::NONE,
             0.0,
             t::CAPTION + 1.0,
-            t::ACCENT_TEXT,
+            t::accent_text(),
         ))
         .on_press(Message::ToggleMenu)
         .style(move |s| Style {
             border: border(
                 if open || matches!(s, Status::Hovered | Status::Pressed) {
-                    t::ACCENT
+                    t::accent()
                 } else {
-                    t::EDGE
+                    t::edge()
                 },
                 1.0,
                 16.0,
@@ -253,11 +261,11 @@ impl App {
                         .on_press_maybe((!last).then_some(Message::Crumb(i)))
                         .style(move |s| Style {
                             text_color: if last {
-                                t::TEXT
+                                t::text()
                             } else if matches!(s, Status::Hovered | Status::Pressed) {
-                                t::ACCENT_TEXT
+                                t::accent_text()
                             } else {
-                                t::TEXT_SECONDARY
+                                t::text_secondary()
                             },
                             ..Default::default()
                         }),
@@ -269,14 +277,14 @@ impl App {
         // Same fill as the header: scrolled content must not show through behind the trail.
         let bar = container(r.height(28))
             .width(Length::Fill)
-            .padding([0.0, t::PAGE_PAD])
-            .style(style::fill(t::HEADER_BG));
+            .padding([0.0, t::page_pad()])
+            .style(style::fill(t::header_bg()));
         Some(
             container(bar)
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .padding(Padding {
-                    top: t::HEADER_H,
+                    top: t::header_h(),
                     ..Padding::ZERO
                 })
                 .align_y(Alignment::Start)
@@ -302,15 +310,15 @@ impl App {
                 40.0,
                 &name,
                 self.my_pic().as_ref(),
-                t::HAIRLINE_STRONG,
+                t::hairline_strong(),
                 1.0,
                 t::BODY,
-                t::ACCENT_TEXT
+                t::accent_text()
             ),
             column![
                 text(name)
                     .size(t::BODY)
-                    .font(t::SEMIBOLD)
+                    .font(t::semibold())
                     .wrapping(text::Wrapping::None),
                 mono(server).wrapping(text::Wrapping::None),
             ]
@@ -332,10 +340,10 @@ impl App {
                         22.0,
                         &a.user_name,
                         pic.as_ref(),
-                        t::HAIRLINE_STRONG,
+                        t::hairline_strong(),
                         1.0,
                         t::CAPTION,
-                        t::TEXT_SECONDARY,
+                        t::text_secondary(),
                     )
                 }),
                 _ => None,
@@ -372,8 +380,8 @@ impl App {
                 .align_x(Alignment::End)
                 .align_y(Alignment::Start)
                 .padding(Padding {
-                    top: t::HEADER_H + 4.0,
-                    right: t::PAGE_PAD,
+                    top: t::header_h() + 4.0,
+                    right: t::page_pad(),
                     ..Padding::ZERO
                 }),
         ]
@@ -402,7 +410,13 @@ pub const NAV_ID: &str = "nav-scroll";
 /// Rough width of one header link (label at body size plus its padding and gap); the real widths
 /// are not known until layout, and the strip only needs to land near the focused link.
 fn link_w(label: &str) -> f32 {
-    label.chars().count() as f32 * t::BODY * 0.58 + 2.0 * t::S3 + t::S1
+    let size = t::typo(
+        &t::parts(None, None).header_link,
+        t::BODY,
+        iced::font::Weight::Medium,
+    )
+    .size();
+    label.chars().count() as f32 * size * 0.58 + 2.0 * t::S3 + t::S1
 }
 
 /// Where to scroll the strip so link `col` is in view (`None`: already visible). `widths` are the
@@ -461,7 +475,7 @@ impl App {
         let content: f32 = self.nav_widths().iter().sum();
         (
             0.0,
-            (self.win.width - 2.0 * t::PAGE_PAD - 600.0).max(200.0),
+            (self.win.width - 2.0 * t::page_pad() - 600.0).max(200.0),
             content,
         )
     }
@@ -501,20 +515,23 @@ impl App {
         }
         let edge = |glyph: &'static str, to_right: bool, dir: f32| -> El<'a> {
             // Solid frame colour at the outer edge, clear on the strip side.
-            let clear = iced::Color { a: 0.0, ..t::FRAME };
+            let clear = iced::Color {
+                a: 0.0,
+                ..t::frame()
+            };
             let angle = if to_right { 0.0 } else { std::f32::consts::PI };
             let g = iced::gradient::Linear::new(angle)
                 .add_stop(0.0, clear)
-                .add_stop(1.0, t::FRAME);
+                .add_stop(1.0, t::frame());
             let chev = Press::new(container(text(glyph).size(t::HEADING)).center(Length::Fill))
                 .width(48)
-                .height(t::HEADER_H - 1.0)
+                .height(t::header_h() - 1.0)
                 .on_press(Message::NavPage(dir))
                 .style(|s| Style {
                     text_color: if matches!(s, Status::Hovered | Status::Pressed) {
-                        t::ACCENT_TEXT
+                        t::accent_text()
                     } else {
-                        t::TEXT
+                        t::text()
                     },
                     ..Default::default()
                 });
@@ -543,6 +560,9 @@ impl App {
 
     /// The header's links for the libraries known now (see `unified::links`).
     pub(super) fn nav_links(&self) -> Vec<Link> {
+        if !t::header_item(t::HeaderItem::Nav) {
+            return vec![];
+        }
         let home = self.stack.first();
         let libs = home.map_or(&[][..], |h| h.libs.items());
         let several = home.is_some_and(|h| h.fan.contributors() > 1);

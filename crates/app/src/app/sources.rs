@@ -4,7 +4,7 @@
 //! library deletes only NOCTURNE's own index and state, never a media file.
 use super::catalog::DEV;
 use super::message::{Message, SrcAct};
-use super::{AccountBack, App, Phase};
+use super::{AccountBack, App, Phase, UpdateStage};
 use crate::style::{self, border};
 use crate::theme as t;
 use crate::widget::{action_button, dot, icon, mono, rule, section, status_color};
@@ -31,7 +31,7 @@ pub(super) struct HeaderDlg {
 }
 
 /// Width of the buttons column of a source row (sign in again, folders, rescan, disable, up, down, remove).
-const ACTS_W: f32 = 560.0;
+const ACTS_W: f32 = 780.0;
 
 fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
@@ -49,6 +49,7 @@ impl App {
             SrcAct::Close => self.src_open = false,
             SrcAct::AddServer => {
                 self.src_open = false;
+                self.th.open = false;
                 self.account_back = Some(AccountBack::Ready);
                 self.phase = Phase::Account;
                 let t = self.ensure_accounts();
@@ -75,6 +76,12 @@ impl App {
             SrcAct::HeaderCancel => self.hdr = None,
             SrcAct::HeaderClear => return self.save_header(true),
             SrcAct::HeaderSave => return self.save_header(false),
+            SrcAct::Layout(id) => return self.toggle_server_ui(id),
+            SrcAct::Sections(id) => self.open_sections(id),
+            a @ (SrcAct::SecToggle(_)
+            | SrcAct::SecShift(..)
+            | SrcAct::SecSave
+            | SrcAct::SecCancel) => return self.sections_act(a),
             SrcAct::AskRemove(id) => self.confirm = Some(id),
             SrcAct::CancelRemove => self.confirm = None,
             SrcAct::ConfirmRemove => {
@@ -249,6 +256,7 @@ impl App {
             // Every source is gone: back to the first-run choice.
             self.stack.clear();
             self.src_open = false;
+            self.th.open = false;
             self.settings_open = false;
             self.setup = None;
             let t = self.start_onboarding(crate::onboarding::Mode::Fresh);
@@ -275,19 +283,21 @@ impl App {
         let badge = container(icon(
             if local { "folder" } else { "server" },
             18.0,
-            t::TEXT_SECONDARY,
+            t::text_secondary(),
         ))
         .center(38)
         .style(|_| container::Style {
             background: Some(t::GLASS.into()),
-            border: border(t::HAIRLINE_STRONG, 1.0, 19.0),
+            border: border(t::hairline_strong(), 1.0, 19.0),
             ..Default::default()
         });
         let who = column![
             text(s.profile.label.clone())
                 .size(t::BODY)
-                .font(t::SEMIBOLD),
-            text(account).size(t::CONTROL_TEXT).color(t::TEXT_SECONDARY),
+                .font(t::semibold()),
+            text(account)
+                .size(t::CONTROL_TEXT)
+                .color(t::text_secondary()),
         ]
         .spacing(2)
         .width(Length::Fill);
@@ -296,7 +306,7 @@ impl App {
                 dot(status_color(&s.status)),
                 text(status_text(&s.status, Instant::now()))
                     .size(t::CONTROL_TEXT)
-                    .color(t::TEXT_SECONDARY),
+                    .color(t::text_secondary()),
             ]
             .spacing(t::S2)
             .align_y(Alignment::Center),
@@ -330,6 +340,21 @@ impl App {
                     acts = acts.push(btn("Use account", false, false, SrcAct::Use(id)));
                 }
                 acts = acts.push(btn("Header", false, false, SrcAct::Header(id)));
+                if !self.dev && s.profile.enabled {
+                    acts = acts.push(btn(
+                        if s.profile.server_ui {
+                            "Layout: server's"
+                        } else {
+                            "Layout: NOCTURNE"
+                        },
+                        false,
+                        false,
+                        SrcAct::Layout(id),
+                    ));
+                    if s.profile.server_ui {
+                        acts = acts.push(btn("Sections", false, false, SrcAct::Sections(id)));
+                    }
+                }
             }
             acts = acts
                 .push(btn(
@@ -391,27 +416,27 @@ impl App {
             .padding(Padding {
                 top: t::S6,
                 bottom: t::S4,
-                left: t::PAGE_PAD,
-                right: t::PAGE_PAD,
+                left: t::page_pad(),
+                right: t::page_pad(),
             }),
         );
-        page = page.push(container(rule()).padding([0.0, t::PAGE_PAD]));
+        page = page.push(container(rule()).padding([0.0, t::page_pad()]));
         if self.catalog.slots.is_empty() {
             page = page.push(
                 container(
                     text("No sources yet. Add a server or a folder on this computer.")
                         .size(t::BODY)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                 )
-                .padding([t::S6, t::PAGE_PAD]),
+                .padding([t::S6, t::page_pad()]),
             );
         }
         for s in &self.catalog.slots {
             page = page
-                .push(container(column![self.source_row(s), rule()]).padding([0.0, t::PAGE_PAD]));
+                .push(container(column![self.source_row(s), rule()]).padding([0.0, t::page_pad()]));
         }
         scroll(page.padding(Padding {
-            top: t::HEADER_H + t::S8,
+            top: t::header_h() + t::S8,
             bottom: t::S8,
             ..Padding::ZERO
         }))
@@ -437,17 +462,17 @@ impl App {
             mono("EXTRA HEADER"),
             text("Sent with every request to this server")
                 .size(t::HEADING)
-                .font(t::BOLD),
+                .font(t::bold()),
             text("For a server behind a gateway that asks for a header. The value is kept in your system keyring, never in a file. Leave both empty and press Remove to stop sending one.")
                 .size(t::BODY)
                 .line_height(1.5)
-                .color(t::TEXT_SECONDARY),
+                .color(t::text_secondary()),
             field("Header name, e.g. X-Access-Key", &d.name, false),
             field("Value", &d.value, true),
         ]
         .spacing(t::S3);
         if let Some(e) = &d.err {
-            card = card.push(text(e.clone()).size(t::CONTROL_TEXT).color(t::DANGER));
+            card = card.push(text(e.clone()).size(t::CONTROL_TEXT).color(t::danger()));
         }
         let go = d.busy || d.name.trim().is_empty() || d.value.trim().is_empty();
         card = card.push(
@@ -516,11 +541,11 @@ impl App {
         };
         let card = column![
             mono("PLEASE CONFIRM"),
-            text(title).size(t::HEADING).font(t::BOLD),
+            text(title).size(t::HEADING).font(t::bold()),
             text(body)
                 .size(t::BODY)
                 .line_height(1.5)
-                .color(t::TEXT_SECONDARY),
+                .color(t::text_secondary()),
             space().height(t::S2),
             container(
                 row![
@@ -616,7 +641,116 @@ impl App {
             .height(Length::Fill)
             .align_x(Alignment::Center)
             .padding(Padding {
-                top: t::HEADER_H + t::S2,
+                top: t::header_h() + t::S2,
+                ..Padding::ZERO
+            })
+            .into(),
+        )
+    }
+
+    /// "Update available": the exact command for a package-managed install, or a link to the release page.
+    /// Shares the source banner's slot (a source problem wins) and is dismissible for the session.
+    pub(super) fn update_banner(&self) -> Option<El<'_>> {
+        use nocturne_core::update::{Action, UpdateState};
+        let UpdateState::Available {
+            version, action, ..
+        } = self.update.as_ref()?
+        else {
+            return None;
+        };
+        if !self.settings.check_updates {
+            return None;
+        }
+        let (msg, act): (String, El) = match action {
+            Action::Command(cmd) => (
+                format!("NOCTURNE {version} is available. Update with: {cmd}"),
+                action_button(
+                    "Copy command",
+                    true,
+                    false,
+                    false,
+                    false,
+                    Message::UpdateCopy(cmd),
+                ),
+            ),
+            Action::Install(art) => match &self.update_stage {
+                UpdateStage::Idle => (
+                    format!("NOCTURNE {version} is available."),
+                    action_button(
+                        "Download and install",
+                        true,
+                        false,
+                        false,
+                        false,
+                        Message::UpdateInstall(art.clone()),
+                    ),
+                ),
+                UpdateStage::Downloading { progress, size } => {
+                    let done = progress.load(std::sync::atomic::Ordering::Relaxed);
+                    let pct = (done * 100).checked_div(*size).unwrap_or(0).min(100);
+                    (
+                        format!("Downloading NOCTURNE {version}: {pct}%"),
+                        space().into(),
+                    )
+                }
+                UpdateStage::Ready(_) => (
+                    format!("NOCTURNE {version} is ready."),
+                    action_button(
+                        "Restart to update",
+                        true,
+                        false,
+                        false,
+                        false,
+                        Message::UpdateRestart,
+                    ),
+                ),
+                UpdateStage::Failed(e) => (
+                    format!("The update failed: {e}"),
+                    action_button(
+                        "Try again",
+                        true,
+                        false,
+                        false,
+                        false,
+                        Message::UpdateInstall(art.clone()),
+                    ),
+                ),
+            },
+            Action::Download(url) => (
+                format!("NOCTURNE {version} is available."),
+                action_button(
+                    "Download",
+                    true,
+                    false,
+                    false,
+                    false,
+                    Message::UpdateOpen(url.clone()),
+                ),
+            ),
+        };
+        let dismiss = action_button(
+            "Dismiss",
+            false,
+            false,
+            false,
+            false,
+            Message::UpdateDismiss,
+        );
+        Some(
+            container(
+                container(
+                    row![text(msg).size(t::BODY), act, dismiss]
+                        .spacing(t::S4)
+                        .align_y(Alignment::Center),
+                )
+                .padding([t::S2, t::S4])
+                .style(style::raised_card),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_x(Alignment::Center)
+            .padding(Padding {
+                top: t::header_h() + t::S2,
                 ..Padding::ZERO
             })
             .into(),

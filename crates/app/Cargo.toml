@@ -17,7 +17,8 @@ name = "nocturne"
 path = "src/main.rs"
 
 [dependencies]
-iced = { version = "0.14", features = ["tokio", "image", "svg", "advanced", "lazy", "canvas"] }
+# Iced default features minus `x11`: Linux is Wayland-only, no X11 crates in the build.
+iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "crisp", "web-colors", "thread-pool", "linux-theme-detection", "wayland", "tokio", "image", "svg", "advanced", "lazy", "canvas"] }
 nocturne-core = { path = "../core" }
 nocturne-local = { path = "../local" }
 nocturne-jellyfin = { path = "../jellyfin" }
@@ -38,4 +39,5 @@ libc = "0.2"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Console", "Win32_Security", "Win32_System_Pipes", "Win32_Storage_FileSystem", "Win32_System_IO"] }
 
 [dev-dependencies]
+iced_test = "0.14"
 tempfile = "3.27.0"

@@ -528,11 +528,11 @@ impl App {
         let f = self.online.finder.as_ref().expect("finder is open");
         let mut card = column![
             mono("SUBTITLES"),
-            text(f.media.title.clone()).size(t::HEADING).font(t::BOLD),
+            text(f.media.title.clone()).size(t::HEADING).font(t::bold()),
             text("Searches OpenSubtitles with this title, its year or id and your subtitle language. Nothing about the file is sent. Downloads are kept in NOCTURNE's own folder, never next to your media.")
                 .size(t::CONTROL_TEXT)
                 .line_height(1.5)
-                .color(t::TEXT_SECONDARY),
+                .color(t::text_secondary()),
         ]
         .spacing(t::S3);
         match &f.hits {
@@ -540,15 +540,15 @@ impl App {
                 card = card.push(
                     text("Searching\u{2026}")
                         .size(t::BODY)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                 )
             }
-            Some(Err(e)) => card = card.push(text(*e).size(t::BODY).color(t::DANGER)),
+            Some(Err(e)) => card = card.push(text(*e).size(t::BODY).color(t::danger())),
             Some(Ok(h)) if h.is_empty() => {
                 card = card.push(
                     text("No subtitles found in your language.")
                         .size(t::BODY)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                 );
             }
             Some(Ok(hits)) => {
@@ -598,14 +598,18 @@ impl App {
             card = card.push(
                 text("Downloading\u{2026}")
                     .size(t::CONTROL_TEXT)
-                    .color(t::TEXT_SECONDARY),
+                    .color(t::text_secondary()),
             );
         }
         match &f.note {
             Some(Ok(s)) => {
-                card = card.push(text(s.clone()).size(t::CONTROL_TEXT).color(t::ACCENT_TEXT))
+                card = card.push(
+                    text(s.clone())
+                        .size(t::CONTROL_TEXT)
+                        .color(t::accent_text()),
+                )
             }
-            Some(Err(s)) => card = card.push(text(*s).size(t::CONTROL_TEXT).color(t::DANGER)),
+            Some(Err(s)) => card = card.push(text(*s).size(t::CONTROL_TEXT).color(t::danger())),
             None => {}
         }
         card = card.push(
@@ -645,9 +649,9 @@ impl App {
             match st.note.get(k) {
                 Some(Ok(s)) => text(s.clone())
                     .size(t::CONTROL_TEXT)
-                    .color(t::ACCENT_TEXT)
+                    .color(t::accent_text())
                     .into(),
-                Some(Err(s)) => text(*s).size(t::CONTROL_TEXT).color(t::DANGER).into(),
+                Some(Err(s)) => text(*s).size(t::CONTROL_TEXT).color(t::danger()).into(),
                 None => space().into(),
             }
         };
@@ -657,7 +661,7 @@ impl App {
                     text(label.to_string()).size(t::BODY),
                     text(hint.to_string())
                         .size(t::CONTROL_TEXT)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                 ]
                 .spacing(2)
                 .width(Length::Fill),
@@ -683,12 +687,12 @@ impl App {
                 "No key saved yet."
             }
         };
-        let head = |s: &str| text(s.to_string()).size(t::BODY_LG).font(t::BOLD);
+        let head = |s: &str| text(s.to_string()).size(t::BODY_LG).font(t::bold());
         let mut c = column![
             head("Online details"),
             text("Optional and off by default. NOCTURNE works fully from your files without it.")
                 .size(t::CONTROL_TEXT)
-                .color(t::TEXT_SECONDARY),
+                .color(t::text_secondary()),
             toggle(
                 "Look up details online",
                 "Posters, descriptions, genres and ratings for titles your files don't describe.",
@@ -699,7 +703,7 @@ impl App {
                 text(PRIVACY)
                     .size(t::CONTROL_TEXT)
                     .line_height(1.5)
-                    .color(t::TEXT_TERTIARY)
+                    .color(t::text_tertiary())
             )
             .max_width(640),
         ]
@@ -748,7 +752,7 @@ impl App {
                         row![
                             text(saved(st.secrets.tmdb))
                                 .size(t::CONTROL_TEXT)
-                                .color(t::TEXT_SECONDARY),
+                                .color(t::text_secondary()),
                             note("tmdb"),
                         ]
                         .spacing(t::S3),
@@ -832,7 +836,7 @@ impl App {
                 c = c.push(
                     text("These titles fit more than one result. Pick the right one; nothing is guessed.")
                         .size(t::CONTROL_TEXT)
-                        .color(t::TEXT_SECONDARY),
+                        .color(t::text_secondary()),
                 );
                 for p in pending.iter().take(20) {
                     let mut opts = column![].spacing(t::S1);
@@ -845,7 +849,7 @@ impl App {
                                     text(format!("{}{y}", cand.title)).size(t::BODY),
                                     text(cand.overview.chars().take(110).collect::<String>())
                                         .size(t::CAPTION)
-                                        .color(t::TEXT_TERTIARY),
+                                        .color(t::text_tertiary()),
                                 ]
                                 .spacing(2)
                                 .width(Length::Fill),
@@ -864,8 +868,11 @@ impl App {
                         );
                     }
                     c = c.push(
-                        column![text(p.label.clone()).size(t::BODY).font(t::SEMIBOLD), opts]
-                            .spacing(t::S2),
+                        column![
+                            text(p.label.clone()).size(t::BODY).font(t::semibold()),
+                            opts
+                        ]
+                        .spacing(t::S2),
                     );
                 }
             }
@@ -895,14 +902,14 @@ impl App {
                     row![
                         text(format!("{} {}", saved(st.secrets.subs), if st.secrets.login { "A login is saved." } else { "No login saved (downloads usually need one)." }))
                             .size(t::CONTROL_TEXT)
-                            .color(t::TEXT_SECONDARY),
+                            .color(t::text_secondary()),
                         note("subs"),
                         note("login"),
                     ]
                     .spacing(t::S3),
                     text("Your key and login are kept in the system keyring, never in a file. Leave a field empty and save to remove it.")
                         .size(t::CAPTION)
-                        .color(t::TEXT_TERTIARY),
+                        .color(t::text_tertiary()),
                 ]
                 .spacing(t::S2)
                 .padding(Padding { left: t::S4, ..Padding::ZERO }),
@@ -925,7 +932,7 @@ impl App {
             credits = credits.push(
                 row![
                     link("themoviedb.org", TMDB_URL),
-                    text(TMDB_NOTICE).size(t::CAPTION).color(t::TEXT_TERTIARY)
+                    text(TMDB_NOTICE).size(t::CAPTION).color(t::text_tertiary())
                 ]
                 .spacing(t::S3)
                 .align_y(Alignment::Center),
@@ -935,7 +942,9 @@ impl App {
             credits = credits.push(
                 row![
                     link("tvmaze.com", TVMAZE_URL),
-                    text(TVMAZE_CREDIT).size(t::CAPTION).color(t::TEXT_TERTIARY)
+                    text(TVMAZE_CREDIT)
+                        .size(t::CAPTION)
+                        .color(t::text_tertiary())
                 ]
                 .spacing(t::S3)
                 .align_y(Alignment::Center),
@@ -947,7 +956,7 @@ impl App {
                     link("musicbrainz.org", MB_URL),
                     text("Album data from MusicBrainz; covers from the Cover Art Archive.")
                         .size(t::CAPTION)
-                        .color(t::TEXT_TERTIARY)
+                        .color(t::text_tertiary())
                 ]
                 .spacing(t::S3)
                 .align_y(Alignment::Center),
@@ -959,14 +968,14 @@ impl App {
                     link("opensubtitles.com", "https://www.opensubtitles.com"),
                     text("Subtitles from OpenSubtitles.")
                         .size(t::CAPTION)
-                        .color(t::TEXT_TERTIARY)
+                        .color(t::text_tertiary())
                 ]
                 .spacing(t::S3)
                 .align_y(Alignment::Center),
             );
         }
         container(column![rule(), container(c).padding([t::S6, 0.0]), credits].spacing(t::S2))
-            .padding([0.0, t::PAGE_PAD])
+            .padding([0.0, t::page_pad()])
             .into()
     }
 

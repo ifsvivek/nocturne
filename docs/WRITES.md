@@ -12,6 +12,7 @@ By default NOCTURNE only reads. One setting, **Settings > Allow NOCTURNE to chan
 | Favourite (card chip, detail button, player heart, `f`) | yes | |
 | Change own password | yes | the current password |
 | Own profile image (set, remove), display language | yes | a confirmation dialog |
+| Home sections of a server (Settings > Sources > Sections: reorder, turn on or off) | yes | **Allow server changes** on; never with a developer token. One read-modify-write of the user's `DisplayPreferences/usersettings` that replaces only the ten `homesection0..9` entries and sends every other key back as read. Only that server, with that server's own account. With server changes off the dialog is view-only |
 | Playlists you own: create, add items, remove, reorder, rename, delete | yes | a confirmation dialog; delete needs the typed name |
 | Authorize another device with a Quick Connect code | yes | the code shown on that device |
 | Watch together (SyncPlay): create a group, join one, start something for the group, play / pause / seek / skip, Ready and Buffering reports, latency Ping | yes | an explicit click or key (create, join); the rest only happens while in a group. Leaving is always allowed. Details in [syncplay.md](syncplay.md) |

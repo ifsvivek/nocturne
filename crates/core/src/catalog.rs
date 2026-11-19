@@ -282,6 +282,7 @@ mod tests {
             label: format!("s{id}"),
             enabled: true,
             online: Default::default(),
+            server_ui: false,
             kind: ProfileKind::Jellyfin {
                 url: url.into(),
                 user_id: format!("u{id}"),
@@ -313,6 +314,7 @@ mod tests {
                 label: "disk".into(),
                 enabled: true,
                 online: Default::default(),
+                server_ui: false,
                 kind: ProfileKind::Local {
                     roots: vec!["/x".into()],
                 },
@@ -474,6 +476,7 @@ mod tests {
                         label: "disk".into(),
                         enabled: true,
                         online: Default::default(),
+                        server_ui: false,
                         kind: ProfileKind::Local { roots: vec![] },
                     },
                     backend: Some(Backend::Local(l)),

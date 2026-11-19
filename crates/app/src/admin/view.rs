@@ -11,6 +11,7 @@ use crate::widget::{
 use iced::widget::button::{Status, Style};
 use iced::widget::{
     Column, Space, column, container, mouse_area, opaque, row, scrollable, space, stack, text,
+    text_input,
 };
 use iced::{Alignment, Color, Element, Length, Padding, Shadow};
 use nocturne_core::admin::act::Act;
@@ -35,7 +36,7 @@ fn kv<'a>(k: &str, v: String) -> El<'a> {
         text(v)
             .font(t::MONO)
             .size(t::CAPTION)
-            .color(t::TEXT_SECONDARY)
+            .color(t::text_secondary())
             .width(Length::Fill),
     ]
     .spacing(t::S3)
@@ -64,7 +65,7 @@ fn cell<'a>(label: &str, body: impl Into<El<'a>>) -> El<'a> {
 
 fn big<'a>(n: impl ToString, caption: &str) -> El<'a> {
     column![
-        text(n.to_string()).size(40).font(t::BOLD),
+        text(n.to_string()).size(40).font(t::bold()),
         mono(caption.to_string())
     ]
     .spacing(t::S1)
@@ -75,7 +76,7 @@ fn loading<'a, T>(l: &L<T>) -> El<'a> {
     match l {
         L::Ready(_) => space().into(),
         L::Loading => mono("loading").into(),
-        L::Failed => mono("unavailable").color(t::WARN).into(),
+        L::Failed => mono("unavailable").color(t::warn()).into(),
     }
 }
 
@@ -121,7 +122,7 @@ fn dashboard<'a>(a: &Admin, m: &Model) -> El<'a> {
                 &s.operating_system_display_name
             };
             let mut c = column![
-                text(s.server_name.clone()).size(18).font(t::SEMIBOLD),
+                text(s.server_name.clone()).size(18).font(t::semibold()),
                 kv("VERSION", format!("{} {}", s.product_name, s.version)),
                 kv("OS", format!("{os} {}", s.system_architecture)),
                 kv("ADDRESS", s.local_address.clone().unwrap_or_default()),
@@ -130,10 +131,10 @@ fn dashboard<'a>(a: &Admin, m: &Model) -> El<'a> {
             ]
             .spacing(t::S2);
             if s.has_pending_restart {
-                c = c.push(mono("RESTART PENDING").color(t::WARN));
+                c = c.push(mono("RESTART PENDING").color(t::warn()));
             }
             if s.has_update_available {
-                c = c.push(mono("UPDATE AVAILABLE").color(t::WARN));
+                c = c.push(mono("UPDATE AVAILABLE").color(t::warn()));
             }
             c.push(
                 container(buttons(
@@ -184,7 +185,7 @@ fn dashboard<'a>(a: &Admin, m: &Model) -> El<'a> {
             row![
                 text(it.title.clone())
                     .size(t::BODY)
-                    .font(t::SEMIBOLD)
+                    .font(t::semibold())
                     .width(Length::Fill)
                     .wrapping(text::Wrapping::None),
                 row(it
@@ -211,9 +212,9 @@ fn dashboard<'a>(a: &Admin, m: &Model) -> El<'a> {
                 .padding(t::S4)
                 .on_press(Msg::Row(i, true))
                 .style(move |_| Style {
-                    background: on.then_some(t::ACCENT_TINT.into()),
-                    text_color: t::TEXT,
-                    border: border(if on { t::ACCENT } else { t::HAIRLINE }, 1.0, 0.0),
+                    background: on.then_some(t::accent_tint().into()),
+                    text_color: t::text(),
+                    border: border(if on { t::accent() } else { t::hairline() }, 1.0, 0.0),
                     shadow: Shadow::default(),
                     snap: false,
                 })
@@ -281,13 +282,13 @@ fn dashboard<'a>(a: &Admin, m: &Model) -> El<'a> {
                                 mono(when(Some(&e.date))).width(90),
                                 text(e.name.clone())
                                     .size(t::CAPTION + 1.0)
-                                    .color(t::TEXT_SECONDARY)
+                                    .color(t::text_secondary())
                                     .width(Length::Fill)
                                     .wrapping(text::Wrapping::None),
                                 mono(e.kind.clone()).color(if warn {
-                                    t::WARN
+                                    t::warn()
                                 } else {
-                                    t::TEXT_TERTIARY
+                                    t::text_tertiary()
                                 }),
                             ]
                             .spacing(t::S4)
@@ -334,18 +335,18 @@ fn list_row<'a>(a: &Admin, i: usize, it: &Item, on: bool) -> El<'a> {
             32.0,
             &it.title,
             pic,
-            t::HAIRLINE_STRONG,
+            t::hairline_strong(),
             1.0,
             t::CAPTION + 1.0,
-            t::TEXT_SECONDARY,
+            t::text_secondary(),
         ));
     }
     r = r.push(
         column![
             text(it.title.clone())
                 .size(t::BODY)
-                .font(t::SEMIBOLD)
-                .color(if on { t::TEXT } else { t::TEXT_SECONDARY })
+                .font(t::semibold())
+                .color(if on { t::text() } else { t::text_secondary() })
                 .wrapping(text::Wrapping::None),
             mono(it.sub.clone()).wrapping(text::Wrapping::None),
         ]
@@ -366,13 +367,13 @@ fn list_row<'a>(a: &Admin, i: usize, it: &Item, on: bool) -> El<'a> {
             .on_press(Msg::Row(i, false))
             .style(move |s| Style {
                 background: if on {
-                    Some(t::ACCENT_TINT.into())
+                    Some(t::accent_tint().into())
                 } else if matches!(s, Status::Hovered) {
                     Some(t::GLASS.into())
                 } else {
                     None
                 },
-                text_color: t::TEXT,
+                text_color: t::text(),
                 border: border(t::NONE, 0.0, 0.0),
                 shadow: Shadow::default(),
                 snap: false,
@@ -432,7 +433,7 @@ fn list<'a>(a: &Admin, m: &Model) -> El<'a> {
     if let Some(it) = m.items.get(st.sel) {
         panel = panel
             .push(tr("Detail"))
-            .push(text(it.title.clone()).size(t::HEADING).font(t::BOLD))
+            .push(text(it.title.clone()).size(t::HEADING).font(t::bold()))
             .push(
                 column(
                     it.detail
@@ -454,7 +455,7 @@ fn list<'a>(a: &Admin, m: &Model) -> El<'a> {
                     text(l.to_string())
                         .font(t::MONO)
                         .size(t::MICRO)
-                        .color(t::TEXT_SECONDARY)
+                        .color(t::text_secondary())
                         .wrapping(text::Wrapping::None)
                         .into()
                 })
@@ -465,8 +466,8 @@ fn list<'a>(a: &Admin, m: &Model) -> El<'a> {
                     .width(Length::Fill)
                     .padding(t::S2)
                     .style(|_| iced::widget::container::Style {
-                        background: Some(t::SURFACE.into()),
-                        border: border(t::HAIRLINE, 1.0, t::R_XS),
+                        background: Some(t::surface().into()),
+                        border: border(t::hairline(), 1.0, t::r_xs()),
                         ..Default::default()
                     }),
             );
@@ -499,7 +500,7 @@ fn sidebar<'a>(a: &Admin) -> El<'a> {
                 let focus = on && a.st.in_side;
                 c.push(
                     Press::new(
-                        container(text(s.label()).size(t::BODY).font(t::MEDIUM)).center_y(36),
+                        container(text(s.label()).size(t::BODY).font(t::medium())).center_y(36),
                     )
                     .width(Length::Fill)
                     .height(36)
@@ -510,16 +511,16 @@ fn sidebar<'a>(a: &Admin) -> El<'a> {
                     })
                     .on_press(Msg::Side(s))
                     .style(move |st| Style {
-                        background: on.then_some(t::ACCENT_TINT.into()),
+                        background: on.then_some(t::accent_tint().into()),
                         text_color: if on {
-                            t::ACCENT_TEXT
+                            t::accent_text()
                         } else if matches!(st, Status::Hovered) {
-                            t::TEXT
+                            t::text()
                         } else {
-                            t::TEXT_SECONDARY
+                            t::text_secondary()
                         },
                         border: iced::Border {
-                            color: if focus { t::ACCENT } else { t::NONE },
+                            color: if focus { t::accent() } else { t::NONE },
                             width: 0.0,
                             radius: 0.0.into(),
                         },
@@ -554,8 +555,8 @@ fn view_only_banner<'a>() -> El<'a> {
     )
     .padding([t::S3, t::S4])
     .style(|_| iced::widget::container::Style {
-        background: Some(t::ACCENT_TINT.into()),
-        border: border(t::HAIRLINE_STRONG, 1.0, t::R_PANEL),
+        background: Some(t::accent_tint().into()),
+        border: border(t::hairline_strong(), 1.0, t::r_panel()),
         ..Default::default()
     })
     .into()
@@ -632,57 +633,42 @@ fn dialog<'a>(a: &Admin) -> Option<El<'a>> {
     let danger = d.danger;
     let mut items: Vec<El> = vec![
         mono(tracked(if danger { "Confirm" } else { "Please confirm" }))
-            .color(if danger { t::DANGER } else { t::TEXT_TERTIARY })
+            .color(if danger {
+                t::danger()
+            } else {
+                t::text_tertiary()
+            })
             .into(),
-        text(d.title.clone()).size(t::HEADING).font(t::BOLD).into(),
+        text(d.title.clone())
+            .size(t::HEADING)
+            .font(t::bold())
+            .into(),
         text(d.body.clone())
             .size(t::BODY)
             .line_height(1.5)
-            .color(t::TEXT_SECONDARY)
+            .color(t::text_secondary())
             .into(),
     ];
     for (i, f) in d.fields.iter().enumerate() {
-        let on = d.focus == i;
-        let shown = if f.secret {
-            "\u{2022}".repeat(f.value.chars().count())
-        } else {
-            f.value.clone()
-        };
         let bad = !f.value.is_empty() && !f.ok();
         items.push(
             column![
                 mono(f.label.to_string()),
-                Press::new(
-                    container(
-                        text(format!("{shown}{}", if on { "\u{2595}" } else { "" }))
-                            .font(t::MONO)
-                            .size(t::BODY)
-                            .wrapping(text::Wrapping::None),
-                    )
-                    .center_y(Length::Fill)
-                    .clip(true),
-                )
-                .width(Length::Fill)
-                .height(36)
-                .padding([0.0, t::S3])
-                .on_press(Msg::DialogClick(i))
-                .style(move |_| Style {
-                    background: None,
-                    text_color: t::TEXT,
-                    border: border(
-                        if on {
-                            t::ACCENT
-                        } else if bad {
-                            t::DANGER
-                        } else {
-                            t::HAIRLINE_STRONG
-                        },
-                        1.0,
-                        6.0,
-                    ),
-                    shadow: Shadow::default(),
-                    snap: false,
-                }),
+                text_input("", &f.value)
+                    .id(super::field_id(i))
+                    .on_input(move |s| Msg::DialogInput(i, s))
+                    .on_submit(Msg::DialogSubmit(i))
+                    .secure(f.secret)
+                    .font(t::MONO)
+                    .size(t::BODY)
+                    .padding([t::S2, t::S3])
+                    .style(move |th, st| {
+                        let mut s = style::input(th, st);
+                        if bad && !matches!(st, text_input::Status::Focused { .. }) {
+                            s.border.color = t::danger();
+                        }
+                        s
+                    }),
             ]
             .spacing(t::S1)
             .into(),
@@ -718,15 +704,15 @@ fn dialog<'a>(a: &Admin) -> Option<El<'a>> {
         .width(480)
         .padding(t::S6)
         .style(move |_| iced::widget::container::Style {
-            background: Some(t::SURFACE.into()),
+            background: Some(t::surface().into()),
             border: border(
                 if danger {
-                    t::DANGER
+                    t::danger()
                 } else {
-                    t::HAIRLINE_STRONG
+                    t::hairline_strong()
                 },
                 1.0,
-                t::R_PANEL,
+                t::r_panel(),
             ),
             ..Default::default()
         });

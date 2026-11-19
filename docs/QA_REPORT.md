@@ -1,5 +1,51 @@
 # QA report
 
+## 0.5.0 (QA of tag v0.5-local, Wayland-only, 2026-11-19)
+
+Scope: debug and fast-release builds of the 0.5 tree against the installed 0.4.0 as control, all GUI and input inside an invisible headless sway (no pointer device: pointer-only actions could not be driven), throwaway Jellyfin 12.4 with the generated demo library (user `demo`, not alice/bob), local library from the same generated files, isolated XDG dirs and keyring service. Nothing touched the real server. Writes were enabled only on the throwaway for the Sections check and turned off again.
+
+| # | Area | Result | Evidence |
+|---|---|---|---|
+| 1 | Onboarding, all three choices (Local, Server, Both) | PASS | Local shows "Add your folders", Server "Connect a server", Both "Set up your library"; server path continued through Connect, sign-in, "How NOCTURNE behaves", "You're all set", Home. Adding local folders through the file picker not driven (no pointer, no portal); a local source written to `sources.toml` loaded and scanned fine |
+| 1 | Wayland-only message | PASS | `env -u WAYLAND_DISPLAY DISPLAY=:0 nocturne` prints "NOCTURNE needs a Wayland session ... X11 sessions are not supported." exit 1 |
+| 1 | Start time vs 0.4 | PASS (rough) | Window mapped in 0.7 to 1.7 s (6 runs, fast-release) against 0.7 to 1.0 s (3 runs, 0.4); noisy, no clear regression |
+| 2 | `headless-input-check.sh` | PASS with caveat | All 7 checks PASS on the 4th run; runs 1 and 2 failed "Ctrl+V restores" and "Shift+Tab returns" and run 3 (field region edited) failed others. The same keystrokes done by hand and with full-window captures all behaved correctly (typing, Ctrl+A/C/X/V, Tab, Shift+Tab), so this looks like the harness (fixed capture region, field moves when the validation message appears) and not the app, but it is not reliably green |
+| 2 | Sign-in as a real user with real keys | PASS | Typed user and password, Return signed in |
+| 2 | Password field: Ctrl+A, Ctrl+C copies nothing | PASS | `wl-paste` unchanged ("CLIPSENT") |
+| 2 | Tab order on sign-in | PASS | username, password, Sign in, Quick Connect, Change server, then wraps; first field focused on open |
+| 3 | Home, search | PASS | Home and Ctrl+K search captures identical to 0.4 |
+| 3 | Library grid (Movies, Shows), movie detail, series detail with Next Up, seasons, season episode grid, settings, sources | PASS (no 0.4 side-by-side) | Rendered correctly; the 0.4 control could not be steered to these pages without a pointer, so only Home and search were compared side by side |
+| 3 | Admin view-only with writes off | PASS | Dev-token session on the throwaway: Dashboard with "View only" banner, actions dimmed |
+| 4 | Playback from the server (series episode, movie) | PASS | Embedded in-window video (no mpv child process), controls, pause, seek (Right), subtitles menu (T) and settings menu (O) opened, Next Episode countdown, Escape stops and returns to detail |
+| 4 | Playback from local library | PASS | Play, pause, seek, stop to detail. Audio menu (V) not opened |
+| 4 | HDR | NOT TESTED | Not testable here |
+| 5 | Themes: import a CSS file, warnings listed, 15 s preview reverts | PASS | 2 settings applied, 3 warnings with line:column, countdown 14 s to 3 s, back to default afterwards |
+| 5 | Themes: Keep, Reset to built-in | NOT TESTED | Buttons need a pointer. Apply (via debug hook) persisted across restart |
+| 5 | Marquee and Feed applied | PASS | Marquee: red accent, 16:9 thumbnail grids, red Resume/Play, see-through header. Feed: no hero, slim header, wrapping 16:9 grids, grey palette. Home/library/detail looked as the example descriptions say |
+| 5 | Per-server override | PASS | Edited `themes.toml` (server 1 gets Marquee, global Feed): filter All showed Feed, filtering to the server showed the Marquee look. The assignment click itself not driven |
+| 6 | Layout switch, Home in server order, All unchanged | PASS | "Layout: server's"; server alone showed My media first, All still Continue watching first |
+| 6 | Sections editor view-only with writes off | PASS | Save disabled, "Turn on server changes in Settings" |
+| 6 | Sections reorder with writes on (throwaway) | PASS | "Saved on the server." Reordered Home persisted across a restart; reordered back and saved again, writes turned off |
+| 7 | Trakt dialog | PASS | "Connect Trakt" and "Advanced: use your own Client ID"; Connect not clicked |
+| 8 | Updater in the GUI | NOT TESTED | The manifest URL is a compile-time constant, a dev build never checks, and the production URL currently returns the site's HTML page (no manifest published). Settings > Updates "Check for updates" is present and ON. `cargo test -p nocturne-core update` (16 tests) and `--test update_install` (4 tests: download/verify/swap/restart, bad downloads rejected, failed install keeps current, system and dev installs never download) pass |
+| 9 | `package.sh` tarball, deb, rpm (fast-release) | PASS | All three built (artifacts are named 0.4.0, see below) |
+| 9 | `test-install.sh` (all) | PASS | arch, nompv, debian, ubuntu, fedora: 15 PASS lines, 0 FAIL, exit 0 |
+| 10 | `scripts/ci-checks.sh` | PASS | fmt, clippy, tests, cargo deny, secret scan of tree and history all passed (one deny warning: unused license allowance MPL-2.0) |
+
+### Blocking issues
+
+None found in what was tested. Release-prep note rather than a bug: the workspace version is still 0.4.0 at this tag (the build log shows `nocturne-app v0.4.0` and the packages are `nocturne-0.4.0-...`), so the version bump must happen before publishing.
+
+### Non-blocking
+
+- `scripts/headless-input-check.sh` is flaky (see row 2). Its capture region is fixed at y=537 and the server-address field moves when the validation message is visible.
+- The built-in default of Settings > Updates cannot be exercised end to end until a manifest is published or a debug override for the manifest URL exists. The GUI banner, per-install-kind action and the off switch were verified only through unit and integration tests.
+- Importing a theme file while a saved theme is selected replaces that theme's CSS and keeps its name (Feed CSS landed in the theme named "marquee"); possibly intended, but surprising.
+- A sign-in screen showed "Your session ended. Please sign in again." on the first sign-in after onboarding; most likely a stale keyring token from an earlier throwaway server on the same URL (shared test keyring service), not reproduced on a clean keyring.
+- Not covered for lack of a pointer: Keep and Reset in Themes, clicking Marquee/Feed examples, assigning a per-server theme, the audio menu, all mouse interactions, Local onboarding "Add folders".
+
+Note: 0.5 dropped X11 (Linux is Wayland-only); the X11/Xwayland results below are historical.
+
 Scope: the sections below up to "0.3 branch" cover the released 0.2.0 (GPUI interface, Jellyfin only); the 0.3.0 (Iced, local + several servers) checks are in the dated 0.3 sections at the end, ending with the 0.3.0 release walkthrough. Wayland and X11 (Xwayland) on Linux, release build. Read-only checks ran against a a real Jellyfin server in API-key developer mode (a GET-only recording proxy counted requests: 0 non-GET requests over the whole run, including one in-window playback). Everything with accounts or writes ran only against the throwaway server from `scripts/test-jellyfin.sh`. No personal media details are recorded here.
 
 Legend: Y = yes, n/a = not applicable, - = not done, partial = see notes.

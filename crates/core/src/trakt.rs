@@ -20,6 +20,28 @@ pub const CREDIT: &str = "Trakt is a trademark of Trakt, Inc. NOCTURNE uses the 
 
 /// Trakt's sign-in and token host (PKCE guide); the API itself is api.trakt.tv.
 pub const AUTH_BASE: &str = "https://auth.trakt.tv";
+/// The public Trakt client id NOCTURNE ships (PKCE, so no secret is involved). The placeholder means "none": the user then enters their own.
+pub const BUILTIN_CLIENT_ID: &str = "x8Eug1YSxLXsb3Dcnbhv3naoRiuHlD_f6IsL5UzY4iI";
+
+/// What `BUILTIN_CLIENT_ID` holds in a source tree that ships no id.
+const BUILTIN_PLACEHOLDER: &str = "NOCTURNE_TRAKT_BUILTIN_CLIENT_ID_PLACEHOLDER";
+
+/// Pick the client id: a user override (the env var, then the one saved in the keyring) beats the built-in one; blank values and the placeholder count as absent.
+pub fn resolve_client_id(env: Option<&str>, saved: Option<&str>, builtin: &str) -> Option<String> {
+    let builtin = Some(builtin).filter(|b| *b != BUILTIN_PLACEHOLDER);
+    [env, saved, builtin]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .map(String::from)
+}
+
+/// The built-in id alone (what "Connect Trakt" uses when the user set nothing).
+pub fn builtin_client_id() -> Option<String> {
+    resolve_client_id(None, None, BUILTIN_CLIENT_ID)
+}
+
 /// The loopback port of the redirect URI the user registers in their Trakt app (RFC 8252, fixed port).
 pub const REDIRECT_PORT: u16 = 38917;
 
@@ -517,8 +539,8 @@ impl Trakt {
     /// The user's app credentials and sign-in from the keyring; `None` when not connected.
     pub async fn load() -> Option<Self> {
         let (id, tok) = tokio::task::spawn_blocking(|| {
-            let get = |k| nocturne_session::load_secret(k).ok().flatten();
-            (get(KEY_ID), get(KEY_TOKENS))
+            let tok = nocturne_session::load_secret(KEY_TOKENS).ok().flatten();
+            (Self::client_id_blocking(), tok)
         })
         .await
         .ok()?;
@@ -549,6 +571,16 @@ impl Trakt {
     /// Keep the credentials entered in the dialog (blocking keyring calls).
     pub fn save_app_blocking(id: &str) -> Result<(), String> {
         crate::online::set_secret(KEY_ID, id)
+    }
+
+    /// The id to use without asking: env override, saved override, then the built-in one (blocking keyring call).
+    pub fn client_id_blocking() -> Option<String> {
+        let env = std::env::var("NOCTURNE_TRAKT_CLIENT_ID").ok();
+        resolve_client_id(
+            env.as_deref(),
+            Self::saved_app_blocking().as_deref(),
+            BUILTIN_CLIENT_ID,
+        )
     }
 
     pub fn saved_app_blocking() -> Option<String> {
@@ -1026,6 +1058,26 @@ mod tests {
         assert_eq!(a.challenge, challenge_of(&a.verifier));
         assert_ne!((&a.verifier, &a.state), (&b.verifier, &b.state));
         assert!(!a.verifier.contains(['+', '/', '=']));
+    }
+
+    #[test]
+    fn client_id_resolution_prefers_overrides_and_ignores_placeholder() {
+        let r = resolve_client_id;
+        assert_eq!(
+            r(Some("env"), Some("saved"), "built").as_deref(),
+            Some("env")
+        );
+        assert_eq!(r(None, Some(" saved "), "built").as_deref(), Some("saved"));
+        assert_eq!(r(Some(" "), None, "built").as_deref(), Some("built"));
+        assert_eq!(r(None, None, BUILTIN_PLACEHOLDER), None);
+        assert_eq!(r(None, None, ""), None);
+        assert_eq!(
+            r(Some("env"), None, BUILTIN_PLACEHOLDER).as_deref(),
+            Some("env")
+        );
+        let id = r(None, None, "built").unwrap();
+        let u = authorize_url("https://a", &id, "http://127.0.0.1:1/cb", &Pkce::new());
+        assert!(u.contains("client_id=built"));
     }
 
     #[test]

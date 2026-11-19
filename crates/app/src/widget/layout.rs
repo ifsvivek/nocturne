@@ -19,15 +19,32 @@ pub fn band<'a, M: 'a>(content: impl Into<Element<'a, M>>) -> Element<'a, M> {
 
 /// Section heading: bold title + muted paragraph on the left, mono annotation on the right.
 pub fn section<'a, M: 'a>(title: &str, body: &str, meta: String) -> Element<'a, M> {
+    section_with(
+        title,
+        body,
+        meta,
+        &t::typo(&Default::default(), 28.0, iced::font::Weight::Bold),
+        t::page_pad(),
+    )
+}
+
+/// [`section`] with the title's typography (`.row-title`) and the row's horizontal inset.
+pub fn section_with<'a, M: 'a>(
+    title: &str,
+    body: &str,
+    meta: String,
+    title_t: &t::Typo,
+    inset: f32,
+) -> Element<'a, M> {
     container(
         row![
             column![
-                text(title.to_string()).size(28).font(t::BOLD),
+                title_t.text(title, t::text()),
                 container(
                     text(body.to_string())
                         .size(t::BODY)
                         .line_height(1.55)
-                        .color(t::TEXT_SECONDARY)
+                        .color(t::text_secondary())
                 )
                 .max_width(520),
             ]
@@ -38,7 +55,7 @@ pub fn section<'a, M: 'a>(title: &str, body: &str, meta: String) -> Element<'a, 
         .align_y(Alignment::End)
         .spacing(t::S6),
     )
-    .padding([0.0, t::PAGE_PAD])
+    .padding([0.0, inset])
     .width(Length::Fill)
     .into()
 }

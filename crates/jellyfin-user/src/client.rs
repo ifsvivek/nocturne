@@ -518,6 +518,37 @@ impl UserClient {
         .await
     }
 
+    /// WRITE `POST /DisplayPreferences/usersettings`: read-modify-write of the ten
+    /// `homesection0..9` entries jellyfin-web uses for the home page. Every other display
+    /// preference and every other `CustomPrefs` key (including ones this client does not know) is
+    /// sent back exactly as read. `values` must be exactly ten known section names (or `none`).
+    pub async fn set_home_sections(&self, values: &[&str]) -> Result<()> {
+        if values.len() != HOME_SLOTS || !values.iter().all(|v| HOME_VALUES.contains(v)) {
+            return Err(Error::Config("not a valid home section list".into()));
+        }
+        let mut v: Value = self
+            .json(
+                Method::GET,
+                &["DisplayPreferences", "usersettings"],
+                &self.prefs_query(),
+                None,
+            )
+            .await?;
+        if !v["CustomPrefs"].is_object() {
+            v["CustomPrefs"] = json!({});
+        }
+        for (i, val) in values.iter().enumerate() {
+            v["CustomPrefs"][format!("homesection{i}")] = json!(val);
+        }
+        self.run(
+            Method::POST,
+            &["DisplayPreferences", "usersettings"],
+            &self.prefs_query(),
+            Some(v),
+        )
+        .await
+    }
+
     /// WRITE `POST /Users/Password?userId=`: change the logged-in user's own password.
     pub async fn change_own_password(
         &self,
@@ -535,6 +566,22 @@ impl UserClient {
         .await
     }
 }
+
+/// Slots of the home page in jellyfin-web (`MAX_SECTIONS`).
+pub const HOME_SLOTS: usize = 10;
+/// Values jellyfin-web understands for a `homesection` slot.
+const HOME_VALUES: [&str; 10] = [
+    "smalllibrarytiles",
+    "librarybuttons",
+    "resume",
+    "resumeaudio",
+    "resumebook",
+    "activerecordings",
+    "livetv",
+    "nextup",
+    "latestmedia",
+    "none",
+];
 
 fn report_body(r: &PlaybackReport) -> Value {
     json!({

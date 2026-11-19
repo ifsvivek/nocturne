@@ -4,9 +4,25 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-19
+
 ### Added
+- Updates: NOCTURNE checks once a day (Settings > Updates turns it off). Per-user installs offer Download and install, then Restart to update; every download is checked against the announced size, sha256 and an ed25519 signature before anything is replaced, and a failed update leaves the current version untouched. Package-managed installs show the pacman, apt or dnf command instead.
+- Themes can restyle layout with CSS on named parts, and the app follows it: cards (aspect, width, caption position, radius, shadow, typography, hover zoom), Home rows (carousel or grid, gap, padding, section order and hiding), hero (billboard, banner or none, height, overlay), header (height, hidden items, static or overlaid, link typography), button hover scale and the player bar background. Two built-in examples, Marquee and Feed, can be copied from Settings > Themes. `--nocturne-density`, `font-size` (whole-interface zoom) and `backdrop-blur` (a soft placeholder on the detail page) are applied approximately; `letter-spacing` is read but not drawn.
+- Themes: Settings > Themes opens a page to import a CSS theme (paste, a `.css` file, or one https address you type, fetched once and refreshed only when you ask) and apply it to the whole app, optionally with a different theme per server. NOCTURNE reads only what it can map to its own look (colours, corner radii, window background, a font family, backdrop opacity) and lists everything else with its line and column; nothing is executed or downloaded from inside the stylesheet. A preview lasts 15 seconds unless you keep it ([CUSTOMIZATION_PLAN.md](docs/dev/CUSTOMIZATION_PLAN.md)).
+- Trakt connects with one click: NOCTURNE ships a public client id (PKCE, no secret), so Settings > Trakt shows just "Connect Trakt". "Advanced: use your own Client ID" (or `NOCTURNE_TRAKT_CLIENT_ID`) still overrides it, and a build without a built-in id asks for one as before ([TRAKT.md](docs/TRAKT.md)).
 - Pushing a `vX.Y.Z` tag builds every format on GitHub-hosted runners (tarball, .deb, .rpm, Windows installer and zip, macOS .dmg, best-effort AppImage) and creates a draft release with `SHA256SUMS` and the CHANGELOG section as notes; the repositories are still signed and published locally (`.github/workflows/release.yml`, [PACKAGING.md](docs/PACKAGING.md)).
 - apt and dnf repositories next to the pacman one (`https://nocturne.ifsvivek.in/repo/deb` and `/repo/rpm`, signed with the same key): Debian/Ubuntu and Fedora users get NOCTURNE updates through `apt upgrade` / `dnf upgrade` and their software centres. Built by `scripts/publish-repo-deb-rpm.sh` (called by `scripts/publish-repo.sh`); the key is also published as `repo/NOCTURNE-GPG-KEY` (armored) and `repo/NOCTURNE-GPG-KEY.gpg` (binary).
+- Server UI (per server, Settings > Sources > Layout, off for new servers): with one server selected in the source filter, Home follows that server's own layout: its home sections in its order, a My media row of its libraries in your order without the ones you hid on the server, and Latest rows without the excluded libraries. The server's branding CSS becomes that server's theme (below a theme you pick for it, above the global one; listed in Settings > Themes with what could not be mapped). The sign-in page shows the server's login disclaimer. Live TV rows and the audio and book continue rows are skipped. The unified Home (filter All) is unchanged ([SERVER_UI_PLAN.md](docs/dev/SERVER_UI_PLAN.md)).
+- Settings > Sources > Sections edits the server's home sections (reorder, on / off) for your account. It is a server change: only with "allow server changes" on, never with a developer token, and it replaces only the home section entries of your display preferences on that server, leaving every other setting as it was ([WRITES.md](docs/WRITES.md)).
+
+### Fixed
+- The connect and sign-in forms put the cursor in the first field when they open, so you can type straight away and Tab cycles the fields and buttons.
+- Every text field can now be edited like a normal one: select with the mouse or Shift+arrows, double-click a word, Ctrl+A, Ctrl+C / Ctrl+X / Ctrl+V. The sign-in, add-server, account dialog, admin dialog and SyncPlay name fields used a hand-rolled input that could only append and delete characters. Password fields cannot be copied or cut.
+
+### Changed
+- Packaging: the deb, rpm, Arch package and `install.sh` no longer depend on X11 libraries (`libX11`, `libxcb`, `libXcursor`, `libXi`, `libxkbcommon-x11`) now that Linux is Wayland-only.
+- **Linux is Wayland-only.** X11 support is removed: Iced is built without its X11 backend (no X11 libraries are loaded) and on a session with only `DISPLAY` set NOCTURNE prints that X11 is not supported and exits. The external mpv player remains the fallback when in-window video cannot start and for the HDR pop-out.
 
 ## [0.4.0] - 2026-11-18
 

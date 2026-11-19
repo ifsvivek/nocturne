@@ -28,15 +28,18 @@ use app::App;
 use iced::{Color, Size, window};
 
 fn main() -> std::process::ExitCode {
-    // winit would panic (backtrace and all) without a display server: say it plainly instead.
-    if platform::no_graphical_session() {
-        eprintln!(
-            "NOCTURNE needs a graphical session (Wayland or X11), but none was found.\n\
-             Start it from your desktop, or set WAYLAND_DISPLAY or DISPLAY."
-        );
+    // winit would panic (backtrace and all) without a Wayland server: say it plainly instead.
+    if let Some(msg) = platform::session_problem() {
+        eprintln!("{msg}");
         return std::process::ExitCode::FAILURE;
     }
-    match run() {
+    // The UI loop and every guard (single-instance lock, player) are gone when `run` returns; only then can the
+    // updated binary take over.
+    let result = run();
+    if let Some(e) = nocturne_core::update_install::restart_if_requested() {
+        eprintln!("NOCTURNE could not restart after the update: {e}");
+    }
+    match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             eprintln!(
@@ -91,6 +94,9 @@ fn run() -> iced::Result {
     // Config (and .env) is read once, before any other thread exists. (Not for the player preview:
     // it never touches the configured server.)
     let cfg = nocturne_jellyfin::Config::load().ok();
+    // The saved global theme, before the first frame (and the only moment its font family is read).
+    let (th, lay) = nocturne_core::customize::Store::load().resolve_all(None);
+    theme::set(&th, &lay);
     iced::application(move || App::boot(cfg.clone()), App::update, App::view)
         .title(App::title)
         .subscription(App::subscription)
@@ -98,11 +104,11 @@ fn run() -> iced::Result {
         // player page (step 4d) leaves a hole for the video subsurface.
         .style(|_, _| iced::theme::Style {
             background_color: Color::TRANSPARENT,
-            text_color: theme::TEXT,
+            text_color: theme::text(),
         })
         .theme(App::theme)
         .scale_factor(App::scale_factor)
-        .default_font(theme::FONT)
+        .default_font(theme::base())
         .exit_on_close_request(false)
         .window(window::Settings {
             size: Size::new(1280.0, 800.0),

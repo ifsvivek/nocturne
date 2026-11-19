@@ -22,12 +22,12 @@ fn panel_style(_: &iced::Theme) -> container::Style {
         background: Some(
             Color {
                 a: 0.93,
-                ..t::SURFACE
+                ..t::surface()
             }
             .into(),
         ),
-        border: border(t::HAIRLINE_STRONG, 1.0, t::R_PANEL),
-        text_color: Some(t::TEXT),
+        border: border(t::hairline_strong(), 1.0, t::r_panel()),
+        text_color: Some(t::text()),
         ..Default::default()
     }
 }
@@ -57,7 +57,7 @@ use iced::alignment::{Horizontal as H, Vertical as V};
 fn row_look(s: Status, on: bool, kb: bool) -> Style {
     let hot = matches!(s, Status::Hovered | Status::Pressed);
     let bg = if on {
-        Some(t::ACCENT)
+        Some(t::accent())
     } else if kb || hot {
         Some(t::GLASS)
     } else {
@@ -65,7 +65,7 @@ fn row_look(s: Status, on: bool, kb: bool) -> Style {
     };
     Style {
         background: bg.map(Background::Color),
-        text_color: if on { t::ON_ACCENT } else { t::TEXT },
+        text_color: if on { t::on_accent() } else { t::text() },
         border: border(Color::TRANSPARENT, 0.0, 6.0),
         shadow: Shadow::default(),
         snap: false,
@@ -81,8 +81,8 @@ fn step_btn<'a>(glyph: &'static str, a: MenuAct) -> Element<'a, Msg> {
             let hot = matches!(s, Status::Hovered | Status::Pressed);
             Style {
                 background: hot.then_some(Background::Color(t::GLASS)),
-                text_color: t::TEXT,
-                border: border(t::EDGE, 1.0, 4.0),
+                text_color: t::text(),
+                border: border(t::edge(), 1.0, 4.0),
                 shadow: Shadow::default(),
                 snap: false,
             }
@@ -102,9 +102,9 @@ pub fn popover(p: &Player, pop: video::Pop) -> Element<'_, Msg> {
         }
         let kb = i == p.pop_sel;
         let value_ink = if it.on {
-            t::ON_ACCENT
+            t::on_accent()
         } else {
-            t::TEXT_SECONDARY
+            t::text_secondary()
         };
         let label = text(it.label.clone())
             .size(13)
@@ -127,7 +127,7 @@ pub fn popover(p: &Player, pop: video::Pop) -> Element<'_, Msg> {
                 row![
                     container(label).width(Length::Fill).clip(true),
                     step_btn("\u{2212}", dec),
-                    container(text(it.value.clone()).size(13).color(t::TEXT_SECONDARY))
+                    container(text(it.value.clone()).size(13).color(t::text_secondary()))
                         .width(44)
                         .align_x(H::Center),
                     step_btn("+", it.act.clone()),
@@ -163,9 +163,9 @@ pub fn popover(p: &Player, pop: video::Pop) -> Element<'_, Msg> {
 
 fn small_chip<'a>(label: &str, on: bool, msg: Msg) -> Element<'a, Msg> {
     let ink = if on {
-        t::ACCENT_TEXT
+        t::accent_text()
     } else {
-        t::TEXT_SECONDARY
+        t::text_secondary()
     };
     Press::new(text(label.to_string()).size(t::CAPTION).color(ink))
         .padding([3.0, t::S2])
@@ -175,7 +175,7 @@ fn small_chip<'a>(label: &str, on: bool, msg: Msg) -> Element<'a, Msg> {
             Style {
                 background: None,
                 text_color: ink,
-                border: border(if on || hot { t::ACCENT } else { t::EDGE }, 1.0, 6.0),
+                border: border(if on || hot { t::accent() } else { t::edge() }, 1.0, 6.0),
                 shadow: Shadow::default(),
                 snap: false,
             }
@@ -217,7 +217,7 @@ pub fn queue_panel(p: &Player, shown: bool) -> Option<Element<'_, Msg>> {
     for (i, m) in p.queue.iter().enumerate() {
         let (cur, kb) = (i == p.qi, i == p.queue_sel);
         let n = m.short_ep();
-        let ink = if cur { t::ON_ACCENT } else { t::TEXT };
+        let ink = if cur { t::on_accent() } else { t::text() };
         col = col.push(
             Press::new(
                 row![
@@ -325,7 +325,7 @@ pub fn overlays(p: &Player) -> Vec<Element<'_, Msg>> {
         for (k, val) in &p.stats_rows {
             col = col.push(
                 row![
-                    container(text(*k).size(13).color(t::TEXT_SECONDARY)).width(130),
+                    container(text(*k).size(13).color(t::text_secondary())).width(130),
                     text(val.clone()).size(13)
                 ]
                 .spacing(t::S4),
@@ -376,7 +376,7 @@ pub fn overlays(p: &Player) -> Vec<Element<'_, Msg>> {
         for (k, d) in KEYS {
             col = col.push(
                 row![
-                    container(text(k).font(t::MONO).size(13).color(t::ACCENT_TEXT)).width(130),
+                    container(text(k).font(t::MONO).size(13).color(t::accent_text())).width(130),
                     text(d).size(13)
                 ]
                 .spacing(t::S4),
@@ -437,7 +437,7 @@ pub fn floaters(p: &Player, shown: bool) -> Vec<Element<'_, Msg>> {
                 mono(label.to_uppercase()),
                 text(title)
                     .size(13)
-                    .font(t::SEMIBOLD)
+                    .font(t::semibold())
                     .wrapping(text::Wrapping::None),
                 row![
                     chip_button("Play now", true, Msg::Act(Act::NextPlay)),
@@ -460,7 +460,7 @@ pub fn resume_prompt(p: &Player) -> Option<Element<'_, Msg>> {
         column![
             text(p.media.title.clone())
                 .size(t::BODY_LG)
-                .font(t::SEMIBOLD),
+                .font(t::semibold()),
             row![
                 chip_button(
                     &format!("Resume from {}", fmt_clock(r)),
@@ -484,17 +484,17 @@ pub fn hdr_prompt(p: &Player) -> Option<Element<'_, Msg>> {
     let q = p.hdr_prompt?;
     let body = panel(
         column![
-            text(hdr::PROMPT_TITLE).size(t::BODY_LG).font(t::SEMIBOLD),
+            text(hdr::PROMPT_TITLE).size(t::BODY_LG).font(t::semibold()),
             text(hdr::PROMPT_BODY)
                 .size(t::BODY)
-                .color(t::TEXT_SECONDARY)
+                .color(t::text_secondary())
                 .width(460),
             if q.capable {
                 Element::from(space())
             } else {
                 text(hdr::PROMPT_NO_DISPLAY)
                     .size(t::BODY)
-                    .color(t::ACCENT_TEXT)
+                    .color(t::accent_text())
                     .width(460)
                     .into()
             },
@@ -521,7 +521,7 @@ pub fn hdr_prompt(p: &Player) -> Option<Element<'_, Msg>> {
                 let hot = matches!(s, Status::Hovered | Status::Pressed);
                 Style {
                     background: hot.then_some(Background::Color(t::GLASS)),
-                    text_color: t::TEXT,
+                    text_color: t::text(),
                     border: border(Color::TRANSPARENT, 0.0, 6.0),
                     shadow: Shadow::default(),
                     snap: false,
@@ -543,10 +543,10 @@ pub fn problem(p: &Player) -> Option<Element<'_, Msg>> {
         column![
             text("Cannot play right now")
                 .size(t::BODY_LG)
-                .font(t::SEMIBOLD),
+                .font(t::semibold()),
             text(msg.clone())
                 .size(t::BODY)
-                .color(t::TEXT_SECONDARY)
+                .color(t::text_secondary())
                 .width(520),
             chip_button("Back", true, Msg::Act(Act::Stop)),
         ]
@@ -567,7 +567,7 @@ pub fn scrub_tip(p: &Player) -> Option<Element<'_, Msg>> {
     {
         text_s = format!("{text_s} \u{00B7} {}", p.chapters[i].1);
     }
-    let label = container(mono(text_s).color(t::TEXT))
+    let label = container(mono(text_s).color(t::text()))
         .padding([3.0, t::S2])
         .style(crate::style::tip);
     let (tx, tw) = track_rect(p.win.width);
@@ -590,7 +590,7 @@ pub fn scrub_tip(p: &Player) -> Option<Element<'_, Msg>> {
             .width(iw)
             .height(ih);
         col = col.push(container(pic).padding(1).style(|_| container::Style {
-            border: border(t::HAIRLINE_STRONG, 1.0, 4.0),
+            border: border(t::hairline_strong(), 1.0, 4.0),
             ..Default::default()
         }));
         (w, h) = (iw + 2.0, ih + 2.0 + 4.0 + 22.0);

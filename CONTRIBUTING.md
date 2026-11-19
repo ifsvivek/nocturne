@@ -48,5 +48,5 @@ The project is GPL-3.0-or-later. New dependencies must pass `cargo deny check li
 
 ## Commits and pull requests
 
-Imperative, descriptive commit messages (`Fix sort menu painting under the grid`). Describe what you tested and on which session type (Wayland or X11). Contributions are licensed under GPL-3.0-or-later. Security problems: see [SECURITY.md](SECURITY.md), not a public issue. Everyone is expected to follow the
+Imperative, descriptive commit messages (`Fix sort menu painting under the grid`). Describe what you tested and on which session type (Wayland). Contributions are licensed under GPL-3.0-or-later. Security problems: see [SECURITY.md](SECURITY.md), not a public issue. Everyone is expected to follow the
 [Code of Conduct](CODE_OF_CONDUCT.md).

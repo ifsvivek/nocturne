@@ -9,7 +9,7 @@ Maintainer working notes for the public tree. User-facing status is in
 
 0.3.0 release checklist (the maintainer tests an Arch build first; nothing is published before that):
 - [ ] `scripts/ci-checks.sh` green on the final tree.
-- [ ] Run on Wayland and on X11 (Xwayland): sign in, local folder, play from each, versions and sources picker, quit while playing.
+- [ ] Run on Wayland: sign in, local folder, play from each, versions and sources picker, quit while playing.
 - [ ] Clean-container install of the tarball and the PKGBUILD (`scripts/test-install.sh`); play a video after install.
 - [ ] Re-derive the runtime library list for the final binary (winit and wgpu dlopen libX11, libXcursor, libXrandr, libXi, libX11-xcb, libwayland-*, libxkbcommon) and keep `packaging/install.sh`, the PKGBUILD and
       [PACKAGING.md](../PACKAGING.md) in step.
@@ -20,6 +20,14 @@ Maintainer working notes for the public tree. User-facing status is in
 - [ ] Set the date in `CHANGELOG.md` (`[0.3.0] - UNRELEASED`), tag, and publish the GitHub release from
       [RELEASE_NOTES_0.3.0.md](RELEASE_NOTES_0.3.0.md) with the checksum.
 
+## 0.5 in progress: native CSS themes
+
+The engine (`crates/core/src/customize/`) and the Themes page (`crates/app/src/app/themes.rs`) are in; details and limits are in [CUSTOMIZATION_PLAN.md](CUSTOMIZATION_PLAN.md) section 13. Debug hooks for QA: `NOCTURNE_KEYS=open-themes@ms,theme-path@ms,theme-import@ms,theme-preview@ms,theme-apply@ms` with `NOCTURNE_THEME_FILE=/path/x.css`.
+
+## 0.5: Server UI mode (phase 0 and 1 done)
+
+Per-server switch, the server's home sections and My media row, branding as a theme layer, login disclaimer and a home-sections editor behind `allow_server_writes` are in; what is verified and what is not is in [SERVER_UI_PLAN.md](SERVER_UI_PLAN.md) section 7. Debug hooks for QA: `NOCTURNE_KEYS=cycle-filter@ms,layout-1@ms,sections-1@ms,sec-down-0@ms,sec-save@ms`.
+
 ## 0.4 (local branch `v0.4-local`, never pushed)
 
 0.3.0 is released (tag, pacman repository live). 0.4 is feature-complete on the local branch and not published; no release until the maintainer has tested it. Contents: [CHANGELOG.md](../../CHANGELOG.md) `[0.4.0]`, honest per-feature status in
@@ -29,6 +37,7 @@ Verified: offline copies (throwaway server), .deb / .rpm install in clean contai
 
 0.4 release checklist:
 - [x] QA walkthrough of every 0.4 feature (2026-11-17, see [QA_REPORT.md](../QA_REPORT.md) "0.4.0 walkthrough"); open items listed there.
+- [x] Trakt one-click connect: built-in public client id with user override (env, then saved id); NOCTURNE's real id is built in since 20e253e; the placeholder path remains for source builds that blank it, and falls back to the old prompt.
 - [ ] Live Trakt test with the maintainer's own Trakt app: sign-in, scrobble, history import, disconnect.
 - [ ] HDR hardware test on an HDR display (pop-out colours, fullscreen, IPC control, return to the window).
 - [ ] Couch mode with a real gamepad and on a TV.

@@ -300,6 +300,7 @@ impl App {
             return Task::none();
         };
         self.src_open = false;
+        self.th.open = false;
         self.menu = false;
         self.account_back = Some(super::AccountBack::Ready);
         self.phase = Phase::Account;
@@ -404,7 +405,7 @@ impl App {
             Some(Status::Offline { tries, .. }) => tries + 1,
             Some(Status::Connecting) if ok => {
                 self.catalog.set_status(id, Status::Online);
-                return Task::none();
+                return self.fetch_server_ui(id);
             }
             Some(Status::Connecting) => 0,
             _ => return Task::none(),
@@ -451,6 +452,7 @@ impl App {
         self.stack.clear();
         self.settings_open = false;
         self.src_open = false;
+        self.th.open = false;
         self.menu = false;
         self.phase = Phase::Account;
         let t = self.ensure_accounts();
@@ -700,6 +702,7 @@ impl App {
                 label: "Developer token".into(),
                 enabled: true,
                 online: Default::default(),
+                server_ui: false,
                 kind: ProfileKind::Jellyfin {
                     url,
                     user_id: String::new(),

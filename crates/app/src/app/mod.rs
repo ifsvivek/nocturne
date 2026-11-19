@@ -21,9 +21,11 @@ mod play;
 mod preview;
 mod remote;
 mod search;
+mod server_ui;
 mod settings;
 pub(crate) mod smart;
 mod sources;
+pub(crate) mod themes;
 pub(crate) mod trakt;
 
 use crate::account::{self, Accounts, Event as AcctEvent, devices, picker};
@@ -135,6 +137,18 @@ pub const GLOBALS: [(&str, &str); 3] = [
     ("favourites", "Favourites"),
 ];
 
+/// The in-app update, after the banner's Install was pressed.
+enum UpdateStage {
+    Idle,
+    Downloading {
+        progress: std::sync::Arc<std::sync::atomic::AtomicU64>,
+        size: u64,
+    },
+    /// Swapped in; waiting for the user to restart.
+    Ready(std::path::PathBuf),
+    Failed(String),
+}
+
 enum Phase {
     /// Login mode: the account screens (connect, sign in, restore) own the window.
     Account,
@@ -176,10 +190,16 @@ pub struct App {
     rescan: HashSet<SourceId>,
     launch_scan: bool,
     src_open: bool,
+    /// Saved themes and the Themes page.
+    themes: nocturne_core::customize::Store,
+    th: themes::State,
     /// Source whose removal waits for the confirmation dialog.
     confirm: Option<SourceId>,
     /// The extra-header dialog of a server.
     hdr: Option<sources::HeaderDlg>,
+    /// Server UI: each server's layout as last read, and the open home-sections dialog.
+    server_ui: HashMap<SourceId, nocturne_core::server_ui::ServerUi>,
+    sec: Option<server_ui::SecDlg>,
     folders: Option<folders::Folders>,
     online: online::State,
     trakt: trakt::State,
@@ -212,6 +232,10 @@ pub struct App {
     win: Size,
     now: Instant,
     note: Option<(String, Instant)>,
+    /// A newer version, until dismissed (docs/dev/UPDATER_PLAN.md).
+    update: Option<nocturne_core::update::UpdateState>,
+    /// Where the in-app update of that version stands.
+    update_stage: UpdateStage,
     /// Developer-token mode (`NOCTURNE_JF_TOKEN`): no login, read-only.
     dev: bool,
     /// The token / account has admin rights (an `Admin` entry follows the libraries).
@@ -300,8 +324,12 @@ impl App {
             rescan: HashSet::new(),
             launch_scan: false,
             src_open: false,
+            themes: nocturne_core::customize::Store::load(),
+            th: Default::default(),
             confirm: None,
             hdr: None,
+            server_ui: HashMap::new(),
+            sec: None,
             folders: None,
             online: Default::default(),
             trakt: Default::default(),
@@ -329,6 +357,8 @@ impl App {
             win: Size::new(1280.0, 800.0),
             now: Instant::now(),
             note: None,
+            update: None,
+            update_stage: UpdateStage::Idle,
             admin: false,
             admin_open: false,
             adm: None,
@@ -368,9 +398,21 @@ impl App {
             .and_then(window::scale_factor)
             .map(Message::Scale);
         // Keyring reads, index loading and connections all follow in tasks, after the first frame.
+        // The new version started (we are it): drop the previous one and stale downloads.
+        if nocturne_core::update::detect_here() != nocturne_core::update::InstallKind::Dev
+            && let Ok(exe) = std::env::current_exe()
+        {
+            nocturne_core::update_install::cleanup(&exe);
+        }
+        let check = if me.settings.check_updates {
+            run(nocturne_core::update::check(), Message::Update)
+        } else {
+            Task::none()
+        };
         let task = Task::batch([
             size,
             scale,
+            check,
             me.load_sources(),
             open_disk,
             crate::snap::on_boot(),
@@ -385,7 +427,7 @@ impl App {
 
     /// Couch mode scales the whole UI (type, targets and spacing together).
     pub fn scale_factor(&self) -> f32 {
-        crate::couch::factor()
+        crate::couch::factor() * crate::theme::font_scale()
     }
 
     pub fn title(&self) -> String {
@@ -436,6 +478,16 @@ impl App {
         Subscription::batch(subs)
     }
 
+    /// The sign-in screens and the account dialogs put the cursor in their first input themselves.
+    fn sync_account_focus(&mut self) -> Task<Message> {
+        let shown = matches!(self.phase, Phase::Account)
+            || self.accounts.as_ref().is_some_and(|a| a.dialog_open());
+        match self.accounts.as_mut() {
+            Some(a) => a.focus_task(shown).map(Message::Account),
+            None => Task::none(),
+        }
+    }
+
     fn animating(&self) -> bool {
         self.preview
             .as_ref()
@@ -455,16 +507,24 @@ impl App {
     // ---- update ----
 
     pub fn update(&mut self, msg: Message) -> Task<Message> {
+        let task = self.update_inner(msg);
+        self.sync_theme();
+        task
+    }
+
+    fn update_inner(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::Key(k) => self.on_key(k),
             Message::Tick(now) => {
                 self.now = now;
+                self.theme_tick(now);
                 self.sync_detail();
                 self.sync_ob();
                 Task::batch([
                     self.tick(),
                     self.sync_extras(),
                     self.sync_remote(),
+                    self.sync_account_focus(),
                     self.dl_tick(),
                     crate::snap::poll(),
                 ])
@@ -520,11 +580,13 @@ impl App {
             Message::CloseRequested(_) => self.quit(),
             Message::Back => {
                 self.src_open = false;
+                self.th.open = false;
                 self.back();
                 self.page_wants()
             }
             Message::Forward => {
                 self.src_open = false;
+                self.th.open = false;
                 self.forward();
                 self.page_wants()
             }
@@ -535,6 +597,57 @@ impl App {
                 Task::none()
             }
             Message::Retry => self.connect(),
+            Message::Update(u) => {
+                self.update = u;
+                Task::none()
+            }
+            Message::UpdateCopy(cmd) => iced::clipboard::write(cmd.to_string()),
+            Message::UpdateOpen(u) => {
+                if u.starts_with("https://") {
+                    let _ = std::process::Command::new("xdg-open").arg(u).spawn();
+                }
+                Task::none()
+            }
+            Message::UpdateDismiss => {
+                self.update = None;
+                self.update_stage = UpdateStage::Idle;
+                Task::none()
+            }
+            Message::UpdateInstall(art) => {
+                use nocturne_core::update_install as ui;
+                if matches!(self.update_stage, UpdateStage::Downloading { .. }) {
+                    return Task::none();
+                }
+                let (Some(dir), Ok(exe)) = (ui::staging_dir(), std::env::current_exe()) else {
+                    self.update_stage = UpdateStage::Failed("no place to keep the download".into());
+                    return Task::none();
+                };
+                let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+                self.update_stage = UpdateStage::Downloading {
+                    progress: progress.clone(),
+                    size: art.size,
+                };
+                let kind = nocturne_core::update::detect_here();
+                run(
+                    async move { ui::update(kind, &art, &ui::KEYS, &dir, &exe, progress).await },
+                    Message::UpdateInstalled,
+                )
+            }
+            Message::UpdateInstalled(r) => {
+                self.update_stage = match r {
+                    Ok(exe) => UpdateStage::Ready(exe),
+                    Err(e) => UpdateStage::Failed(e),
+                };
+                Task::none()
+            }
+            Message::UpdateRestart => {
+                if let UpdateStage::Ready(exe) = &self.update_stage {
+                    nocturne_core::update_install::request_restart(exe.clone());
+                    // The normal quit path stops playback and reports; `main` starts the new version afterwards.
+                    return self.quit();
+                }
+                Task::none()
+            }
             Message::RetryNow => {
                 let now = Instant::now();
                 for s in &mut self.catalog.slots {
@@ -568,6 +681,11 @@ impl App {
             Message::Fan(pid, kind, epoch, origin, r) => {
                 self.fan_answer(pid, kind, epoch, origin, r)
             }
+            Message::ServerUi(id, r) => {
+                self.server_ui_answer(id, r);
+                Task::none()
+            }
+            Message::SectionsSaved(id, ok) => self.sections_saved(id, ok),
             Message::Latest(pid, epoch, origin, lib, r) => {
                 self.latest_answer(pid, epoch, origin, lib, r)
             }
@@ -656,6 +774,7 @@ impl App {
                 self.retry_page()
             }
             Message::OpenSources => self.open_sources(),
+            Message::Themes(m) => self.themes_msg(m),
             Message::Snapped(shot, n) => {
                 crate::snap::save(&shot, n);
                 Task::none()
@@ -889,6 +1008,7 @@ impl App {
         self.fwd.clear();
         self.admin_open = false;
         self.src_open = false;
+        self.th.open = false;
         self.settings_open = false;
         self.account_back = None;
         // The admin section follows the account's own rights.
@@ -966,6 +1086,7 @@ impl App {
         self.admin_open = false;
         self.settings_open = false;
         self.src_open = false;
+        self.th.open = false;
         self.menu = false;
         self.my_tag = None;
         self.hooks = Arc::new(SyncHooks::new(None, false, false));
@@ -1460,6 +1581,7 @@ impl App {
     fn close_admin(&mut self) {
         self.settings_open = false;
         self.src_open = false;
+        self.th.open = false;
         self.menu = false;
         self.admin_open = false;
         if let Some(mut a) = self.adm.take() {
@@ -1543,6 +1665,12 @@ impl App {
             }
             return Task::none();
         }
+        if self.sections_open() {
+            if key == "escape" {
+                self.close_sections();
+            }
+            return Task::none();
+        }
         if self.confirm.is_some() {
             if matches!(key, "escape" | "backspace") {
                 self.confirm = None;
@@ -1552,9 +1680,20 @@ impl App {
         if self.folders.is_some() {
             return self.folders_key(key);
         }
+        if self.th.open {
+            if key == "escape" {
+                return if self.is_previewing() {
+                    self.themes_msg(themes::Msg::Revert)
+                } else {
+                    self.themes_msg(themes::Msg::Close)
+                };
+            }
+            return Task::none();
+        }
         if self.src_open {
             if matches!(key, "escape" | "backspace") {
                 self.src_open = false;
+                self.th.open = false;
             }
             return Task::none();
         }
@@ -1702,7 +1841,9 @@ impl App {
     fn failed_view(&self, msg: &str) -> Element<'_, Message> {
         container(
             column![
-                text(msg.to_string()).size(t::BODY).color(t::TEXT_SECONDARY),
+                text(msg.to_string())
+                    .size(t::BODY)
+                    .color(t::text_secondary()),
                 container(widget::pill_button(
                     "Try again",
                     false,
@@ -1734,7 +1875,7 @@ impl App {
                 container(space())
                     .width(Length::Fill)
                     .height(Length::Fill)
-                    .style(crate::style::fill(t::FRAME))
+                    .style(crate::style::page)
                     .into(),
                 layer(&self.glow, 1.0),
                 layer(&self.dots, 0.09),
@@ -1744,7 +1885,7 @@ impl App {
             if let Some((n, _)) = &self.note {
                 layers.push(
                     container(
-                        container(text(n.clone()).size(t::BODY).color(t::TEXT))
+                        container(text(n.clone()).size(t::BODY).color(t::text()))
                             .padding([t::S3, t::S4])
                             .style(crate::style::raised_card),
                     )
@@ -1795,6 +1936,7 @@ impl App {
                 false,
             ),
             Phase::Ready if self.folders.is_some() => self.folders_page(),
+            Phase::Ready if self.th.open => self.themes_page(),
             Phase::Ready if self.src_open => self.sources_page(),
             Phase::Ready if self.settings_open => self.settings_page(),
             Phase::Ready if self.adm.is_some() => match self.adm.as_deref() {
@@ -1810,7 +1952,7 @@ impl App {
             if let Some((n, _)) = &self.note {
                 layers.push(
                     container(
-                        container(text(n.clone()).size(t::BODY).color(t::TEXT))
+                        container(text(n.clone()).size(t::BODY).color(t::text()))
                             .padding([t::S3, t::S4])
                             .style(crate::style::raised_card),
                     )
@@ -1843,7 +1985,7 @@ impl App {
             container(space())
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .style(crate::style::fill(t::FRAME))
+                .style(crate::style::page)
                 .into(),
             layer(&self.glow, 1.0),
             layer(&self.dots, 0.09),
@@ -1852,7 +1994,7 @@ impl App {
         let setting_up = self.folders.as_ref().is_some_and(|f| f.setup) || self.ob_away.is_some();
         if ready && !setting_up {
             layers.push(self.header());
-            if let Some(b) = self.source_banner() {
+            if let Some(b) = self.source_banner().or_else(|| self.update_banner()) {
                 layers.push(b);
             }
             if !self.admin_open
@@ -1899,6 +2041,9 @@ impl App {
         if self.hdr.is_some() {
             layers.push(self.header_dialog());
         }
+        if self.sections_open() {
+            layers.push(self.sections_dialog());
+        }
         if self.online.finder_open() {
             layers.push(self.finder_dialog());
         }
@@ -1914,7 +2059,7 @@ impl App {
         if let Some((n, _)) = &self.note {
             layers.push(
                 container(
-                    container(text(n.clone()).size(t::BODY).color(t::TEXT))
+                    container(text(n.clone()).size(t::BODY).color(t::text()))
                         .padding([t::S3, t::S4])
                         .style(crate::style::raised_card),
                 )
@@ -1958,12 +2103,12 @@ impl App {
             space().height(t::S6).into(),
             text(title.to_string())
                 .size(t::HEADING)
-                .font(t::BOLD)
+                .font(t::bold())
                 .into(),
             container(
                 text(body.to_string())
                     .size(t::BODY)
-                    .color(t::TEXT_SECONDARY)
+                    .color(t::text_secondary())
                     .align_x(Alignment::Center),
             )
             .max_width(460)
@@ -1991,7 +2136,7 @@ impl App {
             label("Connecting")
                 .color(iced::Color {
                     a: pulse(self.now, 1600),
-                    ..t::TEXT_TERTIARY
+                    ..t::text_tertiary()
                 })
                 .into(),
         ])

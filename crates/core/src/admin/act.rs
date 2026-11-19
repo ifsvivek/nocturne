@@ -801,11 +801,8 @@ mod tests {
 
     /// Type `text` into field `i` the way the keyboard would.
     fn type_into(d: &mut Dialog, i: usize, text: &str) {
-        d.focus = i;
         d.fields[i].value.clear();
-        for c in text.chars() {
-            d.key(&c.to_string(), Some(&c.to_string()));
-        }
+        d.input(i, text);
     }
 
     #[test]

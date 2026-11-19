@@ -21,6 +21,6 @@ GPUI is published irregularly, its release lacks accessibility support, and the 
 ## Earlier (0.1-0.2)
 
 - **Read-only by default**: one setting gates every server write; confirmation tokens for destructive calls ([WRITES.md](WRITES.md)).
-- **In-window video via a Wayland subsurface with libmpv's OpenGL render API**, never an in-process Vulkan mpv context (NVIDIA crash); X11 uses an external mpv window ([video-embedding.md](video-embedding.md)).
+- **In-window video via a Wayland subsurface with libmpv's OpenGL render API**, never an in-process Vulkan mpv context (NVIDIA crash); Linux is Wayland-only since 0.5, X11 support was removed ([video-embedding.md](video-embedding.md)).
 - **Tokens only in the system keyring**, no file fallback.
 - **One tokio runtime** behind a bridge, because the UI framework runs its own executor.

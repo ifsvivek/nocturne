@@ -53,12 +53,12 @@ pub fn glyph<'a>(name: &str, size: f32, color: Color) -> svg::Svg<'a> {
 fn look(s: Status, primary: bool, dim: bool) -> Style {
     let hot = matches!(s, Status::Hovered | Status::Pressed);
     let (ink, edge) = if primary {
-        (t::ON_ACCENT, t::ACCENT)
+        (t::on_accent(), t::accent())
     } else {
-        (t::TEXT, t::EDGE)
+        (t::text(), t::edge())
     };
     let mut bg = if primary {
-        Some(if hot { t::ACCENT_HOVER } else { t::ACCENT })
+        Some(if hot { t::accent_hover() } else { t::accent() })
     } else if hot {
         Some(t::GLASS)
     } else {
@@ -96,7 +96,7 @@ pub fn ctl_button<'a>(
     dim: bool,
     on: Option<Msg>,
 ) -> Element<'a, Msg> {
-    let ink = if primary { t::ON_ACCENT } else { t::TEXT };
+    let ink = if primary { t::on_accent() } else { t::text() };
     let mut r = row![glyph(icon, 16.0, ink)]
         .spacing(t::S1)
         .align_y(Alignment::Center);
@@ -118,12 +118,12 @@ fn act(a: Act) -> Option<Msg> {
 
 /// Text button used by the prompts (skip chip, next-episode card, resume prompt).
 pub fn chip_button<'a>(label: &str, primary: bool, on: Msg) -> Element<'a, Msg> {
-    let ink = if primary { t::ON_ACCENT } else { t::TEXT };
+    let ink = if primary { t::on_accent() } else { t::text() };
     Press::new(
         container(
             text(label.to_string())
                 .size(13)
-                .font(t::SEMIBOLD)
+                .font(t::semibold())
                 .color(ink),
         )
         .center_y(Length::Fill),
@@ -134,7 +134,10 @@ pub fn chip_button<'a>(label: &str, primary: bool, on: Msg) -> Element<'a, Msg> 
     .style(move |s| {
         let hot = matches!(s, Status::Hovered | Status::Pressed);
         let (bg, edge) = if primary {
-            (if hot { t::ACCENT_HOVER } else { t::ACCENT }, t::ACCENT)
+            (
+                if hot { t::accent_hover() } else { t::accent() },
+                t::accent(),
+            )
         } else {
             (
                 if hot {
@@ -142,10 +145,10 @@ pub fn chip_button<'a>(label: &str, primary: bool, on: Msg) -> Element<'a, Msg> 
                 } else {
                     Color {
                         a: 0.93,
-                        ..t::SURFACE
+                        ..t::surface()
                     }
                 },
-                t::EDGE,
+                t::edge(),
             )
         };
         Style {
@@ -339,8 +342,8 @@ pub fn bar(p: &Player) -> Element<'_, Msg> {
         .push(
             text(p.media.title.clone())
                 .size(14)
-                .font(t::SEMIBOLD)
-                .color(t::TEXT)
+                .font(t::semibold())
+                .color(t::text())
                 .wrapping(nowrap),
         )
         .push(mono(status).wrapping(nowrap));
@@ -373,15 +376,21 @@ pub fn bar(p: &Player) -> Element<'_, Msg> {
     let body = column![row1, row2];
     let fill = Color {
         a: if p.video { 0.77 } else { 0.96 },
-        ..t::FRAME
+        ..t::frame()
     };
+    // `.player-controls { background }` replaces the fixed scrim.
+    let look_bg = t::parts(None, None)
+        .player_controls
+        .background
+        .as_ref()
+        .map(t::background);
     let bar = container(body)
         .width(Length::Fill)
         .height(BAR_H)
         .style(move |_| container::Style {
-            background: Some(Background::Color(fill)),
+            background: Some(look_bg.unwrap_or(Background::Color(fill))),
             border: iced::Border {
-                color: t::HAIRLINE_STRONG,
+                color: t::hairline_strong(),
                 width: 1.0,
                 radius: 0.0.into(),
             },

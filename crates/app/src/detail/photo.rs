@@ -48,7 +48,7 @@ impl Detail {
                 .into(),
             container(
                 column![
-                    g(m.title.clone()).size(t::BODY).color(t::TEXT),
+                    g(m.title.clone()).size(t::BODY).color(t::text()),
                     mono(format!(
                         "{}/{}  \u{2190} \u{2192} step  + - zoom  esc close",
                         p.i + 1,

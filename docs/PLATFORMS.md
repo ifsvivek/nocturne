@@ -8,7 +8,7 @@ Implemented state (0.4): Linux is built, run and tested. macOS and Windows are *
 
 | Concern | Linux | macOS | Windows |
 |---|---|---|---|
-| In-window video | libmpv GL render API in a Wayland subsurface (X11: external mpv). `crates/player/src/embedded.rs` | **external mpv window for now** (`embedded_stub.rs`: `EmbeddedPlayer` cannot be built, the app falls back). Native embedding: later (libmpv render API into a Metal/GL view) | same: external mpv window; native embedding later (libmpv render API / `wid` child window) |
+| In-window video | libmpv GL render API in a Wayland subsurface. Linux is Wayland-only: X11 is not supported and the app exits with a message on an X11-only session. `crates/player/src/embedded.rs` | **external mpv window for now** (`embedded_stub.rs`: `EmbeddedPlayer` cannot be built, the app falls back). Native embedding: later (libmpv render API into a Metal/GL view) | same: external mpv window; native embedding later (libmpv render API / `wid` child window) |
 | External player IPC | unix socket | unix socket | named pipe `\\.\pipe\nocturne-mpv-<pid>-<n>` (reader polls `PeekNamedPipe`, see `crates/player/src/ipc.rs`) |
 | libmpv at runtime | distro package (dlopen `libmpv.so.2`) | dlopen `libmpv.2.dylib`: `Contents/Frameworks` next to the exe first, then default paths and Homebrew | dlopen `libmpv-2.dll` next to the exe first, then the DLL search path |
 | external `mpv` binary | `PATH` | next to the app, `PATH`, Homebrew prefixes | `mpv.exe` next to the app, then `PATH` (no console window) |

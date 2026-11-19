@@ -6,7 +6,7 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <description>
-    <p>NOCTURNE is a native desktop client for Jellyfin media servers that plays video through libmpv. It targets Linux, Wayland first, with an X11 fallback.</p>
+    <p>NOCTURNE is a native desktop client for Jellyfin media servers that plays video through libmpv. It targets Linux, Wayland only on Linux.</p>
     <p>NOCTURNE is an independent project and is not affiliated with or endorsed by the Jellyfin project.</p>
   </description>
   <url type="homepage">https://github.com/ifsvivek/nocturne</url>
@@ -22,6 +22,7 @@
   </categories>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.5.0" date="2026-11-19"/>
     <release version="0.4.0" date="2026-11-18"/>
     <release version="0.3.0" date="2026-11-16"/>
     <release version="0.2.0" date="2026-11-15"/>
