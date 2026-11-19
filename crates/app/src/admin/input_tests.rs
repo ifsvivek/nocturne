@@ -39,6 +39,7 @@ fn with_fields(a: &mut Admin, fields: Vec<Field>) {
 /// One character at a time with a fresh view each time, like the real app's redraws.
 fn type_into(a: &mut Admin, i: usize, text: &str) {
     for c in text.chars() {
+        let _sim = crate::sim_lock();
         let mut sim = Simulator::new(a.view());
         sim.click(selector::id(field_id(i)))
             .expect("dialog field is on screen");
@@ -80,6 +81,7 @@ fn enter_in_a_dialog_field_reports_a_submit() {
     let _g = rt.enter();
     let mut a = admin();
     with_fields(&mut a, vec![Field::typed("Type NETWORK", "NETWORK")]);
+    let _sim = crate::sim_lock();
     let mut sim = Simulator::new(a.view());
     sim.click(selector::id(field_id(0))).unwrap();
     sim.tap_key(Key::Named(Named::Enter));

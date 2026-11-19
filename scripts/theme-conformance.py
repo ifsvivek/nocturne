@@ -10,8 +10,12 @@ import argparse, base64, json, os, re, socket, struct, subprocess, sys, time, ur
 
 SCREENS = ["home", "movies", "movie", "series"]
 THEMES_RAW = "https://raw.githubusercontent.com/awesome-jellyfin/awesome-jellyfin/main/THEMES.md"
-# Repos that document a different import for the Jellyfin version we test (12.x).
-ALT_REPO = {"ElegantFin": "mihaif7/elegantfin-jf12"}
+# Repos that document a different import for the Jellyfin version we test (12.x). Empty on purpose: a theme is run with
+# the import ITS OWN project documents. Forks that exist for Jellyfin 12 are only noted (FORK_NOTES), never substituted:
+# ElegantFin's README documents one import for 10.11 and above and says Jellyfin 12 needs the Desktop (Legacy) display
+# mode; the mihaif7/elegantfin-jf12 fork resolved earlier looks almost stock and is not the theme people install.
+ALT_REPO = {}
+FORK_NOTES = {"ElegantFin": "official import; a jf12 fork (mihaif7/elegantfin-jf12) exists, not used"}
 JF_MAJOR = 12
 
 
@@ -54,7 +58,8 @@ def cmd_themes(a):
         out.append({"name": name, "status": "hidden-pending-v12" if hidden_at != -1 and m.start() > hidden_at else "active",
                     "repo": repo, "import_url": imp,
                     "source": f"https://github.com/{repo}#readme" if repo else get_link,
-                    "note": "" if imp else "no documented @import line (JS builder or other install method)"})
+                    "note": "" if imp else "no documented @import line (JS builder or other install method)",
+                    "fork_note": FORK_NOTES.get(name, "")})
     json.dump(out, open(a.out, "w"), indent=1)
     print(f"{len(out)} themes, {sum(1 for t in out if t['import_url'])} with a resolvable @import")
 
@@ -267,7 +272,7 @@ def cmd_report(a):
         t = themes[name]
         if not os.path.exists(f):
             why = t["note"] or ("not run (hidden pending v12)" if t["status"] != "active" else "not run")
-            rows.append(f"| {name} | - | - | - | - | - | n/a | {why} |")
+            rows.append(f"| {name} | - | - | - | - | - | n/a | - | {why} |")
             continue
         sc = json.load(open(f))["scores"]
         cells = []
@@ -276,11 +281,19 @@ def cmd_report(a):
             cells.append(str(v["score"]) if v else "-")
             if v:
                 tot[s].append(v["score"])
-        rows.append(f"| {name} | " + " | ".join(cells) + f" | {round(sum(int(c) for c in cells if c != '-') / max(1, sum(c != '-' for c in cells)))} | n/a (no app hook yet) | {notes.get(name, '-')} |")
+        r = json.load(open(f)).get("report") or {}
+        if r.get("active"):
+            kinds = ", ".join(f"{v} {k}" for k, v in sorted(r.get("not_applied_by_kind", {}).items(), key=lambda kv: -kv[1])[:3])
+            rep = f"{r['applied']} / {r['not_applied']}" + (f" ({kinds})" if kinds else "") + f"; {len(r.get('fonts', []))} fonts"
+        else:
+            rep = "no theme active" if r else "n/a"
+        imp = json.load(open(f)).get("import", "").replace("https://", "")
+        fork = t.get("fork_note")
+        rows.append(f"| {name} | " + " | ".join(cells) + f" | {round(sum(int(c) for c in cells if c != '-') / max(1, sum(c != '-' for c in cells)))} | {rep} | `{imp}`{' (' + fork + ')' if fork else ''} | {notes.get(name, '-')} |")
     avg = " | ".join(str(round(sum(v) / len(v))) if v else "-" for v in tot.values())
     body = (f"Run: {time.strftime('%Y-%m-%d %H:%M')}, NOCTURNE commit `{a.commit}`, jellyfin server {a.jf}, 1920x1080.\n\n"
-            "| Theme | Home | Movies | Movie | Series | Mean | Applied / not applied | Main differences |\n|---|---|---|---|---|---|---|---|\n"
-            + "\n".join(rows) + f"\n| **mean of run themes** | {avg} | | | |\n")
+            "| Theme | Home | Movies | Movie | Series | Mean | Applied / not applied | Import used | Main differences |\n|---|---|---|---|---|---|---|---|---|\n"
+            + "\n".join(rows) + f"\n| **mean of run themes** | {avg} | | | | |\n")
     doc = open(a.doc).read()
     new = re.sub(r"<!-- BEGIN GENERATED -->.*<!-- END GENERATED -->", lambda m: f"<!-- BEGIN GENERATED -->\n{body}<!-- END GENERATED -->", doc, flags=re.S)
     open(a.doc, "w").write(new)

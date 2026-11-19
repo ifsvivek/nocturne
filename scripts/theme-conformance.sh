@@ -76,15 +76,19 @@ SESS=$(curl -fsS -X POST -H "Authorization: MediaBrowser Client=\"nocturne-conf\
   -H 'Content-Type: application/json' -d "$(jq -nc --arg p "$PW" '{Username:"demo",Pw:$p}')" "$URL/Users/AuthenticateByName")
 UID_=$(jq -r .User.Id <<<"$SESS")
 RUN=/tmp/nocturne-run/$HS; rm -rf "$RUN"; mkdir -p "$RUN/config/nocturne"
+# version 2: "All" (and the server alone) takes its UI from source 1, so the capture shows the server's sections.
 cat >"$RUN/config/nocturne/sources.toml" <<TOML
-version = 1
+version = 2
 next_id = 2
+
+[ui_from]
+all = "1"
+1 = "self"
 
 [[profile]]
 id = 1
 label = "conf"
 enabled = true
-server_ui = true
 kind = "jellyfin"
 url = "$URL"
 user_id = "$UID_"
@@ -99,10 +103,11 @@ while read -r k; do
 done <<<"$KEYRING_USER_KEYS"
 
 HS_NAME=$HS "$HERE/headless-session.sh" start 1920x1080
-app_shot() { # screen keys out.png
-  local keys=$2 out=$3
+app_shot() { # screen keys out.png [report.json]
+  local keys=$2 out=$3 rep=${4:-}
   rm -f "$out"
-  HS_NAME=$HS timeout 60 "$HERE/headless-session.sh" run env NOCTURNE_KEYS="$keys" NOCTURNE_SNAP="$out" NOCTURNE_SNAP_AFTER_MS="${SNAP_MS:-12500}" \
+  [[ -n $rep ]] && { rm -f "$rep"; keys="${keys:+$keys,}theme-report@11000"; }
+  HS_NAME=$HS timeout 60 "$HERE/headless-session.sh" run env NOCTURNE_KEYS="$keys" NOCTURNE_THEME_REPORT="${rep:-/dev/null}" NOCTURNE_SNAP="$out" NOCTURNE_SNAP_AFTER_MS="${SNAP_MS:-12500}" \
     "$HERE/run-isolated.sh" --keep "$HS" "$BIN" >"$OUT/app.log" 2>&1 &
   local pid=$!
   for _ in $(seq 50); do [[ -s $out ]] && break; sleep 1; done
@@ -129,9 +134,10 @@ for name in "${LIST[@]}"; do
   python3 -I "$HERE/theme-conformance.py" web --url "$URL" --user demo --pw-file "$JF/demo-password" --out "$d" \
     --chrome "$(command -v google-chrome-stable)" --ids "$CONF/ids.json" --profile "$CONF/chrome-profile" --pidfile "$PIDS_CHROME" --chrome-port "$CHROME_PORT"
   rm -rf "$CONF/chrome-profile"; rm -f "$PIDS_CHROME"
-  for scr in home movies movie series; do app_shot "$scr" "${KEYS[$scr]}" "$d/app-$scr.png"; done
+  for scr in home movies movie series; do app_shot "$scr" "${KEYS[$scr]}" "$d/app-$scr.png" "$([[ $scr == home ]] && echo "$d/report.json")"; done
   python3 -I "$HERE/theme-conformance.py" score "$d" >"$d/scores.line"
-  jq -n --arg n "$name" --arg u "$imp" --slurpfile s "$d/scores.json" '{name:$n,import:$u,scores:$s[0]}' >"$d/result.json"
+  [[ -s $d/report.json ]] || echo '{}' >"$d/report.json"
+  jq -n --arg n "$name" --arg u "$imp" --slurpfile s "$d/scores.json" --slurpfile r "$d/report.json" '{name:$n,import:$u,scores:$s[0],report:$r[0]}' >"$d/result.json"
 done
 # reset the throwaway server's branding
 guard; cfg=$(api GET /System/Configuration/branding); api POST /System/Configuration/branding "$(jq -c '.CustomCss=""' <<<"$cfg")" >/dev/null

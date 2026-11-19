@@ -7,9 +7,9 @@ The measuring stick for the 0.5.2 theme engine (step T in [V052_PLAN.md](V052_PL
 `scripts/theme-conformance.sh [--bin PATH] [--hidden] [theme ...]` (helper: `scripts/theme-conformance.py`, stdlib + Pillow).
 
 1. **Server.** A throwaway Jellyfin built by `scripts/make-demo-library.sh` under `/tmp/nocturne-conf/demo` on `127.0.0.1:8171` (`NOCTURNE_CONF_PORT`), relaunched WITH the installed `jellyfin-web` (`/usr/share/jellyfin/web`). Admin and `demo` (administrator) passwords are generated and kept mode 600 under that directory; nothing is typed by hand. Before every branding write the script checks that the server's own data path is under the throwaway directory in `/tmp` (the same idea as `TestServerGuard`), and it refuses port 8097. The script never reads the maintainer's `.env` or contacts any configured server.
-2. **Theme list.** `THEMES.md` of awesome-jellyfin is fetched at run time (raw, into `/tmp`). Active themes are run; the "hidden pending v12" ones only with `--hidden`. Each theme's repository README is fetched and its first documented `@import url(....css)` line is used (on Jellyfin 12 a file name containing `12` is preferred, `legacy`/`compat` files are skipped; ElegantFin uses the `elegantfin-jf12` repository the list points to). Only that line is written to the server's Branding Custom CSS (`POST /System/Configuration/branding`), so both clients resolve the theme from the network exactly as users do. Themes with several variants (colour schemes, flavours) run their first documented import.
+2. **Theme list.** `THEMES.md` of awesome-jellyfin is fetched at run time (raw, into `/tmp`). Active themes are run; the "hidden pending v12" ones only with `--hidden`. Each theme's repository README is fetched and its first documented `@import url(....css)` line is used (on Jellyfin 12 a file name containing `12` is preferred, `legacy`/`compat` files are skipped; a theme always runs with the import ITS OWN project documents: forks made for Jellyfin 12 are only noted in the report, never substituted. ElegantFin documents one import for 10.11 and later and says Jellyfin 12 needs Display Mode "Desktop (Legacy)"; the `elegantfin-jf12` fork used by the baseline looks almost stock). Only that line is written to the server's Branding Custom CSS (`POST /System/Configuration/branding`), so both clients resolve the theme from the network exactly as users do. Themes with several variants (colour schemes, flavours) run their first documented import.
 3. **Original.** Headless `google-chrome-stable` (own profile in `/tmp`, remote debugging on a local port, driven over DevTools by a small stdlib websocket client) at 1920x1080, signed in as `demo` through the login form; waits for fonts, images and 2.5 s of settle time. Screens: Home, Movies library grid, a movie detail (Ember Tide), a series detail (The Ashen Coast).
-4. **NOCTURNE.** The given debug binary through `scripts/run-isolated.sh` inside `HS_NAME=conf scripts/headless-session.sh` (headless sway, 1920x1080). The isolated config is seeded with the `demo` login (token in the keyring under the test service `nocturne-test`, removed again on exit) and `server_ui = true`, so the server's branding CSS is read. One launch per screen with `NOCTURNE_KEYS` (`open-movies`, `open-shows`, then `enter` on the first card) and `NOCTURNE_SNAP`.
+4. **NOCTURNE.** The given debug binary through `scripts/run-isolated.sh` inside `HS_NAME=conf scripts/headless-session.sh` (headless sway, 1920x1080). The isolated config is seeded with the `demo` login (token in the keyring under the test service `nocturne-test`, removed again on exit) and `ui_from` of "All" and of the server set to that server (`sources.toml` version 2), so "All" uses the server's UI and its branding CSS is read; each launch also writes the engine report (`NOCTURNE_KEYS=theme-report@11000`, `NOCTURNE_THEME_REPORT=<file>`). One launch per screen with `NOCTURNE_KEYS` (`open-movies`, `open-shows`, then `enter` on the first card) and `NOCTURNE_SNAP`.
 5. **Cleanup.** The trap stops the Jellyfin and Chrome started by the script (by pid file), the headless session, and removes the keyring entries; the throwaway server's branding CSS is reset. Captures stay in `/tmp`.
 
 Outputs per theme: `web-<screen>.png`, `app-<screen>.png`, `pair-<screen>.png` (web left, NOCTURNE right), `scores.json`.
@@ -27,38 +27,38 @@ Rules of thumb: two different dark UIs of the same data score 40 to 55 (the demo
 
 ## Applied / not applied counts
 
-The engine's report is not reachable from outside the app yet. TODO for the app worker: a debug hook (for example `NOCTURNE_THEME_REPORT=/tmp/x.json`, written once the theme finished loading, or a `report` line on stderr) with applied and not-applied counts grouped by kind, and a hook to open an item by id (`open-item-<id>`) so the detail screens no longer depend on the first grid card. The column is `n/a` until then.
+Debug builds write the active theme's report as JSON to `NOCTURNE_THEME_REPORT=<file>` when the key hook `theme-report@<ms>` fires (`crates/app/src/snap.rs`, handled in `app/themes.rs`): `applied` (tokens the theme set), `not_applied` (all warnings), `not_applied_by_kind` (the engine's warning kinds), `imports` (files downloaded, from cache, notes) and `fonts` (faces loaded). The harness reads it from the Home launch and fills the column as `applied / not applied (top three kinds); N fonts`. The "Import used" column shows the `@import` URL actually written to the server. An `open-item-<id>` hook does not exist yet: `Media` cannot be built from an id alone, so the detail screens still open the first grid card.
 
 ## Results
 
 <!-- BEGIN GENERATED -->
-Run: 2026-11-19 18:42, NOCTURNE commit `42dd6dc`, jellyfin server 12.4.0, 1920x1080.
+Run: 2026-11-19 18:54, NOCTURNE commit `f0d6543`, jellyfin server 12.4.0, 1920x1080.
 
-| Theme | Home | Movies | Movie | Series | Mean | Applied / not applied | Main differences |
-|---|---|---|---|---|---|---|---|
-| Abyss | 42 | 43 | 44 | 47 | 44 | n/a (no app hook yet) | Frosted-glass surfaces, rounded centred header, blur; palette, header, cards (gaps 1,2,4,8) |
-| Better Jellyfin UI | 49 | 44 | 45 | 46 | 46 | n/a (no app hook yet) | Floating header, iOS-style rounded cards, animations (gaps 1,2,4) |
-| Catppuccin | 15 | 13 | 49 | 52 | 32 | n/a (no app hook yet) | Latte flavour is a LIGHT theme: white canvas vs NOCTURNE dark, lowest Home/Movies scores (gap 1) |
-| ElegantFin | 42 | 41 | 42 | 44 | 42 | n/a (no app hook yet) | Rounded cards and buttons, translucent header pill, wide title block on detail (gaps 1,2,4,6) |
-| Evergarden | 34 | 28 | 36 | 39 | 34 | n/a (no app hook yet) | Muted green-grey palette on a dark teal canvas (gap 1) |
-| ijelly | 54 | 54 | 58 | 61 | 57 | n/a (no app hook yet) | Apple TV style: large rounded cards, blurred header (gaps 1,2,4,8) |
-| infinitv | 40 | 41 | 50 | 52 | 46 | n/a (no app hook yet) | Dark card grid, Netflix-like header, hover scale (gaps 1,2,4) |
-| Jellyfish | 43 | 38 | 40 | 38 | 40 | n/a (no app hook yet) | Teal glass floating header, jellyfish artwork background, Quicksand font (gaps 1,2,7,8) |
-| JellyThemes | 49 | 45 | 52 | 54 | 50 | n/a (no app hook yet) | Solaris variant: near-black with gold accent, floating glass top bar (gaps 1,2,8) |
-| Nebula | 43 | 41 | 45 | 49 | 44 | n/a (no app hook yet) | Violet to cyan gradient accent, glass menus, Inter font, logo on movie pages (gaps 1,2,6,7,8) |
-| Netflin | 45 | 44 | 59 | 60 | 52 | n/a (no app hook yet) | Netflix red on black, title-art hero, wordmark logo in the header (gaps 1,2,3,6) |
-| NeutralFin | 42 | 39 | 51 | 48 | 45 | n/a (no app hook yet) | ElegantFin derivative in black and grey (gaps 1,2,4,6) |
-| Scyfin | 42 | 39 | 36 | 38 | 39 | n/a (no app hook yet) | Backdrop-led pages, vertical drawer instead of tabs (gaps 1,2,6,8) |
-| SleekFin | - | - | - | - | - | n/a | no documented @import line (JS builder or other install method) |
-| Ultrachromic | 43 | 39 | 43 | 40 | 41 | n/a (no app hook yet) | Monochromic preset: sectioned rows with bullet-marked titles, big continue-watching cards (gaps 1,3,4,7) |
-| Zombie | 35 | 36 | 31 | 31 | 33 | n/a (no app hook yet) | AMOLED black, small header nav, square-ish cards, wide detail hero with round action buttons (gaps 1,2,4,6) |
-| Finimalism | - | - | - | - | - | n/a | not run (hidden pending v12) |
-| Finity | - | - | - | - | - | n/a | not run (hidden pending v12) |
-| Flow | - | - | - | - | - | n/a | not run (hidden pending v12) |
-| Jamfin | - | - | - | - | - | n/a | not run (hidden pending v12) |
-| NetFin | - | - | - | - | - | n/a | not run (hidden pending v12) |
-| Zesty | - | - | - | - | - | n/a | not run (hidden pending v12) |
-| **mean of run themes** | 41 | 39 | 45 | 47 | | | |
+| Theme | Home | Movies | Movie | Series | Mean | Applied / not applied | Import used | Main differences |
+|---|---|---|---|---|---|---|---|---|
+| Abyss | 42 | 43 | 44 | 47 | 44 | n/a (not re-run) | `cdn.jsdelivr.net/gh/AumGupta/abyss-jellyfin@main/abyss.css` | Frosted-glass surfaces, rounded centred header, blur; palette, header, cards (gaps 1,2,4,8) |
+| Better Jellyfin UI | 49 | 44 | 45 | 46 | 46 | n/a (not re-run) | `cdn.jsdelivr.net/gh/tromoSM/better-jellyfin-ui@main/theme.css` | Floating header, iOS-style rounded cards, animations (gaps 1,2,4) |
+| Catppuccin | 15 | 13 | 49 | 52 | 32 | 0 / 174 (168 selectors not supported, 5 unknown variables, 1 properties not supported); 0 fonts | `jellyfin.catppuccin.com/theme.css` | Latte flavour is a LIGHT theme: white canvas vs NOCTURNE dark, lowest Home/Movies scores (gap 1) |
+| ElegantFin | 42 | 41 | 42 | 44 | 42 | n/a (not re-run) | not re-run: the baseline used the jf12 fork `mihaif7/elegantfin-jf12`; the next run uses the official import `cdn.jsdelivr.net/gh/lscambo13/ElegantFin@main/Theme/ElegantFin-jellyfin-theme-build-latest-minified.css` | Rounded cards and buttons, translucent header pill, wide title block on detail (gaps 1,2,4,6) |
+| Evergarden | 34 | 28 | 36 | 39 | 34 | n/a (not re-run) | `evergardentheme.github.io/jellyfin/evergarden-winter.css` | Muted green-grey palette on a dark teal canvas (gap 1) |
+| ijelly | 54 | 54 | 58 | 61 | 57 | n/a (not re-run) | `cdn.jsdelivr.net/gh/safiyu/ijelly@latest/ijelly.css` | Apple TV style: large rounded cards, blurred header (gaps 1,2,4,8) |
+| infinitv | 40 | 41 | 50 | 52 | 46 | n/a (not re-run) | `buesche87.github.io/infinitv/infinitv-dev-v12.css` | Dark card grid, Netflix-like header, hover scale (gaps 1,2,4) |
+| Jellyfish | 43 | 38 | 40 | 38 | 40 | n/a (not re-run) | `cdn.jsdelivr.net/gh/n00bcodr/jellyfish@main/theme.css` | Teal glass floating header, jellyfish artwork background, Quicksand font (gaps 1,2,7,8) |
+| JellyThemes | 49 | 45 | 52 | 54 | 50 | n/a (not re-run) | `cdn.jsdelivr.net/gh/kingchenc/JellyThemes@master/Themes/Solaris/Solaris.css` | Solaris variant: near-black with gold accent, floating glass top bar (gaps 1,2,8) |
+| Nebula | 43 | 41 | 45 | 49 | 44 | n/a (not re-run) | `cdn.jsdelivr.net/gh/nemesbak/jellyfin-nebula@main/nebula.css` | Violet to cyan gradient accent, glass menus, Inter font, logo on movie pages (gaps 1,2,6,7,8) |
+| Netflin | 59 | 59 | 49 | 57 | 56 | 5 / 1226 (468 selectors not supported, 28 at-rules not supported, 2 fonts only if installed); 6 fonts | `cdn.jsdelivr.net/gh/ahza-code/Netflin@latest/Theme/Netflin.min.css` | Netflix red on black, title-art hero, wordmark logo in the header (gaps 1,2,3,6) |
+| NeutralFin | 42 | 39 | 51 | 48 | 45 | n/a (not re-run) | `cdn.jsdelivr.net/gh/KartoffelChipss/NeutralFin@latest/theme/neutralfin-minified.css` | ElegantFin derivative in black and grey (gaps 1,2,4,6) |
+| Scyfin | 42 | 39 | 36 | 38 | 39 | n/a (not re-run) | `cdn.jsdelivr.net/gh/loof2736/scyfin@latest/CSS/scyfin-theme.css` | Backdrop-led pages, vertical drawer instead of tabs (gaps 1,2,6,8) |
+| SleekFin | - | - | - | - | - | n/a | - | no documented @import line (JS builder or other install method) |
+| Ultrachromic | 44 | 39 | 46 | 42 | 43 | 4 / 333 (292 selectors not supported, 33 at-rules not supported, 3 properties not supported); 5 fonts | `cdn.jsdelivr.net/gh/CTalvio/Ultrachromic/presets/monochromic_preset.css` | Monochromic preset: sectioned rows with bullet-marked titles, big continue-watching cards (gaps 1,3,4,7) |
+| Zombie | 35 | 36 | 31 | 31 | 33 | n/a (not re-run) | `cdn.jsdelivr.net/gh/MakD/zombie-release@latest/zombie_revived.css` | AMOLED black, small header nav, square-ish cards, wide detail hero with round action buttons (gaps 1,2,4,6) |
+| Finimalism | - | - | - | - | - | n/a | - | not run (hidden pending v12) |
+| Finity | - | - | - | - | - | n/a | - | not run (hidden pending v12) |
+| Flow | - | - | - | - | - | n/a | - | not run (hidden pending v12) |
+| Jamfin | - | - | - | - | - | n/a | - | not run (hidden pending v12) |
+| NetFin | - | - | - | - | - | n/a | - | not run (hidden pending v12) |
+| Zesty | - | - | - | - | - | n/a | - | not run (hidden pending v12) |
+| **mean of run themes** | 42 | 40 | 45 | 47 | | | | |
 <!-- END GENERATED -->
 
 ## Engine gaps seen in the baseline

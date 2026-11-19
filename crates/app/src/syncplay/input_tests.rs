@@ -51,6 +51,7 @@ fn typing_a_group_name_reaches_the_name_field_and_enter_creates() {
     assert!(sp.gate().can_create());
     let win = Size::new(1280.0, 800.0);
     for c in "Movie night".chars() {
+        let _sim = crate::sim_lock();
         let mut sim = Simulator::new(sp.view(win).unwrap());
         sim.click(selector::id(NAME_ID))
             .expect("name field is on screen");
@@ -61,6 +62,7 @@ fn typing_a_group_name_reaches_the_name_field_and_enter_creates() {
         }
     }
     assert_eq!(sp.name, "Movie night");
+    let _sim = crate::sim_lock();
     let mut sim = Simulator::new(sp.view(win).unwrap());
     sim.click(selector::id(NAME_ID)).unwrap();
     sim.tap_key(Key::Named(Named::Enter));
