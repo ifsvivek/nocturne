@@ -261,8 +261,8 @@ pub fn matched(scene: &Scene, sheet: &Sheet, id: Id) -> Vec<Matched> {
     }
     hits.sort_by_key(|(r, _)| (r.origin, r.spec, r.order));
     // Winner per property: highest (important, origin, specificity, order).
-    let mut best: std::collections::HashMap<&str, (usize, usize, (bool, u8, u32, u32))> =
-        Default::default();
+    type Key = (bool, u8, u32, u32);
+    let mut best: std::collections::HashMap<&str, (usize, usize, Key)> = Default::default();
     for (ri, (r, ds)) in hits.iter().enumerate() {
         for (di, d) in ds.iter().enumerate() {
             let key = (d.important, r.origin, r.spec, r.order);
@@ -372,18 +372,35 @@ pub fn this_selector(doc: &Doc, id: Id) -> String {
         up = doc.nodes[n].parent;
     }
     chain.reverse();
-    for nth in [false, true] {
-        for len in 1..=chain.len() {
-            let tail = &chain[chain.len() - len..];
-            let s = tail
-                .iter()
-                .map(|&n| compound(doc, n, nth))
+    // Shortest chain first; where classes alone do not tell elements apart, one position (the shallowest that helps) is added, and
+    // only as a last resort a position on every step.
+    for len in 1..=chain.len() {
+        let tail = &chain[chain.len() - len..];
+        let join = |at: Option<usize>, all: bool| {
+            tail.iter()
+                .enumerate()
+                .map(|(i, &n)| compound(doc, n, all || at == Some(i)))
                 .collect::<Vec<_>>()
-                .join(" > ");
+                .join(" > ")
+        };
+        let plain = join(None, false);
+        if matches_of(doc, &plain) == [id] {
+            return plain;
+        }
+        for at in 0..len {
+            let s = join(Some(at), false);
             if matches_of(doc, &s) == [id] {
                 return s;
             }
         }
+    }
+    let all = chain
+        .iter()
+        .map(|&n| compound(doc, n, true))
+        .collect::<Vec<_>>()
+        .join(" > ");
+    if matches_of(doc, &all) == [id] {
+        return all;
     }
     // The root itself.
     doc.nodes[id].tag.clone()
@@ -556,6 +573,20 @@ mod tests {
         let mut d = doc();
         d.set_id(3, "play");
         assert_eq!(this_selector(&d, 3), "#play");
+    }
+
+    #[test]
+    fn this_selector_uses_one_position_where_classes_repeat() {
+        let mut d = Doc::new("page");
+        for _ in 0..3 {
+            let sec = d.add(0, "section.row");
+            let head = d.add(sec, "div.row-head");
+            d.add(head, "div.row-title");
+        }
+        let id = d.nodes[d.nodes[d.nodes[0].children[1]].children[0]].children[0];
+        let s = this_selector(&d, id);
+        assert_eq!(matches_of(&d, &s), [id], "{s}");
+        assert_eq!(s.matches("nth-child").count(), 1, "{s}");
     }
 
     #[test]
