@@ -27,7 +27,7 @@ def bundled_section():
 
 The Linux packages bundle nothing (libmpv comes from the distribution). The **Windows installer** (and portable zip)
 ships one prebuilt third-party program next to `nocturne.exe`: `mpv.exe`, used as the external playback window
-(in-window video exists on Linux only). It is not modified by NOCTURNE.
+(on Windows it also plays inside the app window through a child window). It is not modified by NOCTURNE.
 
 | File | Version | Origin | SHA256 of the downloaded archive |
 |---|---|---|---|
@@ -119,8 +119,15 @@ distribution packages declare mpv as an external dependency, so nothing here is 
 
 """ + bundled_section() + f"""## Fonts, icons and artwork
 
-- No font files are bundled. The UI asks the system for "Noto Sans" (SIL OFL-1.1) by name and falls back to
-  whatever fontconfig provides.
+- The binary embeds two font families so text looks the same on every OS (`crates/app/assets/fonts/`, each with
+  its license file): **Noto Sans** Regular, Medium and Bold (Copyright 2022 The Noto Project Authors, SIL OFL-1.1;
+  subset to Latin, Greek, Cyrillic and symbols, otherwise unmodified) and **JetBrains Mono** Regular and Bold
+  (Copyright 2020 The JetBrains Mono Project Authors, SIL OFL-1.1). The OFL-1.1 text:
+
+```text
+""" + open("crates/app/assets/fonts/OFL-JetBrainsMono.txt").read().split("\n", 1)[1].strip() + f"""
+```
+
 - The UI icons are plain geometric glyphs authored in this repository (GPL-3.0-or-later like the rest of the
   code). `packaging/nocturne.svg` and the PNGs derived from it are an original mark (crescent and play
   triangle), GPL-3.0-or-later. The Jellyfin name and logo are not used.

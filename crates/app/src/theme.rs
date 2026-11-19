@@ -8,8 +8,16 @@ use nocturne_core::customize::{self as cz, Fill};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
-// ponytail: system fonts; bundle faces when branding needs it
-pub const MONO: Font = Font::with_name("JetBrainsMono Nerd Font");
+/// Faces embedded in the binary (loaded in `main`): the UI must not depend on what the OS has
+/// installed. Without them Windows has neither family, and text falls back to mismatched glyphs.
+pub const BUNDLED_FONTS: [&[u8]; 5] = [
+    include_bytes!("../assets/fonts/NotoSans-Regular.ttf"),
+    include_bytes!("../assets/fonts/NotoSans-Medium.ttf"),
+    include_bytes!("../assets/fonts/NotoSans-Bold.ttf"),
+    include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf"),
+    include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf"),
+];
+pub const MONO: Font = Font::with_name("JetBrains Mono");
 const FAMILY_DEFAULT: &str = "Noto Sans";
 
 /// The family of the explicit `t::base()`-style fonts. Iced's default font (text without an explicit
