@@ -17,6 +17,8 @@ name = "nocturne"
 path = "src/main.rs"
 
 [features]
+# Test builds only (branch win-test-engine): the theme engine on by default.
+default = ["theme-engine"]
 # The element-tree theme engine (`docs/dev/THEME_ENGINE_PLAN.md`): widget and preview only, off in every normal build until the screens move onto it.
 theme-engine = ["dep:nocturne-style"]
 
