@@ -77,7 +77,7 @@ Composition with the unified catalog:
 - Search and duplicates merge are unaffected (they are data, not layout).
 - Theme: reuse `Store::active_id(source)` resolution, add the branding layer between override and global.
 
-## 3. Writes
+## 3. Writes (superseded: editing the home sections shipped in 0.5, see section 7)
 
 Read-only in 0.5. Every call above is a GET (`crates/jellyfin` `get` plus new typed reads). Editing display preferences from NOCTURNE (`POST /DisplayPreferences/usersettings`, `POST /Users/<id>/Configuration`) is a user-scope write and would go behind `allow_server_writes` and `jellyfin-user`; `jellyfin-user` already has a read-modify-write of `usersettings` for the display language (`client.rs`, ~line 479), so a future "reorder home sections here" would reuse it, but the risk of clobbering other CustomPrefs keys concurrently with the web UI is real. Recommendation: no in-app editing in 0.5; link to "change on the server" only. Developer API-key source: no user, no Server UI.
 
@@ -115,3 +115,23 @@ Documentation: add `docs/SOURCES.md` paragraph (Server UI per source), `docs/WRI
 4. In-app editing of display preferences later (write behind `allow_server_writes`), or never?
 5. Live TV rows: out for 0.5 or pulled in?
 6. Language: show the server's `LoginDisclaimer` verbatim (it is admin text), with links opening the system browser?
+
+## 7. What shipped in 0.5 (phase 0 and 1, with the maintainer's decisions)
+
+Decisions: new servers start in the NOCTURNE layout and Server UI is a per-server switch (`server_ui` in the source profile, Settings > Sources > Layout); the branding CSS applies automatically in Server mode; filter All always shows the unified NOCTURNE rows and a server's own layout only when that server alone is selected; editing the home sections is in 0.5 behind `allow_server_writes`; Live TV rows are skipped silently; the login disclaimer is shown verbatim as plain text.
+
+Phase 0 (throwaway server, Jellyfin 12.4.0): the `CustomPrefs` keys `homesection0..9` round-trip through `POST /DisplayPreferences/usersettings?client=emby` exactly as written, and every other key present before (`chromecastVersion`, `skipForwardLength`, `skipBackLength`, `enableNextVideoInfoOverlay`, `tvhome`, `dashboardTheme`) survives a read-modify-write. The per-library view/sort keys are still not confirmed (no web client run against the throwaway server); that stays in phase 2.
+
+Built:
+- `crates/jellyfin/src/server_ui.rs`: GET-only typed reads `display_prefs`, `user_config` (the `Configuration` block of `GET /Users/{id}`), `branding`; `public_info` already existed. `readonly.rs` still passes.
+- `crates/core/src/server_ui.rs`: pure rules and tests: jellyfin-web default order, `none`, legacy `folders`, unknown kinds dropped, repeats ignored, `OrderedViews`, `MyMediaExcludes`, `LatestItemsExcludes`, and the editor model (ten slots, `none` padding). `Source::server_ui()` does the three reads.
+- `crates/core/src/customize/store.rs`: branding layer (session state, never serialized, never a saved theme). Order: user per-server override, server branding, global, defaults (`Store::active`, `active_key`, `resolve`). Themes shows the branding of each server in Server mode with its counts and first warnings.
+- `crates/app/src/app/home.rs`: `Home::server` holds the cached layout; `layout()` builds the server's rows from the same row kinds plus `HRow::Tiles` (My media, landscape tiles; `librarybuttons` uses the same row). Resume audio, resume book, Live TV and active recordings are listed in the editor as "not shown yet" and skipped. Per-source cache in `App::server_ui`, refreshed at connect, when the mode is switched on, when Home loads (cached copy first) and after a save; an answer for a source whose mode was switched off meanwhile is dropped.
+- `crates/jellyfin-user`: `set_home_sections(&[&str; 10])`, a read-modify-write that replaces only `homesection0..9` and sends every other key back as read; refuses anything but ten known values. Live test `tests/home_sections_live.rs` (throwaway server only, guarded, restores the default).
+- Editor (Settings > Sources > Sections): up / down, on / off, Save. With server changes off, or with a developer token, it is view-only with the usual hint; the handler re-checks the gate, uses the session of that source only, and never mints a confirmation token (same pattern as the display language).
+- Login disclaimer: `Probe` reads the public branding; the sign-in page shows it as plain text (1500 characters at most).
+- Debug QA hooks (`NOCTURNE_KEYS`): `cycle-filter`, `layout-<id>`, `sections-<id>`, `sec-toggle-<n>`, `sec-up-<n>`, `sec-down-<n>`, `sec-save`.
+
+Checked in the app against the throwaway server (alice): NOCTURNE layout unchanged; Server mode shows My media then Latest in the server's order; the editor is view-only with writes off; with writes on a reorder is saved and is still there after a restart. Not checked: a server with real branding CSS (parsing and precedence are unit-tested only), several servers at once, a server with Live TV, the sign-in page with a non-empty disclaimer (state test only).
+
+Still open (phase 2/3): per-library default view/sort, `enableBackdrops`, `libraryPageSize`, skip lengths, Collections tile, server name in the header, polling the three documents, offline cache on disk, splashscreen.

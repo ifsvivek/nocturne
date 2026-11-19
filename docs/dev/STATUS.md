@@ -24,6 +24,10 @@ Maintainer working notes for the public tree. User-facing status is in
 
 The engine (`crates/core/src/customize/`) and the Themes page (`crates/app/src/app/themes.rs`) are in; details and limits are in [CUSTOMIZATION_PLAN.md](CUSTOMIZATION_PLAN.md) section 13. Debug hooks for QA: `NOCTURNE_KEYS=open-themes@ms,theme-path@ms,theme-import@ms,theme-preview@ms,theme-apply@ms` with `NOCTURNE_THEME_FILE=/path/x.css`.
 
+## 0.5: Server UI mode (phase 0 and 1 done)
+
+Per-server switch, the server's home sections and My media row, branding as a theme layer, login disclaimer and a home-sections editor behind `allow_server_writes` are in; what is verified and what is not is in [SERVER_UI_PLAN.md](SERVER_UI_PLAN.md) section 7. Debug hooks for QA: `NOCTURNE_KEYS=cycle-filter@ms,layout-1@ms,sections-1@ms,sec-down-0@ms,sec-save@ms`.
+
 ## 0.4 (local branch `v0.4-local`, never pushed)
 
 0.3.0 is released (tag, pacman repository live). 0.4 is feature-complete on the local branch and not published; no release until the maintainer has tested it. Contents: [CHANGELOG.md](../../CHANGELOG.md) `[0.4.0]`, honest per-feature status in
