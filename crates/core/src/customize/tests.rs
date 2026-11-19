@@ -237,7 +237,7 @@ fn warning_unsupported_selectors_with_reason() {
         ("#id{color:red}", "id selectors"),
         (".card.x{color:red}", "compound"),
         (".unknown{color:red}", "NOCTURNE"),
-        (".card:hover{color:red}", "pseudo-classes"),
+        (".card:focus{color:red}", "pseudo-classes"),
     ];
     for (css, why) in cases {
         let r = p(css);
@@ -253,7 +253,7 @@ fn warning_unsupported_selectors_with_reason() {
 
 #[test]
 fn partly_supported_selector_list_applies_and_warns() {
-    let r = p(".card, .card:hover { border-radius: 9px }");
+    let r = p(".card, .card::before { border-radius: 9px }");
     assert_eq!(r.theme.radius_card, Some(9.0));
     assert_eq!(kinds(&r), [WarningKind::UnsupportedSelector]);
 }
@@ -261,7 +261,7 @@ fn partly_supported_selector_list_applies_and_warns() {
 #[test]
 fn warning_unsupported_properties() {
     let r = p(
-        ".card{transition:all .2s;box-shadow:0 0 4px red;margin:4px;cursor:pointer;-webkit-transform:scale(1.1)}",
+        ".cardBox{transition:all .2s;box-shadow:0 0 4px red;margin:4px;cursor:pointer;-webkit-transform:scale(1.1)}",
     );
     assert_eq!(kinds(&r), [WarningKind::UnsupportedProperty; 5]);
     assert!(r.warnings[0].message.contains("animations"));
