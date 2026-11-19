@@ -825,11 +825,8 @@ impl<M> Styled<'_, M> {
                 r.fill_text(
                     Text {
                         content: shown.clone(),
-                        bounds: if one_line {
-                            Size::new(area.width + 2.0, area.height)
-                        } else {
-                            area.size()
-                        },
+                        // The shaper's widest line and the renderer's can differ by a hair: the box is a little wider than the measured text, or the renderer breaks one more line than the box has room for and draws nothing (a long overview in a clamped hero).
+                        bounds: Size::new(area.width + 2.0, area.height),
                         size: Pixels(c.font_size),
                         line_height: LineHeight::Relative(ts.line_height),
                         font,
