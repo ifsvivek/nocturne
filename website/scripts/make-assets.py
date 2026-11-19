@@ -35,15 +35,15 @@ CROPS = {
     "controls-crop": ("06-playback", (0.0, 0.905, 1.0, 0.994), 1280),
     # the Versions and sources picker on the movie detail page, 16:9 like the series still beside it
     "alternates-crop": ("03-movie-detail", (0.30, 0.30, 0.70, 0.70), 1920),
-    # 0.4 captures are 1920x1080 (window capture at scale 1, see README); their close-ups are framed on that size.
+    # 0.4 captures (3840x2160 headless, scale 2, see README)
     # the header's Smart menu with the five starter collections
     "smart-menu-crop": ("smart-menu", (0.31, 0.0, 0.65, 0.34), 1280),
     # the Downloads panel with one transfer in progress, 16:9
-    "downloads-crop": ("downloads", (0.30, 0.30, 0.70, 0.70), 1280),
+    "downloads-crop": ("downloads", (0.30, 0.30, 0.70, 0.70), 1536),
     # the HDR question in the player, 16:9
-    "hdr-crop": ("hdr", (0.30, 0.30, 0.70, 0.70), 1280),
+    "hdr-crop": ("hdr", (0.30, 0.30, 0.70, 0.70), 1536),
     # the Trakt dialog over Settings (not signed in)
-    "trakt-crop": ("trakt", (0.33, 0.25, 0.67, 0.75), 1280),
+    "trakt-crop": ("trakt", (0.33, 0.25, 0.67, 0.75), 1536),
 }
 
 
