@@ -1,14 +1,19 @@
 //! [`VideoSurface`]: the window the external mpv draws into when the picture plays inside the app
 //! window (`--wid`). Windows only; elsewhere it is a stub that never exists, so the UI needs no
 //! `cfg`. The surface is a child window of the app's HWND, created and moved on the UI thread.
-//! The UI toolkit cannot draw over a child window, so the UI shrinks or hides it while it needs
-//! the pixels (controls, menus) and mpv's pointer input comes back over IPC ([`crate::Event::Input`]).
+//! The UI toolkit cannot draw over a child window, so the UI shrinks it for the controls band and
+//! punches holes in it ([`VideoSurface::set_cutouts`], a window region) where a menu or panel is
+//! drawn; the toolkit's pixels show through the holes. mpv's pointer input comes back over IPC
+//! ([`crate::Event::Input`]).
 
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod imp {
     use std::ptr::{null, null_mut};
     use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::Graphics::Gdi::{
+        CombineRgn, CreateRectRgn, DeleteObject, RGN_DIFF, SetWindowRgn,
+    };
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::SetFocus;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DestroyWindow, GW_CHILD, GetWindow, SW_HIDE, SW_SHOWNA,
@@ -20,10 +25,15 @@ mod imp {
     /// before mpv's first frame, and no window procedure of ours is needed.
     const SS_BLACKRECT: u32 = 0x0004;
 
+    type Rect = (i32, i32, i32, i32);
+
     pub struct VideoSurface {
         hwnd: HWND,
         parent: HWND,
-        rect: (i32, i32, i32, i32),
+        rect: Rect,
+        /// Holes in parent-client device pixels `(x, y, w, h)`.
+        cuts: Vec<Rect>,
+        applied: Option<(Rect, Vec<Rect>)>,
         shown: bool,
     }
 
@@ -55,6 +65,8 @@ mod imp {
                 hwnd,
                 parent,
                 rect: (0, 0, 0, 0),
+                cuts: Vec::new(),
+                applied: None,
                 shown: false,
             })
         }
@@ -108,6 +120,55 @@ mod imp {
                 }
             }
             self.set_visible(true);
+            self.apply_region();
+        }
+
+        /// Rectangles in the parent's client area (logical pixels) where the UI draws over the
+        /// picture: the window is cut out there. Takes effect with the next bounds.
+        pub fn set_cutouts(&mut self, cuts: &[(f32, f32, f32, f32)], scale: f32) {
+            let s = if scale > 0.0 { scale } else { 1.0 };
+            self.cuts = cuts
+                .iter()
+                .map(|c| {
+                    (
+                        (c.0 * s).floor() as i32,
+                        (c.1 * s).floor() as i32,
+                        (c.2 * s).ceil() as i32 + 1,
+                        (c.3 * s).ceil() as i32 + 1,
+                    )
+                })
+                .collect();
+            self.apply_region();
+        }
+
+        /// The window region is the window's rectangle minus the cuts, in window coordinates.
+        fn apply_region(&mut self) {
+            if !self.shown {
+                return;
+            }
+            let want = Some((self.rect, self.cuts.clone()));
+            if self.applied == want {
+                return;
+            }
+            self.applied = want;
+            // SAFETY: GDI regions on the UI thread; after a successful SetWindowRgn the system
+            // owns the region, so it is only deleted here when the call fails.
+            unsafe {
+                if self.cuts.is_empty() {
+                    SetWindowRgn(self.hwnd, null_mut(), 1);
+                    return;
+                }
+                let rgn = CreateRectRgn(0, 0, self.rect.2, self.rect.3);
+                for c in &self.cuts {
+                    let (x, y) = (c.0 - self.rect.0, c.1 - self.rect.1);
+                    let one = CreateRectRgn(x, y, x + c.2, y + c.3);
+                    CombineRgn(rgn, rgn, one, RGN_DIFF);
+                    DeleteObject(one as _);
+                }
+                if SetWindowRgn(self.hwnd, rgn, 1) == 0 {
+                    DeleteObject(rgn as _);
+                }
+            }
         }
 
         pub fn set_visible(&mut self, v: bool) {
@@ -146,6 +207,7 @@ mod imp {
         }
         pub fn set_bounds(&mut self, _: f32, _: f32, _: f32, _: f32, _: f32) {}
         pub fn set_visible(&mut self, _: bool) {}
+        pub fn set_cutouts(&mut self, _: &[(f32, f32, f32, f32)], _: f32) {}
         pub fn focus_parent(&self) {}
     }
 }
