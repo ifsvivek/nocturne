@@ -101,6 +101,8 @@ pub struct EngineUi {
     pub enabled: bool,
     engine: Engine,
     css: String,
+    /// Families of fetched theme fonts registered with the engine.
+    fetched_fams: Vec<String>,
     user: Option<String>,
     cache: MeasureCache,
     pub home: Option<Hosted>,
@@ -147,6 +149,7 @@ impl Default for EngineUi {
             enabled: std::env::var("NOCTURNE_ENGINE_UI").map_or(true, |v| v != "0"),
             engine: Engine::new(DEFAULT_CSS),
             css: String::new(),
+            fetched_fams: vec![],
             user: None,
             cache: MeasureCache::new(),
             home: None,
@@ -293,6 +296,7 @@ impl App {
             self.eng.fonts_set = false;
             self.eng.engine.set_safe_mode(safe);
             self.eng.user = None;
+            self.eng.fetched_fams.clear();
             self.eng.css = css;
             self.eng.sheet_gen += 1;
         }
@@ -315,12 +319,25 @@ impl App {
         let studio_css = self.studio.open.then(|| self.studio.css.clone());
         #[cfg(not(feature = "theme-engine"))]
         let studio_css: Option<String> = None;
-        let user = studio_css.or_else(|| {
-            self.themes
-                .active_css(self.theme_source(), self.theme_ui())
-                .filter(|c| nocturne_style::is_engine_sheet(c))
-                .map(str::to_string)
-        });
+        let user = match studio_css {
+            Some(raw) => Some(
+                self.themes
+                    .resolved_for(&raw)
+                    .map_or(raw, |r| r.css.clone()),
+            ),
+            None => self.engine_css(),
+        };
+        let fams = self.engine_fonts();
+        if fams != self.eng.fetched_fams {
+            for f in &self.eng.fetched_fams {
+                self.eng.engine.fonts_mut().unregister(f);
+            }
+            for f in &fams {
+                self.eng.engine.fonts_mut().register(f);
+            }
+            self.eng.fetched_fams = fams;
+            self.eng.sheet_gen += 1;
+        }
         if user != self.eng.user {
             self.eng.engine.set_user_css(user.as_deref());
             self.eng.user = user;
