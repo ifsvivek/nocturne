@@ -61,6 +61,60 @@ pub struct Shadow {
     pub color: Color,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TextAlign {
+    #[default]
+    Left,
+    Center,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BadgePos {
+    TopRight,
+    TopLeft,
+    /// The built-in place.
+    BottomRight,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProgressPos {
+    /// The built-in bar on the bottom edge of the image.
+    InsideBottom,
+    /// A bar between the image and the caption.
+    Below,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EpisodeFormat {
+    /// "S1:E2 - Name".
+    Short,
+    /// "Season 1, Episode 2 - Name".
+    Long,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TileLabel {
+    /// Library name large and centred over the image.
+    OverlayCenter,
+    /// The built-in caption under the image.
+    Below,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HeaderAlign {
+    /// Links centred in the header.
+    Center,
+    /// Links right after the brand (the built-in).
+    Left,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BrandContent {
+    Server,
+    User,
+    App,
+}
+
 /// Pages a rule can be scoped to (`.page-<name> .card`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Page {
@@ -96,13 +150,20 @@ pub enum PartId {
     CardImage,
     CardTitle,
     CardMeta,
+    CardSubtitle,
+    CardBadge,
+    CardProgress,
+    LibraryTile,
     Row,
     RowTitle,
+    RowArrows,
     Hero,
     HeroTitle,
     HeroMeta,
     Header,
     HeaderLink,
+    HeaderBrand,
+    HeaderIcons,
     HeaderNav,
     HeaderSearch,
     HeaderHistory,
@@ -118,13 +179,20 @@ const PARTS: &[(&str, PartId)] = &[
     ("card-image", PartId::CardImage),
     ("card-title", PartId::CardTitle),
     ("card-meta", PartId::CardMeta),
+    ("card-subtitle", PartId::CardSubtitle),
+    ("card-badge", PartId::CardBadge),
+    ("card-progress", PartId::CardProgress),
+    ("library-tile", PartId::LibraryTile),
     ("row", PartId::Row),
     ("row-title", PartId::RowTitle),
+    ("row-arrows", PartId::RowArrows),
     ("hero", PartId::Hero),
     ("hero-title", PartId::HeroTitle),
     ("hero-meta", PartId::HeroMeta),
     ("header", PartId::Header),
     ("header-link", PartId::HeaderLink),
+    ("header-brand", PartId::HeaderBrand),
+    ("header-icons", PartId::HeaderIcons),
     ("header-nav", PartId::HeaderNav),
     ("header-search", PartId::HeaderSearch),
     ("header-history", PartId::HeaderHistory),
@@ -154,22 +222,54 @@ opt_struct! {
     /// Typography of a text part.
     Text {
         hidden: bool, font_size: f32, font_weight: u16, text_transform: TextTransform,
-        letter_spacing: f32, line_height: f32, color: Color,
+        letter_spacing: f32, line_height: f32, color: Color, align: TextAlign,
     }
     /// The whole cell: image and caption.
     Card {
         hidden: bool, aspect: Aspect, width: f32, title_position: TitlePosition,
-        hover_scale: f32, transition_ms: u32,
+        hover_scale: f32, transition_ms: u32, episode_format: EpisodeFormat, tile_label: TileLabel,
     }
+    /// The unplayed-count badge on a card.
+    Badge {
+        hidden: bool, position: BadgePos, background: Color, color: Color, font_size: f32,
+        radius: f32,
+    }
+    /// The resume progress bar on a card.
+    Progress { hidden: bool, position: ProgressPos, height: f32, background: Color, color: Color }
+    /// The previous / next buttons at the right of a row title (`hidden: Some(false)` shows them).
+    Arrows { hidden: bool, size: f32, color: Color }
+    /// The server or user name at the left of the header (`hidden: Some(false)` shows it).
+    Brand { hidden: bool, content: BrandContent, font_size: f32, font_weight: u16, color: Color }
     CardImage { radius: f32, shadow: Shadow }
     Row {
         hidden: bool, layout: RowLayout, gap: f32, columns: u8, padding: f32, order: i32,
     }
     Hero { hidden: bool, style: HeroStyle, height: f32, overlay: Fill }
-    Header { position: HeaderPosition, height: f32 }
+    Header { position: HeaderPosition, height: f32, align: HeaderAlign, link_icons: bool }
     Visibility { hidden: bool }
     Button { hover_scale: f32, transition_ms: u32 }
     Controls { background: Fill }
+}
+
+impl Text {
+    /// `top` laid over `self` (the subtitle over the details line).
+    pub fn merged(&self, top: &Text) -> Text {
+        let mut m = self.clone();
+        m.overlay(top);
+        m
+    }
+}
+
+impl Arrows {
+    pub fn shown(&self) -> bool {
+        self.hidden == Some(false)
+    }
+}
+
+impl Brand {
+    pub fn shown(&self) -> bool {
+        self.hidden == Some(false)
+    }
 }
 
 macro_rules! parts_struct {
@@ -185,9 +285,11 @@ macro_rules! parts_struct {
 }
 
 parts_struct! {
-    card: Card, card_image: CardImage, card_title: Text, card_meta: Text,
-    row: Row, row_title: Text, hero: Hero, hero_title: Text, hero_meta: Text,
-    header: Header, header_link: Text, header_nav: Visibility, header_search: Visibility,
+    card: Card, card_image: CardImage, card_title: Text, card_meta: Text, card_subtitle: Text,
+    card_badge: Badge, card_progress: Progress, library_tile: Text,
+    row: Row, row_title: Text, row_arrows: Arrows, hero: Hero, hero_title: Text, hero_meta: Text,
+    header: Header, header_link: Text, header_brand: Brand, header_icons: Visibility,
+    header_nav: Visibility, header_search: Visibility,
     header_history: Visibility, header_account: Visibility, button: Button,
     detail_title: Text, detail_text: Text, player_controls: Controls,
 }
@@ -563,6 +665,25 @@ fn text(t: &mut Text, name: &str, v: &str, notes: &mut Notes) -> Result<bool, St
     Ok(true)
 }
 
+fn episode_format(v: &str) -> Result<EpisodeFormat, String> {
+    one_of(
+        v,
+        &[("short", EpisodeFormat::Short), ("long", EpisodeFormat::Long)],
+    )
+}
+
+/// Typography plus `text-align` (card captions only).
+fn card_text(t: &mut Text, name: &str, v: &str, notes: &mut Notes) -> Result<bool, String> {
+    if name == "text-align" {
+        t.align = Some(one_of(
+            v,
+            &[("left", TextAlign::Left), ("center", TextAlign::Center)],
+        )?);
+        return Ok(true);
+    }
+    text(t, name, v, notes)
+}
+
 fn set_part(
     p: &mut Parts,
     t: &Target,
@@ -593,6 +714,7 @@ fn set_part(
                 p.card.width = Some(px(v, 80.0, 640.0, "card width", notes)?)
             }
             "aspect-ratio" => p.card.aspect = Some(aspect(v, notes)?),
+            "--episode-format" => p.card.episode_format = Some(episode_format(v)?),
             "--title-position" => {
                 p.card.title_position = Some(one_of(
                     v,
@@ -617,8 +739,104 @@ fn set_part(
             "border-radius" => p.card_image.radius = Some(px(v, 0.0, 48.0, "radius", notes)?),
             _ => return Ok(false),
         },
-        PartId::CardTitle => return text(&mut p.card_title, name, v, notes),
-        PartId::CardMeta => return text(&mut p.card_meta, name, v, notes),
+        PartId::CardTitle => return card_text(&mut p.card_title, name, v, notes),
+        PartId::CardMeta => return card_text(&mut p.card_meta, name, v, notes),
+        PartId::CardSubtitle => match name {
+            "--episode-format" => p.card.episode_format = Some(episode_format(v)?),
+            _ => return card_text(&mut p.card_subtitle, name, v, notes),
+        },
+        PartId::LibraryTile => match name {
+            "--tile-label" => {
+                p.card.tile_label = Some(one_of(
+                    v,
+                    &[
+                        ("overlay-center", TileLabel::OverlayCenter),
+                        ("below", TileLabel::Below),
+                    ],
+                )?)
+            }
+            _ => return text(&mut p.library_tile, name, v, notes),
+        },
+        PartId::CardBadge => match name {
+            "display" => p.card_badge.hidden = Some(display(v)),
+            "--badge-position" => match v.to_ascii_lowercase().as_str() {
+                "none" => p.card_badge.hidden = Some(true),
+                _ => {
+                    p.card_badge.position = Some(one_of(
+                        v,
+                        &[
+                            ("top-right", BadgePos::TopRight),
+                            ("top-left", BadgePos::TopLeft),
+                            ("bottom-right", BadgePos::BottomRight),
+                        ],
+                    )?);
+                    p.card_badge.hidden = Some(false);
+                }
+            },
+            "background" | "background-color" => p.card_badge.background = Some(value::color(v)?),
+            "color" => p.card_badge.color = Some(value::color(v)?),
+            "font-size" => p.card_badge.font_size = Some(px(v, 8.0, 32.0, "font size", notes)?),
+            "border-radius" => p.card_badge.radius = Some(px(v, 0.0, 24.0, "radius", notes)?),
+            _ => return Ok(false),
+        },
+        PartId::CardProgress => match name {
+            "display" => p.card_progress.hidden = Some(display(v)),
+            "--progress-position" => {
+                p.card_progress.position = Some(one_of(
+                    v,
+                    &[
+                        ("inside-bottom", ProgressPos::InsideBottom),
+                        ("below", ProgressPos::Below),
+                    ],
+                )?)
+            }
+            "height" => p.card_progress.height = Some(px(v, 1.0, 16.0, "bar height", notes)?),
+            "background" | "background-color" => {
+                p.card_progress.background = Some(value::color(v)?)
+            }
+            "color" => p.card_progress.color = Some(value::color(v)?),
+            _ => return Ok(false),
+        },
+        PartId::RowArrows => match name {
+            "display" => p.row_arrows.hidden = Some(display(v)),
+            "font-size" | "width" | "height" => {
+                p.row_arrows.size = Some(px(v, 12.0, 48.0, "arrow size", notes)?)
+            }
+            "color" => p.row_arrows.color = Some(value::color(v)?),
+            _ => return Ok(false),
+        },
+        PartId::HeaderBrand => match name {
+            "display" => p.header_brand.hidden = Some(display(v)),
+            "content" => {
+                p.header_brand.content = Some(one_of(
+                    v,
+                    &[
+                        ("server", BrandContent::Server),
+                        ("user", BrandContent::User),
+                        ("app", BrandContent::App),
+                    ],
+                )?);
+                p.header_brand.hidden = Some(false);
+            }
+            "font-size" => p.header_brand.font_size = Some(px(v, 8.0, 48.0, "font size", notes)?),
+            "font-weight" => {
+                let w = match v.to_ascii_lowercase().as_str() {
+                    "normal" => 400.0,
+                    "bold" => 700.0,
+                    _ => value::number(v)?,
+                };
+                p.header_brand.font_weight =
+                    Some(clamp(w, 100.0, 900.0, "font weight", notes).round() as u16);
+            }
+            "color" => p.header_brand.color = Some(value::color(v)?),
+            _ => return Ok(false),
+        },
+        PartId::HeaderIcons => {
+            if name != "display" {
+                return Ok(false);
+            }
+            p.header_icons.hidden = Some(display(v));
+        }
         PartId::RowTitle => return text(&mut p.row_title, name, v, notes),
         PartId::HeroTitle => return text(&mut p.hero_title, name, v, notes),
         PartId::HeroMeta => return text(&mut p.hero_meta, name, v, notes),
@@ -686,6 +904,15 @@ fn set_part(
                 )?)
             }
             "height" => p.header.height = Some(px(v, 32.0, 120.0, "header height", notes)?),
+            "--header-align" => {
+                p.header.align = Some(one_of(
+                    v,
+                    &[("center", HeaderAlign::Center), ("left", HeaderAlign::Left)],
+                )?)
+            }
+            "--header-link-icons" => {
+                p.header.link_icons = Some(one_of(v, &[("on", true), ("off", false)])?)
+            }
             "--header-items" => {
                 let mut shown = [false; 4];
                 let words = v
