@@ -28,6 +28,12 @@ pub fn icon<'a>(name: &str, size: f32, color: Color) -> svg::Svg<'a> {
         "check" => include_bytes!("../../assets/icons/check.svg"),
         "arrow_right" => include_bytes!("../../assets/icons/arrow_right.svg"),
         "play" => include_bytes!("../../assets/icons/play.svg"),
+        "home" => include_bytes!("../../assets/icons/home.svg"),
+        "film" => include_bytes!("../../assets/icons/film.svg"),
+        "tv" => include_bytes!("../../assets/icons/tv.svg"),
+        "music" => include_bytes!("../../assets/icons/music.svg"),
+        "people" => include_bytes!("../../assets/icons/people.svg"),
+        "queue" => include_bytes!("../../assets/icons/queue.svg"),
         _ => include_bytes!("../../assets/icons/stop.svg"),
     };
     svg(svg::Handle::from_memory(bytes))
@@ -390,12 +396,37 @@ pub fn nav_link<'a, M: Clone + 'a>(
     focused: bool,
     on_press: M,
 ) -> Element<'a, M> {
+    nav_link_icon(label, None, active, focused, on_press)
+}
+
+/// [`nav_link`] with a small icon before the label (`--header-link-icons: on`).
+pub fn nav_link_icon<'a, M: Clone + 'a>(
+    label: &str,
+    icon_name: Option<&str>,
+    active: bool,
+    focused: bool,
+    on_press: M,
+) -> Element<'a, M> {
     let ty = t::typo(
         &t::parts(None, None).header_link,
         t::BODY,
         iced::font::Weight::Medium,
     );
-    let base = container(ty.text_inherit(label))
+    let label_el: Element<'a, M> = match icon_name {
+        Some(n) => {
+            let ink = if active || focused {
+                t::text()
+            } else {
+                t::text_secondary()
+            };
+            row![icon(n, ty.size() + 3.0, ink), ty.text_inherit(label)]
+                .spacing(t::S2)
+                .align_y(Alignment::Center)
+                .into()
+        }
+        None => ty.text_inherit(label).into(),
+    };
+    let base = container(label_el)
         .height(t::header_h())
         .padding([0.0, t::S3])
         .center_y(t::header_h());

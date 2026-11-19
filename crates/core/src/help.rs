@@ -16,6 +16,7 @@ pub const SHORTCUTS: [(&str, &[(&str, &str)]); 7] = [
                 "Watch together: create, join or leave a SyncPlay group",
             ),
             ("?", "This help"),
+            ("Ctrl + Shift + 0", "Safe look: the built-in theme, at once"),
         ],
     ),
     (

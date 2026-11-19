@@ -4,6 +4,19 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Added
+- Update now for pacman, apt and dnf installs: when PackageKit is available the update banner can refresh and update only the `nocturne` package through the desktop's normal authentication prompt, then offer Restart; the command stays visible if it is refused or fails.
+- Themes can rebuild the familiar server web home layout: new parts for the unplayed-count badge, progress bar, episode line, caption alignment, row arrows, header server name, link icons and Watch together button, and library tiles, plus a built-in "Classic" example theme.
+- Themes follow `@import` and load web fonts: stylesheets that import other stylesheets (Jellyfin web themes, font sheets) now apply, and `@font-face` fonts in TTF, OTF, WOFF and WOFF2 are downloaded and used. https only, no cookies or sign-in, size, time and count limits, kept in the cache folder and refreshed only by hand or when the text changes. Settings > Themes has a switch that turns all downloading off.
+- One server's UI over another: each source, "All" and local folders can use NOCTURNE's layout, their own server's UI or another server's (its home sections and look, filled with what you are browsing). Local only; nothing is written to either server. A signed-out or unreachable UI server falls back to the NOCTURNE layout with a note.
+
+- Settings > Sources has a "UI:" button on every source and on a new "All sources" row to choose whose UI is used (NOCTURNE, this server, another server); a fallback is explained on the row. Settings > Themes lists the built-in themes first, has "Refresh imports", shows what was fetched and which fonts loaded, and previews a pasted or imported theme on the whole app until Keep or Revert (a floating bar on every screen).
+- Safe look: Ctrl+Shift+0 or starting with `NOCTURNE_SAFE_THEME=1` restores the built-in look at once, whatever theme is saved.
+
+### Changed
+- Loaded theme fonts apply at once to headings, labels and buttons (text without an explicit font keeps the launch font).
+- `sources.toml` is version 2: the per-server Server UI switch is now `ui_from = "self"` (migrated automatically).
+
 ## [0.5.1] - 2026-11-19
 
 ### Added

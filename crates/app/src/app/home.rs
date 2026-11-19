@@ -11,6 +11,7 @@ use crate::theme as t;
 use crate::virt;
 use crate::widget::cell::{Cell, Look, Pic, poster_cell, tile};
 use crate::widget::layout::section_with;
+use crate::widget::press::Press;
 use crate::widget::{band, chip, mono, pill_button};
 use iced::widget::Id;
 use iced::widget::operation;
@@ -111,6 +112,12 @@ pub struct Geo {
     pub inset: f32,
     pub hidden: bool,
     pub title_t: t::Typo,
+    /// The paragraph and count beside the row title (`.row-title --row-details`).
+    pub details: bool,
+    /// The strip sits in a hairline panel with a fade at its right edge (the built-in look).
+    pub framed: bool,
+    /// The previous / next buttons at the right of the title (`.row-arrows`).
+    pub arrows: cz::Arrows,
 }
 
 impl Geo {
@@ -122,7 +129,26 @@ impl Geo {
         if self.title_t.hidden {
             0.0
         } else {
-            SECTION_H + t::S6
+            self.head_title_h() + t::S6
+        }
+    }
+
+    /// Height of the heading block: the title and its paragraph, or the title alone.
+    fn head_title_h(&self) -> f32 {
+        if self.details {
+            SECTION_H
+        } else {
+            (self.title_t.size() * 4.0 / 3.0)
+                .round()
+                .max(self.arrow_size())
+        }
+    }
+
+    fn arrow_size(&self) -> f32 {
+        if self.arrows.shown() && !self.grid {
+            self.arrows.size.unwrap_or(22.0) + 8.0
+        } else {
+            0.0
         }
     }
 
@@ -147,7 +173,11 @@ fn band_pad() -> f32 {
 
 /// Geometry of a strip kind from its resolved settings (`card` is the card-size setting in px).
 pub fn geo_for(win_w: f32, card: f32, k: HRow, p: &Parts) -> Geo {
-    let look = Look::of(p);
+    let look = if k == HRow::Tiles {
+        Look::tiles(p)
+    } else {
+        Look::of(p)
+    };
     let kk = card / 176.0;
     let (def_w, def_r, def_art) = if k.wide() {
         (300.0 * kk, 9.0 / 16.0, Art::Landscape)
@@ -181,6 +211,9 @@ pub fn geo_for(win_w: f32, card: f32, k: HRow, p: &Parts) -> Geo {
         inset,
         hidden: p.row.hidden == Some(true) || p.card.hidden == Some(true),
         title_t: t::typo(&p.row_title, 28.0, iced::font::Weight::Bold),
+        details: p.row.details != Some(false),
+        framed: p.row.framed != Some(false),
+        arrows: p.row_arrows.clone(),
         look,
     }
 }
@@ -760,7 +793,7 @@ impl App {
                 _ => continue,
             };
             let strip = self.strip(ri, &items, g, focus, play, loading);
-            page = page.push(strip_band(&title, &text_, meta, strip, g));
+            page = page.push(strip_band(&title, &text_, meta, strip, g, ri));
         }
         // Sources that did not answer add nothing but a quiet line.
         let down: Vec<String> = self
@@ -823,6 +856,7 @@ impl App {
                     focused: false,
                     progress: None,
                     badge: None,
+                    subtitle: false,
                     mark: None,
                     chips: None,
                     on_open: Message::Noop,
@@ -835,16 +869,14 @@ impl App {
         }
         for (ci, (m, copies)) in items.iter().enumerate() {
             let at = At::Home(ri, ci);
-            let (title, meta) = match (art, m.kind) {
-                (Art::Landscape, Kind::Episode) => (
+            let episode = art == Art::Landscape && m.kind == Kind::Episode;
+            let (title, meta) = if episode {
+                (
                     m.series_name.clone().unwrap_or_else(|| m.title.clone()),
-                    [m.short_ep(), m.title.clone()]
-                        .into_iter()
-                        .filter(|s| !s.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" \u{b7} "),
-                ),
-                _ => (m.title.clone(), super::cells::caption(m)),
+                    super::cells::episode_line(m, g.look.episode_format),
+                )
+            } else {
+                (m.title.clone(), super::cells::caption(m))
             };
             cells.push(poster_cell(Cell {
                 pic: self.pic(m, art, cw as u32),
@@ -856,6 +888,7 @@ impl App {
                 focused: focus == Some(ci),
                 progress: m.progress(),
                 badge: badge(m),
+                subtitle: episode,
                 mark: several
                     .then(|| mark_for(&self.catalog, m, *copies))
                     .flatten(),
@@ -1151,6 +1184,34 @@ pub fn strip_id(ri: usize) -> Id {
     Id::from(format!("strip-{ri}"))
 }
 
+/// Previous / next buttons that scroll the strip by a page.
+fn row_arrows<'a>(g: &Geo, ri: usize) -> El<'a> {
+    let size = g.arrows.size.unwrap_or(22.0);
+    let ink = g.arrows.color.map_or_else(t::text, |c| {
+        let [r, g, b, a] = c.to_f32();
+        Color { r, g, b, a }
+    });
+    let btn = |glyph: &'static str, dir: f32| -> El<'a> {
+        Press::new(container(text(glyph).size(size)).center(Length::Fill))
+            .width(size + 8.0)
+            .height(size + 8.0)
+            .on_press(Message::HomeStripPage(ri, dir))
+            .style(move |s| iced::widget::button::Style {
+                text_color: if matches!(
+                    s,
+                    iced::widget::button::Status::Hovered | iced::widget::button::Status::Pressed
+                ) {
+                    t::accent_text()
+                } else {
+                    ink
+                },
+                ..Default::default()
+            })
+            .into()
+    };
+    row![btn("\u{2039}", -1.0), btn("\u{203A}", 1.0)].into()
+}
+
 fn note<'a>(s: &str) -> El<'a> {
     container(text(s.to_string()).size(t::BODY).color(t::text_secondary()))
         .padding([t::S6, t::page_pad()])
@@ -1162,7 +1223,14 @@ fn strip(k: HRow) -> bool {
 }
 
 /// A titled band holding one strip in a hairline panel, fading out at the right edge.
-fn strip_band<'a>(title: &str, text_: &str, meta: String, strip: El<'a>, g: &Geo) -> El<'a> {
+fn strip_band<'a>(
+    title: &str,
+    text_: &str,
+    meta: String,
+    strip: El<'a>,
+    g: &Geo,
+    ri: usize,
+) -> El<'a> {
     let fade = container(space())
         .width(48)
         .height(Length::Fill)
@@ -1176,7 +1244,7 @@ fn strip_band<'a>(title: &str, text_: &str, meta: String, strip: El<'a>, g: &Geo
             )),
             ..Default::default()
         });
-    let body: El<'a> = if g.grid {
+    let body: El<'a> = if g.grid || !g.framed {
         strip
     } else {
         Stack::with_children(vec![
@@ -1189,14 +1257,28 @@ fn strip_band<'a>(title: &str, text_: &str, meta: String, strip: El<'a>, g: &Geo
         ])
         .into()
     };
-    let panel = container(body).clip(true).style(|_| container::Style {
-        border: style::border(t::hairline(), 1.0, t::r_panel()),
+    let framed = g.framed;
+    let panel = container(body).clip(true).style(move |_| container::Style {
+        border: if framed {
+            style::border(t::hairline(), 1.0, t::r_panel())
+        } else {
+            style::border(t::NONE, 0.0, 0.0)
+        },
         ..Default::default()
     });
     let mut col = column![].spacing(t::S6);
     if !g.title_t.hidden {
         col = col.push(
-            container(section_with(title, text_, meta, &g.title_t, g.inset)).height(SECTION_H),
+            container(section_with(
+                title,
+                text_,
+                meta,
+                &g.title_t,
+                g.inset,
+                g.details,
+                (g.arrows.shown() && !g.grid).then(|| row_arrows(g, ri)),
+            ))
+            .height(g.head_title_h()),
         );
     }
     band(

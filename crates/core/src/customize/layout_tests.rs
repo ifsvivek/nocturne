@@ -461,7 +461,7 @@ fn overlay_merges_layers() {
 
 #[test]
 fn presets_parse_without_warnings() {
-    assert_eq!(PRESETS.len(), 2);
+    assert_eq!(PRESETS.len(), 3);
     for (name, css) in PRESETS {
         let r = clean(css);
         assert!(r.theme.count() >= 10, "{name}");
@@ -523,4 +523,61 @@ fn hostile_layout_input_never_panics() {
     ] {
         let _ = p(css);
     }
+}
+
+#[test]
+fn classic_has_the_web_home_layout() {
+    let r = clean(PRESETS[2].1);
+    assert_eq!(PRESETS[2].0, "Classic");
+    let l = &r.layout.base;
+    assert_eq!(l.header.align, Some(HeaderAlign::Left));
+    assert_eq!(l.header.link_icons, Some(true));
+    assert_eq!(l.header.height, Some(56.0));
+    assert!(l.header_brand.shown());
+    assert_eq!(l.header_brand.content, Some(BrandContent::Server));
+    assert_eq!(l.header_icons.hidden, Some(false));
+    assert!(l.row_arrows.shown());
+    assert_eq!(l.row.details, Some(false));
+    assert_eq!(l.row.framed, Some(false));
+    assert_eq!(l.card.tile_label, Some(TileLabel::OverlayCenter));
+    assert_eq!(l.card.episode_format, Some(EpisodeFormat::Short));
+    assert_eq!(l.card_title.align, Some(TextAlign::Center));
+    assert_eq!(l.card_badge.position, Some(BadgePos::TopRight));
+    assert_eq!(l.card_badge.radius, Some(12.0));
+    assert_eq!(l.card_progress.position, Some(ProgressPos::InsideBottom));
+    assert_eq!(l.card_progress.height, Some(4.0));
+    assert_eq!(r.layout.pages[&Page::Home].card.aspect, Some(Aspect::Thumb));
+    assert_eq!(
+        r.layout.sections[&Section::Latest].card.aspect,
+        Some(Aspect::Poster)
+    );
+    assert_eq!(r.theme.radius_card, Some(4.0));
+}
+
+#[test]
+fn web_home_parts_parse_clamp_and_warn() {
+    let r = clean(
+        ".card-badge{--badge-position:top-left;background:#f00;color:#fff;font-size:12px;border-radius:9px}.card-progress{--progress-position:below;height:3px}.card-subtitle{--episode-format:long}.row-arrows{display:flex}.header-brand{content:user}.header{--header-align:center}.library-tile{--tile-label:below;font-size:20px}.card-title{text-align:left}",
+    );
+    let l = &r.layout.base;
+    assert_eq!(l.card_badge.position, Some(BadgePos::TopLeft));
+    assert_eq!(l.card_progress.position, Some(ProgressPos::Below));
+    assert_eq!(l.card.episode_format, Some(EpisodeFormat::Long));
+    assert_eq!(l.header_brand.content, Some(BrandContent::User));
+    assert_eq!(l.header.align, Some(HeaderAlign::Center));
+    assert_eq!(l.card.tile_label, Some(TileLabel::Below));
+    assert_eq!(l.library_tile.font_size, Some(20.0));
+    assert_eq!(l.card_title.align, Some(TextAlign::Left));
+    // `none` hides the badge; a hidden brand and arrows stay hidden unless asked for.
+    let r = clean(".card-badge{--badge-position:none}.row-arrows{display:none}");
+    assert_eq!(r.layout.base.card_badge.hidden, Some(true));
+    assert!(!r.layout.base.row_arrows.shown());
+    assert!(!Layout::default().base.header_brand.shown());
+    // Clamped and rejected values.
+    let r = p(
+        ".card-progress{height:90px}.card-badge{--badge-position:middle}.card-title{text-align:justify}.hero-title{text-align:center}",
+    );
+    assert_eq!(r.layout.base.card_progress.height, Some(16.0));
+    assert!(r.layout.base.card_badge.position.is_none());
+    assert_eq!(r.warnings.len(), 4, "{:?}", r.warnings);
 }

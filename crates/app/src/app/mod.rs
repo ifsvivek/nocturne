@@ -137,6 +137,19 @@ pub const GLOBALS: [(&str, &str); 3] = [
     ("favourites", "Favourites"),
 ];
 
+/// Debug builds only: `NOCTURNE_FAKE_UPDATE=<version>` (with `NOCTURNE_FAKE_UPDATE_CLICK=1` to press the button) shows the system-package banner for layout work and headless captures (pair with `NOCTURNE_PK_MOCK`).
+fn fake_update() -> Option<nocturne_core::update::UpdateState> {
+    if !cfg!(debug_assertions) {
+        return None;
+    }
+    let version = std::env::var("NOCTURNE_FAKE_UPDATE").ok()?;
+    Some(nocturne_core::update::UpdateState::Available {
+        notes_url: "https://example.invalid/".into(),
+        version,
+        action: nocturne_core::update::Action::Command("sudo pacman -Syu"),
+    })
+}
+
 /// The in-app update, after the banner's Install was pressed.
 enum UpdateStage {
     Idle,
@@ -144,6 +157,8 @@ enum UpdateStage {
         progress: std::sync::Arc<std::sync::atomic::AtomicU64>,
         size: u64,
     },
+    /// PackageKit is updating the package (percentage 0..=100, set by the transaction).
+    Packaging(std::sync::Arc<std::sync::atomic::AtomicU64>),
     /// Swapped in; waiting for the user to restart.
     Ready(std::path::PathBuf),
     Failed(String),
@@ -199,6 +214,11 @@ pub struct App {
     hdr: Option<sources::HeaderDlg>,
     /// Server UI: each server's layout as last read, and the open home-sections dialog.
     server_ui: HashMap<SourceId, nocturne_core::server_ui::ServerUi>,
+    /// Servers whose UI is being read (`true`) or could not be read (`false`).
+    ui_state: HashMap<SourceId, bool>,
+    /// Bumped when a loaded UI changes, so Home takes the new one.
+    ui_gen: u64,
+    ui_applied: Option<(nocturne_core::server_ui::Pick, u64)>,
     sec: Option<server_ui::SecDlg>,
     folders: Option<folders::Folders>,
     online: online::State,
@@ -236,6 +256,8 @@ pub struct App {
     update: Option<nocturne_core::update::UpdateState>,
     /// Where the in-app update of that version stands.
     update_stage: UpdateStage,
+    /// PackageKit answers on the system bus (checked once); the Update now button needs it.
+    pk_available: bool,
     /// Developer-token mode (`NOCTURNE_JF_TOKEN`): no login, read-only.
     dev: bool,
     /// The token / account has admin rights (an `Admin` entry follows the libraries).
@@ -293,6 +315,7 @@ impl App {
                 .reduced(crate::platform::system_reduces_motion()),
         );
         crate::couch::set(settings.couch == nocturne_core::settings::CouchMode::On);
+        let remote_css = settings.remote_css;
         // Opening the image cache scans its directory; that happens after the first frame.
         let cache_max = u64::from(settings.image_cache_mb) * 1024 * 1024;
         let open_disk = run(
@@ -324,11 +347,18 @@ impl App {
             rescan: HashSet::new(),
             launch_scan: false,
             src_open: false,
-            themes: nocturne_core::customize::Store::load(),
+            themes: {
+                let mut s = nocturne_core::customize::Store::load();
+                s.set_remote(remote_css);
+                s
+            },
             th: Default::default(),
             confirm: None,
             hdr: None,
             server_ui: HashMap::new(),
+            ui_state: HashMap::new(),
+            ui_gen: 0,
+            ui_applied: None,
             sec: None,
             folders: None,
             online: Default::default(),
@@ -359,6 +389,7 @@ impl App {
             note: None,
             update: None,
             update_stage: UpdateStage::Idle,
+            pk_available: false,
             admin: false,
             admin_open: false,
             adm: None,
@@ -404,7 +435,19 @@ impl App {
         {
             nocturne_core::update_install::cleanup(&exe);
         }
-        let check = if me.settings.check_updates {
+        let check = if let Some(u) = fake_update() {
+            // `NOCTURNE_FAKE_UPDATE_CLICK=1` presses Update now by itself (headless captures cannot click).
+            let click = std::env::var_os("NOCTURNE_FAKE_UPDATE_CLICK").map(|_| {
+                let nocturne_core::update::UpdateState::Available { version, .. } = &u else {
+                    unreachable!()
+                };
+                Task::done(Message::UpdatePk(version.clone()))
+            });
+            Task::batch([
+                Task::done(Message::Update(Some(u))),
+                click.unwrap_or_else(Task::none),
+            ])
+        } else if me.settings.check_updates {
             run(nocturne_core::update::check(), Message::Update)
         } else {
             Task::none()
@@ -508,8 +551,9 @@ impl App {
 
     pub fn update(&mut self, msg: Message) -> Task<Message> {
         let task = self.update_inner(msg);
-        self.sync_theme();
-        task
+        let ui = self.sync_ui();
+        let theme = self.sync_theme();
+        Task::batch([task, ui, theme])
     }
 
     fn update_inner(&mut self, msg: Message) -> Task<Message> {
@@ -517,7 +561,6 @@ impl App {
             Message::Key(k) => self.on_key(k),
             Message::Tick(now) => {
                 self.now = now;
-                self.theme_tick(now);
                 self.sync_detail();
                 self.sync_ob();
                 Task::batch([
@@ -598,7 +641,48 @@ impl App {
             }
             Message::Retry => self.connect(),
             Message::Update(u) => {
+                // A system-package install is offered Update now only if PackageKit is there.
+                let system = matches!(
+                    u,
+                    Some(nocturne_core::update::UpdateState::Available {
+                        action: nocturne_core::update::Action::Command(_),
+                        ..
+                    })
+                );
                 self.update = u;
+                if system {
+                    return run(
+                        nocturne_core::update_pk::available(),
+                        Message::UpdatePkAvailable,
+                    );
+                }
+                Task::none()
+            }
+            Message::UpdatePkAvailable(yes) => {
+                self.pk_available = yes;
+                Task::none()
+            }
+            Message::UpdatePk(version) => {
+                if matches!(self.update_stage, UpdateStage::Packaging(_)) {
+                    return Task::none();
+                }
+                let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+                self.update_stage = UpdateStage::Packaging(progress.clone());
+                run(
+                    nocturne_core::update_pk::update(version, progress),
+                    Message::UpdatePkDone,
+                )
+            }
+            Message::UpdatePkDone(r) => {
+                self.update_stage = match (r, std::env::current_exe()) {
+                    (Ok(()), Ok(exe)) => {
+                        UpdateStage::Ready(nocturne_core::update_pk::restart_path(&exe))
+                    }
+                    (Ok(()), Err(_)) => UpdateStage::Failed(
+                        "Updated, but the program cannot find itself: restart it by hand.".into(),
+                    ),
+                    (Err(e), _) => UpdateStage::Failed(e),
+                };
                 Task::none()
             }
             Message::UpdateCopy(cmd) => iced::clipboard::write(cmd.to_string()),
@@ -722,6 +806,18 @@ impl App {
                     h.strips.insert(row, x);
                 }
                 self.home_wants()
+            }
+            Message::HomeStripPage(row, dir) => {
+                let vw = self.win.width - 2.0 * t::page_pad();
+                let Some(h) = self.stack.first_mut().and_then(|p| p.home.as_deref_mut()) else {
+                    return Task::none();
+                };
+                let x = (h.strips.get(&row).copied().unwrap_or(0.0) + dir * vw * 0.9).max(0.0);
+                h.strips.insert(row, x);
+                iced::widget::operation::scroll_to(
+                    home::strip_id(row),
+                    iced::widget::scrollable::AbsoluteOffset { x, y: 0.0 },
+                )
             }
             Message::Browse(pid, m) => self.browse_msg(pid, m),
             Message::Search(m) => self.search_msg(m),
@@ -1600,6 +1696,10 @@ impl App {
     // ---- keyboard ----
 
     fn on_key(&mut self, mut k: Key) -> Task<Message> {
+        // The safe look works on every screen, over a player and over every dialog.
+        if k.ctrl && k.shift && matches!(k.name.as_str(), "0" | ")") {
+            return self.safe_theme();
+        }
         // The remote's Menu key outside the player opens the account menu.
         if k.name == "menu" && self.player.is_none() {
             k.name = "a".into();
@@ -2055,6 +2155,9 @@ impl App {
         }
         if self.smart.is_open() {
             layers.push(self.smart_dialog());
+        }
+        if self.is_previewing() {
+            layers.push(self.theme_preview_bar());
         }
         if let Some((n, _)) = &self.note {
             layers.push(

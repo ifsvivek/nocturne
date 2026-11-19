@@ -405,7 +405,8 @@ impl App {
             Some(Status::Offline { tries, .. }) => tries + 1,
             Some(Status::Connecting) if ok => {
                 self.catalog.set_status(id, Status::Online);
-                return self.fetch_server_ui(id);
+                self.retry_server_ui(id);
+                return Task::none();
             }
             Some(Status::Connecting) => 0,
             _ => return Task::none(),

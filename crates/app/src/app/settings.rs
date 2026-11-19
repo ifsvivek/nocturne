@@ -363,6 +363,10 @@ impl App {
                 .reduced(crate::platform::system_reduces_motion()),
         );
         self.apply_write_settings();
+        if self.themes.remote() != self.settings.remote_css {
+            self.themes.set_remote(self.settings.remote_css);
+            self.th_reapply();
+        }
         Task::batch([self.refresh_couch(), self.probe_monitor()])
     }
 

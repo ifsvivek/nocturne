@@ -2,7 +2,7 @@
   import { VERSION, shipped } from "#lib/site.js";
   // From docs/ROADMAP.md and FEATURES.md: what 0.5 does not do, and where it is still rough. Revisit at every release.
   const missing = [
-    "An AppImage: not shipped, too large and at odds with the system's libmpv. Flatpak is being evaluated",
+    "A supported AppImage: the GitHub release has only an experimental one (about 107 MB, it bundles its own libraries; use the repositories where you can). Flatpak is being evaluated",
     "X11 sessions: from 0.5, Linux needs Wayland",
     "Servers other than Jellyfin",
     "Book reading and audiobook playback",
@@ -10,8 +10,8 @@
     "Live TV, DVR, DLNA, casting and gapless music, not planned",
   ];
   const rough = [
-    "HDR in the pop-out window needs an HDR display and mpv 0.42 or newer; it has been tried on one Linux HDR setup so far. In the window, HDR is tone-mapped to SDR.",
-    "Windows (x64) and macOS (Apple Silicon) are previews on the GitHub release: built and smoke-tested on GitHub's machines, not yet tried on a real PC or Mac, and unsigned, so the system warns on first start. Video plays in mpv's own window there.",
+    "HDR in the pop-out window needs an HDR display and mpv 0.42 or newer; it has been tried on a Linux, a Windows and a macOS HDR setup. In the window, HDR is tone-mapped to SDR.",
+    "Windows (x64) and macOS (Apple Silicon) are previews on the GitHub release: built on GitHub's machines and tried by the maintainer on a real PC and Mac, but unsigned, so the system warns on first start. Video plays in mpv's own window there.",
     "Themes: letter spacing is read but not drawn, and the hover zoom has not been tried with a real pointer yet. A Jellyfin theme from the web has not been tried against the app.",
     "Server UI has not been tried with several servers at once or with a server's real branding CSS. Live TV and the audio and book continue rows are not shown.",
     "In-app updates have been tested against a local server, not yet from a published release. In-app update on macOS is planned; the macOS preview shows Download instead.",

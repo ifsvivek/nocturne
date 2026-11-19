@@ -5,19 +5,61 @@ use iced::font::{Family, Weight};
 use iced::gradient::{self, Gradient};
 use iced::{Background, Color, Degrees};
 use nocturne_core::customize::{self as cz, Fill};
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 // ponytail: system fonts; bundle faces when branding needs it
 pub const MONO: Font = Font::with_name("JetBrainsMono Nerd Font");
 const FAMILY_DEFAULT: &str = "Noto Sans";
 
-/// The body family, fixed at launch (a theme's `font-family` applies from the next start, because
-/// Iced's default font is set once and a mix of old and new faces would look broken).
-static FAMILY: OnceLock<&'static str> = OnceLock::new();
+/// The family of the explicit `t::base()`-style fonts. Iced's default font (text without an explicit
+/// font) is fixed at launch, so a theme's family reaches the headings, labels and buttons that name
+/// their font, not every run of text.
+static FAMILY: RwLock<&'static str> = RwLock::new(FAMILY_DEFAULT);
+
+/// `font-family` (lower case) -> the name inside the font file, for fonts a theme brought along.
+static FONT_MAP: RwLock<Vec<(String, &'static str)>> = RwLock::new(Vec::new());
+/// Family names handed to Iced (`Font::with_name` wants `&'static str`): bounded, each leaked once.
+static NAMES: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+const MAX_NAMES: usize = 48;
+
+fn intern(n: &str) -> &'static str {
+    let mut v = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = v.iter().find(|s| **s == n) {
+        return s;
+    }
+    if v.len() >= MAX_NAMES {
+        return FAMILY_DEFAULT;
+    }
+    let s: &'static str = Box::leak(n.to_owned().into_boxed_str());
+    v.push(s);
+    s
+}
+
+/// Remember which loaded fonts answer to which CSS family (replaces the previous map).
+pub fn map_fonts(fonts: &[cz::import::LoadedFont]) {
+    let map = fonts
+        .iter()
+        .map(|f| {
+            let internal = f.internal_family.as_deref().unwrap_or(&f.family);
+            (f.family.to_lowercase(), intern(internal))
+        })
+        .collect();
+    *FONT_MAP.write().unwrap_or_else(|e| e.into_inner()) = map;
+}
+
+/// Is `family` one of the fonts the theme brought along (so it is not "only if installed")?
+pub fn font_is_loaded(family: &str) -> bool {
+    let l = family.to_lowercase();
+    FONT_MAP
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .any(|(f, _)| *f == l)
+}
 
 fn family() -> &'static str {
-    FAMILY.get().copied().unwrap_or(FAMILY_DEFAULT)
+    *FAMILY.read().unwrap_or_else(|e| e.into_inner())
 }
 
 /// The body font at `weight` (Noto Sans unless the active theme names an installed family).
@@ -367,15 +409,21 @@ struct Look {
 
 static LOOK: RwLock<Option<Arc<Look>>> = RwLock::new(None);
 
-/// Make `th` the look of the whole app (call when the theme changes, not per frame). The font
-/// family is read only on the first call, i.e. at launch.
+/// Make `th` the look of the whole app (call when the theme changes, not per frame).
 pub fn set(th: &cz::Theme, layout: &cz::Layout) {
-    // ponytail: the name is leaked once per launch, bounded by the engine's 64 character cap.
-    let name: &'static str = match th.font_family.as_deref() {
-        Some(n) if FAMILY.get().is_none() => Box::leak(n.to_owned().into_boxed_str()),
-        _ => FAMILY_DEFAULT,
+    let name = match th.font_family.as_deref() {
+        Some(n) => {
+            let mapped = FONT_MAP
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .find(|(f, _)| *f == n.to_lowercase())
+                .map(|(_, i)| *i);
+            mapped.unwrap_or_else(|| intern(n))
+        }
+        None => FAMILY_DEFAULT,
     };
-    let _ = FAMILY.set(name);
+    *FAMILY.write().unwrap_or_else(|e| e.into_inner()) = name;
     *ACTIVE.write().unwrap_or_else(|e| e.into_inner()) = Tokens::resolve(th);
     let look = (layout.count() > 0 || th.density.is_some() || th.font_size.is_some()).then(|| {
         Arc::new(Look {
@@ -603,6 +651,35 @@ mod tests {
     //! WCAG 2.x contrast audit of the tokens: text >= 4.5:1 on every surface it can sit on, control
     //! edges and focus rings >= 3:1. Semi-transparent fills are composited over the real surfaces.
     use super::*;
+
+    #[test]
+    fn a_loaded_font_answers_to_its_css_family() {
+        let f = |family: &str, internal: &str| cz::import::LoadedFont {
+            family: family.into(),
+            weight: 400,
+            weight_max: 400,
+            style: cz::import::FontStyle::Normal,
+            internal_family: Some(internal.into()),
+            url: String::new(),
+            bytes: Arc::from(vec![]),
+        };
+        map_fonts(&[f("Test Sans", "Test Sans Text")]);
+        assert!(font_is_loaded("test sans"));
+        let th = cz::Theme {
+            font_family: Some("TEST sans".into()),
+            ..Default::default()
+        };
+        set(&th, &Default::default());
+        assert_eq!(family(), "Test Sans Text");
+        // Unknown families are interned once, and the intern table is bounded.
+        for i in 0..MAX_NAMES + 5 {
+            intern(&format!("Family {i}"));
+        }
+        assert_eq!(intern("Never seen before"), FAMILY_DEFAULT);
+        map_fonts(&[]);
+        set(&Default::default(), &Default::default());
+        assert_eq!(family(), FAMILY_DEFAULT);
+    }
 
     type Rgb = [f32; 3];
 

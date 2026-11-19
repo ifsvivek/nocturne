@@ -25,17 +25,34 @@ pub fn section<'a, M: 'a>(title: &str, body: &str, meta: String) -> Element<'a, 
         meta,
         &t::typo(&Default::default(), 28.0, iced::font::Weight::Bold),
         t::page_pad(),
+        true,
+        None,
     )
 }
 
 /// [`section`] with the title's typography (`.row-title`) and the row's horizontal inset.
+/// `details` off keeps only the title; `extra` (the row arrows) sits at the right end.
 pub fn section_with<'a, M: 'a>(
     title: &str,
     body: &str,
     meta: String,
     title_t: &t::Typo,
     inset: f32,
+    details: bool,
+    extra: Option<Element<'a, M>>,
 ) -> Element<'a, M> {
+    if !details {
+        let mut r = row![title_t.text(title, t::text()), space().width(Length::Fill)]
+            .align_y(Alignment::Center)
+            .spacing(t::S6);
+        if let Some(x) = extra {
+            r = r.push(x);
+        }
+        return container(r)
+            .padding([0.0, inset])
+            .width(Length::Fill)
+            .into();
+    }
     container(
         row![
             column![
@@ -52,6 +69,7 @@ pub fn section_with<'a, M: 'a>(
             space().width(Length::Fill),
             mono(meta),
         ]
+        .extend(extra)
         .align_y(Alignment::End)
         .spacing(t::S6),
     )

@@ -110,6 +110,8 @@ mod tests {
         }
     }
 
+    // Unix paths: on Windows "/x" is not absolute, so the XDG rules this test checks do not apply there.
+    #[cfg(unix)]
     #[test]
     fn linux_follows_xdg_with_home_fallbacks() {
         let r = |kind, p: &[(&str, &str)]| resolve(Os::Linux, kind, &env(p));

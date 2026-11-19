@@ -3,7 +3,7 @@
   import Next from "./Next.svelte";
   // [needs, detail, status, version that ships the detail (marked until VERSION reaches it)]
   const specs = [
-    ["Platform", "Linux, x86_64: signed repositories for Arch Linux (pacman), Debian 13 and Ubuntu 24.04 or newer (apt) and Fedora (dnf, with RPM Fusion for mpv-libs), and the tarball. No AppImage; Flatpak is being evaluated. macOS and Windows are planned, not available.", "Linux only today", "0.4.0"],
+    ["Platform", "Linux, x86_64: signed repositories for Arch Linux (pacman), Debian 13 and Ubuntu 24.04 or newer (apt) and Fedora (dnf, with RPM Fusion for mpv-libs), and the tarball. An experimental AppImage is on the GitHub release; Flatpak is being evaluated. Windows (x64) and macOS (Apple Silicon) are unsigned previews on the GitHub release.", "Linux only today", "0.4.0"],
     ["libmpv", "Comes with the package: the Arch package depends on mpv, and the tarball installer installs it with your distribution's package manager. NOCTURNE also starts without it and tells you what to install.", "mpv 0.41 tested; 0.42's certificate check needs no change", "0.3.0"],
     ["Display", "A Wayland session (GNOME, KDE Plasma, Sway and others). X11 sessions are not supported: NOCTURNE says so and exits. Video plays in the window; NOCTURNE_VIDEO=external opens it in an external mpv window instead.", "Wayland only"],
     ["Graphics", "A Vulkan driver for the UI, OpenGL/EGL for video.", "Other GPU setups not yet tested"],

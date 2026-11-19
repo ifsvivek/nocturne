@@ -76,7 +76,7 @@ impl App {
             SrcAct::HeaderCancel => self.hdr = None,
             SrcAct::HeaderClear => return self.save_header(true),
             SrcAct::HeaderSave => return self.save_header(false),
-            SrcAct::Layout(id) => return self.toggle_server_ui(id),
+            SrcAct::Layout(ctx) => self.cycle_ui(ctx),
             SrcAct::Sections(id) => self.open_sections(id),
             a @ (SrcAct::SecToggle(_)
             | SrcAct::SecShift(..)
@@ -252,6 +252,7 @@ impl App {
         self.save_sources();
         self.catalog.remove(id);
         self.drop_active(id);
+        self.forget_server_ui(id);
         if self.sources.needs_welcome() && !self.dev {
             // Every source is gone: back to the first-run choice.
             self.stack.clear();
@@ -291,7 +292,7 @@ impl App {
             border: border(t::hairline_strong(), 1.0, 19.0),
             ..Default::default()
         });
-        let who = column![
+        let mut who = column![
             text(s.profile.label.clone())
                 .size(t::BODY)
                 .font(t::semibold()),
@@ -301,6 +302,9 @@ impl App {
         ]
         .spacing(2)
         .width(Length::Fill);
+        if let Some(n) = self.ui_note(Some(id)) {
+            who = who.push(text(n).size(t::CAPTION).color(t::warn()));
+        }
         let status = container(
             row![
                 dot(status_color(&s.status)),
@@ -340,21 +344,20 @@ impl App {
                     acts = acts.push(btn("Use account", false, false, SrcAct::Use(id)));
                 }
                 acts = acts.push(btn("Header", false, false, SrcAct::Header(id)));
-                if !self.dev && s.profile.enabled {
-                    acts = acts.push(btn(
-                        if s.profile.server_ui {
-                            "Layout: server's"
-                        } else {
-                            "Layout: NOCTURNE"
-                        },
-                        false,
-                        false,
-                        SrcAct::Layout(id),
-                    ));
-                    if s.profile.server_ui {
-                        acts = acts.push(btn("Sections", false, false, SrcAct::Sections(id)));
-                    }
+                if self.sections_editable(id) {
+                    acts = acts.push(btn("Sections", false, false, SrcAct::Sections(id)));
                 }
+            }
+            if !dev {
+                acts = acts.push(btn(
+                    &format!(
+                        "UI: {}",
+                        self.ui_choice_label(Some(id), self.sources.ui_of(Some(id)))
+                    ),
+                    false,
+                    false,
+                    SrcAct::Layout(Some(id)),
+                ));
             }
             acts = acts
                 .push(btn(
@@ -383,6 +386,37 @@ impl App {
             .align_y(Alignment::Center)
             .padding([t::S3, t::S6])
             .into()
+    }
+
+    /// "All sources": whose UI (home sections and look) the combined view uses.
+    fn all_ui_row(&self) -> El<'_> {
+        let mut who = column![
+            text("All sources").size(t::BODY).font(t::semibold()),
+            text("The UI of the combined view. A borrowed UI only changes how things look and which sections show; nothing is written to its server.")
+                .size(t::CONTROL_TEXT)
+                .color(t::text_secondary()),
+        ]
+        .spacing(2)
+        .width(Length::Fill);
+        if let Some(n) = self.ui_note(None) {
+            who = who.push(text(n).size(t::CAPTION).color(t::warn()));
+        }
+        let now = self.ui_choice_label(None, self.sources.ui_of(None));
+        row![
+            who,
+            action_button(
+                &format!("UI: {now}"),
+                false,
+                false,
+                false,
+                false,
+                Message::Src(SrcAct::Layout(None))
+            ),
+        ]
+        .spacing(t::S4)
+        .align_y(Alignment::Center)
+        .padding([t::S3, t::S6])
+        .into()
     }
 
     pub(super) fn sources_page(&self) -> El<'_> {
@@ -421,6 +455,10 @@ impl App {
             }),
         );
         page = page.push(container(rule()).padding([0.0, t::page_pad()]));
+        if !self.dev && self.catalog.slots.len() > 1 {
+            page = page
+                .push(container(column![self.all_ui_row(), rule()]).padding([0.0, t::page_pad()]));
+        }
         if self.catalog.slots.is_empty() {
             page = page.push(
                 container(
@@ -662,19 +700,62 @@ impl App {
             return None;
         }
         let (msg, act): (String, El) = match action {
-            Action::Command(cmd) => (
-                format!("NOCTURNE {version} is available. Update with: {cmd}"),
-                action_button(
-                    "Copy command",
-                    true,
-                    false,
-                    false,
-                    false,
-                    Message::UpdateCopy(cmd),
-                ),
-            ),
+            Action::Command(cmd) => {
+                let copy = || {
+                    action_button(
+                        "Copy command",
+                        !self.pk_available,
+                        false,
+                        false,
+                        false,
+                        Message::UpdateCopy(cmd),
+                    )
+                };
+                let now = |label| {
+                    action_button(
+                        label,
+                        true,
+                        false,
+                        false,
+                        false,
+                        Message::UpdatePk(version.clone()),
+                    )
+                };
+                let with_now = |msg: String, label| -> (String, El) {
+                    (msg, row![now(label), copy()].spacing(t::S2).into())
+                };
+                match (&self.update_stage, self.pk_available) {
+                    (UpdateStage::Packaging(p), _) => {
+                        let pct = p.load(std::sync::atomic::Ordering::Relaxed).min(100);
+                        let msg = if pct == 0 {
+                            format!(
+                                "Updating NOCTURNE to {version}: waiting for the package manager"
+                            )
+                        } else {
+                            format!("Updating NOCTURNE to {version}: {pct}%")
+                        };
+                        (msg, space().into())
+                    }
+                    (UpdateStage::Ready(_), _) => (
+                        format!("Updated to {version}."),
+                        action_button("Restart", true, false, false, false, Message::UpdateRestart),
+                    ),
+                    (UpdateStage::Failed(e), true) => {
+                        with_now(format!("{e} Or update with: {cmd}"), "Try again")
+                    }
+                    (UpdateStage::Failed(e), false) => (format!("{e} Update with: {cmd}"), copy()),
+                    (_, true) => with_now(
+                        format!("NOCTURNE {version} is available. Update with: {cmd}"),
+                        "Update now",
+                    ),
+                    _ => (
+                        format!("NOCTURNE {version} is available. Update with: {cmd}"),
+                        copy(),
+                    ),
+                }
+            }
             Action::Install(art) => match &self.update_stage {
-                UpdateStage::Idle => (
+                UpdateStage::Idle | UpdateStage::Packaging(_) => (
                     format!("NOCTURNE {version} is available."),
                     action_button(
                         "Download and install",

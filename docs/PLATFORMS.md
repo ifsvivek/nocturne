@@ -14,6 +14,7 @@ Implemented state (0.5.1): Linux is built, run and tested. Windows and macOS hav
 | external `mpv` binary | `PATH` | next to the app, `PATH`, Homebrew prefixes | `mpv.exe` next to the app, then `PATH` (no console window) |
 | Credentials | Secret Service (`keyring`) | Keychain (`keyring` apple-native) | Credential Manager (`keyring` windows-native) |
 | Media keys / now playing | MPRIS + idle inhibit (zbus, `core/player_mpris/dbus.rs`) | none yet (no-op; MPNowPlayingInfoCenter later) | none yet (no-op; SMTC later) |
+| System package update | PackageKit over the system D-Bus (zbus, `core/update_pk.rs`) | none (per-user app update) | none (per-user update) |
 | Signals / quit | SIGTERM/SIGINT | same | console ctrl handler (never fires in the GUI-subsystem build) |
 | Single instance | `flock` + unix socket in `$XDG_RUNTIME_DIR` | same, socket in `$TMPDIR` | named mutex + named pipe |
 | Paths | XDG | `~/Library/Application Support`, `~/Library/Caches` | `%APPDATA%` (config), `%LOCALAPPDATA%` (data, cache) |
@@ -22,7 +23,7 @@ Implemented state (0.5.1): Linux is built, run and tested. Windows and macOS hav
 
 One path helper: `nocturne_session::paths` (re-exported as `nocturne_core::paths`), pure `resolve(os, kind, env)` unit-tested for all three OSes. Code layout: `crates/player` keeps the per-OS IPC and libmpv loading; `platform.rs` and `single.rs` in the UI crate hold signals, window-handle extraction and the single-instance guard; `crates/session` picks the keyring backend by target.
 
-Remaining for macOS/Windows: running the installers on real machines, native in-window video (video plays in mpv's own window until then), media keys / now playing, reduced-motion detection, file picker and keyring behaviour verified on real machines, code signing (the previews are unsigned, so SmartScreen and Gatekeeper warn on first start).
+Tried on a real Windows PC and a Mac by the maintainer (2026-11-19): they install and work. Remaining for macOS/Windows: code signing, native in-window video (video plays in mpv's own window until then), media keys / now playing, reduced-motion detection, file picker and keyring behaviour verified on real machines, code signing (the previews are unsigned, so SmartScreen and Gatekeeper warn on first start).
 
 ## Packages
 

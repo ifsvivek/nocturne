@@ -83,8 +83,8 @@ pub enum SrcAct {
     HeaderSave,
     HeaderClear,
     HeaderCancel,
-    /// Follow the server's own layout (Server UI) or NOCTURNE's.
-    Layout(SourceId),
+    /// The next choice of whose UI this source (or "All", `None`) is browsed with.
+    Layout(Option<SourceId>),
     /// The home-sections editor of this server, and its buttons.
     Sections(SourceId),
     SecToggle(usize),
@@ -136,6 +136,11 @@ pub enum Message {
     UpdateInstalled(Result<std::path::PathBuf, String>),
     /// Banner "Restart to update".
     UpdateRestart,
+    /// Whether PackageKit can be asked to update a system-package install (asked once, when the banner first applies).
+    UpdatePkAvailable(bool),
+    /// Banner "Update now": the version to update to.
+    UpdatePk(String),
+    UpdatePkDone(Result<(), String>),
     Account(account::Msg),
     PickerAct(picker::Act),
     Switched {
@@ -214,6 +219,8 @@ pub enum Message {
     DetailWrote(u64, crate::detail::Write, Result<(), &'static str>),
     HomeScroll(f32, f32),
     HomeStrip(usize, f32),
+    /// A row's arrow was pressed: strip index and direction (-1 back, 1 forward).
+    HomeStripPage(usize, f32),
     Browse(u64, super::browse::BMsg),
     Search(super::search::SMsg),
     /// The stored login of a server, to build its write hooks (played / favourite).

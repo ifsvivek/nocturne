@@ -10,7 +10,7 @@ Built with Rust, [Iced](https://iced.rs/), libmpv, Tokio and the Jellyfin REST A
 
 [Website](https://nocturne.ifsvivek.in) · [Install](#install) · [Package repository](https://nocturne.ifsvivek.in/repo) · [Releases](https://github.com/ifsvivek/nocturne/releases/latest) · [Features](docs/FEATURES.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
 
-Status: version 0.5.1 (2026-11-19), early software. Linux x86_64 is the supported platform: tested on Arch, with signed pacman, apt and dnf repositories and a tarball (.deb and .rpm are install-tested on Debian, Ubuntu and Fedora in clean containers). Windows (x64) and macOS (Apple Silicon) are unsigned previews on the GitHub release, not yet tried on a real PC or Mac ([docs/PLATFORMS.md](docs/PLATFORMS.md)). See [docs/ROADMAP.md](docs/ROADMAP.md) for what is coming and [docs/FEATURES.md](docs/FEATURES.md) for what is verified.
+Status: version 0.5.1 (2026-11-19), early software. Linux x86_64 is the supported platform: tested on Arch, with signed pacman, apt and dnf repositories and a tarball (.deb and .rpm are install-tested on Debian, Ubuntu and Fedora in clean containers). Windows (x64) and macOS (Apple Silicon) are unsigned previews on the GitHub release, tried on a real Windows PC and a Mac ([docs/PLATFORMS.md](docs/PLATFORMS.md)). See [docs/ROADMAP.md](docs/ROADMAP.md) for what is coming and [docs/FEATURES.md](docs/FEATURES.md) for what is verified.
 
 New in 0.5: Linux is Wayland-only; in-app updates (a daily check you can turn off, signed downloads for per-user installs); native CSS themes that can restyle layout (cards, Home rows, hero, header), with the Marquee and Feed examples and a theme per server; Server UI per server (that server's own home sections, branding and a home-sections editor); real text editing in every field; one-click Trakt connect; and apt and dnf repositories next to the pacman one. 0.5.1 adds a macOS update artifact and two small fixes ([CHANGELOG.md](CHANGELOG.md)).
 
@@ -122,7 +122,7 @@ sudo dnf install nocturne
 
 ### Windows and macOS: previews
 
-Attached to the [GitHub release](https://github.com/ifsvivek/nocturne/releases/latest). Both are built and smoke-tested on GitHub's machines but **not yet tried on a real PC or Mac**, and **unsigned**, so the system warns on first start. Video plays in mpv's own window there, not inside the app window.
+Attached to the [GitHub release](https://github.com/ifsvivek/nocturne/releases/latest). Both are built and smoke-tested on GitHub's machines and have been tried on a real Windows PC and a Mac (2026-11-19), but they are **unsigned**, so the system warns on first start. Video plays in mpv's own window there, not inside the app window.
 
 - **Windows (x64)**: run `nocturne-<version>-x86_64-setup.exe` (a per-user install, no administrator prompt) or unzip the portable `.zip`. SmartScreen will say the publisher is unknown: choose More info, then Run anyway.
 - **macOS (Apple Silicon)**: open the `.dmg` and drag NOCTURNE to Applications. Gatekeeper will refuse the first launch: right-click the app, choose Open, then Open again (or allow it in System Settings > Privacy & Security).
@@ -156,7 +156,7 @@ cargo build --release --locked      # stable Rust 1.89+; a clean release build t
 
 | Area | Status |
 |---|---|
-| OS and architecture | Linux, x86_64. Windows (x64) and macOS (Apple Silicon) are unsigned previews, not yet tried on real hardware ([docs/PLATFORMS.md](docs/PLATFORMS.md)). |
+| OS and architecture | Linux, x86_64. Windows (x64) and macOS (Apple Silicon) are unsigned previews, tried on a real PC and Mac ([docs/PLATFORMS.md](docs/PLATFORMS.md)). |
 | Packages | Arch (pacman repository) is the daily-driver target; .deb and .rpm (apt and dnf repositories) are install-tested in clean Debian, Ubuntu and Fedora containers, not yet on a full desktop install ([docs/PACKAGING.md](docs/PACKAGING.md)). Other distributions: tarball or source, unverified. |
 | Wayland (required) | In-window video (libmpv in a subsurface, hardware decoding). Developed and tested here, on NVIDIA proprietary drivers; AMD and Intel GPUs are untested. |
 | X11 | Not supported: NOCTURNE prints a message and exits. |
