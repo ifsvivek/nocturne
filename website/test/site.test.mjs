@@ -61,7 +61,7 @@ test("package repository page: exact pacman, apt and dnf steps, signing key, oth
   ]) assert.ok(h.includes(s), s);
   assert.equal((h.match(/5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B/g) || []).length, 1, "one fingerprint for all three repositories");
   // One-file alternative: download from the release, install with the distribution's tool; the file names follow the version.
-  for (const [d, ver] of [[v03, "0.4.0"], [v04, "0.4.0"], [on, "0.5.0"]]) {
+  for (const [d, ver] of [[v03, "0.4.0"], [v04, "0.4.0"], [on, "0.5.1"]]) {
     const t = read(d, "repo.html").replace(/&#39;/g, "'").replace(/&amp;/g, "&");
     const rel = `https://github.com/ifsvivek/nocturne/releases/download/v${ver}`;
     for (const x of [`href="${rel}/nocturne_${ver}_amd64.deb"`, `sudo apt install ./nocturne_${ver}_amd64.deb`,
@@ -115,7 +115,7 @@ test("0.5 copy is marked before 0.5.0 and unmarked from it; Wayland only", () =>
   assert.ok((h.match(/Coming in 0\.5/g) || []).length >= 8, "marks in the 0.4.0 build");
   assert.match(read(v04, "privacy.html"), /Coming in 0\.5/);
   for (const f of ["index.html", "repo.html", "privacy.html"]) assert.doesNotMatch(read(on, f), /Coming in/, f);
-  assert.ok(n.includes("Version 0.5.0") && n.includes("Early software, version 0.5.0."));
+  assert.ok(n.includes("Version 0.5.1") && n.includes("Early software, version 0.5.1."));
   for (const s of ["Your look", "Marquee and Feed", "with no browser inside", "a Jellyfin web theme applies only partly", "Letter spacing is read but not drawn", "Server UI", "branding CSS",
     "Settings, Sources, Sections", "Every text field edits like any other", "Connect Trakt", "Download and install, then Restart to update", "PREFIX=~/.local", "ed25519 signature",
     "X11 sessions are not supported", "In-app update on macOS is planned", "hover zoom has not been tried with a real pointer", "Server UI has not been tried with several servers"]) assert.ok(n.includes(s), s);

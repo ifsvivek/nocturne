@@ -2,7 +2,7 @@
   import { VERSION, shipped } from "#lib/site.js";
   // From docs/ROADMAP.md and FEATURES.md: what 0.5 does not do, and where it is still rough. Revisit at every release.
   const missing = [
-    "An AppImage: not shipped, too large and at odds with the system's libmpv. Flatpak is being evaluated",
+    "A supported AppImage: the GitHub release has only an experimental one (about 107 MB, it bundles its own libraries; use the repositories where you can). Flatpak is being evaluated",
     "X11 sessions: from 0.5, Linux needs Wayland",
     "Servers other than Jellyfin",
     "Book reading and audiobook playback",
