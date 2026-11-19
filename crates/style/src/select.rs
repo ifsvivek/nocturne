@@ -193,6 +193,25 @@ impl Selector {
     }
 
     /// Does the (originating) element match? For `::before`/`::after` selectors this is the element that owns the pseudo-element.
+    /// Attribute names and whether ids this selector looks at: only those can make two elements style differently.
+    pub fn collect_inputs(&self, attrs: &mut std::collections::HashSet<String>, ids: &mut bool) {
+        fn complex(c: &Complex, attrs: &mut std::collections::HashSet<String>, ids: &mut bool) {
+            for (_, p) in c {
+                compound(p, attrs, ids);
+            }
+        }
+        fn compound(c: &Compound, attrs: &mut std::collections::HashSet<String>, ids: &mut bool) {
+            *ids |= c.id.is_some();
+            attrs.extend(c.attrs.iter().map(|a| a.name.clone()));
+            for p in &c.pseudos {
+                if let Pseudo::Not(l) | Pseudo::Is(l) | Pseudo::Where(l) | Pseudo::Has(l) = p {
+                    l.iter().for_each(|x| complex(x, attrs, ids));
+                }
+            }
+        }
+        complex(&self.parts, attrs, ids);
+    }
+
     pub fn matches(&self, cx: &mut MatchCx, n: Id) -> bool {
         match_complex(&self.parts, self.parts.len() - 1, cx, n)
     }

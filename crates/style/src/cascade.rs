@@ -250,11 +250,16 @@ impl Styler {
             if d.sibling { self.sib[i] } else { 0 },
             if d.has { (self.sub[i], self.fs[i]) } else { (0, 0) },
         );
+        let attrs: Vec<&(String, String)> = node
+            .attrs
+            .iter()
+            .filter(|(k, _)| sheet.attr_names.contains(k))
+            .collect();
         hash2(&(
             &node.tag,
-            &node.id,
+            if sheet.uses_ids { node.id.as_ref() } else { None },
             &node.classes,
-            &node.attrs,
+            attrs,
             &node.inline,
             flags.get(i).copied().unwrap_or(0),
             parent_group,

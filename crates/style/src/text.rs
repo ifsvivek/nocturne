@@ -39,6 +39,70 @@ impl TextStyle {
 /// `(text, style, max width)`: `None` is "as wide as it wants", `Some(0.0)` is min-content. Returns the size in px.
 pub type Measure<'a> = dyn FnMut(&str, &TextStyle, Option<f32>) -> (f32, f32) + 'a;
 
+/// A cache in front of the real shaper: layout asks for the same string at several widths, so every distinct
+/// (text, style, width) is shaped once. Bounded: it starts over when it grows past [`MeasureCache::LIMIT`] entries.
+#[derive(Default)]
+pub struct MeasureCache {
+    map: std::collections::HashMap<u64, (f32, f32)>,
+    pub hits: u64,
+    pub misses: u64,
+}
+
+impl MeasureCache {
+    pub const LIMIT: usize = 50_000;
+
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.map.clear();
+    }
+
+    /// Measure through the cache; `raw` is the shaper (called only on a miss).
+    pub fn measure(
+        &mut self,
+        text: &str,
+        ts: &TextStyle,
+        max: Option<f32>,
+        raw: &mut dyn FnMut(&str, &TextStyle, Option<f32>) -> (f32, f32),
+    ) -> (f32, f32) {
+        use std::hash::{DefaultHasher, Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        (
+            text,
+            ts.size.to_bits(),
+            ts.weight,
+            ts.italic,
+            &ts.font,
+            ts.line_height.to_bits(),
+            ts.lines,
+            max.map(f32::to_bits),
+        )
+            .hash(&mut h);
+        let key = h.finish();
+        if let Some(v) = self.map.get(&key) {
+            self.hits += 1;
+            return *v;
+        }
+        self.misses += 1;
+        let v = raw(text, ts, max);
+        if self.map.len() >= Self::LIMIT {
+            self.map.clear();
+        }
+        self.map.insert(key, v);
+        v
+    }
+}
+
 /// A cheap stand-in for a text shaper: used by tests and benchmarks.
 pub fn approx(text: &str, st: &TextStyle, max: Option<f32>) -> (f32, f32) {
     let cw = st.size * if st.weight >= 600 { 0.56 } else { 0.5 };

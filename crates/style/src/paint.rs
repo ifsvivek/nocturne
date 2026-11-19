@@ -383,7 +383,12 @@ pub enum Ease {
 impl Ease {
     /// `t` and the result are in 0..=1.
     pub fn at(self, t: f32) -> f32 {
-        let t = t.clamp(0.0, 1.0);
+        if t <= 0.0 {
+            return 0.0;
+        }
+        if t >= 1.0 {
+            return 1.0;
+        }
         let (x1, y1, x2, y2) = match self {
             Ease::Linear => return t,
             Ease::Ease => (0.25, 0.1, 0.25, 1.0),
@@ -448,12 +453,18 @@ pub const ALL_APROPS: [AProp; 5] = [
     AProp::BorderColor,
 ];
 
-/// `transition-property` entries: `None` stands for `all`; properties that cannot animate are dropped.
+/// One entry of `transition-property`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TP {
+    All,
+    One(AProp),
+    /// A property that cannot animate here (layout, shadows): its slot keeps the timing lists aligned and does nothing.
+    Other,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TransSpec {
-    /// `Some(None)` = all; an empty list = no transition.
-    pub props: Vec<Option<AProp>>,
-    pub all: bool,
+    pub props: Vec<TP>,
     pub durs: Vec<f32>,
     pub delays: Vec<f32>,
     pub eases: Vec<Ease>,
@@ -462,11 +473,11 @@ pub struct TransSpec {
 impl TransSpec {
     /// (duration ms, delay ms, easing) for the property, if it transitions.
     pub fn for_prop(&self, p: AProp) -> Option<(f32, f32, Ease)> {
-        let k = if self.all {
-            0
-        } else {
-            self.props.iter().position(|x| *x == Some(p))?
-        };
+        let k = self
+            .props
+            .iter()
+            .position(|x| *x == TP::All)
+            .or_else(|| self.props.iter().position(|x| *x == TP::One(p)))?;
         let pick = |v: &[f32]| if v.is_empty() { 0.0 } else { v[k % v.len()] };
         let dur = pick(&self.durs);
         if dur <= 0.0 && pick(&self.delays) <= 0.0 {
@@ -480,8 +491,9 @@ impl TransSpec {
         Some((dur, pick(&self.delays), ease))
     }
 
+    /// Nothing can transition.
     pub fn is_none(&self) -> bool {
-        !self.all && self.props.is_empty()
+        self.props.iter().all(|p| *p == TP::Other)
     }
 }
 
@@ -526,18 +538,14 @@ pub fn transition(v: &str) -> Result<TransSpec, String> {
         spec.durs.push(times.first().copied().unwrap_or(0.0).max(0.0));
         spec.delays.push(times.get(1).copied().unwrap_or(0.0));
         spec.eases.push(ease.unwrap_or(Ease::Ease));
-        match prop.unwrap_or("all") {
-            "all" => {
-                spec.all = true;
-                spec.props.push(None);
-            }
-            // A property that is not animated (layout, shadows): the transition entry keeps its slot and does nothing.
-            p => spec.props.push(aprop(p)),
-        }
+        spec.props.push(match prop.unwrap_or("all") {
+            "all" => TP::All,
+            p => aprop(p).map_or(TP::Other, TP::One),
+        });
     }
-    if let Some(k) = spec.props.iter().position(Option::is_none) {
+    if let Some(k) = spec.props.iter().position(|p| *p == TP::All) {
         // With `all` present its timing applies to every property.
-        spec.props = vec![None];
+        spec.props = vec![TP::All];
         spec.durs = vec![spec.durs[k]];
         spec.delays = vec![spec.delays[k]];
         spec.eases = vec![spec.eases[k]];

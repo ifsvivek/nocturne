@@ -20,6 +20,11 @@ pub const DEFAULT_BUDGET: Duration = Duration::from_millis(50);
 /// Consecutive overruns after which the user sheet is switched off.
 pub const MAX_OVERRUNS: u8 = 3;
 
+/// Does this value of [`SAFE_ENV`] ask for safe mode? Anything but unset, empty, `0` or `false`.
+pub fn safe_env_enabled(v: Option<&str>) -> bool {
+    v.is_some_and(|v| !matches!(v.trim(), "" | "0") && !v.trim().eq_ignore_ascii_case("false"))
+}
+
 pub struct Engine {
     default_css: String,
     default: Rc<Sheet>,
@@ -43,7 +48,7 @@ fn guard<T>(f: impl FnOnce() -> T) -> Result<T, String> {
 
 impl Engine {
     pub fn new(default_css: &str) -> Self {
-        let safe = std::env::var(SAFE_ENV).is_ok_and(|v| !v.is_empty() && v != "0");
+        let safe = safe_env_enabled(std::env::var(SAFE_ENV).ok().as_deref());
         Self {
             default: Rc::new(Sheet::parse_default(default_css)),
             default_css: default_css.to_owned(),

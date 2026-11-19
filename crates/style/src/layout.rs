@@ -83,6 +83,19 @@ fn node_measure(
     let node = &env.doc.nodes[i];
     if let Some(img) = node.image {
         let (iw, ih) = (img.w.max(1) as f32, img.h.max(1) as f32);
+        // The sizes the style asks for are folded into the available space, not into `known`: read them from the style.
+        let st = &env.styles[i].layout.size;
+        let want = |d: Dimension, k: Option<f32>, a: AvailableSpace| {
+            k.or(match (d.expand(), a) {
+                (taffy::style::ExpandedDimension::Length(l), _) => Some(l),
+                (taffy::style::ExpandedDimension::Percent(_), AvailableSpace::Definite(v)) => Some(v),
+                _ => None,
+            })
+        };
+        let known = Size {
+            width: want(st.width, known.width, avail.width),
+            height: want(st.height, known.height, avail.height),
+        };
         return match (known.width, known.height) {
             (Some(w), Some(h)) => Size { width: w, height: h },
             (Some(w), None) => Size { width: w, height: w * ih / iw },
@@ -295,7 +308,7 @@ impl Scene {
     }
 
     pub fn is_hidden(&self, i: Id) -> bool {
-        self.st.styles[i].layout.display == Display::None
+        self.st.styles[i].layout.display == Display::None || self.doc.nodes[i].virtual_proto
     }
 
     pub fn page_height(&self) -> f32 {
@@ -342,6 +355,17 @@ impl Scene {
             st.min_size = Size {
                 width: LengthPercentageAuto::length(FLOOR_MIN_PX),
                 height: LengthPercentageAuto::length(FLOOR_MIN_PX),
+            };
+        }
+        if let Some(img) = node.image
+            && st.size.width == Dimension::auto()
+            && st.size.height == Dimension::auto()
+            && st.aspect_ratio.is_none()
+        {
+            // A replaced element with no size keeps its natural size (a block does not stretch it).
+            st.size = Size {
+                width: px(img.w as f32),
+                height: px(img.h as f32),
             };
         }
         if node.virtual_item {
@@ -455,6 +479,7 @@ impl Scene {
         tree.set_children(layer, &fixed).expect("children");
         let vp = tree
             .new_leaf(Style {
+                display: Display::Block,
                 size: Size {
                     width: px(self.viewport.0),
                     height: px(self.viewport.1),
@@ -520,7 +545,10 @@ impl Scene {
                 None => (0.0, 0.0),
             };
             self.rects[i] = [ox + l.location.x, oy + l.location.y, l.size.width, l.size.height];
-            self.content[i] = [l.scroll_width(), l.scroll_height()];
+            self.content[i] = [
+                l.size.width + l.scroll_width(),
+                l.size.height + l.scroll_height(),
+            ];
             self.borders[i] = [l.border.left, l.border.top, l.border.right, l.border.bottom];
             self.insets[i] = [
                 l.border.left + l.padding.left,
@@ -555,6 +583,9 @@ impl Scene {
 
     /// Essential controls smaller than the floor get a minimum size (the caller lays out again).
     fn enforce_floor_sizes(&mut self) -> bool {
+        if !self.sheet.has_user {
+            return false;
+        }
         let mut again = false;
         for i in 0..self.doc.len() {
             if !self.doc.nodes[i].essential || self.is_hidden(i) {

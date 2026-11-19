@@ -377,6 +377,12 @@ pub struct Sheet {
     pub report: Report,
     /// What the selectors depend on (for style sharing and incremental restyle).
     pub deps: Deps,
+    /// Any user-origin rule was read (a theme is in play: the essential floor checks sizes).
+    pub has_user: bool,
+    /// Attribute names any selector reads (elements that differ only in other attributes share a style).
+    pub attr_names: std::collections::HashSet<String>,
+    /// Does any selector use an `#id`?
+    pub uses_ids: bool,
     /// Does the result depend on the window size (`@media`, `vw`/`vh`, `calc()` with them)?
     pub uses_viewport: bool,
     /// A pseudo-element rule whose selector has a state pseudo-class.
@@ -431,6 +437,9 @@ impl Sheet {
             origin,
         };
         b.scan(css, 0, 0);
+        if origin >= USER && !self.rules.is_empty() {
+            self.has_user = true;
+        }
     }
 
     pub fn rule_count(&self) -> usize {
@@ -596,6 +605,12 @@ impl Build<'_> {
                 return;
             }
         };
+        if rules.len() >= MAX_RULES {
+            self.sheet.report.add(
+                Kind::Limit,
+                format!("more than {MAX_RULES} rules: the rest was not read"),
+            );
+        }
         if problems > 0 {
             self.sheet.report.add_n(
                 Kind::Syntax,
@@ -685,6 +700,7 @@ impl Build<'_> {
         let s = &mut *self.sheet;
         let idx = s.rules.len() as u32;
         s.deps.merge(sel.deps);
+        sel.collect_inputs(&mut s.attr_names, &mut s.uses_ids);
         if sel.pseudo.is_some() {
             s.pseudo_rules.push(idx);
             if sel.deps.state {

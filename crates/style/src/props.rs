@@ -2,7 +2,7 @@
 //! `compile` reads the text (colours and gradients through `customize::value`, enums and grid tracks through Taffy's CSS parser)
 //! and never looks at an element; `Op::apply` then writes the value into a [`Computed`], resolving the relative units
 //! (`em`, `vw`, ...) against the element and the window. A declaration that contains `var()` is compiled after substitution.
-use crate::paint::{self, AProp, Ease, Fill, Fit, Shadow, TransSpec, Xf};
+use crate::paint::{self, Ease, Fill, Fit, Shadow, TP, TransSpec, Xf};
 use crate::warn::Kind;
 use nocturne_core::customize::value::{self, Color, split_top};
 use std::collections::HashMap;
@@ -311,7 +311,7 @@ pub enum Op {
     Transform { tx: Len, ty: Len, sx: f32, sy: f32 },
     Origin(f32, f32),
     TransAll(Rc<TransSpec>),
-    TransProps(Vec<Option<AProp>>),
+    TransProps(Vec<TP>),
     TransDur(Vec<f32>),
     TransDelay(Vec<f32>),
     TransEase(Vec<Ease>),
@@ -897,6 +897,30 @@ const NO_EFFECT: &[&str] = &[
     "outline-offset",
 ];
 
+const WEBKIT_ALIASES: &[&str] = &[
+    "backdrop-filter",
+    "mask-image",
+    "mask",
+    "box-shadow",
+    "border-radius",
+    "transition",
+    "transform",
+    "transform-origin",
+    "filter",
+    "flex",
+    "flex-direction",
+    "flex-wrap",
+    "flex-grow",
+    "flex-shrink",
+    "flex-basis",
+    "align-items",
+    "align-self",
+    "justify-content",
+    "box-sizing",
+    "text-decoration",
+    "order",
+];
+
 /// Valid CSS that the engine plans to draw but does not yet.
 const PLANNED: &[&str] = &[
     "animation",
@@ -948,6 +972,11 @@ fn logical_sides(name: &str) -> Option<(&str, [usize; 2], bool)> {
 
 /// Compile one declaration (the value must not contain `var()`).
 pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
+    // Vendor-prefixed spellings of properties that are standard here.
+    let name = match name.strip_prefix("-webkit-") {
+        Some(n) if WEBKIT_ALIASES.contains(&n) => n,
+        _ => name,
+    };
     let v = value.trim();
     if let Some((base, [a, b], single)) = logical_sides(name) {
         let auto = base != "padding";
@@ -1303,7 +1332,14 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
         "transition-property" => one(Op::TransProps(
             split_top(v, Some(','))
                 .into_iter()
-                .map(|t| if t == "all" { None } else { paint::aprop(t) })
+                .filter(|t| *t != "none")
+                .map(|t| {
+                    if t == "all" {
+                        TP::All
+                    } else {
+                        paint::aprop(t).map_or(TP::Other, TP::One)
+                    }
+                })
                 .collect(),
         )),
         "transition-duration" | "transition-delay" => {
@@ -1596,6 +1632,8 @@ impl Op {
             Op::Size(_, l) | Op::Basis(l) | Op::FontSize(l, _) => l.is_viewport(),
             Op::Gap(a, b) => a.as_ref().is_some_and(Len::is_viewport) || b.as_ref().is_some_and(Len::is_viewport),
             Op::LineHeight(LineHeightValue::Len(l)) => l.is_viewport(),
+            Op::LetterSpacing(l) => l.is_viewport(),
+            Op::Transform { tx, ty, .. } => tx.is_viewport() || ty.is_viewport(),
             Op::TracksRaw(..) => true,
             _ => false,
         }
@@ -1762,7 +1800,6 @@ impl Op {
             Op::TransAll(t) => c.trans = t.clone(),
             Op::TransProps(p) => {
                 let mut t = (*c.trans).clone();
-                t.all = p.contains(&None);
                 t.props = p.clone();
                 c.trans = Rc::new(t);
             }

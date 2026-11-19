@@ -30,10 +30,9 @@ impl Scene {
             }
             let [_, _, w, h] = self.rects[n];
             let [cw, ch] = self.content[n];
-            let ins = self.insets[n];
             if let Some(o) = self.scroll.offsets.get_mut(&n) {
-                o[0] = o[0].clamp(0.0, (cw - w + ins[2]).max(0.0));
-                o[1] = o[1].clamp(0.0, (ch - h + ins[3]).max(0.0));
+                o[0] = o[0].clamp(0.0, (cw - w).max(0.0));
+                o[1] = o[1].clamp(0.0, (ch - h).max(0.0));
             }
         }
     }

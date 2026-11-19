@@ -23,12 +23,12 @@ pub use taffy;
 pub use anim::Eff;
 pub use cascade::{Budget, Failure, Interaction, flags};
 pub use doc::{Doc, Gen, Id, ImageRef};
-pub use engine::{Engine, SAFE_CHORD, SAFE_ENV};
+pub use engine::{Engine, SAFE_CHORD, SAFE_ENV, safe_env_enabled};
 pub use fonts::{FontChoice, Fonts};
 pub use layout::{Scene, Update};
 pub use nav::Dir;
 pub use sheet::Sheet;
-pub use text::{Block, TextStyle, approx};
+pub use text::{Block, MeasureCache, TextStyle, approx};
 pub use virt::{Builders, Grid, VirtBuilder};
 pub use warn::{Kind, Report};
 
