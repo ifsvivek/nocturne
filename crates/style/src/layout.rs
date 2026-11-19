@@ -135,9 +135,10 @@ fn node_measure(
     } else {
         measure(&t, &ts, w)
     };
+    // Not rounded up: Iced lays text out at its exact measured size, and so must the pages that replace its widgets.
     Size {
-        width: tw.ceil(),
-        height: th.ceil(),
+        width: tw,
+        height: th,
     }
 }
 
@@ -430,6 +431,8 @@ impl Scene {
         self.build_kids();
         let n = self.doc.len();
         let mut tree: TaffyTree<Leaf> = TaffyTree::with_capacity(n + 8);
+        // Fractional boxes like Iced's own layout: the hand-written pages and the engine place the same text at the same pixel.
+        tree.disable_rounding();
         let nodes: Vec<NodeId> = (0..n)
             .map(|i| {
                 tree.new_leaf_with_context(self.style_for(i), Leaf::Node(i))

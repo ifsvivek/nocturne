@@ -210,11 +210,11 @@ fn the_safe_mode_chord_wins_over_a_focused_slot() {
     let mut sim = Simulator::new(view(&s, ""));
     sim.click(selector::id(WidgetId::new("in"))).unwrap();
     let chord = Event::Keyboard(keyboard::Event::KeyPressed {
-        key: Key::Character("t".into()),
-        modified_key: Key::Character("t".into()),
-        physical_key: keyboard::key::Physical::Code(keyboard::key::Code::KeyT),
+        key: Key::Character("0".into()),
+        modified_key: Key::Character("0".into()),
+        physical_key: keyboard::key::Physical::Code(keyboard::key::Code::Digit0),
         location: keyboard::Location::Standard,
-        modifiers: Modifiers::CTRL | Modifiers::ALT,
+        modifiers: Modifiers::CTRL | Modifiers::SHIFT,
         text: None,
         repeat: false,
     });

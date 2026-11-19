@@ -13,8 +13,8 @@ use std::time::Duration;
 
 /// Environment variable that starts the app without any user theme.
 pub const SAFE_ENV: &str = "NOCTURNE_SAFE_THEME";
-/// The key chord the app binds to [`Engine::toggle_safe_mode`] (handled before the tree sees key events).
-pub const SAFE_CHORD: &str = "Ctrl+Alt+T";
+/// The app's safe-look chord (the same key as the Themes page); the paint widget reports it before any slot sees the key.
+pub const SAFE_CHORD: &str = "Ctrl+Shift+0";
 /// Default time budget of one styling pass.
 pub const DEFAULT_BUDGET: Duration = Duration::from_millis(50);
 /// Consecutive overruns after which the user sheet is switched off.

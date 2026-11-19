@@ -133,6 +133,7 @@ fn proto_height(env: &Env, c: Id, proto: Id, w: f32, measure: &mut Measure) -> f
 /// Lay the prototype subtree out alone to learn its content height.
 fn mini_layout(env: &Env, root: Id, w: f32, measure: &mut Measure) -> f32 {
     let mut tree: TaffyTree<Leaf> = TaffyTree::new();
+    tree.disable_rounding();
     let mut ids = vec![];
     let mut order = vec![root];
     while let Some(n) = order.pop() {

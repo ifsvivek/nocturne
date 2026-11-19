@@ -57,7 +57,7 @@ fn safe_mode_environment_variable_values() {
         assert!(safe_env_enabled(Some(on)), "{on:?}");
     }
     assert_eq!(SAFE_ENV, "NOCTURNE_SAFE_THEME");
-    assert_eq!(SAFE_CHORD, "Ctrl+Alt+T");
+    assert_eq!(SAFE_CHORD, "Ctrl+Shift+0");
 }
 
 #[test]
