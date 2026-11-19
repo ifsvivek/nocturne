@@ -162,7 +162,19 @@ pub fn chip_button<'a>(label: &str, primary: bool, on: Msg) -> Element<'a, Msg> 
     .into()
 }
 
-pub fn bar(p: &Player) -> Element<'_, Msg> {
+/// The numbers the controls bar shows, derived once so the hand-written bar and the engine's tree agree.
+pub struct Facts {
+    pub pos: f64,
+    pub dur: Option<f64>,
+    pub frac: f32,
+    pub vol: f64,
+    pub paused: bool,
+    pub status: String,
+    pub right_time: String,
+    pub ends: Option<String>,
+}
+
+pub fn facts(p: &Player) -> Facts {
     let (pos0, dur) = (p.pos(), p.dur());
     let (mut pos, mut frac) = (pos0, p.frac());
     let mut vol = p.state.as_ref().map_or(100.0, |s| s.volume);
@@ -172,7 +184,6 @@ pub fn bar(p: &Player) -> Element<'_, Msg> {
     if let Some(Drag::Vol(f)) = p.drag {
         vol = f as f64 * 130.0;
     }
-    let paused = p.paused();
     let status = if !p.loaded {
         "loading".to_string()
     } else if p.ended {
@@ -199,6 +210,21 @@ pub fn bar(p: &Player) -> Element<'_, Msg> {
     let ends = dur
         .filter(|_| p.loaded && !p.ended)
         .map(|d| video::ends_at(video::local_hm(), (d - pos).max(0.0), p.set.speed));
+    Facts {
+        pos,
+        dur,
+        frac,
+        vol,
+        paused: p.paused(),
+        status,
+        right_time,
+        ends,
+    }
+}
+
+/// The seek track with its chapter ticks, marked segments and buffered range.
+pub fn seek_track<'a>(p: &Player, frac: f32) -> Element<'a, Msg> {
+    let dur = p.dur();
     let cache_frac = p
         .cache_end
         .zip(dur)
@@ -220,10 +246,25 @@ pub fn bar(p: &Player) -> Element<'_, Msg> {
                 .collect()
         })
         .unwrap_or_default();
-    let seek = track(frac, Msg::Seek)
+    track(frac, Msg::Seek)
         .cache(cache_frac)
         .ticks(ticks)
-        .segs(segs);
+        .segs(segs)
+        .into()
+}
+
+pub fn volume_track<'a>(vol: f64) -> Element<'a, Msg> {
+    track((vol / 130.0) as f32, Msg::Vol)
+        .height(24.0)
+        .thickness(3.0, 3.0)
+        .into()
+}
+
+pub fn bar(p: &Player) -> Element<'_, Msg> {
+    let f = facts(p);
+    let (pos, vol, paused) = (f.pos, f.vol, f.paused);
+    let (status, right_time, ends) = (f.status.clone(), f.right_time.clone(), f.ends.clone());
+    let seek = seek_track(p, f.frac);
 
     let (can_prev, can_next) = (p.prev_index().is_some(), p.next_index().is_some());
     let mut ctl = row![].spacing(t::S2).align_y(Alignment::Center);
@@ -265,12 +306,7 @@ pub fn bar(p: &Player) -> Element<'_, Msg> {
             false,
             act(Act::Mute)
         ),
-        container(
-            track((vol / 130.0) as f32, Msg::Vol)
-                .height(24.0)
-                .thickness(3.0, 3.0)
-        )
-        .width(84),
+        container(volume_track(vol)).width(84),
     ]
     .spacing(t::S2)
     .align_y(Alignment::Center);
