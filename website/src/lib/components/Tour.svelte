@@ -50,7 +50,7 @@
 </script>
 
 <!-- Nine scenes. The first is the story (many sources, one library); the others are large stills from the app with
-     their copy set as a subtitle. 0.4 stills are 1920x1080 window captures (see README). -->
+     their copy set as a subtitle. 0.4 stills are 3840x2160 headless captures (see README). -->
 <div id="tour">
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s0">
     <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 1</span><h2 id="s0" class="scene-title">One library</h2><Next class="mt-5 ml-0" /></header>
