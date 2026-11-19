@@ -115,6 +115,9 @@ pub struct EngineUi {
     pub dirty: bool,
     pub stats: bool,
     warmed: bool,
+    /// The installed font families (read once) and whether the current engine knows them.
+    families: Option<Vec<String>>,
+    fonts_set: bool,
 }
 
 impl EngineUi {
@@ -155,6 +158,8 @@ impl Default for EngineUi {
             dirty: true,
             stats: std::env::var("NOCTURNE_ENGINE_STATS").is_ok(),
             warmed: false,
+            families: None,
+            fonts_set: false,
         }
     }
 }
@@ -285,6 +290,7 @@ impl App {
         if css != self.eng.css {
             let safe = self.eng.engine.safe_mode();
             self.eng.engine = Engine::new(&css);
+            self.eng.fonts_set = false;
             self.eng.engine.set_safe_mode(safe);
             self.eng.user = None;
             self.eng.css = css;
@@ -294,15 +300,32 @@ impl App {
             self.eng.sheet_gen += 1;
         }
         self.eng.engine.set_safe_mode(self.th.safe);
-        // The active theme's own rules, layered over the default sheet.
-        let user = self
-            .themes
-            .active_css(self.theme_source(), self.theme_ui())
-            .filter(|c| nocturne_style::is_engine_sheet(c))
-            .map(str::to_string);
+        if !self.eng.fonts_set {
+            // Font families the system has, so that `font-family: Name` finds them (and the Studio can list them).
+            let fams = self
+                .eng
+                .families
+                .get_or_insert_with(installed_families)
+                .clone();
+            self.eng.engine.fonts_mut().set_installed(fams);
+            self.eng.fonts_set = true;
+        }
+        // The active theme's own rules, layered over the default sheet; the Theme Studio's working copy while it is open.
+        #[cfg(feature = "theme-engine")]
+        let studio_css = self.studio.open.then(|| self.studio.css.clone());
+        #[cfg(not(feature = "theme-engine"))]
+        let studio_css: Option<String> = None;
+        let user = studio_css.or_else(|| {
+            self.themes
+                .active_css(self.theme_source(), self.theme_ui())
+                .filter(|c| nocturne_style::is_engine_sheet(c))
+                .map(str::to_string)
+        });
         if user != self.eng.user {
             self.eng.engine.set_user_css(user.as_deref());
             self.eng.user = user;
+            // Scenes built with the old rules are stale (a header that "did not change" must still be restyled).
+            self.eng.sheet_gen += 1;
         }
         if !self.eng.warmed {
             // The first measurement starts the font system (about 18 ms in release): do it before the first scene is timed.
@@ -352,6 +375,7 @@ impl App {
                 t0.elapsed().as_micros()
             );
         }
+        self.studio_refresh();
         task
     }
 
@@ -382,7 +406,7 @@ impl App {
             .take()
             .map(|h| h.scene.scroll)
             .or_else(|| self.eng.saved.take());
-        let mut s = self.eng_scene(&tree, it, (self.win.width, self.win.height));
+        let mut s = self.eng_scene(&tree, it, (self.eng_width(), self.win.height));
         if let Some(scroll) = keep {
             s.scroll = scroll;
             s.clamp_scroll();
@@ -395,7 +419,7 @@ impl App {
     fn eng_build_header(&mut self) {
         let mut tree = Tree::new();
         self.header_nodes(&mut tree, 0, false);
-        let size = (self.win.width, t::header_h());
+        let size = (self.eng_width(), t::header_h());
         // The same header (nothing it shows changed) keeps its scene, hover and animations.
         if self.eng.hdr.as_ref().is_some_and(|h| {
             h.sheet_gen == self.eng.sheet_gen
@@ -436,7 +460,7 @@ impl App {
         let br = p.br.as_deref();
         let key = (p.pid, br.map_or(0, |b| b.epoch));
         let (sel, off) = (p.sel, br.map_or(0.0, |b| b.off));
-        let size = (self.win.width, self.win.height);
+        let size = (self.eng_width(), self.win.height);
         let same_data = match (&old_data, &tree.grid) {
             (Some(a), Some(b)) => std::rc::Rc::ptr_eq(a, &b.data),
             (None, None) => true,
@@ -589,7 +613,7 @@ impl App {
             let n = h.tree.list?;
             h.scene.scroll.offsets.get(&n).copied()
         });
-        let mut s = self.eng_scene(&tree, it, (self.win.width, self.win.height));
+        let mut s = self.eng_scene(&tree, it, (self.eng_width(), self.win.height));
         let cache = &mut self.eng.cache;
         let m = &mut |t: &str, st: &nocturne_style::TextStyle, mx: Option<f32>| {
             cache.measure(t, st, mx, &mut shape)
@@ -664,6 +688,10 @@ impl App {
 
     /// An event of one of the engine's widgets.
     pub(super) fn eng_event(&mut self, w: Which, e: StyledEvent) -> Task<Message> {
+        // The Theme Studio's pick mode takes the pointer and the keys (scrolling and resizing still work).
+        if let Some(t) = self.studio_event(w, &e) {
+            return t;
+        }
         match e {
             StyledEvent::Resize(s) => {
                 let (h, cache) = self.eng.host(w);
@@ -970,6 +998,29 @@ impl App {
         Task::batch([self.eng_focus(row, col), scrolled])
     }
 
+    /// The scene of one of the engine's screens, if it exists now.
+    pub(super) fn eng_scene_of(&self, w: Which) -> Option<&Scene> {
+        let h = match w {
+            Which::Home => &self.eng.home,
+            Which::Header => &self.eng.hdr,
+            Which::Page => &self.eng.page,
+            Which::Search => &self.eng.search,
+        };
+        h.as_ref().map(|h| &h.scene)
+    }
+
+    /// The scene that is the page in view (the search overlay over a page, the library page, Home), for keyboard-only picking.
+    pub(super) fn eng_main_scene(&self) -> Option<Which> {
+        [Which::Search, Which::Page, Which::Home, Which::Header]
+            .into_iter()
+            .find(|&w| self.eng_scene_of(w).is_some())
+    }
+
+    /// Families the engine can use by name (for the Studio's font list).
+    pub(super) fn eng_font_names(&self) -> Vec<String> {
+        self.eng.engine.fonts.names()
+    }
+
     /// The engine's Home as the page, or `None`.
     pub(super) fn eng_home_view(&self) -> Option<Element<'_, Message>> {
         if !self.eng_home_active() {
@@ -1016,7 +1067,8 @@ impl App {
         // The header scene of another page must not take the arrows, Tab and Enter from the page below it.
         let mut s = Styled::new(&h.scene, move |e| Message::Eng(w, e))
             .keys(w != Which::Header)
-            .images(&h.tree.images);
+            .images(&h.tree.images)
+            .marks(self.studio_marks(w));
         for (i, slot) in h.tree.slots.iter().enumerate() {
             s = s.slot(i as u32 + 1, self.eng_slot(*slot));
         }
@@ -1073,6 +1125,9 @@ impl App {
 
     /// Does this message change what Home or the header show? Frames, ticks, the engine's own pointer events and arriving pictures (filled in place by `eng_image`) do not.
     pub(super) fn eng_message_dirties(m: &Message) -> bool {
+        if let Message::Studio(s) = m {
+            return s.dirties();
+        }
         !matches!(
             m,
             Message::Tick(_)
@@ -1083,6 +1138,22 @@ impl App {
                 | Message::Image(..)
         )
     }
+}
+
+/// The font families the text shaper knows.
+fn installed_families() -> Vec<String> {
+    let Ok(mut fs) = iced::advanced::graphics::text::font_system().write() else {
+        return vec![];
+    };
+    let mut v: Vec<String> = fs
+        .raw()
+        .db()
+        .faces()
+        .flat_map(|f| f.families.iter().map(|(n, _)| n.clone()))
+        .collect();
+    v.sort();
+    v.dedup();
+    v
 }
 
 /// The `(row, col)` of the focusable node at or above `n`.

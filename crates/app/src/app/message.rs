@@ -130,6 +130,9 @@ pub enum Message {
     /// An event of the theme engine's Home or header widget.
     #[cfg(feature = "theme-engine")]
     Eng(Which, crate::widget::styled::StyledEvent),
+    /// The Theme Studio's panel and pick mode.
+    #[cfg(feature = "theme-engine")]
+    Studio(super::studio::Msg),
     CloseRequested(window::Id),
     Back,
     Forward,
