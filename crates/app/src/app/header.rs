@@ -20,7 +20,12 @@ use nocturne_core::unified::{Link, links};
 
 type El<'a> = Element<'a, Message>;
 
-fn hist_button<'a>(glyph: &'static str, label: &'static str, enabled: bool, m: Message) -> El<'a> {
+pub(super) fn hist_button<'a>(
+    glyph: &'static str,
+    label: &'static str,
+    enabled: bool,
+    m: Message,
+) -> El<'a> {
     tip(
         Press::new(container(text(glyph).size(t::BODY_LG + 4.0)).center(Length::Fill))
             .width(28)
@@ -245,7 +250,7 @@ impl App {
     }
 
     /// The name `.header-brand` shows: the active server, the signed-in user or the app.
-    fn brand_text(&self, b: &nocturne_core::customize::Brand) -> String {
+    pub(super) fn brand_text(&self, b: &nocturne_core::customize::Brand) -> String {
         use nocturne_core::customize::BrandContent;
         let app = "NOCTURNE".to_string();
         match b.content {
@@ -266,7 +271,7 @@ impl App {
     }
 
     /// Initial in a hairline circle; opens the account menu.
-    fn avatar(&self) -> El<'_> {
+    pub(super) fn avatar(&self) -> El<'_> {
         let name = self
             .session()
             .map_or(if self.dev { "dev" } else { "NOCTURNE" }, |(_, s)| {
@@ -483,7 +488,7 @@ impl App {
 pub const NAV_ID: &str = "nav-scroll";
 
 /// The small icon in front of a header link (`--header-link-icons: on`).
-fn link_icon(l: &Link, libs: &[nocturne_core::source::Media]) -> Option<&'static str> {
+pub(super) fn link_icon(l: &Link, libs: &[nocturne_core::source::Media]) -> Option<&'static str> {
     use nocturne_core::unified::UKind;
     let by_collection = |c: Option<&str>| match c {
         Some("movies") => "film",
@@ -508,7 +513,7 @@ fn link_icon(l: &Link, libs: &[nocturne_core::source::Media]) -> Option<&'static
 
 /// Rough width of one header link (label at body size plus its padding and gap); the real widths
 /// are not known until layout, and the strip only needs to land near the focused link.
-fn link_w(label: &str) -> f32 {
+pub(super) fn link_w(label: &str) -> f32 {
     let size = t::typo(
         &t::parts(None, None).header_link,
         t::BODY,
@@ -545,7 +550,7 @@ pub fn nav_more(off: f32, vw: f32, content: f32) -> (bool, bool) {
 }
 
 impl App {
-    fn nav_label(&self, l: &Link) -> String {
+    pub(super) fn nav_label(&self, l: &Link) -> String {
         let libs = self.stack.first().map_or(&[][..], |h| h.libs.items());
         match l {
             Link::Home => "Home".into(),
@@ -686,7 +691,7 @@ impl App {
     }
 
     /// "Libraries": every source's libraries grouped under its source mark.
-    fn libraries_menu<'a>(
+    pub(super) fn libraries_menu<'a>(
         &'a self,
         libs: &'a [nocturne_core::source::Media],
         active: bool,
@@ -730,7 +735,7 @@ impl App {
     }
 
     /// The source filter's chip text: All sources, or the one source's label.
-    fn filter_label(&self) -> String {
+    pub(super) fn filter_label(&self) -> String {
         match self.filter {
             nocturne_core::sources::SourceFilter::All => "All sources".into(),
             nocturne_core::sources::SourceFilter::One(id) => self.label_of(id),

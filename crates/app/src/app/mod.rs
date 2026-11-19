@@ -8,11 +8,17 @@ mod cells;
 mod couch;
 mod details;
 mod downloads;
+#[cfg(feature = "theme-engine")]
+mod engine_ui;
 mod extras;
 mod folders;
 mod header;
+#[cfg(feature = "theme-engine")]
+mod header_tree;
 mod help;
 mod home;
+#[cfg(feature = "theme-engine")]
+mod home_tree;
 mod images;
 pub mod message;
 mod onboard;
@@ -208,6 +214,8 @@ pub struct App {
     /// Saved themes and the Themes page.
     themes: nocturne_core::customize::Store,
     th: themes::State,
+    #[cfg(feature = "theme-engine")]
+    eng: engine_ui::EngineUi,
     /// Source whose removal waits for the confirmation dialog.
     confirm: Option<SourceId>,
     /// The extra-header dialog of a server.
@@ -353,6 +361,8 @@ impl App {
                 s
             },
             th: Default::default(),
+            #[cfg(feature = "theme-engine")]
+            eng: Default::default(),
             confirm: None,
             hdr: None,
             server_ui: HashMap::new(),
@@ -550,15 +560,21 @@ impl App {
     // ---- update ----
 
     pub fn update(&mut self, msg: Message) -> Task<Message> {
+        #[cfg(feature = "theme-engine")]
+        let dirties = Self::eng_message_dirties(&msg);
         let task = self.update_inner(msg);
         let ui = self.sync_ui();
         let theme = self.sync_theme();
+        #[cfg(feature = "theme-engine")]
+        self.eng_sync(dirties);
         Task::batch([task, ui, theme])
     }
 
     fn update_inner(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::Key(k) => self.on_key(k),
+            #[cfg(feature = "theme-engine")]
+            Message::Eng(w, e) => self.eng_event(w, e),
             Message::Tick(now) => {
                 self.now = now;
                 self.sync_detail();
@@ -2093,7 +2109,21 @@ impl App {
         ];
         let setting_up = self.folders.as_ref().is_some_and(|f| f.setup) || self.ob_away.is_some();
         if ready && !setting_up {
-            layers.push(self.header());
+            #[cfg(feature = "theme-engine")]
+            let engine_header = if self.eng_home_active() {
+                // Home carries its own header inside the one scene.
+                true
+            } else if let Some(h) = self.eng_header_view() {
+                layers.push(h);
+                true
+            } else {
+                false
+            };
+            #[cfg(not(feature = "theme-engine"))]
+            let engine_header = false;
+            if !engine_header {
+                layers.push(self.header());
+            }
             if let Some(b) = self.source_banner().or_else(|| self.update_banner()) {
                 layers.push(b);
             }

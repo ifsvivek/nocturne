@@ -43,12 +43,12 @@ pub struct Look {
     pub shadow: Option<cz::Shadow>,
     pub hover: Option<f32>,
     pub ms: Option<u32>,
-    title_t: t::Typo,
-    meta_t: t::Typo,
-    meta_set: bool,
+    pub(crate) title_t: t::Typo,
+    pub(crate) meta_t: t::Typo,
+    pub(crate) meta_set: bool,
     /// `.card-subtitle` over `.card-meta`: the line under the title of an episode.
-    sub_t: t::Typo,
-    sub_set: bool,
+    pub(crate) sub_t: t::Typo,
+    pub(crate) sub_set: bool,
     /// `text-align: center` on the title / the details lines.
     pub center_title: bool,
     pub center_meta: bool,
@@ -57,8 +57,8 @@ pub struct Look {
     pub tile_center: bool,
     /// No hairlines between cards and no index tag (`.row --row-frame: none`).
     pub flat: bool,
-    badge: cz::Badge,
-    progress: cz::Progress,
+    pub(crate) badge: cz::Badge,
+    pub(crate) progress: cz::Progress,
 }
 
 fn ic(c: cz::Color) -> Color {
@@ -115,7 +115,7 @@ impl Look {
     }
 
     /// Details line typography (the subtitle's for an episode line).
-    fn meta_typo(&self, subtitle: bool) -> (&t::Typo, bool) {
+    pub(crate) fn meta_typo(&self, subtitle: bool) -> (&t::Typo, bool) {
         if subtitle {
             (&self.sub_t, self.sub_set || self.meta_set)
         } else {
@@ -123,12 +123,12 @@ impl Look {
         }
     }
 
-    fn badge_shown(&self) -> bool {
+    pub(crate) fn badge_shown(&self) -> bool {
         self.badge.hidden != Some(true)
     }
 
     /// Height of a bar under the image (`--progress-position: below`), reserved on every card.
-    fn bar_h(&self) -> f32 {
+    pub(crate) fn bar_h(&self) -> f32 {
         match (self.progress.position, self.progress.hidden) {
             (Some(cz::ProgressPos::Below), h) if h != Some(true) => {
                 self.progress.height.unwrap_or(3.0)
@@ -138,11 +138,11 @@ impl Look {
     }
 
     /// The caption (title and details) is drawn under the image.
-    fn caption(&self) -> bool {
+    pub(crate) fn caption(&self) -> bool {
         self.title == TitlePosition::Below && !self.tile_center
     }
 
-    fn title_h(&self) -> f32 {
+    pub(crate) fn title_h(&self) -> f32 {
         if self.title_t.hidden {
             0.0
         } else {
@@ -150,7 +150,7 @@ impl Look {
         }
     }
 
-    fn meta_h(&self) -> f32 {
+    pub(crate) fn meta_h(&self) -> f32 {
         if self.meta_t.hidden {
             0.0
         } else if self.meta_set || self.sub_set {
