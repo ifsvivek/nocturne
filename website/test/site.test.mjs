@@ -130,8 +130,8 @@ test("required copy, no JS, no inline style", () => {
   for (const d of [off, on, prev, v04]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
     assert.doesNotMatch(readFileSync(f, "utf8"), /<script\b|<style\b|\sstyle=/i, f);
   }
-  // Other platforms may only be named as planned, never as available.
-  for (const t of [h, read(on, "repo.html"), read(v04, "index.html")]) for (const m of t.matchAll(/\b(Windows|macOS)\b/g)) assert.match(t.slice(m.index, m.index + 160), /planned/, `${m[0]} named without "planned"`);
+  // Other platforms may only be named as previews or planned, never as finished (0.4 ships unsigned Windows and macOS previews on the GitHub release).
+  for (const t of [h, read(on, "repo.html"), read(v04, "index.html")]) for (const m of t.matchAll(/\b(Windows|macOS)\b/g)) assert.match(t.slice(m.index, m.index + 160), /planned|preview/, `${m[0]} named without "preview" or "planned"`);
   // One self-hosted font, preloaded, and the stylesheet points at the same hashed file.
   const font = h.match(/<link rel="preload" href="([^"]+\.woff2)" as="font"/)?.[1];
   assert.ok(font && existsSync(join(off, font)), "preloaded font file");
