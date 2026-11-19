@@ -54,6 +54,10 @@ pub fn on_boot() -> Task<Message> {
             n if n.starts_with("search-") => Some(Message::Search(
                 crate::app::search::SMsg::Input(n[7..].replace('_', " ")),
             )),
+            // `NOCTURNE_THEME_REPORT=<file>`: what the active theme did (counts, imports, fonts) as JSON.
+            "theme-report" => Some(Message::Themes(crate::app::themes::Msg::Report(
+                std::env::var("NOCTURNE_THEME_REPORT").unwrap_or_default(),
+            ))),
             "theme-safe" => Some(Message::Themes(crate::app::themes::Msg::Safe)),
             n if n.starts_with("sections-") => n[9..].parse().ok().map(|i| {
                 Message::Src(crate::app::message::SrcAct::Sections(

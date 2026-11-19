@@ -54,6 +54,8 @@ pub enum Msg {
     /// The safe key or the button: the built-in look, whatever the themes say.
     Safe,
     LeaveSafe,
+    /// Debug hook `theme-report` (`NOCTURNE_THEME_REPORT=<file>`): write what the active theme did as JSON.
+    Report(String),
     Path(String),
     Choose,
     Picked(Option<PathBuf>),
@@ -231,6 +233,32 @@ impl App {
             self.th.applied = Some(want);
         }
         task
+    }
+
+    /// Counts for the theme conformance harness: tokens applied, warnings by kind, what was fetched, fonts loaded.
+    fn report_json(&self, src: Option<SourceId>, ui: Option<SourceId>) -> String {
+        let Some(css) = self.themes.active_css(src, ui) else {
+            return serde_json::json!({ "active": false }).to_string();
+        };
+        let r = self.themes.resolved_for(css);
+        let p = self.themes.parse_text(css).ok();
+        let mut kinds = std::collections::BTreeMap::new();
+        for w in p.iter().flat_map(|p| &p.warnings) {
+            *kinds.entry(w.kind.label()).or_insert(0usize) += 1;
+        }
+        serde_json::json!({
+            "active": true,
+            "applied": p.as_ref().map_or(0, |p| p.theme.count()),
+            "not_applied": p.as_ref().map_or(0, |p| p.warnings.len() + p.dropped_warnings),
+            "not_applied_by_kind": kinds,
+            "imports": {
+                "downloaded": r.map_or(0, |r| r.downloaded),
+                "from_cache": r.map_or(0, |r| r.from_cache),
+                "notes": r.map_or_else(Vec::new, |r| r.notes.iter().map(|n| format!("{}: {}", n.url, n.reason)).collect()),
+            },
+            "fonts": self.themes.fonts_for(css).iter().map(|f| f.family.clone()).collect::<Vec<_>>(),
+        })
+        .to_string()
     }
 
     /// Apply again on the next message (the fetch setting changed).
@@ -490,6 +518,11 @@ impl App {
                 self.th.safe = true;
                 self.th.applied = None;
                 self.toast("Safe look: the built-in theme. Settings > Themes to choose one again.");
+            }
+            Msg::Report(path) => {
+                let (src, ui) = (self.theme_source(), self.theme_ui());
+                let json = self.report_json(src, ui);
+                let _ = std::fs::write(path, json);
             }
             Msg::LeaveSafe => {
                 self.th.safe = false;

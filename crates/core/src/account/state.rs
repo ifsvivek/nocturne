@@ -262,7 +262,9 @@ impl Account {
             return false;
         }
         self.busy = false;
-        self.restoring = false;
+        // A dead stored token only deserves the note at launch (that session was in use); a sign-in the user just
+        // started by typing or picking a server is a fresh attempt, the token is dropped silently.
+        let launch = std::mem::take(&mut self.restoring);
         match r {
             Ok(p) => {
                 self.url = url.into();
@@ -273,7 +275,7 @@ impl Account {
                 if p.restored {
                     self.stage = Stage::Active;
                 } else {
-                    self.msg = p.expired.then_some(MSG_EXPIRED);
+                    self.msg = (p.expired && launch).then_some(MSG_EXPIRED);
                     self.enter_login();
                 }
             }
@@ -585,6 +587,19 @@ mod tests {
             &u,
         );
         assert_eq!((a.stage, a.msg), (Stage::Login, Some(MSG_EXPIRED)));
+        // A dead stored token met by typing or picking a server is a fresh sign-in: no stale-session note.
+        let mut a = acct();
+        a.connect.fields[0].value = "http://a:1".into();
+        let (e, u) = a.start_connect().unwrap();
+        a.probed(
+            e,
+            Ok(Probe {
+                expired: true,
+                ..probe(true)
+            }),
+            &u,
+        );
+        assert_eq!((a.stage, a.msg), (Stage::Login, None));
         // Keyring unavailable: Login, notice flag set (session stays in memory only).
         let mut a = acct();
         let (e, u) = a.start_restore("http://a:1").unwrap();

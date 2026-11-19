@@ -125,3 +125,10 @@ fn run() -> iced::Result {
         })
         .run()
 }
+
+/// Tests that build an `iced_test::Simulator` hold this: concurrent simulators crash the test process with SIGSEGV (about one full run in thirty).
+#[cfg(test)]
+pub(crate) fn sim_lock() -> std::sync::MutexGuard<'static, ()> {
+    static L: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    L.lock().unwrap_or_else(|e| e.into_inner())
+}
