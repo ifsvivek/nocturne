@@ -137,7 +137,7 @@ fn file_name_of(url: &str) -> String {
 impl App {
     /// The server whose override applies to what is on screen: a detail page's own server, else
     /// the single server picked in the source filter. The shell and local folders follow global.
-    fn theme_source(&self) -> Option<SourceId> {
+    pub(super) fn theme_source(&self) -> Option<SourceId> {
         use nocturne_core::sources::SourceFilter;
         match self.stack.last() {
             Some(p) if p.view == super::View::Detail => p.media.as_ref().map(|m| m.origin),
@@ -149,7 +149,7 @@ impl App {
     }
 
     /// The server whose UI is borrowed for what is on screen (`None`: NOCTURNE's).
-    fn theme_ui(&self) -> Option<SourceId> {
+    pub(super) fn theme_ui(&self) -> Option<SourceId> {
         let item = match self.stack.last() {
             Some(p) if p.view == super::View::Detail => p.media.as_ref().map(|m| m.origin),
             _ => None,

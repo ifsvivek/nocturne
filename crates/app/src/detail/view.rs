@@ -45,7 +45,11 @@ fn frame(a: f32) -> Color {
 
 impl Detail {
     pub fn view(&self) -> El<'_> {
-        let mut layers: Vec<El<'_>> = vec![self.page()];
+        #[cfg(feature = "theme-engine")]
+        let page = self.eng_view().unwrap_or_else(|| self.page());
+        #[cfg(not(feature = "theme-engine"))]
+        let page = self.page();
+        let mut layers: Vec<El<'_>> = vec![page];
         layers.extend(self.overlays());
         Stack::with_children(layers)
             .width(Length::Fill)

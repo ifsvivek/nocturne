@@ -139,10 +139,17 @@ impl App {
             self.settings.allow_server_writes && !self.dev,
             self.marks(),
         );
+        #[cfg(feature = "theme-engine")]
+        let css = self
+            .themes
+            .active_css(self.theme_source(), self.theme_ui())
+            .map(str::to_string);
         if let Some(d) = self.stack.last_mut().and_then(|p| p.det.as_deref_mut()) {
             d.set_win(win);
             d.set_writes(writes);
             d.set_marks(marks);
+            #[cfg(feature = "theme-engine")]
+            d.set_user_css(css);
         }
     }
 
@@ -205,6 +212,8 @@ impl App {
                 }
                 Task::none()
             }
+            #[cfg(feature = "theme-engine")]
+            Outcome::SafeLook => self.safe_theme(),
             Outcome::Back => {
                 self.back();
                 self.page_wants()

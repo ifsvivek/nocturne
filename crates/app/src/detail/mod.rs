@@ -40,6 +40,10 @@
 //! Images: the page fetches its own through `Backend::image` into a private cache keyed by
 //! (origin, item, art, width); a root-level image cache can replace it later by feeding `Msg::Pic`.
 mod cells;
+#[cfg(feature = "theme-engine")]
+mod detail_tree;
+#[cfg(feature = "theme-engine")]
+mod engine;
 mod geom;
 pub mod model;
 mod overlays;
@@ -135,6 +139,9 @@ pub enum Outcome {
     /// "Download to this computer" for this server item (the root asks where to).
     Download(Media),
     Back,
+    /// The paint widget saw the safe-look chord (the root runs the same action as its Themes page).
+    #[cfg(feature = "theme-engine")]
+    SafeLook,
 }
 
 #[derive(Clone)]
@@ -210,6 +217,12 @@ pub enum Msg {
     DlgSubmit,
     /// A photo-viewer / overlay click-away.
     Dismiss,
+    /// An event of the engine's paint widget.
+    #[cfg(feature = "theme-engine")]
+    Eng(crate::widget::styled::StyledEvent),
+    /// Open or close the long description.
+    #[cfg(feature = "theme-engine")]
+    Expand,
     /// The root's answer to an [`Outcome::Write`].
     Wrote(Write, Result<(), &'static str>),
     Noop,
@@ -254,6 +267,11 @@ pub struct Detail {
     pub subs_ok: bool,
     /// "Download to this computer" is offered (an item on a server).
     pub dl_ok: bool,
+    /// Descriptions the user opened.
+    #[cfg(feature = "theme-engine")]
+    expanded: nocturne_core::expand::Expanded,
+    #[cfg(feature = "theme-engine")]
+    eng: Option<Box<engine::Host>>,
 }
 
 pub fn pic_key(m: &Media, art: Art, w: u32) -> String {
@@ -309,8 +327,14 @@ impl Detail {
             outcomes: vec![],
             subs_ok: false,
             dl_ok: false,
+            #[cfg(feature = "theme-engine")]
+            expanded: Default::default(),
+            #[cfg(feature = "theme-engine")]
+            eng: engine::enabled().then(|| Box::new(engine::Host::new())),
         };
         let t = d.load();
+        #[cfg(feature = "theme-engine")]
+        d.eng_sync(false);
         (d, t)
     }
 
@@ -346,15 +370,38 @@ impl Detail {
     }
 
     pub fn set_win(&mut self, win: Size) {
+        let moved = self.win != win;
         self.win = win;
+        #[cfg(feature = "theme-engine")]
+        if moved {
+            self.eng_sync(false);
+        }
+        let _ = moved;
     }
 
     pub fn set_writes(&mut self, on: bool) {
+        let moved = self.writes != on;
         self.writes = on;
+        #[cfg(feature = "theme-engine")]
+        if moved {
+            self.eng_sync(false);
+        }
+        let _ = moved;
     }
 
     pub fn set_marks(&mut self, marks: Vec<Mark>) {
+        let same = self.marks.len() == marks.len()
+            && self
+                .marks
+                .iter()
+                .zip(&marks)
+                .all(|(a, b)| a.origin == b.origin && a.label == b.label && a.color == b.color);
         self.marks = marks;
+        #[cfg(feature = "theme-engine")]
+        if !same {
+            self.eng_sync(false);
+        }
+        let _ = same;
     }
 
     /// The photo viewer covers the whole window, header included: draw `view()` above the header
@@ -397,6 +444,8 @@ impl Detail {
         }
         self.neigh.0.iter_mut().for_each(hit);
         self.neigh.1.iter_mut().for_each(hit);
+        #[cfg(feature = "theme-engine")]
+        self.eng_sync(false);
     }
 
     fn backend(&self, o: SourceId) -> Option<Backend> {
@@ -845,6 +894,17 @@ impl Detail {
     // ---- update ----
 
     pub fn update(&mut self, msg: Msg) -> Task<Msg> {
+        #[cfg(feature = "theme-engine")]
+        if let Msg::Eng(e) = msg {
+            return self.eng_event(e);
+        }
+        let t = self.update_inner(msg);
+        #[cfg(feature = "theme-engine")]
+        self.eng_sync(true);
+        t
+    }
+
+    fn update_inner(&mut self, msg: Msg) -> Task<Msg> {
         let cur = self.epoch;
         match msg {
             Msg::Full(e, r) if e == cur => {
@@ -986,6 +1046,13 @@ impl Detail {
                 }
             }
             Msg::Wrote(w, r) => return self.wrote(w, r),
+            #[cfg(feature = "theme-engine")]
+            Msg::Eng(_) => {}
+            #[cfg(feature = "theme-engine")]
+            Msg::Expand => {
+                let k = self.expand_key();
+                self.expanded.toggle(&k);
+            }
             Msg::Noop => {}
         }
         self.want()
@@ -1414,6 +1481,15 @@ impl Detail {
 
     /// `None`: not consumed (the root's Esc / Backspace goes back).
     pub fn key(&mut self, k: &Key) -> Option<Task<Msg>> {
+        let t = self.key_inner(k);
+        #[cfg(feature = "theme-engine")]
+        if t.is_some() {
+            self.eng_sync(true);
+        }
+        t
+    }
+
+    fn key_inner(&mut self, k: &Key) -> Option<Task<Msg>> {
         let name = k.name.as_str();
         if self.photo.is_some() {
             return Some(self.photo_key(name));

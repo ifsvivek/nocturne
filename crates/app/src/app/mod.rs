@@ -9,7 +9,7 @@ mod couch;
 mod details;
 mod downloads;
 #[cfg(feature = "theme-engine")]
-mod engine_ui;
+pub(crate) mod engine_ui;
 mod extras;
 mod folders;
 mod header;

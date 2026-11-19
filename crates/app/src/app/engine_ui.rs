@@ -56,7 +56,7 @@ impl Default for EngineUi {
 }
 
 /// The `:root` tokens of the active theme, and the translator's rules (hover scale and transitions of the strips and buttons) as CSS, in front of the default sheet.
-pub(super) fn sheet_css() -> String {
+pub(crate) fn sheet_css() -> String {
     let k = t::active();
     let c = t::css_color;
     let mut s = String::from(":root {");
