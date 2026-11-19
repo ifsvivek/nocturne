@@ -73,7 +73,7 @@ impl MeasureCache {
         text: &str,
         ts: &TextStyle,
         max: Option<f32>,
-        raw: &mut dyn FnMut(&str, &TextStyle, Option<f32>) -> (f32, f32),
+        raw: &mut Measure,
     ) -> (f32, f32) {
         use std::hash::{DefaultHasher, Hash, Hasher};
         let mut h = DefaultHasher::new();

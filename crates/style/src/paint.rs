@@ -24,7 +24,10 @@ pub struct Stop {
 pub enum Fill {
     Solid(Color),
     /// CSS angle in degrees (0 = towards the top, 90 = right, 180 = bottom).
-    Linear { angle: f32, stops: Vec<Stop> },
+    Linear {
+        angle: f32,
+        stops: Vec<Stop>,
+    },
 }
 
 fn num(s: &str) -> Option<f32> {
@@ -107,7 +110,10 @@ fn gradient(args: &str) -> Result<Fill, String> {
         };
         // `color 0% 58%` is two stops of the same colour.
         match toks.len() {
-            1 => stops.push(Stop { color: c, pos: None }),
+            1 => stops.push(Stop {
+                color: c,
+                pos: None,
+            }),
             2 | 3 => {
                 for t in &toks[1..] {
                     stops.push(Stop {
@@ -211,6 +217,7 @@ pub fn resolve(fill: &Fill, w: f32, h: f32) -> Option<Resolved> {
             let lo = i - 1;
             let hi = (i..n).find(|&j| p[j].is_some()).unwrap_or(n - 1);
             let (a, b) = (p[lo].unwrap_or(0.0), p[hi].unwrap_or(1.0));
+            #[allow(clippy::needless_range_loop)]
             for k in i..hi {
                 p[k] = Some(a + (b - a) * (k - lo) as f32 / (hi - lo) as f32);
             }
@@ -266,7 +273,11 @@ pub fn shadows(v: &str, allow_inset: bool, allow_spread: bool) -> Result<Vec<Sha
                 inset = true;
                 continue;
             }
-            match t.strip_suffix("px").and_then(num).or_else(|| (t == "0").then_some(0.0)) {
+            match t
+                .strip_suffix("px")
+                .and_then(num)
+                .or_else(|| (t == "0").then_some(0.0))
+            {
                 Some(n) => nums.push(n),
                 None => color = Some(value::color(t)?),
             }
@@ -510,7 +521,11 @@ pub fn aprop(name: &str) -> Option<AProp> {
         "transform" => AProp::Transform,
         "color" => AProp::Color,
         "background" | "background-color" | "background-image" => AProp::Background,
-        "border-color" | "border" | "border-top-color" | "border-bottom-color" | "border-left-color"
+        "border-color"
+        | "border"
+        | "border-top-color"
+        | "border-bottom-color"
+        | "border-left-color"
         | "border-right-color" => AProp::BorderColor,
         _ => return None,
     })
@@ -535,7 +550,8 @@ pub fn transition(v: &str) -> Result<TransSpec, String> {
                 return Err(format!("`{t}` is not supported in a transition"));
             }
         }
-        spec.durs.push(times.first().copied().unwrap_or(0.0).max(0.0));
+        spec.durs
+            .push(times.first().copied().unwrap_or(0.0).max(0.0));
         spec.delays.push(times.get(1).copied().unwrap_or(0.0));
         spec.eases.push(ease.unwrap_or(Ease::Ease));
         spec.props.push(match prop.unwrap_or("all") {

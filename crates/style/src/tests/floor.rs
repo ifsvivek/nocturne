@@ -5,7 +5,12 @@ use crate::sheet::{DEFAULT, USER};
 const BASE: &str = ".back, .other { display: block; width: 60px; height: 30px }";
 
 fn themed(d: &Doc, css: &str) -> Scene {
-    scene_with(d, Sheet::layered(&[(BASE, DEFAULT), (css, USER)]), (800.0, 600.0), Interaction::default())
+    scene_with(
+        d,
+        Sheet::layered(&[(BASE, DEFAULT), (css, USER)]),
+        (800.0, 600.0),
+        Interaction::default(),
+    )
 }
 
 /// page > header > [a.back (essential), a.other] ; page > main
@@ -30,7 +35,11 @@ fn an_essential_control_cannot_be_hidden_or_made_transparent() {
     assert!(s.is_hidden(other), "other elements may still be hidden");
     let r = s.warnings();
     assert_eq!(r.count(Kind::Floor), 1);
-    assert!(r.groups[&Kind::Floor].examples[0].contains(".back"), "{:?}", r.lines());
+    assert!(
+        r.groups[&Kind::Floor].examples[0].contains(".back"),
+        "{:?}",
+        r.lines()
+    );
     for css in [
         ".back { opacity: 0 }",
         ".back { opacity: 0.39 }",
@@ -65,7 +74,10 @@ fn the_apps_own_default_sheet_may_do_what_a_theme_may_not() {
     let sheet = Sheet::layered(&[(".back { display: none }", DEFAULT), ("", USER)]);
     let s = scene_with(&d, sheet, (800.0, 600.0), Interaction::default());
     assert!(s.is_hidden(back));
-    let sheet = Sheet::layered(&[(".back { display: none }", DEFAULT), (".back { display: none }", USER)]);
+    let sheet = Sheet::layered(&[
+        (".back { display: none }", DEFAULT),
+        (".back { display: none }", USER),
+    ]);
     let s = scene_with(&d, sheet, (800.0, 600.0), Interaction::default());
     // The default sheet's rule hid it; the user's repeat is blocked from changing anything it did not already decide.
     assert_eq!(s.warnings().count(Kind::Floor), 1);
@@ -74,7 +86,10 @@ fn the_apps_own_default_sheet_may_do_what_a_theme_may_not() {
 #[test]
 fn too_small_gets_a_minimum_size_and_is_reported() {
     let (d, _, back, _) = app();
-    let s = themed(&d, ".back { display: block; width: 4px; height: 3px; padding: 0 }");
+    let s = themed(
+        &d,
+        ".back { display: block; width: 4px; height: 3px; padding: 0 }",
+    );
     let [_, _, w, h] = s.rects[back];
     assert!(w >= 24.0 && h >= 24.0, "{w}x{h}");
     assert_eq!(s.warnings().count(Kind::Floor), 1);
@@ -97,7 +112,10 @@ fn off_screen_is_moved_back_into_view() {
         let s = themed(&d, css);
         let [x, y, w, h] = s.rects[back];
         assert!(x >= 0.0 && x + w <= 800.0 + 0.01, "{css}: {x}");
-        assert!(y >= 0.0 && y + h <= 600.0f32.max(s.page_height()) + 0.01, "{css}: {y}");
+        assert!(
+            y >= 0.0 && y + h <= 600.0f32.max(s.page_height()) + 0.01,
+            "{css}: {y}"
+        );
         assert!(s.warnings().count(Kind::Floor) >= 1, "{css}");
     }
     // Other elements may be placed anywhere.
@@ -106,7 +124,10 @@ fn off_screen_is_moved_back_into_view() {
     // A fixed control, moved, still takes its children along.
     let mut d2 = d.clone();
     let child = d2.add(back, "i.k");
-    let s = themed(&d2, ".back { position: fixed; left: -3000px; top: 5px; width: 50px; height: 30px } .k { width: 5px; height: 5px }");
+    let s = themed(
+        &d2,
+        ".back { position: fixed; left: -3000px; top: 5px; width: 50px; height: 30px } .k { width: 5px; height: 5px }",
+    );
     assert!(s.rects[child][0] >= 0.0 && s.rects[child][0] < 60.0);
 }
 

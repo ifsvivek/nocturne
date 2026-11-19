@@ -168,11 +168,22 @@ fn feature(body: &str) -> Result<Feat, String> {
     match toks.as_slice() {
         [n @ ("width" | "height"), o, v] => {
             let (c, v) = (op(o).ok_or("range")?, media_len(v).ok_or("bad length")?);
-            Ok(if *n == "width" { Feat::Width(c, v) } else { Feat::Height(c, v) })
+            Ok(if *n == "width" {
+                Feat::Width(c, v)
+            } else {
+                Feat::Height(c, v)
+            })
         }
         [v, o, n @ ("width" | "height")] => {
-            let (c, v) = (flip(op(o).ok_or("range")?), media_len(v).ok_or("bad length")?);
-            Ok(if *n == "width" { Feat::Width(c, v) } else { Feat::Height(c, v) })
+            let (c, v) = (
+                flip(op(o).ok_or("range")?),
+                media_len(v).ok_or("bad length")?,
+            );
+            Ok(if *n == "width" {
+                Feat::Width(c, v)
+            } else {
+                Feat::Height(c, v)
+            })
         }
         _ => Err(format!("media feature `{b}`")),
     }
@@ -195,8 +206,8 @@ fn query(q: &str, unknown: &mut Vec<String>) -> Query {
             "not" => out.negate = true,
             "only" | "and" => {}
             "all" | "screen" => {}
-            "print" | "speech" | "tty" | "tv" | "projection" | "handheld" | "braille" | "embossed"
-            | "aural" => out.type_ok = false,
+            "print" | "speech" | "tty" | "tv" | "projection" | "handheld" | "braille"
+            | "embossed" | "aural" => out.type_ok = false,
             _ if w.starts_with('(') && w.ends_with(')') => match feature(&w[1..w.len() - 1]) {
                 Ok(f) => out.feats.push(f),
                 Err(e) => {
@@ -262,7 +273,10 @@ fn supports(text: &str, depth: u8) -> bool {
         }
         return result.unwrap_or(false);
     }
-    if let Some(sel) = t.strip_prefix("selector(").and_then(|x| x.strip_suffix(')')) {
+    if let Some(sel) = t
+        .strip_prefix("selector(")
+        .and_then(|x| x.strip_suffix(')'))
+    {
         return select::parse(sel).is_ok();
     }
     if let Some(inner) = t.strip_prefix('(').and_then(|x| x.strip_suffix(')')) {
@@ -425,7 +439,10 @@ impl Sheet {
         if css.len() > MAX_BYTES {
             self.report.add(
                 Kind::Limit,
-                format!("stylesheet is {} bytes; the limit is {MAX_BYTES}", css.len()),
+                format!(
+                    "stylesheet is {} bytes; the limit is {MAX_BYTES}",
+                    css.len()
+                ),
             );
             return;
         }
@@ -517,7 +534,11 @@ impl Build<'_> {
                         // Cut the at-rule out so the shared reader never sees it (it is reported here, once).
                         self.flush(&src[plain_from..i], media);
                         self.at_rule_note(&name, has_block);
-                        i = if has_block { block_end(b, head) + 1 } else { head + 1 };
+                        i = if has_block {
+                            block_end(b, head) + 1
+                        } else {
+                            head + 1
+                        };
                         i = i.min(src.len());
                         plain_from = i;
                         continue;
@@ -564,7 +585,8 @@ impl Build<'_> {
             ),
             "font-face" => (
                 Kind::UnsupportedAtRule,
-                "`@font-face` is not loaded from a stylesheet (fonts are registered by the app)".into(),
+                "`@font-face` is not loaded from a stylesheet (fonts are registered by the app)"
+                    .into(),
             ),
             "keyframes" | "-webkit-keyframes" => (
                 Kind::Planned,
@@ -579,9 +601,10 @@ impl Build<'_> {
         let mut unknown = vec![];
         let alts = media_alts(prelude, &mut unknown);
         for u in unknown {
-            self.sheet
-                .report
-                .add(Kind::UnsupportedAtRule, format!("@media: `{u}` is not supported (treated as false)"));
+            self.sheet.report.add(
+                Kind::UnsupportedAtRule,
+                format!("@media: `{u}` is not supported (treated as false)"),
+            );
         }
         let mut m = self.sheet.medias[parent as usize].clone();
         m.all_of.push(alts);
@@ -647,7 +670,10 @@ impl Build<'_> {
     fn compile(&mut self, name: String, value: String, important: bool) -> Option<Decl> {
         let rep = &mut self.sheet.report;
         if name.starts_with("--") {
-            if ["vw", "vh", "vmin", "vmax", "env("].iter().any(|u| value.contains(u)) {
+            if ["vw", "vh", "vmin", "vmax", "env("]
+                .iter()
+                .any(|u| value.contains(u))
+            {
                 self.sheet.uses_viewport = true;
             }
             return Some(Decl {
@@ -657,7 +683,10 @@ impl Build<'_> {
             });
         }
         if value.contains("var(") {
-            if ["vw", "vh", "vmin", "vmax", "env("].iter().any(|u| value.contains(u)) {
+            if ["vw", "vh", "vmin", "vmax", "env("]
+                .iter()
+                .any(|u| value.contains(u))
+            {
                 self.sheet.uses_viewport = true;
             }
             return Some(Decl {

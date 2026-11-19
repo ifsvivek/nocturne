@@ -2,7 +2,7 @@
 //! the declared time with the declared curve. Only paint properties animate (opacity, transform, colours, backgrounds), never
 //! layout. The app drives the clock: call [`Anims::tick`] once per frame while [`Anims::active`] is true.
 use crate::doc::Id;
-use crate::paint::{AProp, ALL_APROPS, Ease, Fill, Stop, StopPos, Xf};
+use crate::paint::{ALL_APROPS, AProp, Ease, Fill, Stop, StopPos, Xf};
 use crate::props::Computed;
 use nocturne_core::customize::value::Color;
 use std::collections::HashMap;
@@ -58,16 +58,26 @@ fn lerp_fill(a: &Fill, b: &Fill, t: f32) -> Option<Fill> {
     match (a, b) {
         (Fill::Solid(x), Fill::Solid(y)) => Some(Fill::Solid(lerp_c(*x, *y, t))),
         (
-            Fill::Linear { angle: a1, stops: s1 },
-            Fill::Linear { angle: a2, stops: s2 },
+            Fill::Linear {
+                angle: a1,
+                stops: s1,
+            },
+            Fill::Linear {
+                angle: a2,
+                stops: s2,
+            },
         ) if s1.len() == s2.len() => {
             let stops = s1
                 .iter()
                 .zip(s2)
                 .map(|(p, q)| {
                     let pos = match (p.pos, q.pos) {
-                        (Some(StopPos::Frac(x)), Some(StopPos::Frac(y))) => Some(StopPos::Frac(lerp(x, y, t))),
-                        (Some(StopPos::Px(x)), Some(StopPos::Px(y))) => Some(StopPos::Px(lerp(x, y, t))),
+                        (Some(StopPos::Frac(x)), Some(StopPos::Frac(y))) => {
+                            Some(StopPos::Frac(lerp(x, y, t)))
+                        }
+                        (Some(StopPos::Px(x)), Some(StopPos::Px(y))) => {
+                            Some(StopPos::Px(lerp(x, y, t)))
+                        }
                         (x, y) if x == y => x,
                         _ => return None,
                     };
@@ -93,7 +103,11 @@ fn mix(a: &AV, b: &AV, t: f32) -> Option<AV> {
         (AV::C(x), AV::C(y)) => AV::C(lerp_c(*x, *y, t)),
         (AV::B(x), AV::B(y)) => AV::B([0, 1, 2, 3].map(|i| lerp_c(x[i], y[i], t))),
         (AV::Bg(x), AV::Bg(y)) if x.len() == y.len() => {
-            let v: Option<Vec<Fill>> = x.iter().zip(y.iter()).map(|(p, q)| lerp_fill(p, q, t)).collect();
+            let v: Option<Vec<Fill>> = x
+                .iter()
+                .zip(y.iter())
+                .map(|(p, q)| lerp_fill(p, q, t))
+                .collect();
             AV::Bg(v?.into())
         }
         _ => return None,
@@ -143,7 +157,11 @@ impl Anims {
     fn sample(&self, a: &Anim) -> Option<AV> {
         let now = self.now?;
         let ms = now.saturating_duration_since(a.start).as_secs_f32() * 1000.0 - a.delay;
-        let t = if a.dur <= 0.0 { 1.0 } else { (ms / a.dur).clamp(0.0, 1.0) };
+        let t = if a.dur <= 0.0 {
+            1.0
+        } else {
+            (ms / a.dur).clamp(0.0, 1.0)
+        };
         mix(&a.from, &a.to, a.ease.at(t))
     }
 
@@ -178,11 +196,21 @@ impl Anims {
             let (a, b) = (value_of(old, p), value_of(new, p));
             // A running animation of this property determines where the new one starts.
             let from = match (p, &current) {
-                (AProp::Opacity, Eff { opacity: Some(v), .. }) => AV::F(*v),
+                (
+                    AProp::Opacity,
+                    Eff {
+                        opacity: Some(v), ..
+                    },
+                ) => AV::F(*v),
                 (AProp::Transform, Eff { xf: Some(v), .. }) => AV::X(*v),
                 (AProp::Color, Eff { color: Some(v), .. }) => AV::C(*v),
                 (AProp::Background, Eff { bg: Some(v), .. }) => AV::Bg(v.clone()),
-                (AProp::BorderColor, Eff { border: Some(v), .. }) => AV::B(*v),
+                (
+                    AProp::BorderColor,
+                    Eff {
+                        border: Some(v), ..
+                    },
+                ) => AV::B(*v),
                 _ => a.clone(),
             };
             if a == b {

@@ -384,7 +384,9 @@ fn compound_matches(c: &Compound, cx: &mut MatchCx, n: Id) -> bool {
             },
             Pseudo::Empty => node.children.is_empty() && node.text.is_none(),
             Pseudo::Root => node.parent.is_none(),
-            Pseudo::Is(l) | Pseudo::Where(l) => l.iter().any(|s| match_complex(s, s.len() - 1, cx, n)),
+            Pseudo::Is(l) | Pseudo::Where(l) => {
+                l.iter().any(|s| match_complex(s, s.len() - 1, cx, n))
+            }
             Pseudo::Not(l) => !l.iter().any(|s| match_complex(s, s.len() - 1, cx, n)),
             Pseudo::Has(l) => has_match(l, cx, n),
         };
@@ -408,7 +410,9 @@ fn match_complex(parts: &[(Comb, Compound)], i: usize, cx: &mut MatchCx, n: Id) 
     let doc = cx.doc;
     let node = &doc.nodes[n];
     match parts[i].0 {
-        Comb::Child => node.parent.is_some_and(|p| match_complex(parts, i - 1, cx, p)),
+        Comb::Child => node
+            .parent
+            .is_some_and(|p| match_complex(parts, i - 1, cx, p)),
         Comb::Descendant => {
             let mut up = node.parent;
             while let Some(p) = up {
@@ -684,9 +688,16 @@ impl Parser<'_> {
                     };
                     if matches!(name.as_str(), "before" | "after") && arg.is_none() {
                         if !top || self.in_has {
-                            return Err("a pseudo-element is only allowed at the end of a plain selector".into());
+                            return Err(
+                                "a pseudo-element is only allowed at the end of a plain selector"
+                                    .into(),
+                            );
                         }
-                        pgen = Some(if name == "before" { Gen::Before } else { Gen::After });
+                        pgen = Some(if name == "before" {
+                            Gen::Before
+                        } else {
+                            Gen::After
+                        });
                         continue;
                     }
                     if double {
@@ -822,12 +833,7 @@ impl Parser<'_> {
     }
 
     /// A complex selector up to `,`, `)` or the end. With `relative`, a leading combinator is allowed.
-    fn complex(
-        &mut self,
-        nest: u8,
-        relative: bool,
-        top: bool,
-    ) -> PResult<(Complex, Option<Gen>)> {
+    fn complex(&mut self, nest: u8, relative: bool, top: bool) -> PResult<(Complex, Option<Gen>)> {
         let mut parts: Complex = vec![];
         let mut comb = Comb::Descendant;
         let mut pgen = None;

@@ -40,7 +40,10 @@ fn flex_column_wrap_and_justify() {
         ".c { display: flex; flex-direction: column; justify-content: space-between; height: 200px } .b { height: 20px }",
         (400.0, 300.0),
     );
-    assert_eq!((r(&s, b[0])[1], r(&s, b[1])[1], r(&s, b[2])[1]), (0.0, 90.0, 180.0));
+    assert_eq!(
+        (r(&s, b[0])[1], r(&s, b[1])[1], r(&s, b[2])[1]),
+        (0.0, 90.0, 180.0)
+    );
     let s = scene(
         &d,
         ".c { display: flex; flex-wrap: wrap; width: 100px } .b { width: 60px; height: 10px }",
@@ -87,9 +90,17 @@ fn grid_template_areas_place_named_areas() {
     assert_eq!(r(&s, m), [100.0, 40.0, 300.0, 230.0]);
     assert_eq!(r(&s, f), [0.0, 270.0, 400.0, 30.0]);
     // A non-rectangular area and ragged rows are rejected and reported.
-    let s = scene(&d, "page { display: grid; grid-template-areas: \"a b\" \"b a\" }", (400.0, 300.0));
+    let s = scene(
+        &d,
+        "page { display: grid; grid-template-areas: \"a b\" \"b a\" }",
+        (400.0, 300.0),
+    );
     assert!(s.warnings().count(Kind::BadValue) >= 1);
-    let s = scene(&d, "page { display: grid; grid-template-areas: \"a b\" \"c\" }", (400.0, 300.0));
+    let s = scene(
+        &d,
+        "page { display: grid; grid-template-areas: \"a b\" \"c\" }",
+        (400.0, 300.0),
+    );
     assert!(s.warnings().count(Kind::BadValue) >= 1);
 }
 
@@ -149,7 +160,11 @@ fn order_reorders_layout_paint_and_focus_but_not_the_tree() {
 #[test]
 fn z_index_sets_paint_order_not_layout() {
     let (d, b) = boxes(3);
-    let s = scene(&d, ".b { height: 10px } .b:nth-child(1) { z-index: 5 } .b:nth-child(3) { z-index: -1 }", (400.0, 300.0));
+    let s = scene(
+        &d,
+        ".b { height: 10px } .b:nth-child(1) { z-index: 5 } .b:nth-child(3) { z-index: -1 }",
+        (400.0, 300.0),
+    );
     assert_eq!(s.paint[0], vec![b[2], b[1], b[0]]);
     assert_eq!(s.kids[0], b);
     assert_eq!(r(&s, b[1])[1], 10.0);
@@ -162,7 +177,11 @@ fn overflow_scroll_reports_content_size_and_scrolls() {
     for _ in 0..10 {
         d.add(sc, "div.item");
     }
-    let mut s = scene(&d, ".sc { height: 100px; overflow-y: auto } .item { height: 30px }", (400.0, 300.0));
+    let mut s = scene(
+        &d,
+        ".sc { height: 100px; overflow-y: auto } .item { height: 30px }",
+        (400.0, 300.0),
+    );
     assert_eq!(s.content[sc][1], 300.0);
     assert_eq!(r(&s, sc)[3], 100.0);
     s.wheel(Some(sc + 1), 0.0, -80.0, &mut approx);
@@ -180,7 +199,11 @@ fn horizontal_rows_scroll_sideways() {
     for _ in 0..8 {
         d.add(row, "a.card");
     }
-    let mut s = scene(&d, ".row { display: flex; overflow-x: scroll; width: 300px } .card { flex: none; width: 100px; height: 10px }", (400.0, 300.0));
+    let mut s = scene(
+        &d,
+        ".row { display: flex; overflow-x: scroll; width: 300px } .card { flex: none; width: 100px; height: 10px }",
+        (400.0, 300.0),
+    );
     assert_eq!(s.content[row][0], 800.0);
     assert!(s.wheel(Some(row + 1), -120.0, 0.0, &mut approx));
     assert_eq!(s.scroll.offsets[&row][0], 120.0);
@@ -214,16 +237,28 @@ fn units_calc_min_max_clamp_and_env() {
 fn percent_aspect_ratio_and_min_max() {
     let (d, b) = boxes(1);
     let b = b[0];
-    let s = scene(&d, ".b { width: 50%; aspect-ratio: 16 / 9 }", (800.0, 600.0));
+    let s = scene(
+        &d,
+        ".b { width: 50%; aspect-ratio: 16 / 9 }",
+        (800.0, 600.0),
+    );
     assert_eq!((r(&s, b)[2], r(&s, b)[3]), (400.0, 225.0));
-    let s = scene(&d, ".b { width: 80%; max-width: 300px; min-height: 40px; height: 10px }", (800.0, 600.0));
+    let s = scene(
+        &d,
+        ".b { width: 80%; max-width: 300px; min-height: 40px; height: 10px }",
+        (800.0, 600.0),
+    );
     assert_eq!((r(&s, b)[2], r(&s, b)[3]), (300.0, 40.0));
 }
 
 #[test]
 fn display_none_removes_the_box_and_its_subtree() {
     let (d, b) = boxes(2);
-    let s = scene(&d, ".b { height: 10px } .b:nth-child(1) { display: none }", (400.0, 300.0));
+    let s = scene(
+        &d,
+        ".b { height: 10px } .b:nth-child(1) { display: none }",
+        (400.0, 300.0),
+    );
     assert_eq!((r(&s, b[0])[3], r(&s, b[1])[1]), (0.0, 0.0));
     assert!(s.is_hidden(b[0]));
 }
@@ -233,10 +268,18 @@ fn text_wraps_to_the_available_width() {
     let mut d = Doc::new("page");
     let p = d.add(0, "p.p");
     d.text(p, "one two three four five six seven eight");
-    let s = scene(&d, ".p { width: 100px; font-size: 10px; line-height: 1 }", (400.0, 300.0));
+    let s = scene(
+        &d,
+        ".p { width: 100px; font-size: 10px; line-height: 1 }",
+        (400.0, 300.0),
+    );
     // approx: 5px per character; 100px fits 20 characters: two lines of 10px.
     assert_eq!(r(&s, p)[3], 20.0);
-    let s = scene(&d, ".p { width: 100px; font-size: 10px; line-height: 1; white-space: nowrap }", (400.0, 300.0));
+    let s = scene(
+        &d,
+        ".p { width: 100px; font-size: 10px; line-height: 1; white-space: nowrap }",
+        (400.0, 300.0),
+    );
     assert_eq!(r(&s, p)[3], 10.0);
 }
 
@@ -249,7 +292,11 @@ fn images_are_replaced_elements_measured_from_their_intrinsic_size() {
     assert_eq!((r(&s, img)[2], r(&s, img)[3]), (200.0, 100.0));
     let s = scene(&d, ".poster { width: 100px }", (800.0, 600.0));
     assert_eq!((r(&s, img)[2], r(&s, img)[3]), (100.0, 50.0));
-    let s = scene(&d, ".poster { height: 20px; width: auto; display: flex }", (800.0, 600.0));
+    let s = scene(
+        &d,
+        ".poster { height: 20px; width: auto; display: flex }",
+        (800.0, 600.0),
+    );
     assert_eq!(r(&s, img)[3], 20.0);
 }
 
@@ -279,17 +326,30 @@ fn viewport_units_restyle_on_resize() {
     assert!(s.sheet.uses_viewport);
     s.resize((600.0, 600.0), &mut approx);
     assert_eq!(r(&s, b[0])[2], 300.0);
+    assert_eq!(r(&s, 0)[2], 600.0, "the page follows the window");
 }
 
 #[test]
 fn borders_padding_and_box_sizing() {
     let (d, b) = boxes(1);
-    let s = scene(&d, ".b { width: 100px; height: 40px; padding: 4px 6px; border: 2px solid #fff }", (800.0, 600.0));
+    let s = scene(
+        &d,
+        ".b { width: 100px; height: 40px; padding: 4px 6px; border: 2px solid #fff }",
+        (800.0, 600.0),
+    );
     assert_eq!(r(&s, b[0])[2..], [100.0, 40.0]);
     assert_eq!(s.insets[b[0]], [8.0, 6.0, 8.0, 6.0]);
-    let s = scene(&d, ".b { width: 100px; height: 40px; padding: 4px 6px; border: 2px solid #fff; box-sizing: content-box }", (800.0, 600.0));
+    let s = scene(
+        &d,
+        ".b { width: 100px; height: 40px; padding: 4px 6px; border: 2px solid #fff; box-sizing: content-box }",
+        (800.0, 600.0),
+    );
     assert_eq!(r(&s, b[0])[2..], [116.0, 52.0]);
-    let s = scene(&d, ".b { border-left: 3px solid #f00; border-right: 0; height: 5px }", (800.0, 600.0));
+    let s = scene(
+        &d,
+        ".b { border-left: 3px solid #f00; border-right: 0; height: 5px }",
+        (800.0, 600.0),
+    );
     assert_eq!(s.borders[b[0]], [3.0, 0.0, 0.0, 0.0]);
     assert_eq!(s.style(b[0]).border_color[3].r, 255);
 }
@@ -301,14 +361,32 @@ fn custom_font_family_resolves_against_installed_and_registered_fonts() {
     let mut fonts = Fonts::new();
     fonts.set_installed(["Noto Sans".to_string(), "DejaVu Sans".to_string()]);
     let build = |f: &Fonts| {
-        Scene::build(d.clone(), Rc::new(Sheet::parse("")), Rc::new(f.clone()), (800.0, 600.0), Interaction::default(), None, &Builders::new(), &mut approx)
-            .unwrap()
+        Scene::build(
+            d.clone(),
+            Rc::new(Sheet::parse("")),
+            Rc::new(f.clone()),
+            (800.0, 600.0),
+            Interaction::default(),
+            None,
+            &Builders::new(),
+            &mut approx,
+        )
+        .unwrap()
     };
-    assert_eq!(build(&fonts).text_style(c).font, FontChoice::Named("Noto Sans".into()));
+    assert_eq!(
+        build(&fonts).text_style(c).font,
+        FontChoice::Named("Noto Sans".into())
+    );
     fonts.register("inter");
-    assert_eq!(build(&fonts).text_style(c).font, FontChoice::Named("inter".into()));
+    assert_eq!(
+        build(&fonts).text_style(c).font,
+        FontChoice::Named("inter".into())
+    );
     fonts.unregister("inter");
-    assert_eq!(fonts.resolve(&["serif".into(), "Noto Sans".into()]), FontChoice::Serif);
+    assert_eq!(
+        fonts.resolve(&["serif".into(), "Noto Sans".into()]),
+        FontChoice::Serif
+    );
     assert_eq!(fonts.resolve(&["monospace".into()]), FontChoice::Monospace);
     assert_eq!(fonts.resolve(&["Nope".into()]), FontChoice::Default);
 }
@@ -319,10 +397,21 @@ fn font_weight_keywords_numbers_and_relative() {
     let wt = |css: &str, n: Id| scene(&d, css, (800.0, 600.0)).style(n).weight;
     assert_eq!(wt(".a { font-weight: bold }", a), 700);
     assert_eq!(wt(".a { font-weight: 450 }", c), 450);
-    assert_eq!(wt(".a { font-weight: 300 } .c { font-weight: bolder }", c), 400);
-    assert_eq!(wt(".a { font-weight: 700 } .c { font-weight: lighter }", c), 400);
+    assert_eq!(
+        wt(".a { font-weight: 300 } .c { font-weight: bolder }", c),
+        400
+    );
+    assert_eq!(
+        wt(".a { font-weight: 700 } .c { font-weight: lighter }", c),
+        400
+    );
     assert_eq!(wt(".a { font-weight: normal }", a), 400);
-    assert!(scene(&d, ".a { font-weight: heavy }", (800.0, 600.0)).warnings().count(Kind::BadValue) == 1);
+    assert!(
+        scene(&d, ".a { font-weight: heavy }", (800.0, 600.0))
+            .warnings()
+            .count(Kind::BadValue)
+            == 1
+    );
 }
 
 #[test]
@@ -330,7 +419,14 @@ fn the_measure_cache_shapes_each_text_once() {
     let mut d = Doc::new("page");
     for i in 0..50 {
         let t = d.add(0, "p.p");
-        d.text(t, if i % 2 == 0 { "same words here" } else { "other words there" });
+        d.text(
+            t,
+            if i % 2 == 0 {
+                "same words here"
+            } else {
+                "other words there"
+            },
+        );
     }
     let mut cache = MeasureCache::new();
     let mut shaped = 0u32;
@@ -360,11 +456,18 @@ fn the_measure_cache_shapes_each_text_once() {
 #[test]
 fn font_shorthand() {
     let (d, a, ..) = small();
-    let s = scene(&d, ".a { font: italic 600 13px/1.5 Inter, 'Noto Sans', sans-serif }", (800.0, 600.0));
+    let s = scene(
+        &d,
+        ".a { font: italic 600 13px/1.5 Inter, 'Noto Sans', sans-serif }",
+        (800.0, 600.0),
+    );
     let c = s.style(a);
     assert_eq!((c.font_size, c.weight, c.italic), (13.0, 600, true));
     assert_eq!(c.line_height, props::LineH::Mult(1.5));
-    assert_eq!(&*c.family, &["Inter".to_string(), "Noto Sans".into(), "sans-serif".into()]);
+    assert_eq!(
+        &*c.family,
+        &["Inter".to_string(), "Noto Sans".into(), "sans-serif".into()]
+    );
     let s = scene(&d, ".a { font: 500 16px Inter }", (800.0, 600.0));
     assert_eq!((s.style(a).font_size, s.style(a).weight), (16.0, 500));
 }

@@ -308,7 +308,12 @@ pub enum Op {
     LetterSpacing(Len),
     Ellipsis(bool),
     Underline(bool),
-    Transform { tx: Len, ty: Len, sx: f32, sy: f32 },
+    Transform {
+        tx: Len,
+        ty: Len,
+        sx: f32,
+        sy: f32,
+    },
     Origin(f32, f32),
     TransAll(Rc<TransSpec>),
     TransProps(Vec<TP>),
@@ -423,8 +428,22 @@ fn units(v: &str, cx: Ctx, font: f32) -> String {
 
 /// Does reading this text depend on the element's font size or the window size?
 fn context_dependent(v: &str) -> bool {
-    let a = units(v, Ctx { vw: 100.0, vh: 100.0 }, 10.0);
-    let b = units(v, Ctx { vw: 700.0, vh: 300.0 }, 30.0);
+    let a = units(
+        v,
+        Ctx {
+            vw: 100.0,
+            vh: 100.0,
+        },
+        10.0,
+    );
+    let b = units(
+        v,
+        Ctx {
+            vw: 700.0,
+            vh: 300.0,
+        },
+        30.0,
+    );
     a != b
 }
 
@@ -513,7 +532,9 @@ pub fn len(v: &str) -> Result<Len, Issue> {
     if n == 0 {
         return bad(format!("`{v}` is not a length"));
     }
-    let k: f32 = v[..n].parse().or_else(|_| bad(format!("`{v}` is not a length")))?;
+    let k: f32 = v[..n]
+        .parse()
+        .or_else(|_| bad(format!("`{v}` is not a length")))?;
     if !k.is_finite() {
         return bad(format!("`{v}` is not a length"));
     }
@@ -608,7 +629,7 @@ impl Weight {
 }
 
 fn color(v: &str) -> Result<Color, Issue> {
-    value::color(v).or_else(|e| bad(e))
+    value::color(v).or_else(bad)
 }
 
 /// A colour, or `None` for `currentcolor` (the element's own text colour, resolved when applied).
@@ -648,7 +669,11 @@ fn border_ops(v: &str, mask: [bool; 4]) -> Result<Vec<Op>, Issue> {
         }
     }
     let on = !matches!(style, None | Some("none" | "hidden"));
-    let width = if on { w.unwrap_or(Len::Px(3.0)) } else { Len::Px(0.0) };
+    let width = if on {
+        w.unwrap_or(Len::Px(3.0))
+    } else {
+        Len::Px(0.0)
+    };
     let mut s: Sides = std::array::from_fn(|_| None);
     for (i, m) in mask.iter().enumerate() {
         if *m {
@@ -671,7 +696,9 @@ fn radius(v: &str) -> Result<[Option<f32>; 4], Issue> {
         .map(|t| match t.strip_suffix('%') {
             // A percentage radius is shape-relative; 50% (a circle or a pill) is the case worth supporting.
             Some(n) if n.trim().parse::<f32>().is_ok_and(|n| n >= 50.0) => Ok(9999.0),
-            Some(_) => bad(format!("`{t}`: only 50% or more is supported as a radius percentage")),
+            Some(_) => bad(format!(
+                "`{t}`: only 50% or more is supported as a radius percentage"
+            )),
             None => match len(t)? {
                 Len::Px(px) => Ok(px.max(0.0)),
                 Len::Em(e) => Ok((e * 16.0).max(0.0)),
@@ -752,7 +779,12 @@ fn areas(v: &str) -> Result<Option<GridTemplateAreas<String>>, Issue> {
         let Some(end) = rest[1..].find(q) else {
             return bad("unterminated string in grid-template-areas");
         };
-        rows.push(rest[1..1 + end].split_whitespace().map(str::to_owned).collect());
+        rows.push(
+            rest[1..1 + end]
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect(),
+        );
         rest = rest[end + 2..].trim_start();
     }
     let cols = rows.first().map_or(0, Vec::len);
@@ -846,6 +878,11 @@ const NO_EFFECT: &[&str] = &[
     "scrollbar-width",
     "scrollbar-color",
     "scrollbar-gutter",
+    "scroll-snap-type",
+    "scroll-snap-align",
+    "scroll-snap-stop",
+    "scroll-padding",
+    "scroll-margin",
     "overscroll-behavior",
     "overscroll-behavior-x",
     "overscroll-behavior-y",
@@ -1031,18 +1068,20 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
             let l = if v == "none" { Len::Auto } else { len(v)? };
             one(Op::Size(if name == "max-width" { 4 } else { 5 }, l))
         }
-        "aspect-ratio" => one(Op::Aspect(match v.split_once('/') {
-            Some((a, b)) => {
-                let (a, b) = (p::<f32>(a)?, p::<f32>(b)?);
-                if b == 0.0 {
-                    return bad("aspect-ratio with a zero side");
+        "aspect-ratio" => one(Op::Aspect(
+            match v.split_once('/') {
+                Some((a, b)) => {
+                    let (a, b) = (p::<f32>(a)?, p::<f32>(b)?);
+                    if b == 0.0 {
+                        return bad("aspect-ratio with a zero side");
+                    }
+                    Some(a / b)
                 }
-                Some(a / b)
+                None if v == "auto" => None,
+                None => Some(p(v)?),
             }
-            None if v == "auto" => None,
-            None => Some(p(v)?),
-        }
-        .filter(|r: &f32| r.is_finite() && *r > 0.0))),
+            .filter(|r: &f32| r.is_finite() && *r > 0.0),
+        )),
         "box-sizing" => one(Op::BoxSizing(p(v)?)),
         "margin" => one(Op::Margin(sides(v, true)?)),
         "margin-top" => one(Op::Margin(one_side(v, true, 0)?)),
@@ -1062,7 +1101,10 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
         "border-width" => {
             let a: Vec<Len> = split_top(v, None)
                 .into_iter()
-                .map(|t| border_width_token(t).map_or_else(|| bad(format!("`{t}` is not a border width")), Ok))
+                .map(|t| {
+                    border_width_token(t)
+                        .map_or_else(|| bad(format!("`{t}` is not a border width")), Ok)
+                })
                 .collect::<Result<_, _>>()?;
             let s = match a.as_slice() {
                 [x] => [x.clone(), x.clone(), x.clone(), x.clone()],
@@ -1078,7 +1120,8 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
                 .iter()
                 .position(|s| name.contains(s))
                 .unwrap_or(0);
-            let l = border_width_token(v).map_or_else(|| bad(format!("`{v}` is not a border width")), Ok)?;
+            let l = border_width_token(v)
+                .map_or_else(|| bad(format!("`{v}` is not a border width")), Ok)?;
             let mut s: Sides = std::array::from_fn(|_| None);
             s[idx] = Some(l);
             one(Op::BorderWidth(s))
@@ -1114,7 +1157,9 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
         "border-bottom-color" => one(Op::BorderColor([false, false, true, false], color_cur(v)?)),
         "border-left-color" => one(Op::BorderColor([false, false, false, true], color_cur(v)?)),
         "border-radius" => one(Op::Radius(radius(v)?)),
-        "border-top-left-radius" | "border-top-right-radius" | "border-bottom-right-radius"
+        "border-top-left-radius"
+        | "border-top-right-radius"
+        | "border-bottom-right-radius"
         | "border-bottom-left-radius" => {
             let r = radius(v.split_whitespace().next().unwrap_or(v))?[0];
             let mut a = [None; 4];
@@ -1189,10 +1234,20 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
             let cols = name.ends_with("columns");
             if context_dependent(v) {
                 // Validate now with a stand-in context so a broken value is reported once, at the sheet.
-                tracks(&units(v, Ctx { vw: 1000.0, vh: 1000.0 }, 16.0))?;
+                tracks(&units(
+                    v,
+                    Ctx {
+                        vw: 1000.0,
+                        vh: 1000.0,
+                    },
+                    16.0,
+                ))?;
                 one(Op::TracksRaw(cols, v.to_owned()))
             } else {
-                one(Op::Tracks(cols, tracks(&units(v, Ctx { vw: 0.0, vh: 0.0 }, 16.0))?))
+                one(Op::Tracks(
+                    cols,
+                    tracks(&units(v, Ctx { vw: 0.0, vh: 0.0 }, 16.0))?,
+                ))
             }
         }
         "grid-template-areas" => one(Op::Areas(areas(v)?)),
@@ -1254,29 +1309,48 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
             })
         }
         "order" => one(Op::Order(p::<i32>(v)?.clamp(-1000, 1000))),
-        "z-index" => one(Op::Z(if v == "auto" { 0 } else { p::<i32>(v)?.clamp(-1000, 1000) })),
-        "background" | "background-color" | "background-image" => one(Op::Bg(paint::layers(v).or_else(|e| bad(e))?.into())),
+        "z-index" => one(Op::Z(if v == "auto" {
+            0
+        } else {
+            p::<i32>(v)?.clamp(-1000, 1000)
+        })),
+        "background" | "background-color" | "background-image" => {
+            one(Op::Bg(paint::layers(v).or_else(bad)?.into()))
+        }
         "color" => one(Op::Color(color(v)?)),
         "opacity" => one(Op::Opacity(
             match v.strip_suffix('%') {
                 Some(n) => p::<f32>(n)? / 100.0,
-                None => value::number(v).or_else(|e| bad(e))?,
+                None => value::number(v).or_else(bad)?,
             }
             .clamp(0.0, 1.0),
         )),
-        "box-shadow" => one(Op::Shadows(paint::shadows(v, true, true).or_else(|e| bad(e))?.into())),
+        "box-shadow" => one(Op::Shadows(
+            paint::shadows(v, true, true).or_else(bad)?.into(),
+        )),
         "text-shadow" => one(Op::TextShadow(
-            paint::shadows(v, false, false).or_else(|e| bad(e))?.into_iter().next(),
+            paint::shadows(v, false, false)
+                .or_else(bad)?
+                .into_iter()
+                .next(),
         )),
         "filter" | "-webkit-filter" => {
             let mut ds = None;
             for f in split_top(v, None) {
-                if let Some(a) = f.strip_prefix("drop-shadow(").and_then(|x| x.strip_suffix(')')) {
-                    ds = paint::shadows(a, false, false).or_else(|e| bad(e))?.into_iter().next();
+                if let Some(a) = f
+                    .strip_prefix("drop-shadow(")
+                    .and_then(|x| x.strip_suffix(')'))
+                {
+                    ds = paint::shadows(a, false, false)
+                        .or_else(bad)?
+                        .into_iter()
+                        .next();
                 } else if f != "none" {
                     return Err(Issue {
                         kind: Kind::Planned,
-                        msg: format!("`filter: {f}` is planned but not drawn yet (only drop-shadow() is)"),
+                        msg: format!(
+                            "`filter: {f}` is planned but not drawn yet (only drop-shadow() is)"
+                        ),
                     });
                 }
             }
@@ -1287,13 +1361,16 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
             "backdrop-filter has no blur here: the element keeps its own translucent fill",
         )),
         "mask-image" | "mask" => {
-            let f = paint::layers(v).or_else(|e| bad(e))?;
+            let f = paint::layers(v).or_else(bad)?;
             match f.into_iter().next() {
                 Some(g @ Fill::Linear { .. }) => Ok(Outcome::Approx(
                     vec![Op::Mask(Some(g))],
                     "mask-image is drawn as a scrim of the surface colour behind the element",
                 )),
-                _ => Ok(Outcome::Approx(vec![Op::Mask(None)], "mask-image other than a linear gradient is ignored")),
+                _ => Ok(Outcome::Approx(
+                    vec![Op::Mask(None)],
+                    "mask-image other than a linear gradient is ignored",
+                )),
             }
         }
         "object-fit" => one(Op::ObjectFit(match v {
@@ -1308,7 +1385,11 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
             let (x, y) = position(v)?;
             one(Op::ObjectPos(x, y))
         }
-        "letter-spacing" => one(Op::LetterSpacing(if v == "normal" { Len::Px(0.0) } else { len(v)? })),
+        "letter-spacing" => one(Op::LetterSpacing(if v == "normal" {
+            Len::Px(0.0)
+        } else {
+            len(v)?
+        })),
         "text-overflow" => one(Op::Ellipsis(match v {
             "ellipsis" => true,
             "clip" => false,
@@ -1328,7 +1409,7 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
             let (x, y) = position(v)?;
             one(Op::Origin(x, y))
         }
-        "transition" => one(Op::TransAll(Rc::new(paint::transition(v).or_else(|e| bad(e))?))),
+        "transition" => one(Op::TransAll(Rc::new(paint::transition(v).or_else(bad)?))),
         "transition-property" => one(Op::TransProps(
             split_top(v, Some(','))
                 .into_iter()
@@ -1347,7 +1428,11 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
                 .into_iter()
                 .map(|t| time_ms(t).map_or_else(|| bad(format!("`{t}` is not a time")), Ok))
                 .collect::<Result<_, _>>()?;
-            one(if name.ends_with("duration") { Op::TransDur(l) } else { Op::TransDelay(l) })
+            one(if name.ends_with("duration") {
+                Op::TransDur(l)
+            } else {
+                Op::TransDelay(l)
+            })
         }
         "transition-timing-function" => one(Op::TransEase(
             split_top(v, Some(','))
@@ -1401,7 +1486,7 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
                 Ok(Len::Pct(n)) => LineHeightValue::Mult(n / 100.0),
                 Ok(Len::Em(n)) => LineHeightValue::Mult(n),
                 Ok(l) if l != Len::Auto => LineHeightValue::Len(l),
-                _ => LineHeightValue::Mult(value::number(v).or_else(|e| bad(e))?),
+                _ => LineHeightValue::Mult(value::number(v).or_else(bad)?),
             },
         })),
         "text-transform" => one(Op::TextTransform(match v {
@@ -1457,7 +1542,11 @@ fn time_ms(t: &str) -> Option<f32> {
     if let Some(ms) = t.strip_suffix("ms") {
         return ms.trim().parse().ok();
     }
-    t.strip_suffix('s')?.trim().parse::<f32>().ok().map(|s| s * 1000.0)
+    t.strip_suffix('s')?
+        .trim()
+        .parse::<f32>()
+        .ok()
+        .map(|s| s * 1000.0)
 }
 
 /// `center`, `left top`, `50% 25%` as fractions of the box.
@@ -1470,7 +1559,12 @@ fn position(v: &str) -> Result<(f32, f32), Issue> {
             "top" if !horizontal => Some(0.0),
             "bottom" if !horizontal => Some(1.0),
             "center" => Some(0.5),
-            _ => w.strip_suffix('%')?.trim().parse::<f32>().ok().map(|p| p / 100.0),
+            _ => w
+                .strip_suffix('%')?
+                .trim()
+                .parse::<f32>()
+                .ok()
+                .map(|p| p / 100.0),
         }
     };
     let (x, y) = match t.as_slice() {
@@ -1490,7 +1584,9 @@ fn position(v: &str) -> Result<(f32, f32), Issue> {
     };
     match (x, y) {
         (Some(x), Some(y)) => Ok((x, y)),
-        _ => bad(format!("`{v}`: only keywords and percentages are supported here")),
+        _ => bad(format!(
+            "`{v}`: only keywords and percentages are supported here"
+        )),
     }
 }
 
@@ -1537,13 +1633,15 @@ fn transform(v: &str) -> Result<Op, Issue> {
             ("scaley", [k]) => sy *= n(k)?,
             ("scale3d", [a, b, _]) => (sx, sy) = (sx * n(a)?, sy * n(b)?),
             (
-                "rotate" | "rotatex" | "rotatey" | "rotatez" | "skew" | "skewx" | "skewy" | "matrix"
-                | "perspective",
+                "rotate" | "rotatex" | "rotatey" | "rotatez" | "skew" | "skewx" | "skewy"
+                | "matrix" | "perspective",
                 _,
             ) => {
                 return Err(Issue {
                     kind: Kind::Planned,
-                    msg: format!("`{name}()` is not supported (Iced draws translation and uniform scale)"),
+                    msg: format!(
+                        "`{name}()` is not supported (Iced draws translation and uniform scale)"
+                    ),
                 });
             }
             _ => return bad(format!("`{name}()` is not a supported transform")),
@@ -1572,7 +1670,10 @@ fn font_shorthand(v: &str) -> Result<Vec<Op>, Issue> {
     while i < toks.len() {
         let t = toks[i];
         // The size is the first token that carries a unit (or a `/`); a bare number is a weight.
-        if t.contains('/') || t.ends_with(|c: char| c.is_ascii_alphabetic() || c == '%') && t.starts_with(|c: char| c.is_ascii_digit() || c == '.') {
+        if t.contains('/')
+            || t.ends_with(|c: char| c.is_ascii_alphabetic() || c == '%')
+                && t.starts_with(|c: char| c.is_ascii_digit() || c == '.')
+        {
             break;
         }
         match t {
@@ -1586,7 +1687,9 @@ fn font_shorthand(v: &str) -> Result<Vec<Op>, Issue> {
     let Some(size) = toks.get(i) else {
         return bad("`font` needs a size and a family");
     };
-    let (sz, mut lh) = size.split_once('/').map_or((*size, None), |(a, b)| (a, Some(b.to_owned())));
+    let (sz, mut lh) = size
+        .split_once('/')
+        .map_or((*size, None), |(a, b)| (a, Some(b.to_owned())));
     let mut next = i + 1;
     if lh.as_deref() == Some("") {
         lh = toks.get(next).map(|s| (*s).to_owned());
@@ -1630,7 +1733,9 @@ impl Op {
         match self {
             Op::Inset(s) | Op::Margin(s) | Op::Padding(s) | Op::BorderWidth(s) => any(s),
             Op::Size(_, l) | Op::Basis(l) | Op::FontSize(l, _) => l.is_viewport(),
-            Op::Gap(a, b) => a.as_ref().is_some_and(Len::is_viewport) || b.as_ref().is_some_and(Len::is_viewport),
+            Op::Gap(a, b) => {
+                a.as_ref().is_some_and(Len::is_viewport) || b.as_ref().is_some_and(Len::is_viewport)
+            }
             Op::LineHeight(LineHeightValue::Len(l)) => l.is_viewport(),
             Op::LetterSpacing(l) => l.is_viewport(),
             Op::Transform { tx, ty, .. } => tx.is_viewport() || ty.is_viewport(),
@@ -1738,9 +1843,9 @@ impl Op {
             }
             Op::AutoTracks(cols, t) => {
                 if *cols {
-                    st.grid_auto_columns = t.iter().cloned().collect();
+                    st.grid_auto_columns = t.to_vec();
                 } else {
-                    st.grid_auto_rows = t.iter().cloned().collect();
+                    st.grid_auto_rows = t.to_vec();
                 }
             }
             Op::AutoFlow(f) => st.grid_auto_flow = *f,
@@ -1778,7 +1883,9 @@ impl Op {
             Op::Mask(m) => c.mask = m.clone(),
             Op::ObjectFit(f) => c.fit = *f,
             Op::ObjectPos(x, y) => c.object_pos = (*x, *y),
-            Op::LetterSpacing(l) => c.letter_spacing = l.px(font, cx).unwrap_or(0.0).clamp(-20.0, 50.0),
+            Op::LetterSpacing(l) => {
+                c.letter_spacing = l.px(font, cx).unwrap_or(0.0).clamp(-20.0, 50.0)
+            }
             Op::Ellipsis(e) => c.ellipsis = *e,
             Op::Underline(u) => c.underline = *u,
             Op::Transform { tx, ty, sx, sy } => {
@@ -1834,7 +1941,9 @@ impl Op {
                     LineHeightValue::Mult(m) => LineH::Mult(m.clamp(0.8, 3.0)),
                     LineHeightValue::Len(l) => match l {
                         Len::Em(e) => LineH::Mult(e.clamp(0.8, 3.0)),
-                        other => LineH::Px(other.px(font, cx).unwrap_or(font * 1.3).clamp(8.0, 400.0)),
+                        other => {
+                            LineH::Px(other.px(font, cx).unwrap_or(font * 1.3).clamp(8.0, 400.0))
+                        }
                     },
                 }
             }
@@ -1855,5 +1964,8 @@ impl Op {
 
 /// Zero-size helper kept for symmetry with Taffy's `Size` in layout code.
 pub fn size_zero() -> Size<f32> {
-    Size { width: 0.0, height: 0.0 }
+    Size {
+        width: 0.0,
+        height: 0.0,
+    }
 }

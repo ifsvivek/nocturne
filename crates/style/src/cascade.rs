@@ -42,6 +42,7 @@ impl Budget {
     pub fn exceeded(&mut self) -> bool {
         self.n += 1;
         match self.deadline {
+            #[allow(clippy::manual_is_multiple_of)]
             Some(d) if self.n % 64 == 0 => Instant::now() > d,
             _ => false,
         }
@@ -132,11 +133,14 @@ pub struct Styler {
     prot: Vec<u8>,
     flags: Vec<u8>,
     inline: HashMap<String, Rc<[Decl]>>,
-    dyn_memo: HashMap<(String, String), Rc<Result<Vec<Op>, (Kind, String)>>>,
+    dyn_memo: HashMap<(String, String), DynOps>,
     seen: HashSet<(u32, u32)>,
     cache_vp: (u32, u32),
     pub report: Report,
 }
+
+/// A compiled `var()` declaration, or why it failed.
+type DynOps = Rc<Result<Vec<Op>, (Kind, String)>>;
 
 /// (important, origin, specificity, source order, index in rule)
 type Key5 = (bool, u8, u32, u32, u32);
@@ -248,7 +252,11 @@ impl Styler {
                 (false, false, false, false)
             },
             if d.sibling { self.sib[i] } else { 0 },
-            if d.has { (self.sub[i], self.fs[i]) } else { (0, 0) },
+            if d.has {
+                (self.sub[i], self.fs[i])
+            } else {
+                (0, 0)
+            },
         );
         let attrs: Vec<&(String, String)> = node
             .attrs
@@ -257,7 +265,11 @@ impl Styler {
             .collect();
         hash2(&(
             &node.tag,
-            if sheet.uses_ids { node.id.as_ref() } else { None },
+            if sheet.uses_ids {
+                node.id.as_ref()
+            } else {
+                None
+            },
             &node.classes,
             attrs,
             &node.inline,
@@ -277,6 +289,7 @@ impl Styler {
         d
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn gather<'a>(
         sheet: &'a Sheet,
         mcx: &mut MatchCx,
@@ -361,7 +374,7 @@ impl Styler {
             c.vars = Rc::new(vars);
         }
         for h in hits {
-            let ops: Rc<Result<Vec<Op>, (Kind, String)>>;
+            let ops: DynOps;
             let slice: &[Op] = match &h.decl.val {
                 Val::Custom(_) => continue,
                 Val::Ops(o) => o,
@@ -402,10 +415,14 @@ impl Styler {
                 if let (Some(desc), true) = (floor, user)
                     && let Some(what) = floor_violation(op)
                 {
-                    let sel = h.rule.map_or("style attribute", |r| &*sheet.rules[r as usize].text);
+                    let sel = h
+                        .rule
+                        .map_or("style attribute", |r| &*sheet.rules[r as usize].text);
                     self.report.add(
                         Kind::Floor,
-                        format!("`{sel}` tried to {what} {desc}, an essential control; kept visible"),
+                        format!(
+                            "`{sel}` tried to {what} {desc}, an essential control; kept visible"
+                        ),
                     );
                     continue;
                 }
@@ -446,7 +463,10 @@ impl Styler {
             mcx.exhausted = false;
             self.report.add(
                 Kind::Limit,
-                format!("a selector was too expensive on `{}` and was cut off", doc.describe(i)),
+                format!(
+                    "a selector was too expensive on `{}` and was cut off",
+                    doc.describe(i)
+                ),
             );
         }
         let mut c = match node.parent {
@@ -561,16 +581,15 @@ impl Styler {
     }
 
     fn append_generated(&mut self, doc: &mut Doc, generated: Vec<(Id, Gen, Rc<GenStyle>)>) {
-        let mut have = doc.nodes.iter().filter(|n| n.generated.is_some()).count();
-        for (origin, which, gs) in generated {
-            if have >= MAX_GENERATED {
+        let have = doc.nodes.iter().filter(|n| n.generated.is_some()).count();
+        for (k, (origin, which, gs)) in generated.into_iter().enumerate() {
+            if have + k >= MAX_GENERATED {
                 self.report.add(
                     Kind::Limit,
                     format!("more than {MAX_GENERATED} generated elements: the rest was left out"),
                 );
                 break;
             }
-            have += 1;
             let id = doc.nodes.len();
             let depth = doc.nodes[origin].depth + 1;
             doc.nodes.push(crate::doc::Node {
@@ -627,6 +646,7 @@ impl Styler {
     }
 
     /// New interaction state (or a window size, or edited classes): restyle what can have changed.
+    #[allow(clippy::needless_range_loop)]
     pub fn restyle(
         &mut self,
         doc: &Doc,

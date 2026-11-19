@@ -68,7 +68,8 @@ impl Engine {
 
     /// Install (or remove) the user stylesheet; this also re-enables a sheet that was switched off for being slow.
     pub fn set_user_css(&mut self, css: Option<&str>) {
-        self.layered = css.map(|c| Rc::new(Sheet::layered(&[(&self.default_css, DEFAULT), (c, USER)])));
+        self.layered =
+            css.map(|c| Rc::new(Sheet::layered(&[(&self.default_css, DEFAULT), (c, USER)])));
         self.overruns = 0;
         self.disabled = false;
     }
@@ -123,10 +124,26 @@ impl Engine {
             let fonts = self.fonts.clone();
             let d = doc.clone();
             let budget = self.budget;
-            match guard(|| Scene::build(d, sheet, fonts, viewport, it, Some(budget), builders, measure)) {
+            match guard(|| {
+                Scene::build(
+                    d,
+                    sheet,
+                    fonts,
+                    viewport,
+                    it,
+                    Some(budget),
+                    builders,
+                    measure,
+                )
+            }) {
                 Ok(Ok(s)) => {
                     if s.timing.cascade + s.timing.layout > self.budget {
-                        self.overrun("the theme was slow to apply");
+                        // Built, but slow: kept for now; repeated slowness switches the theme off.
+                        self.overruns += 1;
+                        self.notices.push("the theme is slow to apply".into());
+                        if self.overruns >= MAX_OVERRUNS {
+                            self.switch_off();
+                        }
                     } else {
                         self.overruns = 0;
                     }
@@ -147,14 +164,19 @@ impl Engine {
     fn overrun(&mut self, why: &str) {
         self.overruns += 1;
         if !why.is_empty() {
-            self.notices.push(format!("{why}; the default look is shown"));
+            self.notices
+                .push(format!("{why}; the default look is shown"));
         }
         if self.overruns >= MAX_OVERRUNS {
-            self.disabled = true;
-            self.notices.push(format!(
-                "the theme was switched off after {MAX_OVERRUNS} slow or failed attempts (press {SAFE_CHORD} or set it again to retry)"
-            ));
+            self.switch_off();
         }
+    }
+
+    fn switch_off(&mut self) {
+        self.disabled = true;
+        self.notices.push(format!(
+            "the theme was switched off after {MAX_OVERRUNS} slow or failed attempts (press {SAFE_CHORD} or set it again to retry)"
+        ));
     }
 
     fn build_default(
@@ -169,7 +191,9 @@ impl Engine {
         for sheet in attempts {
             let d = doc.clone();
             let fonts = self.fonts.clone();
-            if let Ok(Ok(s)) = guard(|| Scene::build(d, sheet, fonts, viewport, it, None, builders, measure)) {
+            if let Ok(Ok(s)) =
+                guard(|| Scene::build(d, sheet, fonts, viewport, it, None, builders, measure))
+            {
                 return s;
             }
         }

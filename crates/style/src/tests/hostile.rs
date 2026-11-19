@@ -20,7 +20,9 @@ fn oversized_stylesheet_is_refused_whole() {
 
 #[test]
 fn too_many_rules_are_cut_off() {
-    let css: String = (0..6_000).map(|i| format!(".c{i} {{ width: 1px }}\n")).collect();
+    let css: String = (0..6_000)
+        .map(|i| format!(".c{i} {{ width: 1px }}\n"))
+        .collect();
     let sheet = Sheet::parse(&css);
     assert!(sheet.rule_count() <= sheet::MAX_RULES);
     assert!(sheet.report.count(Kind::Limit) >= 1);
@@ -53,7 +55,11 @@ fn pathological_selectors_end_within_the_time_budget() {
                .a ~ .a ~ .a ~ .a ~ .a ~ .a ~ .zzz { width: 4px }";
     let t = Instant::now();
     let s = scene(&d, css, (800.0, 600.0));
-    assert!(t.elapsed() < Duration::from_secs(5), "took {:?}", t.elapsed());
+    assert!(
+        t.elapsed() < Duration::from_secs(5),
+        "took {:?}",
+        t.elapsed()
+    );
     assert!(s.rects[0][3] > 0.0);
 }
 
@@ -64,8 +70,16 @@ fn wide_sibling_lists_stay_cheap() {
         d.add(0, "i.x");
     }
     let t = Instant::now();
-    let _ = scene(&d, ".x:nth-of-type(7n+1) { width: 1px } .x ~ .x ~ .x ~ .y { width: 2px } .x:last-of-type { height: 1px }", (800.0, 600.0));
-    assert!(t.elapsed() < Duration::from_secs(10), "took {:?}", t.elapsed());
+    let _ = scene(
+        &d,
+        ".x:nth-of-type(7n+1) { width: 1px } .x ~ .x ~ .x ~ .y { width: 2px } .x:last-of-type { height: 1px }",
+        (800.0, 600.0),
+    );
+    assert!(
+        t.elapsed() < Duration::from_secs(10),
+        "took {:?}",
+        t.elapsed()
+    );
 }
 
 #[test]
@@ -84,7 +98,11 @@ fn a_hostile_value_cannot_reach_taffy() {
 fn many_tracks_are_rejected() {
     let tracks = "1px ".repeat(300);
     let (d, ..) = small();
-    let s = scene(&d, &format!(".a {{ display: grid; grid-template-columns: {tracks} }}"), (800.0, 600.0));
+    let s = scene(
+        &d,
+        &format!(".a {{ display: grid; grid-template-columns: {tracks} }}"),
+        (800.0, 600.0),
+    );
     assert!(s.warnings().count(Kind::BadValue) >= 1);
 }
 
@@ -92,12 +110,38 @@ fn many_tracks_are_rejected() {
 fn garbage_input_never_panics() {
     let (d, ..) = small();
     for css in [
-        "}", "{", "{{{{", "a{", "a{b", "a{b:", "a{b:c", "a{b:c;;;}", "@media", "@media {", "@media (", "@supports", "@supports (",
-        "@@@", "a, , b { x: y }", "\u{0}", "a { width: calc( }", "a { width: calc(((((((((((((((((1px)))))))))))))))) }",
-        "a { background: linear-gradient( }", "a { background: linear-gradient(red) }", "a { transition: , , }",
-        "a { content: \"unterminated }", "a { font: }", "a { font: 12px }", "a:is(  ) { x: y }", "a:nth-child(  ) {}",
-        "a { transform: translateX( }", "a { box-shadow: 1px }", ":root { --x: var(--x) } a { width: var(--x) }",
-        "a { grid-area: / / / / }", "a { border-radius: 1px / 2px }", "a { margin: 1px 2px 3px 4px 5px }",
+        "}",
+        "{",
+        "{{{{",
+        "a{",
+        "a{b",
+        "a{b:",
+        "a{b:c",
+        "a{b:c;;;}",
+        "@media",
+        "@media {",
+        "@media (",
+        "@supports",
+        "@supports (",
+        "@@@",
+        "a, , b { x: y }",
+        "\u{0}",
+        "a { width: calc( }",
+        "a { width: calc(((((((((((((((((1px)))))))))))))))) }",
+        "a { background: linear-gradient( }",
+        "a { background: linear-gradient(red) }",
+        "a { transition: , , }",
+        "a { content: \"unterminated }",
+        "a { font: }",
+        "a { font: 12px }",
+        "a:is(  ) { x: y }",
+        "a:nth-child(  ) {}",
+        "a { transform: translateX( }",
+        "a { box-shadow: 1px }",
+        ":root { --x: var(--x) } a { width: var(--x) }",
+        "a { grid-area: / / / / }",
+        "a { border-radius: 1px / 2px }",
+        "a { margin: 1px 2px 3px 4px 5px }",
     ] {
         let s = scene(&d, css, (800.0, 600.0));
         assert!(s.rects[0][2] > 0.0, "{css:?}");
@@ -127,7 +171,11 @@ fn restyle_over_budget_ends_in_a_failure_not_a_hang() {
 #[test]
 fn a_selector_cut_off_by_its_step_budget_is_reported() {
     let d = deep(95);
-    let s = scene(&d, ".a .a .a .a .a .a .a .zzz { width: 1px } .a:has(.a .a .a .a .a .a .a .zzz) { width: 2px }", (800.0, 600.0));
+    let s = scene(
+        &d,
+        ".a .a .a .a .a .a .a .zzz { width: 1px } .a:has(.a .a .a .a .a .a .a .zzz) { width: 2px }",
+        (800.0, 600.0),
+    );
     // Whether or not this tree trips the budget, the report is consistent and the layout is sane.
     let _ = s.warnings().count(Kind::Limit);
     assert!(s.rects[0][3] > 0.0);

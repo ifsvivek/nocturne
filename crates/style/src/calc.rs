@@ -51,7 +51,10 @@ impl Expr {
                 let d = b.eval(font, cx);
                 if d == 0.0 { 0.0 } else { a.eval(font, cx) / d }
             }
-            Expr::Min(v) => v.iter().map(|e| e.eval(font, cx)).fold(f32::INFINITY, f32::min),
+            Expr::Min(v) => v
+                .iter()
+                .map(|e| e.eval(font, cx))
+                .fold(f32::INFINITY, f32::min),
             Expr::Max(v) => v
                 .iter()
                 .map(|e| e.eval(font, cx))
@@ -338,9 +341,7 @@ pub fn strip_env(v: &str) -> String {
             out.push_str(&rest[i..]);
             return out;
         };
-        let fb = args[..end]
-            .split_once(',')
-            .map_or("0px", |(_, f)| f.trim());
+        let fb = args[..end].split_once(',').map_or("0px", |(_, f)| f.trim());
         out.push_str(fb);
         rest = &args[end + 1..];
     }

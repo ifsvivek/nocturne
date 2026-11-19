@@ -37,6 +37,15 @@ impl Scene {
         }
     }
 
+    /// Jump the page to scroll offset `y` (clamped); virtual lists follow.
+    pub fn set_page_scroll(&mut self, y: f32, measure: &mut Measure) {
+        self.scroll.page_y = y;
+        self.clamp_scroll();
+        if !self.virt.containers().is_empty() {
+            self.layout_all(measure);
+        }
+    }
+
     /// A wheel or touchpad scroll over `target`: the innermost scroll container that can move on that axis takes it, else the
     /// page. Returns whether anything moved.
     pub fn wheel(&mut self, target: Option<Id>, dx: f32, dy: f32, measure: &mut Measure) -> bool {
@@ -132,12 +141,9 @@ impl Scene {
         let sh = if c.fixed { (0.0, 0.0) } else { sh };
         let [x, y, w, h] = self.rects[n];
         let rect = [x + sh.0, y + sh.1, w, h];
-        let clips = c.layout.overflow.x != Overflow::Visible || c.layout.overflow.y != Overflow::Visible;
-        let inner = if clips {
-            intersect(clip, rect)?
-        } else {
-            clip
-        };
+        let clips =
+            c.layout.overflow.x != Overflow::Visible || c.layout.overflow.y != Overflow::Visible;
+        let inner = if clips { intersect(clip, rect)? } else { clip };
         let off = self.scroll.offsets.get(&n).copied().unwrap_or_default();
         let child_sh = (sh.0 - off[0], sh.1 - off[1]);
         for &k in self.paint[n].iter().rev() {
@@ -217,6 +223,29 @@ impl Scene {
         [x + dx, y + dy, w, h]
     }
 
+    /// Rectangle in window coordinates (what is on screen right now), before clipping.
+    pub fn screen_rect(&self, i: Id) -> R {
+        let r = self.nav_rect(i);
+        // `nav_rect` puts fixed elements in page space too, so one shift covers both.
+        [r[0], r[1] - self.scroll.page_y, r[2], r[3]]
+    }
+
+    /// The part of the window where `i` can show: the window itself cut by every clipping ancestor; `None` when nothing of it
+    /// can be seen.
+    pub fn clip_of(&self, i: Id) -> Option<R> {
+        let mut clip = [0.0, 0.0, self.viewport.0, self.viewport.1];
+        let mut up = self.doc.nodes[i].parent;
+        while let Some(a) = up {
+            let c = self.style(a);
+            if c.layout.overflow.x != Overflow::Visible || c.layout.overflow.y != Overflow::Visible
+            {
+                clip = intersect(clip, self.screen_rect(a))?;
+            }
+            up = self.doc.nodes[a].parent;
+        }
+        Some(clip)
+    }
+
     /// Arrow keys: the nearest focusable element in that direction. A candidate that overlaps `from` on the other axis (same row
     /// or column) wins over one that is only in the cone; ties go to the closer one.
     pub fn spatial(&self, from: Id, dir: Dir) -> Option<Id> {
@@ -266,6 +295,9 @@ fn contains(r: R, p: (f32, f32)) -> bool {
 
 fn intersect(a: R, b: R) -> Option<R> {
     let (x0, y0) = (a[0].max(b[0]), a[1].max(b[1]));
-    let (x1, y1) = ((a[0] + a[2]).min(b[0] + b[2]), (a[1] + a[3]).min(b[1] + b[3]));
+    let (x1, y1) = (
+        (a[0] + a[2]).min(b[0] + b[2]),
+        (a[1] + a[3]).min(b[1] + b[3]),
+    );
     (x1 > x0 && y1 > y0).then_some([x0, y0, x1 - x0, y1 - y0])
 }

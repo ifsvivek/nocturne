@@ -71,17 +71,33 @@ fn spatial_uses_the_cone_when_nothing_overlaps() {
     assert_eq!(s.spatial(a, Dir::Down), Some(b));
     // Straight down from `far` has no one below; `b` is outside a narrow cone to the left, so Left finds it.
     assert_eq!(s.spatial(far, Dir::Down), None);
-    assert_eq!(s.spatial(far, Dir::Left), Some(a), "the same row wins over the lower, nearer one");
-    assert_eq!(s.spatial(b, Dir::Right), Some(far), "no one overlaps b's row: the cone finds far");
+    assert_eq!(
+        s.spatial(far, Dir::Left),
+        Some(a),
+        "the same row wins over the lower, nearer one"
+    );
+    assert_eq!(
+        s.spatial(b, Dir::Right),
+        Some(far),
+        "no one overlaps b's row: the cone finds far"
+    );
 }
 
 #[test]
 fn hidden_elements_are_skipped() {
     let (d, c) = grid(3, 1);
-    let s = scene(&d, &format!("{GRID_CSS} .cell:nth-child(2) {{ display: none }}"), (800.0, 600.0));
+    let s = scene(
+        &d,
+        &format!("{GRID_CSS} .cell:nth-child(2) {{ display: none }}"),
+        (800.0, 600.0),
+    );
     assert_eq!(s.spatial(c[0], Dir::Right), Some(c[2]));
     assert_eq!(s.focus_order(), vec![c[0], c[2]]);
-    let s = scene(&d, &format!("{GRID_CSS} .cell:nth-child(2) {{ visibility: hidden }}"), (800.0, 600.0));
+    let s = scene(
+        &d,
+        &format!("{GRID_CSS} .cell:nth-child(2) {{ visibility: hidden }}"),
+        (800.0, 600.0),
+    );
     assert_eq!(s.focus_order(), vec![c[0], c[2]]);
 }
 
@@ -96,11 +112,19 @@ fn focus_order_is_visual_and_tab_wraps() {
             c
         })
         .collect();
-    let s = scene(&d, ".row { display: flex; flex-direction: row-reverse }", (800.0, 600.0));
+    let s = scene(
+        &d,
+        ".row { display: flex; flex-direction: row-reverse }",
+        (800.0, 600.0),
+    );
     assert_eq!(s.focus_order(), vec![cs[2], cs[1], cs[0]]);
     assert_eq!(s.focus_next(None, true), Some(cs[2]));
     assert_eq!(s.focus_next(Some(cs[0]), true), Some(cs[2]), "wraps");
-    assert_eq!(s.focus_next(Some(cs[2]), false), Some(cs[0]), "wraps backwards");
+    assert_eq!(
+        s.focus_next(Some(cs[2]), false),
+        Some(cs[0]),
+        "wraps backwards"
+    );
     assert_eq!(s.focus_next(None, false), Some(cs[0]));
     // Only what the app marked is focusable, whatever the CSS says.
     let mut d2 = d.clone();
@@ -120,7 +144,11 @@ fn nav_rects_follow_container_and_page_scroll() {
             i
         })
         .collect();
-    let mut s = scene(&d, ".sc { height: 100px; overflow-y: auto } .i { display: block; height: 30px }", (800.0, 600.0));
+    let mut s = scene(
+        &d,
+        ".sc { height: 100px; overflow-y: auto } .i { display: block; height: 30px }",
+        (800.0, 600.0),
+    );
     let before = s.nav_rect(items[5])[1];
     s.wheel(Some(items[0]), 0.0, -90.0, &mut approx);
     assert_eq!(s.nav_rect(items[5])[1], before - 90.0);
@@ -139,14 +167,30 @@ fn hit_testing_honours_clipping_visibility_and_pointer_events() {
     let css = ".clip { width: 100px; height: 100px; overflow: hidden } .inner { width: 300px; height: 300px } .over { position: absolute; left: 0; top: 150px; width: 50px; height: 50px }";
     let s = scene(&d, css, (800.0, 600.0));
     assert_eq!(s.hit_test(10.0, 10.0), Some(inner));
-    assert_eq!(s.hit_test(150.0, 50.0), Some(0), "outside the clip falls through to the page");
+    assert_eq!(
+        s.hit_test(150.0, 50.0),
+        Some(0),
+        "outside the clip falls through to the page"
+    );
     assert_eq!(s.hit_test(10.0, 160.0), Some(over));
-    let s = scene(&d, &format!("{css} .over {{ pointer-events: none }}"), (800.0, 600.0));
+    let s = scene(
+        &d,
+        &format!("{css} .over {{ pointer-events: none }}"),
+        (800.0, 600.0),
+    );
     assert_eq!(s.hit_test(10.0, 160.0), Some(0));
-    let s = scene(&d, &format!("{css} .over {{ visibility: hidden }}"), (800.0, 600.0));
+    let s = scene(
+        &d,
+        &format!("{css} .over {{ visibility: hidden }}"),
+        (800.0, 600.0),
+    );
     assert_eq!(s.hit_test(10.0, 160.0), Some(0));
     // z-index decides which of two overlapping boxes is on top.
-    let s = scene(&d, &format!("{css} .over {{ top: 10px; z-index: -1 }}"), (800.0, 600.0));
+    let s = scene(
+        &d,
+        &format!("{css} .over {{ top: 10px; z-index: -1 }}"),
+        (800.0, 600.0),
+    );
     assert_eq!(s.hit_test(10.0, 20.0), Some(inner));
 }
 

@@ -10,6 +10,7 @@ mod floor;
 mod hostile;
 mod layout;
 mod nav;
+mod perf;
 mod selectors;
 mod spec;
 mod virt;

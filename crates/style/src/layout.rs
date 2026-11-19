@@ -88,7 +88,9 @@ fn node_measure(
         let want = |d: Dimension, k: Option<f32>, a: AvailableSpace| {
             k.or(match (d.expand(), a) {
                 (taffy::style::ExpandedDimension::Length(l), _) => Some(l),
-                (taffy::style::ExpandedDimension::Percent(_), AvailableSpace::Definite(v)) => Some(v),
+                (taffy::style::ExpandedDimension::Percent(_), AvailableSpace::Definite(v)) => {
+                    Some(v)
+                }
                 _ => None,
             })
         };
@@ -97,10 +99,22 @@ fn node_measure(
             height: want(st.height, known.height, avail.height),
         };
         return match (known.width, known.height) {
-            (Some(w), Some(h)) => Size { width: w, height: h },
-            (Some(w), None) => Size { width: w, height: w * ih / iw },
-            (None, Some(h)) => Size { width: h * iw / ih, height: h },
-            _ => Size { width: iw, height: ih },
+            (Some(w), Some(h)) => Size {
+                width: w,
+                height: h,
+            },
+            (Some(w), None) => Size {
+                width: w,
+                height: w * ih / iw,
+            },
+            (None, Some(h)) => Size {
+                width: h * iw / ih,
+                height: h,
+            },
+            _ => Size {
+                width: iw,
+                height: ih,
+            },
         };
     }
     let Some(t) = &node.text else {
@@ -184,6 +198,9 @@ pub struct Scene {
     /// Origin (page coordinates) of each virtual container's item area.
     pub(crate) vorigin: HashMap<Id, (f32, f32)>,
     pub(crate) tree_dirty: bool,
+    /// Nodes whose layout style changed since the last layout: their Taffy styles are replaced in place (no rebuild).
+    style_dirty: Vec<Id>,
+    needs_layout: bool,
     touched: Vec<Id>,
     budget: Option<Duration>,
     floor_min: HashSet<Id>,
@@ -208,6 +225,7 @@ fn px(v: f32) -> Dimension {
 
 impl Scene {
     /// Style and lay out a tree. Fails (without touching anything else) when the time budget runs out.
+    #[allow(clippy::too_many_arguments)]
     pub fn build(
         mut doc: Doc,
         sheet: Rc<Sheet>,
@@ -263,6 +281,8 @@ impl Scene {
             vwrap: HashMap::new(),
             vorigin: HashMap::new(),
             tree_dirty: true,
+            style_dirty: vec![],
+            needs_layout: true,
             touched: vec![],
             budget,
             floor_min: HashSet::new(),
@@ -435,7 +455,9 @@ impl Scene {
             let mut items: Vec<NodeId> = vec![];
             for &k in &self.kids[i] {
                 let kn = &self.doc.nodes[k];
-                if self.st.styles[k].fixed && self.st.styles[k].layout.position == Position::Absolute {
+                if self.st.styles[k].fixed
+                    && self.st.styles[k].layout.position == Position::Absolute
+                {
                     fixed.push(nodes[k]);
                 } else if kn.virtual_item {
                     items.push(nodes[k]);
@@ -510,7 +532,15 @@ impl Scene {
         for _ in 0..4 {
             if self.tree_dirty || self.nodes.len() != self.doc.len() {
                 self.build_tree();
+                self.style_dirty.clear();
+            } else {
+                // Only some styles changed: replace them in the Taffy tree; clean subtrees keep their cached layout.
+                for id in std::mem::take(&mut self.style_dirty) {
+                    let st = self.style_for(id);
+                    let _ = self.tree.set_style(self.nodes[id], st);
+                }
             }
+            self.needs_layout = false;
             self.run_layout(measure);
             self.collect(measure);
             let mut again = self.enforce_floor_sizes();
@@ -539,12 +569,21 @@ impl Scene {
             let l = *self.tree.layout(self.nodes[i]).expect("layout");
             let node = &self.doc.nodes[i];
             let (ox, oy) = match node.parent {
-                _ if self.st.styles[i].fixed && self.st.styles[i].layout.position == Position::Absolute => (0.0, 0.0),
+                _ if self.st.styles[i].fixed
+                    && self.st.styles[i].layout.position == Position::Absolute =>
+                {
+                    (0.0, 0.0)
+                }
                 Some(p) if node.virtual_item => self.vorigin.get(&p).copied().unwrap_or((0.0, 0.0)),
                 Some(p) => (self.rects[p][0], self.rects[p][1]),
                 None => (0.0, 0.0),
             };
-            self.rects[i] = [ox + l.location.x, oy + l.location.y, l.size.width, l.size.height];
+            self.rects[i] = [
+                ox + l.location.x,
+                oy + l.location.y,
+                l.size.width,
+                l.size.height,
+            ];
             self.content[i] = [
                 l.size.width + l.scroll_width(),
                 l.size.height + l.scroll_height(),
@@ -575,7 +614,12 @@ impl Scene {
             if ts.needs_block() {
                 let [_, _, w, _] = self.rects[i];
                 let ins = self.insets[i];
-                let b = text::block(&shown(t, c), &ts, Some((w - ins[0] - ins[2]).max(0.0)), measure);
+                let b = text::block(
+                    &shown(t, c),
+                    &ts,
+                    Some((w - ins[0] - ins[2]).max(0.0)),
+                    measure,
+                );
                 self.blocks.insert(i, Rc::new(b));
             }
         }
@@ -593,7 +637,10 @@ impl Scene {
             }
             let [_, _, w, h] = self.rects[i];
             if (w < FLOOR_MIN_PX || h < FLOOR_MIN_PX) && self.floor_min.insert(i) {
-                self.floor_note(i, "made it smaller than 24 px; it was given a 24 px minimum");
+                self.floor_note(
+                    i,
+                    "made it smaller than 24 px; it was given a 24 px minimum",
+                );
                 again = true;
             }
         }
@@ -603,8 +650,10 @@ impl Scene {
     fn floor_note(&mut self, i: Id, what: &str) {
         if self.floor_reported.insert(i) || what.contains("moved") {
             let d = self.doc.describe(i);
-            self.report
-                .add(Kind::Floor, format!("a rule {what} on `{d}`, an essential control"));
+            self.report.add(
+                Kind::Floor,
+                format!("a rule {what} on `{d}`, an essential control"),
+            );
         }
     }
 
@@ -622,8 +671,10 @@ impl Scene {
             let mut up = Some(i);
             while let Some(a) = up {
                 let c = &self.st.styles[a];
-                if a != 0 && a != i && (c.layout.overflow.x != taffy::style::Overflow::Visible
-                    || c.layout.overflow.y != taffy::style::Overflow::Visible)
+                if a != 0
+                    && a != i
+                    && (c.layout.overflow.x != taffy::style::Overflow::Visible
+                        || c.layout.overflow.y != taffy::style::Overflow::Visible)
                 {
                     clipped = true;
                 }
@@ -645,7 +696,8 @@ impl Scene {
             if vis(x, w, vw) * vis(y, h, ymax) >= 0.5 {
                 continue;
             }
-            let fit = |a: f32, len: f32, max: f32| -> f32 { a.clamp(0.0, (max - len).max(0.0)) - a };
+            let fit =
+                |a: f32, len: f32, max: f32| -> f32 { a.clamp(0.0, (max - len).max(0.0)) - a };
             let (dx, dy) = (fit(x, w, vw), fit(y, h, ymax));
             self.shift_subtree(i, dx, dy);
             self.floor_note(i, "moved it off screen; it was moved back into view");
@@ -670,14 +722,27 @@ impl Scene {
             return t.elapsed();
         }
         self.viewport = viewport;
+        // The roots follow the window whatever the sheet does: Taffy's cache keys on the available space.
+        let vp = Style {
+            display: Display::Block,
+            size: Size {
+                width: px(viewport.0),
+                height: px(viewport.1),
+            },
+            ..Style::default()
+        };
+        let _ = self.tree.set_style(self.vp_node, vp);
+        self.style_dirty.push(0);
+        self.needs_layout = true;
         if self.sheet.uses_viewport {
             let f = flags(&self.doc, &self.interaction);
             if self.restyle_with(&f, Instant::now(), measure).is_err() {
-                self.report
-                    .add(Kind::Limit, "restyle after a resize ran over its time budget");
+                self.report.add(
+                    Kind::Limit,
+                    "restyle after a resize ran over its time budget",
+                );
             }
         } else {
-            self.tree_dirty = true;
             self.layout_all(measure);
         }
         t.elapsed()
@@ -742,19 +807,27 @@ impl Scene {
             up.relaid = true;
             return Ok(up);
         }
-        let mut lists = false;
+        let mut paint_lists = false;
         for (id, old) in &r.changed {
             let new = self.st.styles[*id].clone();
             self.anims.changed(*id, old, &new, now);
-            if layout_affecting(old, &new) {
+            if old.order != new.order || old.fixed != new.fixed {
+                // The shape of the Taffy tree (child order, the fixed layer) changed.
+                self.tree_dirty = true;
+            } else if layout_affecting(old, &new) {
+                self.style_dirty.push(*id);
+                self.needs_layout = true;
+            }
+            paint_lists |= old.z != new.z;
+        }
+        if paint_lists && !self.tree_dirty {
+            self.build_kids();
+        }
+        if self.tree_dirty || self.needs_layout || self.fonts_gen != self.fonts.generation() {
+            if self.fonts_gen != self.fonts.generation() {
+                // New faces change every text measurement.
                 self.tree_dirty = true;
             }
-            lists |= old.order != new.order || old.z != new.z || old.fixed != new.fixed;
-        }
-        if lists {
-            self.tree_dirty = true;
-        }
-        if self.tree_dirty || self.fonts_gen != self.fonts.generation() {
             self.fonts_gen = self.fonts.generation();
             self.layout_all(measure);
             up.relaid = true;

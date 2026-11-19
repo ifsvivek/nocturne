@@ -141,8 +141,14 @@ impl Doc {
     /// Mark an element the theme cannot take away; also exposes `[data-essential]` to selectors.
     pub fn essential(&mut self, n: Id) -> Id {
         self.nodes[n].essential = true;
-        if !self.nodes[n].attrs.iter().any(|(k, _)| k == "data-essential") {
-            self.nodes[n].attrs.push(("data-essential".into(), String::new()));
+        if !self.nodes[n]
+            .attrs
+            .iter()
+            .any(|(k, _)| k == "data-essential")
+        {
+            self.nodes[n]
+                .attrs
+                .push(("data-essential".into(), String::new()));
         }
         n
     }

@@ -58,7 +58,9 @@ impl State {
     pub fn new(doc: &Doc, builders: &Builders) -> Self {
         Self {
             builders: builders.clone(),
-            containers: (0..doc.len()).filter(|&i| doc.nodes[i].virt.is_some()).collect(),
+            containers: (0..doc.len())
+                .filter(|&i| doc.nodes[i].virt.is_some())
+                .collect(),
             ..Self::default()
         }
     }
@@ -340,11 +342,21 @@ impl Scene {
             vp: self.viewport,
             budget: crate::cascade::Budget::unlimited(),
         };
-        if self.st.style_range(&mut self.doc, &mut cx, &f, base).is_err() {
+        if self
+            .st
+            .style_range(&mut self.doc, &mut cx, &f, base)
+            .is_err()
+        {
             return false;
         }
         for (c, want, g) in plan {
-            self.virt.info.insert(c, Info { range: want, grid: g });
+            self.virt.info.insert(
+                c,
+                Info {
+                    range: want,
+                    grid: g,
+                },
+            );
         }
         self.tree_dirty = true;
         true

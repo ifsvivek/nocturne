@@ -11,7 +11,13 @@ fn doc() -> Doc {
 }
 
 fn build(e: &mut Engine, d: &Doc) -> Scene {
-    e.build(d, (800.0, 600.0), Interaction::default(), &Builders::new(), &mut approx)
+    e.build(
+        d,
+        (800.0, 600.0),
+        Interaction::default(),
+        &Builders::new(),
+        &mut approx,
+    )
 }
 
 #[test]
@@ -68,7 +74,10 @@ fn a_panic_in_the_engine_falls_back_to_the_default_look() {
     std::panic::set_hook(hook);
     assert!(s.rects[0][2] > 0.0);
     let notes = e.take_notices();
-    assert!(notes.iter().any(|n| n.contains("layout engine fail")), "{notes:?}");
+    assert!(
+        notes.iter().any(|n| n.contains("layout engine fail")),
+        "{notes:?}"
+    );
     assert!(e.take_notices().is_empty());
 }
 
@@ -83,11 +92,17 @@ fn a_slow_theme_falls_back_and_is_switched_off_after_three_overruns() {
     }
     for round in 1..=3 {
         let s = build(&mut e, &d);
-        assert_eq!(s.rects[1][2], 40.0, "the default look is shown (round {round})");
+        assert_eq!(
+            s.rects[1][2], 40.0,
+            "the default look is shown (round {round})"
+        );
     }
     assert!(!e.user_sheet_active());
     let notes = e.take_notices();
-    assert!(notes.iter().any(|n| n.contains("switched off")), "{notes:?}");
+    assert!(
+        notes.iter().any(|n| n.contains("switched off")),
+        "{notes:?}"
+    );
     // Setting a theme again re-enables it (with a sane budget).
     e.set_budget(Duration::from_secs(5));
     e.set_user_css(Some(".x { width: 70px }"));
@@ -98,7 +113,9 @@ fn a_slow_theme_falls_back_and_is_switched_off_after_three_overruns() {
 fn fonts_registered_at_runtime_reach_the_scene() {
     let mut e = Engine::new("");
     e.fonts_mut().set_installed(["Noto Sans".to_string()]);
-    e.set_user_css(Some("div { font-family: 'Inter', 'Noto Sans', sans-serif }"));
+    e.set_user_css(Some(
+        "div { font-family: 'Inter', 'Noto Sans', sans-serif }",
+    ));
     let mut d = Doc::new("page");
     let t = d.add(0, "div");
     d.text(t, "x");
@@ -115,5 +132,8 @@ fn warnings_survive_the_engine() {
     e.set_user_css(Some(".x { frob: 1; cursor: pointer }"));
     let s = build(&mut e, &doc());
     let r = s.warnings();
-    assert_eq!((r.count(Kind::UnsupportedProperty), r.count(Kind::NoEffect)), (1, 1));
+    assert_eq!(
+        (r.count(Kind::UnsupportedProperty), r.count(Kind::NoEffect)),
+        (1, 1)
+    );
 }
