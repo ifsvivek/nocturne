@@ -212,6 +212,45 @@ fn tr(r: [f32; 4], o: Point) -> Rectangle {
     Rectangle::new(Point::new(o.x + r[0], o.y + r[1]), Size::new(r[2], r[3]))
 }
 
+/// Iced draws a layer's quads first, then its images, then its text, and a layer created later is above an earlier one. A page where a quad must sit above an image (a scrim over a backdrop, a badge over a poster) is therefore painted in passes, one layer each: pass `2k` holds the quads and text that come after `k` images in paint order and before the next one, pass `2k + 1` holds image `k`. `ord[n]` is the number of images before node `n` in paint order, `end[n]` the number after its subtree.
+struct Pass<'a> {
+    k: usize,
+    ord: &'a [u32],
+    end: &'a [u32],
+}
+
+fn image_order<M>(w: &Styled<'_, M>) -> (Vec<u32>, Vec<u32>, usize) {
+    let s = w.scene;
+    let n = s.doc.len();
+    let mut ord = vec![0u32; n];
+    let mut end = vec![0u32; n];
+    let mut count = 0u32;
+    // Depth-first over the paint order (an explicit stack: trees are deep but bounded).
+    let mut stack: Vec<(Id, bool)> = vec![(0, false)];
+    while let Some((i, leaving)) = stack.pop() {
+        if leaving {
+            end[i] = count;
+            continue;
+        }
+        ord[i] = count;
+        if s.style(i).layout.display == Display::None || s.doc.nodes[i].virtual_proto {
+            end[i] = count;
+            continue;
+        }
+        let node = &s.doc.nodes[i];
+        if let (Some(img), Some(images)) = (node.image, w.images)
+            && images.contains_key(&img.id)
+        {
+            count += 1;
+        }
+        stack.push((i, true));
+        for &k in s.paint[i].iter().rev() {
+            stack.push((k, false));
+        }
+    }
+    (ord, end, count as usize)
+}
+
 impl<M> Styled<'_, M> {
     #[allow(clippy::too_many_arguments)]
     fn paint(
@@ -227,12 +266,22 @@ impl<M> Styled<'_, M> {
         o: Point,
         sh: (f32, f32),
         clip: Rectangle,
+        ps: &Pass,
     ) {
         let s = self.scene;
         let c = s.style(n);
         if c.layout.display == Display::None || s.doc.nodes[n].virtual_proto {
             return;
         }
+        // This node's subtree has nothing in this pass.
+        let (lo, hi) = (2 * ps.ord[n] as usize, 2 * ps.end[n] as usize);
+        if ps.k < lo || ps.k > hi {
+            return;
+        }
+        let draws_image = s.doc.nodes[n]
+            .image
+            .is_some_and(|i| self.images.is_some_and(|m| m.contains_key(&i.id)));
+        let here = ps.k == lo;
         let eff = s.eff(n);
         let opacity = eff.opacity.unwrap_or(c.opacity);
         // Fixed elements ignore the page and container scroll.
@@ -254,11 +303,18 @@ impl<M> Styled<'_, M> {
         let oy = rect.y + rect.height * xf.origin.1;
         let body = |r: &mut iced::Renderer| {
             if c.visible {
-                self.paint_box(r, n, rect, opacity, &eff, clip);
-                if let Some(&k) = self.by_node.get(&n) {
-                    self.paint_slot(tree, layout, r, th, style, cursor, viewport, k, n);
+                if here {
+                    self.paint_box(r, n, rect, opacity, &eff, clip);
+                    if let Some(&k) = self.by_node.get(&n) {
+                        self.paint_slot(tree, layout, r, th, style, cursor, viewport, k, n);
+                    }
                 }
-                self.paint_content(r, n, rect, opacity, &eff, clip);
+                // An image is its own pass; the text of a node is drawn with the quads before it.
+                if draws_image && ps.k == lo + 1 {
+                    self.paint_content(r, n, rect, opacity, &eff, clip, true);
+                } else if here {
+                    self.paint_content(r, n, rect, opacity, &eff, clip, false);
+                }
             }
             let kids = &s.paint[n];
             if !kids.is_empty() {
@@ -270,7 +326,7 @@ impl<M> Styled<'_, M> {
                 let go = |r: &mut iced::Renderer, clip: Rectangle| {
                     for &k in kids {
                         self.paint(
-                            tree, layout, r, th, style, cursor, viewport, k, o, child_sh, clip,
+                            tree, layout, r, th, style, cursor, viewport, k, o, child_sh, clip, ps,
                         );
                     }
                 };
@@ -281,7 +337,7 @@ impl<M> Styled<'_, M> {
                     None => go(r, clip),
                 }
             }
-            if c.visible {
+            if c.visible && ps.k == hi {
                 self.paint_after(r, n, rect, opacity, &eff);
             }
         };
@@ -504,6 +560,7 @@ impl<M> Styled<'_, M> {
     }
 
     /// Image and text.
+    #[allow(clippy::too_many_arguments)]
     fn paint_content(
         &self,
         r: &mut iced::Renderer,
@@ -512,13 +569,18 @@ impl<M> Styled<'_, M> {
         opacity: f32,
         eff: &nocturne_style::Eff,
         clip: Rectangle,
+        image_pass: bool,
     ) {
         let s = self.scene;
         let c = s.style(n);
         let node = &s.doc.nodes[n];
-        if let (Some(img), Some(images)) = (node.image, self.images)
-            && let Some(handle) = images.get(&img.id)
-        {
+        if image_pass {
+            let (Some(img), Some(images)) = (node.image, self.images) else {
+                return;
+            };
+            let Some(handle) = images.get(&img.id) else {
+                return;
+            };
             let [x, y, w, h] = paint::fit_rect(
                 c.fit,
                 c.object_pos,
@@ -535,6 +597,7 @@ impl<M> Styled<'_, M> {
             if let Some(vis) = inter(clip, rect) {
                 r.draw_image(image, fitted, vis);
             }
+            return;
         }
         let Some(t) = &node.text else { return };
         let [il, it, ir, ib] = s.insets[n];
@@ -840,8 +903,8 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
         // The safe-mode chord comes before everything, slots included.
         if let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event
             && modifiers.control()
-            && modifiers.alt()
-            && matches!(key.as_ref(), Key::Character(c) if c.eq_ignore_ascii_case("t"))
+            && modifiers.shift()
+            && matches!(key.as_ref(), Key::Character("0" | ")"))
         {
             shell.publish((self.on_event)(StyledEvent::SafeMode));
             shell.capture_event();
@@ -980,21 +1043,30 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
         let Some(vis) = inter(b, *viewport) else {
             return;
         };
-        r.with_layer(vis, |r| {
-            self.paint(
-                tree,
-                layout,
-                r,
-                th,
-                style,
-                cursor,
-                viewport,
-                0,
-                b.position(),
-                (0.0, -self.scene.scroll.page_y),
-                vis,
-            );
-        });
+        let (ord, end, images) = image_order(self);
+        for k in 0..=2 * images {
+            let ps = Pass {
+                k,
+                ord: &ord,
+                end: &end,
+            };
+            r.with_layer(vis, |r| {
+                self.paint(
+                    tree,
+                    layout,
+                    r,
+                    th,
+                    style,
+                    cursor,
+                    viewport,
+                    0,
+                    b.position(),
+                    (0.0, -self.scene.scroll.page_y),
+                    vis,
+                    &ps,
+                );
+            });
+        }
     }
 
     fn overlay<'b>(

@@ -5,7 +5,7 @@
 //! - `NOCTURNE_ENGINE_THEME=streaming|videosite|rail|dock` (a bundled stylesheet) or `NOCTURNE_ENGINE_CSS=<file>` (re-read when it changes)
 //! - `NOCTURNE_ENGINE_VIRTUAL=<n>` a library grid of n items instead of Home, `NOCTURNE_ENGINE_HOLE=1` a video-hole slot
 //! - `NOCTURNE_ENGINE_SCROLL_Y=<px>` initial page scroll, `NOCTURNE_ENGINE_HOVER=<class>:<n>` pretend the pointer is over the n-th such element
-//! - `NOCTURNE_ENGINE_STATS=1` print restyle and layout timings, `NOCTURNE_SAFE_THEME=1` start in safe mode (Ctrl+Alt+T toggles)
+//! - `NOCTURNE_ENGINE_STATS=1` print restyle and layout timings, `NOCTURNE_SAFE_THEME=1` start in safe mode (Ctrl+Shift+0 toggles)
 //! - `NOCTURNE_SNAP=/tmp/x.png`, `NOCTURNE_SNAP_AFTER_MS=1500,3000` window captures (debug builds), `NOCTURNE_PREVIEW_SIZE=1920x1080`
 use super::hole::hole;
 use super::styled::{Nav, Styled, StyledEvent, font_for};
@@ -45,7 +45,7 @@ fn env(k: &str) -> Option<String> {
 }
 
 /// The real text shaper (cosmic-text through Iced); the cache sits in front of it in `Preview::measure`.
-fn shape(text: &str, st: &TextStyle, max: Option<f32>) -> (f32, f32) {
+pub(crate) fn shape(text: &str, st: &TextStyle, max: Option<f32>) -> (f32, f32) {
     let p = Paragraph::with_text(Text {
         content: text,
         bounds: Size::new(max.unwrap_or(f32::INFINITY), f32::INFINITY),
