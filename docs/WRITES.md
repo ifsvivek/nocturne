@@ -41,10 +41,12 @@ By default NOCTURNE only reads. One setting, **Settings > Allow NOCTURNE to chan
 - `smart.json`: smart collection rules
 - `downloads.json`: the offline-copy queue (the files themselves go to the folder you chose)
 - `preferred.json`: source preference per title
-- `$XDG_CONFIG_HOME/nocturne/`: `settings.toml`, `sources.toml`, `accounts.toml`, `servers.toml` (no secrets)
+- `$XDG_CONFIG_HOME/nocturne/`: `settings.toml`, `sources.toml`, `themes.toml` (saved themes: CSS text and the per-server assignment), `accounts.toml`, `servers.toml` (no secrets)
 - keyring: server tokens, the per-server extra header value, TMDB / OpenSubtitles keys and logins, the Trakt client id and tokens
 
 Local media files are never modified, moved, renamed or deleted by NOCTURNE, whatever the setting says; scanning only reads.
+
+Not server changes: the daily update check (one GET of a small manifest from the NOCTURNE website, switchable in Settings > Updates) and a downloaded update never involve your media servers. Server UI reads (a server's home sections, library order, branding CSS and login disclaimer) are plain GETs and need no setting; only the home-sections editor writes (the row above).
 
 With the switch off, the controls above stay visible but dimmed with the tooltip "Turn on server changes in Settings", the keyboard shortcuts show a short notice, and the Admin section is view only with a banner linking to the setting.
 
