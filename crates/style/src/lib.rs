@@ -44,6 +44,23 @@ pub const THEMES: &[(&str, &str)] = &[
 
 /// Does this stylesheet use the vocabulary only the element trees emit (classes of the detail page, the player's bar, the section titles...)? Stage-1 themes (Marquee, Feed, Classic and the like) keep running through the tree builders' translator; a sheet like this one is layered over the default sheet as it is. Interim rule until the Theme Studio marks a theme as an engine theme.
 pub fn is_engine_sheet(css: &str) -> bool {
+    // The answer for a Jellyfin sheet needs a translation: remember the last sheet asked about (the app asks on every update).
+    thread_local!(static LAST: std::cell::Cell<Option<(u64, bool)>> = const { std::cell::Cell::new(None) });
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    css.hash(&mut h);
+    let k = h.finish();
+    if let Some((p, v)) = LAST.get()
+        && p == k
+    {
+        return v;
+    }
+    let v = engine_sheet(css);
+    LAST.set(Some((k, v)));
+    v
+}
+
+fn engine_sheet(css: &str) -> bool {
     // `.detail-title`, `.detail-text`, `.detail-backdrop` and `.section-latest` are stage-1 names and do not count.
     const MARKS: &[&str] = &[
         ".detail-hero",
@@ -76,7 +93,7 @@ pub fn is_engine_sheet(css: &str) -> bool {
         ".round",
         ".tab",
     ];
-    MARKS.iter().any(|m| css.contains(m))
+    MARKS.iter().any(|m| css.contains(m)) || compat::translate(css).1.applied
 }
 
 /// Built-in starting points for the Themes page: engine stylesheets written on the vocabulary the tree builders emit.

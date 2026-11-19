@@ -257,6 +257,7 @@ impl App {
                 "notes": r.map_or_else(Vec::new, |r| r.notes.iter().map(|n| format!("{}: {}", n.url, n.reason)).collect()),
             },
             "fonts": self.themes.fonts_for(css).iter().map(|f| f.family.clone()).collect::<Vec<_>>(),
+            "engine": engine_report(css),
         })
         .to_string()
     }
@@ -1164,4 +1165,15 @@ fn ago(at: u64) -> String {
         3600..=86399 => format!("{} h ago", d / 3600),
         _ => format!("{} days ago", d / 86400),
     }
+}
+
+/// The theme engine's numbers for the report (null in a build without the engine).
+#[cfg(feature = "theme-engine")]
+fn engine_report(css: &str) -> serde_json::Value {
+    super::engine_ui::theme_report(css)
+}
+
+#[cfg(not(feature = "theme-engine"))]
+fn engine_report(_: &str) -> serde_json::Value {
+    serde_json::Value::Null
 }

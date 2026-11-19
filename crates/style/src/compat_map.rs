@@ -669,6 +669,7 @@ pub static DERIVED: &[(&str, &[(&str, &str)])] = &[
     (
         "--nocturne-frame",
         &[
+            ("--nocturne-ink", "{v}"),
             ("--nocturne-header-bg", "alpha({v}, 0.9)"),
             ("--nocturne-surface", "mix({v}, var(--nocturne-text), 0.04)"),
             ("--nocturne-raised", "mix({v}, var(--nocturne-text), 0.08)"),
