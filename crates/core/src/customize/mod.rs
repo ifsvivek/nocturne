@@ -3,9 +3,14 @@
 //! that was not understood. No browser engine, no network, no code execution; see
 //! `docs/dev/CUSTOMIZATION_PLAN.md` for the token model, selector vocabulary and mapping table.
 mod css;
+mod layout;
 mod store;
 mod value;
 
+pub use layout::{
+    Aspect, Card, CardImage, Controls, Header, HeaderPosition, Hero, HeroStyle, Layout, Page,
+    Parts, Row, RowLayout, Scope, Section, Shadow, Text, TextTransform, TitlePosition, Visibility,
+};
 pub use store::{Saved, Store, content_type_ok, fetch, validate_url};
 pub use value::{Color, Fill};
 
@@ -259,6 +264,8 @@ impl Theme {
 #[derive(Debug, Default, PartialEq)]
 pub struct Parsed {
     pub theme: Theme,
+    /// Layout of the named parts; empty for a colour-only stylesheet.
+    pub layout: Layout,
     /// Sorted by position.
     pub warnings: Vec<Warning>,
     /// Warnings beyond the cap of 500 that were counted but not kept.
@@ -282,10 +289,11 @@ pub fn parse(source: &str) -> Result<Parsed, Error> {
     let mut w = Warnings::new(&chars);
     css::blank_comments(&mut chars, &mut w);
     let rules = css::parse(&chars, &mut w);
-    let theme = translate(&rules, &mut w);
+    let (theme, layout) = translate(&rules, &mut w);
     w.list.sort_by_key(|x| (x.line, x.col));
     Ok(Parsed {
         theme,
+        layout,
         warnings: w.list,
         dropped_warnings: w.dropped,
     })
@@ -323,7 +331,7 @@ fn classify(sel: &str) -> Result<(Role, bool), String> {
             "header" | "skinHeader" => Role::Header,
             "button" | "emby-button" => Role::Button,
             "panel" | "dialog" | "formDialog" => Role::Panel,
-            "backdrop" | "backdropImage" | "itemBackdrop" => Role::Backdrop,
+            "backdrop" | "detail-backdrop" | "backdropImage" | "itemBackdrop" => Role::Backdrop,
             _ => return Err("not a NOCTURNE or known jellyfin-web class".into()),
         };
         return Ok((role, false));
@@ -459,7 +467,9 @@ fn unsupported_reason(prop: &str) -> String {
         "transform",
         "content",
     ]) {
-        format!("`{prop}`: layout properties are not supported; NOCTURNE keeps its native layout")
+        format!(
+            "`{prop}`: arbitrary layout is not supported; set it through the parts (`.row`, `.card`, `.hero`, `.header`)"
+        )
     } else {
         format!("`{prop}` is not supported here")
     }
@@ -686,14 +696,13 @@ fn set(t: &mut Theme, tok: &str, v: &str, notes: &mut Notes) -> Result<(), Strin
     Ok(())
 }
 
-fn apply(
-    t: &mut Theme,
-    tok: &str,
+/// Substitute `var()` and refuse `url()`; on failure the warning is already recorded.
+fn resolved(
     raw: &str,
     pos: usize,
     vars: &HashMap<String, String>,
     w: &mut Warnings,
-) {
+) -> Option<String> {
     let v = match resolve(raw, vars, &mut vec![]) {
         Ok(v) => v,
         Err(e) => {
@@ -713,7 +722,7 @@ fn apply(
                 VarErr::Syntax => (WarningKind::SyntaxError, "malformed var()".into()),
             };
             w.push(pos, kind, msg);
-            return;
+            return None;
         }
     };
     if v.contains("url(") {
@@ -722,8 +731,22 @@ fn apply(
             WarningKind::RemoteResource,
             "url() resources are not fetched; the declaration was ignored",
         );
-        return;
+        return None;
     }
+    Some(v)
+}
+
+fn apply(
+    t: &mut Theme,
+    tok: &str,
+    raw: &str,
+    pos: usize,
+    vars: &HashMap<String, String>,
+    w: &mut Warnings,
+) {
+    let Some(v) = resolved(raw, pos, vars, w) else {
+        return;
+    };
     let mut notes = vec![];
     if let Err(msg) = set(t, tok, &v, &mut notes) {
         w.push(pos, WarningKind::UnsupportedValue, msg);
@@ -733,7 +756,7 @@ fn apply(
     }
 }
 
-fn translate(rules: &[css::Rule], w: &mut Warnings) -> Theme {
+fn translate(rules: &[css::Rule], w: &mut Warnings) -> (Theme, Layout) {
     // Pass 1: custom properties from global-scope rules, last wins.
     let mut vars: HashMap<String, String> = HashMap::new();
     let classified: Vec<Vec<Result<(Role, bool), String>>> = rules
@@ -749,48 +772,77 @@ fn translate(rules: &[css::Rule], w: &mut Warnings) -> Theme {
     }
     // Pass 2: apply in source order.
     let mut t = Theme::default();
+    let mut lay = Layout::default();
     for (rule, sels) in rules.iter().zip(&classified) {
         let mut roles: Vec<Role> = vec![];
+        let mut targets: Vec<layout::Target> = vec![];
         let mut global = false;
+        let mut bad: Vec<(usize, &str, String)> = vec![];
         for ((text, pos), c) in rule.sels.iter().zip(sels) {
-            match c {
-                Ok((r, g)) => {
-                    global |= g;
-                    if !roles.contains(r) {
-                        roles.push(*r);
-                    }
-                }
-                Err(why) => {
-                    let tail = if roles.is_empty() && !sels.iter().any(Result::is_ok) {
-                        format!("; {} declaration(s) skipped", rule.decls.len())
-                    } else {
-                        String::new()
-                    };
-                    w.push(
-                        *pos,
-                        WarningKind::UnsupportedSelector,
-                        format!("selector `{}`: {why}{tail}", css::clip(text)),
-                    );
+            let ls = layout::parse_selector(text);
+            if let Ok((r, g)) = c {
+                global |= g;
+                if !roles.contains(r) {
+                    roles.push(*r);
                 }
             }
+            match (c, ls) {
+                (_, Some(Ok(tg))) => targets.push(tg),
+                (Ok(_), _) => {}
+                (Err(_), Some(Err(m))) => bad.push((*pos, text, m)),
+                (Err(m), None) => bad.push((*pos, text, m.clone())),
+            }
         }
-        if roles.is_empty() {
+        let tail = if roles.is_empty() && targets.is_empty() {
+            format!("; {} declaration(s) skipped", rule.decls.len())
+        } else {
+            String::new()
+        };
+        for (pos, text, why) in bad {
+            w.push(
+                pos,
+                WarningKind::UnsupportedSelector,
+                format!("selector `{}`: {why}{tail}", css::clip(text)),
+            );
+        }
+        if roles.is_empty() && targets.is_empty() {
             continue;
         }
         for d in &rule.decls {
+            let mut handled = false;
+            if !targets.is_empty() {
+                let Some(v) = resolved(&d.value, d.pos, &vars, w) else {
+                    continue;
+                };
+                for tg in &targets {
+                    let mut notes = vec![];
+                    match lay.set(tg, &d.name, &v, &mut notes) {
+                        Ok(true) => handled = true,
+                        Ok(false) => {}
+                        Err(m) => {
+                            handled = true;
+                            w.push(d.pos, WarningKind::UnsupportedValue, m);
+                        }
+                    }
+                    for (k, m) in notes {
+                        w.push(d.pos, k, m);
+                    }
+                }
+            }
             if d.name.starts_with("--") {
-                if !global {
+                if global {
+                    if let Some(tok) = var_token(&d.name) {
+                        apply(&mut t, tok, &d.value, d.pos, &vars, w);
+                    }
+                } else if !handled {
                     w.push(
                         d.pos,
                         WarningKind::UnsupportedProperty,
-                        "custom properties are only read from :root, html, body and *",
+                        "custom properties are only read from :root, html, body and *, or as part settings listed in the reference",
                     );
-                } else if let Some(tok) = var_token(&d.name) {
-                    apply(&mut t, tok, &d.value, d.pos, &vars, w);
                 }
                 continue;
             }
-            let mut handled = false;
             for r in &roles {
                 if let Some(tok) = role_prop(*r, &d.name) {
                     handled = true;
@@ -812,8 +864,17 @@ fn translate(rules: &[css::Rule], w: &mut Warnings) -> Theme {
             }
         }
     }
-    t
+    lay.prune();
+    (t, lay)
 }
 
+/// Built-in presets (name, stylesheet) the Themes page can offer.
+pub const PRESETS: &[(&str, &str)] = &[
+    ("Marquee", include_str!("examples/marquee.css")),
+    ("Feed", include_str!("examples/feed.css")),
+];
+
+#[cfg(test)]
+mod layout_tests;
 #[cfg(test)]
 mod tests;

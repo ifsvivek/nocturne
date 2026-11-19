@@ -1,6 +1,6 @@
 # Customization plan: native CSS themes
 
-Status: phase 1 (research, plan, UI-free engine in `crates/core/src/customize/`) done. Phase 2 (storage, Themes page, Iced wiring, URL import) done, see section 13 for what shipped and what did not. Requirements: `docs/dev/V05_BRIEF.md` section 2. No WebView, no browser engine, JavaScript is never executed.
+Status: phase 1 (research, plan, UI-free engine in `crates/core/src/customize/`) done. Phase 2 (storage, Themes page, Iced wiring, URL import) done, see section 13 for what shipped and what did not. Layout themes (named parts, stage 1) are specified in section 14: the core engine is done, the app wiring is a later task. Requirements: `docs/dev/V05_BRIEF.md` section 2. No WebView, no browser engine, JavaScript is never executed.
 
 ## 1. Research: what Jellyfin community themes use
 
@@ -201,3 +201,81 @@ Maintainer decisions (2026-11-18): the editor is its own page (Settings > Themes
 - URL import: `customize::validate_url` and `customize::fetch` (https only, http only for loopback, no credentials in the URL, 10 s, at most 3 redirects to https, 256 KB counted while streaming, `text/css` or `text/plain` only). The result goes into the editor and is never applied unseen. Tested against a loopback server.
 - Not done: a live sample panel inside the editor (the whole-app preview replaced it), keyboard shortcut for Reset, per-source themes for local folders (they follow global), export to a `.css` file, accent presets (item 5 of section 11), a real Jellyfin theme from the web has not been tried against the app (only the engine tests in phase 1).
 
+
+## 14. Layout themes (stage 1, 0.5): named parts and their properties
+
+Maintainer decision (2026-11-19): themes may change layout, not only colour ("write CSS to make it look like a streaming service or a video site"). A browser engine stays ruled out. Stage 1 is a fixed vocabulary of named app parts with a few typed properties each, translated by `customize/layout.rs` into a `Layout` next to the colour `Theme` (`Parsed.layout`). Stage 2 (0.6/0.7) puts a native flex/grid engine (Taffy) behind the same selectors and properties, see the end of this section. Everything here is read from the same stylesheet; colour-only stylesheets produce an empty `Layout` and parse exactly as before.
+
+### 14.1 Selectors
+
+One selector per rule item (lists with commas are fine), always one of:
+
+- a part: `.card`, `.row`, ... (table below); `button` and `header` also work as tags;
+- a scoped part: one scope, a space, one part: `.page-home .card`, `.section-resume .card`;
+- a part under `:hover`: `.card:hover`, `.button:hover` only (the one pseudo-class, and only `transform: scale()` is read under it);
+- a section on its own: `.section-latest { order: 2 }` (same as `.section-latest .row`).
+
+Scopes: pages `.page-home`, `.page-library`, `.page-detail`, `.page-search`; home sections `.section-resume` (continue watching), `.section-next-up`, `.section-latest` (every "latest in library" row). A bare `.page-home` is a warning (write `.page-home .card`). Resolution for a view: built-in, then the unscoped rules, then the page's, then the section's; within a layer the last declaration wins. Any other pseudo-class (`:focus`, `:active`), pseudo-elements, descendant chains, compound selectors, ids and attributes still warn and are skipped. Custom properties named below are read on the part they belong to (`.card { --title-position: overlay }`), not on `:root`.
+
+### 14.2 Parts and properties
+
+Lengths are `px` (`rem`/`em` of 16 px accepted). Out-of-range values are clamped with a "clamped" note; wrong keywords give a warning and are skipped.
+
+| Part | Selector | Properties (range) and what the app does |
+|---|---|---|
+| Card (whole cell) | `.card` | `aspect-ratio`: `2/3` poster image, `16/9` thumb (backdrop or episode still), `1/1` square; any other ratio snaps to the nearest with a note. `width` or `--card-size` (80 to 640 px) is the target card width; whole cards still fill the row exactly, as today. `--title-position: below\|overlay\|none` (caption under the image; title on a gradient inside the image; no caption at all). `transition-duration` or `transition` (0 to 1000 ms, only the duration is read). `display: none`. `border-radius` is the global card radius when unscoped (the colour token `radius-card`) and the image radius when scoped. `box-shadow` applies to the image. |
+| Card hover | `.card:hover` | `transform: scale(1.0 to 1.3)`. Nothing else. |
+| Card image | `.card-image` | `border-radius` (0 to 48), `box-shadow: <x> <y> [blur] [spread, ignored] [colour]` or `none` (offsets -32 to 32, blur 0 to 64; no `inset`, no multiple shadows) |
+| Card caption | `.card-title`, `.card-meta` | typography (below), `display: none` |
+| Row (a strip of cards) | `.row` | `display: carousel\|grid` (or `--row-layout`; `flex` is read as carousel): a horizontally scrolling strip or a wrapping grid. `gap` (0 to 64), `--row-columns` (1 to 12; grid only, absent means as many as fit), `padding` (first value, the horizontal inset of the row, 0 to 96), `display: none`. |
+| Row title | `.row-title` | typography, `display: none` |
+| Home section | `.section-resume`, `.section-next-up`, `.section-latest` | same properties as `.row` plus `order: <n>` (-100 to 100, lower first, ties keep the built-in order Resume, Next up, Latest) and `display: none`. `order` anywhere else warns. Also usable as scopes: `.section-resume .card`. |
+| Hero | `.hero` | `--hero-style: billboard\|banner\|none` (full-bleed artwork behind a see-through header; a shorter band below the header; removed), `height` (120 to 1200), `background` (colour or `linear-gradient` laid over the artwork, for the fade into the page), `display: none` (same as style `none`) |
+| Hero text | `.hero-title`, `.hero-meta` | typography, `display: none` |
+| Header | `.header` | `background` (colour, `transparent` allowed; the existing `header` token), `position: fixed\|absolute` (overlays the content, which starts at the window top) or `static\|relative\|sticky` (own height, pushes content down), `height` (32 to 120), `--header-items` (space or comma list of `nav`, `search`, `history`, `account`; unlisted items are hidden, `none` hides all). The header itself cannot be hidden. |
+| Header items | `.header-nav`, `.header-search`, `.header-history`, `.header-account` | `display: none` (or any other value to show again) |
+| Header links | `.header-link` | typography |
+| Button | `.button`, `button` | `border-radius`, `background(-color)`, `border-color` (existing colour tokens), `transition-duration`; `.button:hover` takes `transform: scale()` |
+| Detail page | `.detail-title`, `.detail-text`, `.detail-backdrop` | typography for the first two; `.detail-backdrop` is the existing backdrop role (`opacity`, `filter: blur(Npx)`) |
+| Player controls | `.player-controls` | `background` (colour or gradient behind the controls). The controls cannot be hidden. |
+
+Typography (every text part above): `font-size` (8 to 96 px), `font-weight` (100 to 900, `normal`, `bold`, `lighter`), `text-transform` (`none`, `uppercase`, `lowercase`, `capitalize`), `letter-spacing` (-2 to 10 px or `normal`; `em` is taken of 16 px), `line-height` (a unitless number or percentage, 0.8 to 2.5), `color`. The font family stays global (`font-family` on `:root`, installed fonts only).
+
+Global tokens that parse today but are not applied yet, and that the wiring work below turns on: `--nocturne-density` (spacing scale), `font-size` on `:root` (type scale), `backdrop-blur` (see section 13, "Not applied yet").
+
+`display: none` hides a part. Any other `display` keyword on a part that takes `display` means "show" (so a later layer can undo a hide); `carousel`, `grid` and `flex` also set the row layout.
+
+### 14.3 What stage 1 cannot do
+
+Said plainly, so nobody expects a browser:
+
+- Move a part somewhere else (the hero below the rows, the search box in the middle, a sidebar). The structure of each page is fixed; only the listed properties and the home section order change.
+- Create elements, text or images: no `::before`/`::after`, no `content`, no `url()` backgrounds, no custom icons or logos.
+- Arbitrary flex or grid: `display: flex|grid` as a general container, `flex-*`, `grid-template-*`, `margin`, free `padding`, `width`/`height` on anything except card width, hero height and header height, `min-*`/`max-*`, `position` other than the header's, `z-index`, `overflow`, `calc()`, `vh`/`vw`.
+- Pseudo-classes other than `:hover` on `.card` and `.button` (no `:focus`, `:active`, `:nth-child`), `@media`, `@container`, `@keyframes`, `transition` of anything but the card and button hover, `transform` other than `scale`, multiple or inset shadows, `filter` other than the backdrop blur, `backdrop-filter`.
+- Per-element targeting by state or content (the third card, a watched item, a particular library by name).
+
+### 14.4 What stage 2 adds (native flex/grid engine)
+
+The same selectors and the same properties keep their meaning; a Taffy-backed layout tree is added underneath. Stage 2 can then accept the layout properties stage 1 refuses on the existing parts: `display: flex|grid`, `flex-direction`, `gap`, `justify-content`/`align-items`, `grid-template-columns`, `margin`/`padding`, `width`/`height`/`min`/`max`, and `order` on any part, so parts can be rearranged inside their page (for example the header items in a different order, a hero beside a list). New parts (sidebar, rail) would be added as named slots, not as arbitrary elements. Because stage 1 `Layout` fields are plain optional values keyed by (scope, part), stage 2 only widens the structs and the property table. It still will not run a browser engine, `::before`/`::after` content, scripts, or remote resources.
+
+### 14.5 Engine as shipped (core, phase A)
+
+- `customize::Layout` holds `base: Parts`, `pages: BTreeMap<Page, Parts>`, `sections: BTreeMap<Section, Parts>`; `Parts` has one small struct of `Option` fields per part (`Card`, `CardImage`, `Row`, `Hero`, `Header`, `Button`, `Controls`, `Text` for each typography part, `Visibility` for the four header items). `Layout::parts(page, section)` returns the merged `Parts` for a view, `Layout::section_order()` the home sections in order, `Layout::overlay` merges layers like `Theme::overlay`, `Layout::count()` feeds the "N settings applied" line. A field is `None` when unset (keep the built-in), and `hidden: Some(false)` when a stylesheet un-hides.
+- `customize::PRESETS` lists the built-in example themes (`Marquee`: dark, billboard hero, 16:9 carousels with hover zoom, no captions, red accent; `Feed`: dark grey, no hero, slim static header, wrapping grid of 16:9 thumbnails with title and details below, rounded corners). Their CSS lives in `crates/core/src/customize/examples/` and parses with zero warnings (tested), so the Themes page can offer them as ordinary themes.
+- Card radius quirk: `.card { border-radius }` unscoped stays the global `radius-card` token (so existing themes are unchanged); scoped (`.page-home .card`) or on `.card-image` it sets `CardImage.radius`, which wins for that view.
+
+### 14.6 Wiring work (app crate, later task)
+
+Per file and part. Nothing here changes core:
+
+1. `crates/app/src/theme.rs` and the root state: keep the active `Layout` next to the active tokens (`RwLock`, resolved in `sync_theme` by overlaying the global theme's layout, then the per-server theme's, the same way colours resolve); add `fn parts(page, section) -> Parts`. `HEADER_H`, `PAGE_PAD` and the `S*` spacing become functions of the layout and `--density` (this is also the pending `density`, `font-size`, `backdrop-blur` wiring from section 13).
+2. `crates/app/src/app/themes.rs`: carry `Parsed.layout` through the reparse, add `layout.count()` to the "settings applied" summary, offer `customize::PRESETS` as built-in themes (a list above the saved themes).
+3. `crates/app/src/widget/cell.rs` (`poster_cell`, `cell_h`, `CAPTION_H`, `tile`): image box from `card.aspect` and `card.width`; `title_position` (below keeps today's caption, overlay draws the title and meta on a bottom gradient inside the image `Stack`, none drops the caption and shrinks `cell_h`); `card_image.radius` and `shadow` (replace `t::r_card()` and `glow_shadow` for non-focused cells); `card_title`/`card_meta` typography in the caption texts; `card.hidden`; hover scale and `transition_ms` (Iced has no transform: draw the hovered cell larger by growing the image box inside the fixed cell and animate with `motion.rs`; the cell size stays fixed so virtualised grids keep working). Because `cell_h` feeds every virtualised grid, make it take the resolved card part instead of constants.
+4. `crates/app/src/app/home.rs` (`dims`, `row_dims`, `band_h`, `strip_band`, `hero_band`, `hero_h`, `Home::layout`/`HRow`): per-strip card parts via `parts(Home, Some(section))` (Resume and Next up use `Section::Resume`/`NextUp`, each Latest row `Section::Latest`); `aspect` selects `Art::Poster` or `Art::Landscape` and the ratio in `row_dims`; `layout: grid` renders the strip as a wrapping grid (`--row-columns` or fit by width; reuse the library grid in `virt.rs`) and changes `band_h` accordingly; `gap` and `padding` replace `S3` and `PAGE_PAD` in the strip; section order and `hidden` change `Home::layout` (the keyboard navigation model follows it) using `Layout::section_order`; hero style, height, overlay and `hidden` replace `hero_h`, `HRow::Hero` exists only when shown, and a fixed header must overlay the billboard (hero content starts at y 0); `row_title`, `hero_title`, `hero_meta` typography.
+5. `crates/app/src/app/header.rs` (`header`, `nav_link`, `nav_strip`, `nav_geom`): hide items from `header_nav/search/history/account` (keyboard focus and `nav_widths` must skip them); `header.height` and `position` (fixed: overlay in a `Stack` over the page and drop `HEADER_H` from the content offset; static: as today); `header_link` typography in `nav_link`.
+6. `crates/app/src/detail/view.rs`, `detail/cells.rs`, `detail/geom.rs` (`TOP = HEADER_H + 29.0`, `hero_h`, `PORTRAIT`/`LANDSCAPE`, `card_w`/`card_h`): header position offsets, `detail_title`/`detail_text` typography, page-scoped card parts for the strips (`Page::Detail`), backdrop blur; geometry stays the single source of row heights.
+7. Library, search and other grid pages (`crates/app/src/app/browse.rs`, `search.rs`, `virt.rs`): the card part under `Page::Library` / `Page::Search` for cell size, aspect and caption; header offset.
+8. `crates/app/src/player/` (control bar view): `player_controls.background` replaces the fixed scrim.
+9. Button styling (`crates/app/src/style.rs`, `widget/controls.rs`): `button.hover_scale` and `transition_ms` where buttons are drawn; the radius stays a colour-token concern.
+10. Tests in `crates/app`: the empty `Layout` reproduces today's geometry exactly (`cell_h`, `band_h`, `hero_h`, `HEADER_H`), plus one test per part with a non-default value.

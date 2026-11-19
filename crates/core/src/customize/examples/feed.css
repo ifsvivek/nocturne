@@ -1,0 +1,71 @@
+/* Feed: a dark grey, compact look. No hero, a slim header, and wrapping grids of rounded 16:9 thumbnails with the title and details underneath. */
+:root {
+  --nocturne-background: #181818;
+  --nocturne-surface: #202020;
+  --nocturne-raised: #272727;
+  --nocturne-header: #181818;
+  --nocturne-text: #f1f1f1;
+  --nocturne-text-secondary: #bcbcbc;
+  --nocturne-text-tertiary: #a0a0a0;
+  --nocturne-accent: #4aa3ff;
+  --nocturne-accent-hover: #70b8ff;
+  --nocturne-accent-text: #8cc8ff;
+  --nocturne-on-accent: #08121f;
+  --nocturne-radius-card: 12px;
+  --nocturne-radius-small: 18px;
+  --nocturne-radius-panel: 12px;
+}
+
+.header {
+  height: 48px;
+  position: static;
+}
+
+.header-link {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.hero {
+  --hero-style: none;
+}
+
+.row {
+  display: grid;
+  gap: 16px;
+}
+
+.row-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.card {
+  aspect-ratio: 16 / 9;
+  width: 320px;
+  --title-position: below;
+  transition-duration: 120ms;
+}
+
+.card:hover {
+  transform: scale(1.02);
+}
+
+.card-image {
+  border-radius: 12px;
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.card-meta {
+  font-size: 12px;
+  color: #a0a0a0;
+}
+
+.page-detail .detail-title {
+  font-weight: 700;
+}
