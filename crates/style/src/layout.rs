@@ -173,6 +173,8 @@ pub struct Scene {
     pub fonts: Rc<Fonts>,
     fonts_gen: u32,
     pub viewport: (f32, f32),
+    /// The box an absolutely positioned node is placed against when it is not its parent (the nearest positioned ancestor).
+    cb: HashMap<Id, Id>,
     pub interaction: Interaction,
     /// Border box in the page's coordinates, before any scrolling: x, y, width, height. Fixed elements are in window coordinates.
     pub rects: Vec<[f32; 4]>,
@@ -264,6 +266,7 @@ impl Scene {
             st,
             fonts,
             viewport,
+            cb: HashMap::new(),
             interaction: it,
             rects: vec![[0.0; 4]; n],
             content: vec![[0.0; 2]; n],
@@ -360,9 +363,14 @@ impl Scene {
         let node = &self.doc.nodes[i];
         let mut st = c.layout.clone();
         if i == 0 {
+            // The root's percentage height is a share of the window (`html { height: 100% }`), so its children's percentages resolve.
+            let height = match c.layout.size.height.expand() {
+                taffy::style::ExpandedDimension::Percent(p) => px(self.viewport.1 * p),
+                _ => Dimension::auto(),
+            };
             st.size = Size {
                 width: px(self.viewport.0),
-                height: Dimension::auto(),
+                height,
             };
             st.min_size.height = LengthPercentageAuto::length(self.viewport.1);
         }
@@ -416,12 +424,25 @@ impl Scene {
                 k
             })
             .collect();
+        // `z-index` takes part in the nearest stacking context, not only among siblings: a box without one is painted at the highest `z-index` found below it (a poster with `z-index: 3` inside an unstyled wrapper still lands above the sibling ribbon with 2).
+        let mut eff: Vec<i32> = (0..n).map(|i| self.st.styles[i].z).collect();
+        for i in (0..n).rev() {
+            if self.st.styles[i].z == 0 {
+                let below = self.doc.nodes[i]
+                    .children
+                    .iter()
+                    .map(|&c| eff[c])
+                    .max()
+                    .unwrap_or(0);
+                eff[i] = below.max(0);
+            }
+        }
         self.paint = self
             .kids
             .iter()
             .map(|k| {
                 let mut p = k.clone();
-                p.sort_by_key(|&c| self.st.styles[c].z);
+                p.sort_by_key(|&c| eff[c]);
                 p
             })
             .collect();
@@ -453,11 +474,42 @@ impl Scene {
             .expect("taffy node");
         let mut fixed: Vec<NodeId> = vec![];
         let mut vwrap = HashMap::new();
+        // An absolutely positioned box is placed against its nearest positioned ancestor, not its parent (Taffy's rule): hang it from that ancestor when both axes are pinned by insets (a box with an auto axis keeps its static position under its parent).
+        self.cb.clear();
+        let mut moved: HashMap<Id, Vec<NodeId>> = HashMap::new();
+        #[allow(clippy::needless_range_loop)]
+        for k in 1..n {
+            let c = &self.st.styles[k];
+            if c.fixed || c.layout.position != Position::Absolute || self.doc.nodes[k].virtual_item
+            {
+                continue;
+            }
+            let pinned =
+                |a: LengthPercentageAuto, b: LengthPercentageAuto| !a.is_auto() || !b.is_auto();
+            if !(pinned(c.layout.inset.left, c.layout.inset.right)
+                && pinned(c.layout.inset.top, c.layout.inset.bottom))
+            {
+                continue;
+            }
+            let Some(mut a) = self.doc.nodes[k].parent else {
+                continue;
+            };
+            while a != 0 && !self.st.styles[a].positioned {
+                a = self.doc.nodes[a].parent.unwrap_or(0);
+            }
+            if Some(a) != self.doc.nodes[k].parent && self.doc.nodes[a].virt.is_none() {
+                self.cb.insert(k, a);
+                moved.entry(a).or_default().push(nodes[k]);
+            }
+        }
         for i in 0..n {
             let mut ch: Vec<NodeId> = vec![];
             let mut items: Vec<NodeId> = vec![];
             for &k in &self.kids[i] {
                 let kn = &self.doc.nodes[k];
+                if self.cb.contains_key(&k) {
+                    continue;
+                }
                 if self.st.styles[k].fixed
                     && self.st.styles[k].layout.position == Position::Absolute
                 {
@@ -467,6 +519,9 @@ impl Scene {
                 } else {
                     ch.push(nodes[k]);
                 }
+            }
+            if let Some(m) = moved.get(&i) {
+                ch.extend(m);
             }
             if self.doc.nodes[i].virt.is_some() {
                 let wrapper = tree
@@ -578,6 +633,10 @@ impl Scene {
                     (0.0, 0.0)
                 }
                 Some(p) if node.virtual_item => self.vorigin.get(&p).copied().unwrap_or((0.0, 0.0)),
+                Some(_) if self.cb.contains_key(&i) => {
+                    let a = self.cb[&i];
+                    (self.rects[a][0], self.rects[a][1])
+                }
                 Some(p) => (self.rects[p][0], self.rects[p][1]),
                 None => (0.0, 0.0),
             };

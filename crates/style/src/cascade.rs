@@ -98,6 +98,7 @@ impl Cx<'_> {
         Ctx {
             vw: self.vp.0,
             vh: self.vp.1,
+            rem: 16.0,
         }
     }
 }
@@ -373,6 +374,7 @@ impl Styler {
             }
             c.vars = Rc::new(vars);
         }
+        let base = c.clone();
         for h in hits {
             let ops: DynOps;
             let slice: &[Op] = match &h.decl.val {
@@ -426,7 +428,7 @@ impl Styler {
                     );
                     continue;
                 }
-                op.apply(c, cx);
+                op.apply(c, cx, &base);
             }
         }
     }
@@ -450,7 +452,13 @@ impl Styler {
         media: &[bool],
     ) -> Result<GroupData, Failure> {
         let sheet = cx.sheet;
-        let ctx = cx.ctx();
+        let mut ctx = cx.ctx();
+        // `rem` is the root element's font size (the root itself still sees 16).
+        if i > 0
+            && let Some(r) = self.styles.first()
+        {
+            ctx.rem = r.font_size;
+        }
         let node = &doc.nodes[i];
         #[cfg(test)]
         if node.tag == "panic-test" {

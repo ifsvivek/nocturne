@@ -14,6 +14,8 @@ pub(super) struct Host {
     /// The sheet the engine was last built from (tokens of the active theme and the default rules).
     sheet: String,
     user: Option<String>,
+    /// The base sheet's address and the text that went over it, when the layout mode built the user layer.
+    jf_key: Option<(usize, String)>,
     cache: MeasureCache,
     scene: Option<Scene>,
     tree: Option<DTree>,
@@ -41,6 +43,7 @@ impl Host {
             engine,
             sheet,
             user,
+            jf_key: None,
             cache: MeasureCache::new(),
             scene: None,
             tree: None,
@@ -94,6 +97,19 @@ impl Detail {
         }
     }
 
+    /// Jellyfin layout mode for this page: the server's base sheet and the branding and theme text (`None` leaves the mode).
+    pub fn set_jf(&mut self, jf: Option<(std::sync::Arc<String>, String)>) {
+        let same = match (&self.jf, &jf) {
+            (Some((a, x)), Some((b, y))) => std::sync::Arc::ptr_eq(a, b) && x == y,
+            (None, None) => true,
+            _ => false,
+        };
+        if !same {
+            self.jf = jf;
+            self.eng_sync(false);
+        }
+    }
+
     /// Is the page drawn by the engine right now?
     pub(super) fn eng_active(&self) -> bool {
         self.eng.as_ref().is_some_and(|h| h.scene.is_some())
@@ -115,15 +131,29 @@ impl Detail {
     pub(super) fn eng_sync(&mut self, reveal: bool) {
         let Some(mut h) = self.eng.take() else { return };
         warm();
-        let sheet = sheet();
+        let jf = self.jf.is_some();
+        let sheet = if jf {
+            crate::app::jf::UA.to_string()
+        } else {
+            sheet()
+        };
         if sheet != h.sheet {
             let safe = h.engine.safe_mode();
             h.engine = Engine::new(&sheet);
             h.engine.set_safe_mode(safe);
+            h.engine.set_compat(!jf);
             h.engine.set_user_css(h.user.as_deref());
+            h.jf_key = None;
             h.sheet = sheet;
         }
-        let tree = self.tree();
+        if let Some((base, text)) = &self.jf {
+            let key = (std::sync::Arc::as_ptr(base) as usize, text.clone());
+            if h.jf_key.as_ref() != Some(&key) {
+                h.engine.set_user_css(Some(&format!("{base}\n{text}")));
+                h.jf_key = Some(key);
+            }
+        }
+        let tree = if jf { self.jf_tree() } else { self.tree() };
         let cell = self.focus_cell();
         let toggle = h.on_toggle.then_some(tree.toggle).flatten();
         h.on_toggle = toggle.is_some();

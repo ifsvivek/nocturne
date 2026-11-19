@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # An invisible Wayland session for tests: a headless sway with its own display socket, so synthetic input (wtype), clipboard (wl-copy/wl-paste) and captures (grim) never reach the user's desktop. Audio is sent nowhere.
-# usage: [HS_NAME=name] scripts/headless-session.sh start [WxH] | run <cmd...> | stop | status
+# usage: [HS_NAME=name] [HS_BORDERLESS=1] scripts/headless-session.sh start [WxH] | run <cmd...> | stop | status
 # `run` refuses unless the target display belongs to the headless sway this script started; never point wtype at the user's session.
 set -euo pipefail
 # HS_NAME=<name> gives each agent its own session (directory, sway and display), so one agent's stop never ends another's.
@@ -12,6 +12,8 @@ start)
   command -v sway >/dev/null || { echo "needs sway (pacman -S sway)" >&2; exit 1; }
   rm -rf "$D"; mkdir -p "$D"; chmod 700 "$D"
   printf 'output HEADLESS-1 resolution %s\nfocus_follows_mouse no\n' "${2:-1920x1080}" > "$D/config"
+  # HS_BORDERLESS=1: windows without sway's border and title bar, so a window is the whole output (side-by-side captures against a browser at the same size).
+  [ -z "${HS_BORDERLESS:-}" ] || printf 'default_border none\ndefault_floating_border none\ntitlebar_border_thickness 0\nfor_window [title=".*"] border none\n' >> "$D/config"
   before=$(ls "$XDG_RUNTIME_DIR" | grep -E '^wayland-[0-9]+$' || true)
   env -u WAYLAND_DISPLAY -u DISPLAY WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 WLR_RENDERER=pixman SWAYSOCK="$D/sway.sock" sway -c "$D/config" > "$D/log" 2>&1 &
   echo $! > "$D/pid"

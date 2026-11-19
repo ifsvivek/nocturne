@@ -141,12 +141,18 @@ impl App {
         );
         #[cfg(feature = "theme-engine")]
         let css = self.engine_css();
+        // Jellyfin layout mode for the item's own server.
+        #[cfg(feature = "theme-engine")]
+        let jf = self.jf_base().map(|b| (b, self.jf_user_text()));
         if let Some(d) = self.stack.last_mut().and_then(|p| p.det.as_deref_mut()) {
             d.set_win(win);
             d.set_writes(writes);
             d.set_marks(marks);
             #[cfg(feature = "theme-engine")]
-            d.set_user_css(css);
+            {
+                d.set_user_css(css);
+                d.set_jf(jf);
+            }
         }
     }
 

@@ -123,6 +123,8 @@ pub struct EngineUi {
     /// The installed font families (read once) and whether the current engine knows them.
     families: Option<Vec<String>>,
     fonts_set: bool,
+    /// Jellyfin layout mode: what the user layer was last built from (the base sheet's address and the branding and theme text).
+    jf_key: Option<(usize, String)>,
 }
 
 impl EngineUi {
@@ -166,6 +168,7 @@ impl Default for EngineUi {
             warmed: false,
             families: None,
             fonts_set: false,
+            jf_key: None,
         }
     }
 }
@@ -275,6 +278,15 @@ impl App {
             && self.ob.is_none()
     }
 
+    /// The height of the engine's header scene: the layout mode's own, NOCTURNE's otherwise.
+    pub(super) fn eng_header_h(&self) -> f32 {
+        if self.jf_base().is_some() {
+            self.jf_header_h()
+        } else {
+            t::header_h()
+        }
+    }
+
     /// The header runs on the engine whenever the page below can be drawn with it (every page but Home has its own header scene).
     pub(super) fn eng_header_active(&self) -> bool {
         self.eng.enabled
@@ -293,14 +305,24 @@ impl App {
         }
         self.eng.dirty = false;
         let t0 = Instant::now();
-        let css = sheet_css();
+        // Jellyfin layout mode: the engine's base layer is the browser's defaults, the server's stylesheets go in the user layer.
+        let jf = self.jf_base();
+        crate::detail::JF_MODE.store(jf.is_some(), std::sync::atomic::Ordering::Relaxed);
+        let css = if jf.is_some() {
+            super::jf::UA.to_string()
+        } else {
+            sheet_css()
+        };
         let css_us = t0.elapsed().as_micros();
         if css != self.eng.css {
             let safe = self.eng.engine.safe_mode();
             self.eng.engine = Engine::new(&css);
             self.eng.fonts_set = false;
             self.eng.engine.set_safe_mode(safe);
+            // The jellyfin-web selectors are native in the layout mode: no translation.
+            self.eng.engine.set_compat(jf.is_none());
             self.eng.user = None;
+            self.eng.jf_key = None;
             self.eng.fetched_fams.clear();
             self.eng.css = css;
             self.eng.sheet_gen += 1;
@@ -343,7 +365,15 @@ impl App {
             self.eng.fetched_fams = fams;
             self.eng.sheet_gen += 1;
         }
-        if user != self.eng.user {
+        if let Some(b) = &jf {
+            let key = (std::sync::Arc::as_ptr(b) as usize, self.jf_user_text());
+            if self.eng.jf_key.as_ref() != Some(&key) {
+                let text = format!("{b}\n{}", key.1);
+                self.eng.engine.set_user_css(Some(&text));
+                self.eng.jf_key = Some(key);
+                self.eng.sheet_gen += 1;
+            }
+        } else if user != self.eng.user {
             self.eng.engine.set_user_css(user.as_deref());
             self.eng.user = user;
             // Scenes built with the old rules are stale (a header that "did not change" must still be restyled).
@@ -421,7 +451,12 @@ impl App {
     }
 
     fn eng_build_home(&mut self) {
-        let Some(mut tree) = self.home_tree(true) else {
+        let tree = if self.jf_base().is_some() {
+            self.jf_home_tree()
+        } else {
+            self.home_tree(true)
+        };
+        let Some(mut tree) = tree else {
             self.eng.home = None;
             return;
         };
@@ -470,9 +505,15 @@ impl App {
     }
 
     fn eng_build_header(&mut self) {
-        let mut tree = Tree::new();
-        self.header_nodes(&mut tree, 0, false);
-        let size = (self.eng_width(), t::header_h());
+        let jf = self.jf_base().is_some();
+        let tree = if jf {
+            self.jf_header_tree()
+        } else {
+            let mut tree = Tree::new();
+            self.header_nodes(&mut tree, 0, false);
+            tree
+        };
+        let size = (self.eng_width(), self.eng_header_h());
         // The same header (nothing it shows changed) keeps its scene, hover and animations.
         if self.eng.hdr.as_ref().is_some_and(|h| {
             h.sheet_gen == self.eng.sheet_gen
@@ -503,7 +544,12 @@ impl App {
             .page
             .as_ref()
             .and_then(|h| h.tree.grid.as_ref().map(|g| g.data.clone()));
-        let Some(tree) = self.browse_tree(old_data.as_ref()) else {
+        let tree = if self.jf_base().is_some() {
+            self.jf_browse_tree(old_data.as_ref())
+        } else {
+            self.browse_tree(old_data.as_ref())
+        };
+        let Some(tree) = tree else {
             self.eng.page = None;
             return Task::none();
         };
@@ -705,13 +751,16 @@ impl App {
             if std::env::var("NOCTURNE_ENGINE_DUMP").is_ok() {
                 for i in 0..s.doc.len().min(80) {
                     eprintln!(
-                        "engine: #{i} {} rect {:?} bg {} disp {:?} fixed {} vis {}",
+                        "engine: #{i} {} rect {:?} bg {} disp {:?} fixed {} vis {} opacity {} color {:?} overflow {:?}",
                         s.doc.describe(i),
                         s.rects[i],
                         s.style(i).bg.len(),
                         s.style(i).layout.display,
                         s.style(i).fixed,
-                        s.style(i).visible
+                        s.style(i).visible,
+                        s.style(i).opacity,
+                        s.style(i).color,
+                        s.style(i).layout.overflow
                     );
                 }
             }
@@ -1128,7 +1177,7 @@ impl App {
         let h = self.eng.hdr.as_ref()?;
         Some(
             column![
-                container(self.eng_widget(h, Which::Header)).height(t::header_h()),
+                container(self.eng_widget(h, Which::Header)).height(self.eng_header_h()),
                 space().height(Length::Fill)
             ]
             .into(),

@@ -385,7 +385,10 @@ impl<M> Styled<'_, M> {
         };
         let xf = eff.xf.unwrap_or(c.xf);
         let moved = !xf.is_identity();
-        if !moved && inter(clip, reach).is_none() {
+        // Only a box that clips can hide its whole subtree: an overflowing child of a zero-height wrapper (`main`, with an absolutely positioned page inside) still shows.
+        let culls = c.layout.overflow.x != nocturne_style::taffy::style::Overflow::Visible
+            || c.layout.overflow.y != nocturne_style::taffy::style::Overflow::Visible;
+        if !moved && culls && inter(clip, reach).is_none() {
             return;
         }
         let ox = rect.x + rect.width * xf.origin.0;

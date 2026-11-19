@@ -544,7 +544,13 @@ impl Source {
         let cfg = self.client.user_config(&self.user).await;
         let branding = self.client.branding().await.unwrap_or_default();
         match (prefs, cfg) {
-            (Ok(p), Ok(c)) => Ok(crate::server_ui::ServerUi::new(&p, &c, &branding)),
+            (Ok(p), Ok(c)) => {
+                let mut ui = crate::server_ui::ServerUi::new(&p, &c, &branding);
+                ui.web_css = crate::webcss::fetch(&self.client, &self.scope)
+                    .await
+                    .map(Into::into);
+                Ok(ui)
+            }
             _ => Err(Failed),
         }
     }

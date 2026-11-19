@@ -493,7 +493,7 @@ impl Client {
     }
 
     /// One GET: records the outcome for `health()`, and turns a non-2xx answer into `Error::Status`.
-    async fn send(&self, url: Url, path: String) -> Result<reqwest::Response> {
+    pub(crate) async fn send(&self, url: Url, path: String) -> Result<reqwest::Response> {
         self.send_with(self.http.get(url), path).await
     }
 
@@ -540,7 +540,7 @@ fn next_up_pairs(user_id: &str, limit: u32) -> [(&'static str, String); 3] {
     ]
 }
 
-fn http_err(e: reqwest::Error) -> Error {
+pub(crate) fn http_err(e: reqwest::Error) -> Error {
     Error::Http(e.without_url())
 }
 

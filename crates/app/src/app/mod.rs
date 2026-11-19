@@ -24,6 +24,10 @@ mod home;
 #[cfg(feature = "theme-engine")]
 mod home_tree;
 mod images;
+#[cfg(feature = "theme-engine")]
+pub(crate) mod jf;
+#[cfg(feature = "theme-engine")]
+pub(crate) use home_tree::CardIn;
 pub mod message;
 mod onboard;
 mod online;
@@ -2177,16 +2181,23 @@ impl App {
                 .opacity(o)
                 .into()
         };
+        // Jellyfin layout mode paints the server's own page (the engine draws its background): no glow, dots or grain of NOCTURNE's.
+        #[cfg(feature = "theme-engine")]
+        let plain = self.jf_base().is_some();
+        #[cfg(not(feature = "theme-engine"))]
+        let plain = false;
         let mut layers: Vec<Element<Message>> = vec![
             container(space())
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .style(crate::style::page)
                 .into(),
-            layer(&self.glow, 1.0),
-            layer(&self.dots, 0.09),
-            body,
         ];
+        if !plain {
+            layers.push(layer(&self.glow, 1.0));
+            layers.push(layer(&self.dots, 0.09));
+        }
+        layers.push(body);
         let setting_up = self.folders.as_ref().is_some_and(|f| f.setup) || self.ob_away.is_some();
         if ready && !setting_up {
             #[cfg(feature = "theme-engine")]
@@ -2209,6 +2220,7 @@ impl App {
             }
             if !self.admin_open
                 && !self.settings_open
+                && !plain
                 && let Some(c) = self.crumbs()
             {
                 layers.push(c);
@@ -2224,7 +2236,9 @@ impl App {
         if let Some(p) = &self.preview {
             layers.push(p.view(Instant::now(), crate::motion::reduced(), self.win));
         }
-        layers.push(layer(&self.grain, 0.02));
+        if !plain {
+            layers.push(layer(&self.grain, 0.02));
+        }
         if self.menu && ready {
             layers.push(self.account_menu());
         }
