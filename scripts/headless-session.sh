@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # An invisible Wayland session for tests: a headless sway with its own display socket, so synthetic input (wtype), clipboard (wl-copy/wl-paste) and captures (grim) never reach the user's desktop. Audio is sent nowhere.
-# usage: scripts/headless-session.sh start [WxH] | run <cmd...> | stop | status
+# usage: [HS_NAME=name] scripts/headless-session.sh start [WxH] | run <cmd...> | stop | status
 # `run` refuses unless the target display belongs to the headless sway this script started; never point wtype at the user's session.
 set -euo pipefail
-D=/tmp/nocturne-headless; export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+# HS_NAME=<name> gives each agent its own session (directory, sway and display), so one agent's stop never ends another's.
+D=/tmp/nocturne-headless${HS_NAME:+-$HS_NAME}; export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 alive() { [ -f "$D/pid" ] && kill -0 "$(cat "$D/pid")" 2>/dev/null; }
 case "${1:-}" in
 start)
