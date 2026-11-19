@@ -175,6 +175,7 @@ impl Detail {
             scene.scroll = sc;
             scene.clamp_scroll();
         }
+        crate::widget::pics::want_scene(&scene);
         h.scene = Some(scene);
         let moved = h.at != Some(cell);
         h.at = Some(cell);

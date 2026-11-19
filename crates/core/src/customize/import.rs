@@ -15,8 +15,10 @@
 //! on disk by address and only replaced by a manual refresh. Run [`resolve`] through
 //! `bridge::spawn`.
 mod fonts;
+mod pics;
 
 pub use fonts::{FontStyle, LoadedFont};
+pub use pics::{Picture, fetch as fetch_picture, join_url};
 
 use super::{Error, MAX_BYTES, Parsed, Warning, WarningKind, Warnings, css, translate};
 use reqwest::Url;
@@ -305,6 +307,46 @@ fn prune(dir: &Path) {
             total -= len;
         }
     }
+}
+
+/// Append `text`, with the relative `url(...)` of its declarations made absolute against the stylesheet they came from (the engine fetches pictures by full address; an `@import`ed file's own base is lost once it is inlined).
+fn push_abs(out: &mut String, text: &[char], base: Option<&Url>) {
+    let s: String = text.iter().collect();
+    let Some(base) = base else {
+        out.push_str(&s);
+        return;
+    };
+    let mut rest = s.as_str();
+    while let Some(i) = rest.to_ascii_lowercase().find("url(") {
+        let (head, tail) = rest.split_at(i + 4);
+        out.push_str(head);
+        // A quoted address may hold a `)`.
+        let lead = tail.len() - tail.trim_start().len();
+        let close = match tail[lead..].chars().next() {
+            Some(q @ ('"' | '\'')) => tail[lead + 1..]
+                .find(q)
+                .and_then(|j| tail[lead + 1 + j..].find(')').map(|k| lead + 1 + j + k)),
+            _ => tail.find(')'),
+        };
+        let Some((raw, after)) = close.map(|k| (&tail[..k], &tail[k + 1..])) else {
+            rest = tail;
+            break;
+        };
+        let t = raw.trim().trim_matches(['"', '\'']);
+        let fixed = !t.is_empty()
+            && !t.starts_with(['#', '%'])
+            && !t.starts_with("data:")
+            && Url::parse(t).is_err();
+        match base.join(t) {
+            Ok(u) if fixed => out.push_str(&format!("\"{}\")", u.as_str().replace('"', "%22"))),
+            _ => {
+                out.push_str(raw);
+                out.push(')');
+            }
+        }
+        rest = after;
+    }
+    out.push_str(rest);
 }
 
 // ---- scanning --------------------------------------------------------------------------------
@@ -815,7 +857,7 @@ impl Net {
                         (*start, *end)
                     }
                 };
-                out.extend(&c[last..start]);
+                push_abs(&mut out, &c[last..start], base);
                 let at = anchor.unwrap_or_else(|| position(&c, start));
                 match item {
                     Item::Import { url, cond, .. } => {
@@ -855,7 +897,7 @@ impl Net {
                 out.extend(c[start..end].iter().filter(|ch| **ch == '\n'));
                 last = end;
             }
-            out.extend(&c[last..]);
+            push_abs(&mut out, &c[last..], base);
             out
         })
     }

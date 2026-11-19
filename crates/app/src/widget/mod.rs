@@ -4,6 +4,8 @@ pub mod cell;
 pub mod controls;
 pub mod layout;
 pub mod overlay;
+#[cfg(feature = "theme-engine")]
+pub mod pics;
 pub mod popover;
 pub mod press;
 pub mod source;

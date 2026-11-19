@@ -737,6 +737,7 @@ impl App {
             .build(&tree.doc, size, it, &tree.builders, &mut |text, st, max| {
                 cache.measure(text, st, max, &mut shape)
             });
+        crate::widget::pics::want_scene(&s);
         for n in e.engine.take_notices() {
             eprintln!("engine: {n}");
         }

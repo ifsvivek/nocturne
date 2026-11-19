@@ -130,6 +130,9 @@ pub enum Message {
     /// An event of the theme engine's Home or header widget.
     #[cfg(feature = "theme-engine")]
     Eng(Which, crate::widget::styled::StyledEvent),
+    /// A picture a stylesheet's `url()` names arrived (or failed).
+    #[cfg(feature = "theme-engine")]
+    Pic(String, Option<std::sync::Arc<crate::widget::pics::Pic>>),
     /// The Theme Studio's panel and pick mode.
     #[cfg(feature = "theme-engine")]
     Studio(super::studio::Msg),
