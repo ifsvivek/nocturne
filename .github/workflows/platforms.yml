@@ -242,13 +242,15 @@ jobs:
           if kill -0 "$pid" 2>/dev/null; then echo "nocturne is running"; kill "$pid"; else echo "nocturne exited early"; fi
           cat /tmp/nocturne-smoke.log
           if grep -qiE 'dyld|Library not loaded' /tmp/nocturne-smoke.log; then echo "dyld error" >&2; exit 1; fi
-          cd dist && for f in *.dmg; do shasum -a 256 "$f" > "$f.sha256"; done && cat ./*.sha256
+          cd dist && for f in *.dmg *-macos.tar.gz; do shasum -a 256 "$f" > "$f.sha256"; done && cat ./*.sha256
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos
           path: |
             dist/*.dmg
             dist/*.dmg.sha256
+            dist/nocturne-*-macos.tar.gz
+            dist/nocturne-*-macos.tar.gz.sha256
           retention-days: 7
           if-no-files-found: error
       - name: Test

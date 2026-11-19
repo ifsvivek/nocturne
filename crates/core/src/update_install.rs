@@ -192,6 +192,9 @@ pub fn can_self_update(kind: InstallKind, exe: &Path) -> bool {
 fn extract(artifact: &Path, work: &Path) -> Result<PathBuf, String> {
     let _ = std::fs::remove_dir_all(work);
     std::fs::create_dir_all(work).map_err(|e| e.to_string())?;
+    if cfg!(target_os = "macos") {
+        return extract_app(artifact, work);
+    }
     let mut tar = std::process::Command::new("tar");
     if cfg!(windows) {
         tar.arg("-xf")
@@ -199,8 +202,6 @@ fn extract(artifact: &Path, work: &Path) -> Result<PathBuf, String> {
             .arg("-C")
             .arg(work)
             .arg("nocturne.exe");
-    } else if cfg!(target_os = "macos") {
-        tar.arg("-xzf").arg(artifact).arg("-C").arg(work);
     } else {
         tar.arg("-xzf").arg(artifact).arg("-C").arg(work).args([
             "--strip-components=1",
@@ -215,13 +216,6 @@ fn extract(artifact: &Path, work: &Path) -> Result<PathBuf, String> {
         .success();
     let new = if cfg!(windows) {
         work.join("nocturne.exe")
-    } else if cfg!(target_os = "macos") {
-        std::fs::read_dir(work)
-            .map_err(|e| e.to_string())?
-            .filter_map(Result::ok)
-            .map(|e| e.path())
-            .find(|p| p.extension().is_some_and(|e| e == "app"))
-            .unwrap_or_else(|| work.join("NOCTURNE.app"))
     } else {
         work.join("nocturne")
     };
@@ -235,6 +229,26 @@ fn extract(artifact: &Path, work: &Path) -> Result<PathBuf, String> {
             .map_err(|e| e.to_string())?;
     }
     Ok(new)
+}
+
+/// The macOS artifact: a tar.gz whose top level is `NOCTURNE.app` (scripts/package-macos.sh).
+fn extract_app(artifact: &Path, work: &Path) -> Result<PathBuf, String> {
+    let ok = std::process::Command::new("tar")
+        .arg("-xzf")
+        .arg(artifact)
+        .arg("-C")
+        .arg(work)
+        .output()
+        .map_err(|e| format!("tar: {e}"))?
+        .status
+        .success();
+    std::fs::read_dir(work)
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.is_dir() && p.extension().is_some_and(|e| e == "app"))
+        .filter(|_| ok)
+        .ok_or_else(|| "the update archive has an unexpected layout".into())
 }
 
 /// Put `new` at `target`, keeping what was there as `<target>.old` until the next successful start.
@@ -421,6 +435,48 @@ mod tests {
             std::fs::read_to_string(app.join("Contents/x")).unwrap(),
             "v2"
         );
+    }
+
+    #[test]
+    fn macos_tarball_layout_extracts_and_swaps_the_bundle() {
+        let d = tempfile::tempdir().unwrap();
+        let src = d.path().join("src");
+        let make = |root: &Path, v: &str| {
+            std::fs::create_dir_all(root.join("NOCTURNE.app/Contents/MacOS")).unwrap();
+            std::fs::write(root.join("NOCTURNE.app/Contents/MacOS/nocturne"), v).unwrap();
+        };
+        make(&src, "v2");
+        // same command as scripts/package-macos.sh
+        let tgz = d.path().join("m.tar.gz");
+        assert!(
+            std::process::Command::new("tar")
+                .arg("-czf")
+                .arg(&tgz)
+                .arg("-C")
+                .arg(&src)
+                .arg("NOCTURNE.app")
+                .status()
+                .unwrap()
+                .success()
+        );
+        let apps = d.path().join("Apps");
+        make(&apps, "v1");
+        let work = apps.join(".nocturne-update");
+        std::fs::create_dir_all(&work).unwrap();
+        let new = extract_app(&tgz, &work).unwrap();
+        let app = apps.join("NOCTURNE.app");
+        swap(&app, &new).unwrap();
+        let bin = app.join("Contents/MacOS/nocturne");
+        assert_eq!(std::fs::read_to_string(bin).unwrap(), "v2");
+        assert_eq!(
+            std::fs::read_to_string(with_suffix(&app, ".old").join("Contents/MacOS/nocturne"))
+                .unwrap(),
+            "v1"
+        );
+        // a tarball without a bundle is rejected
+        std::fs::write(d.path().join("junk"), "junk").unwrap();
+        std::fs::create_dir_all(d.path().join("w2")).unwrap();
+        assert!(extract_app(&d.path().join("junk"), &d.path().join("w2")).is_err());
     }
 
     #[cfg(target_os = "linux")]

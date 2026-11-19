@@ -225,6 +225,17 @@ fn clean_name(n: &str) -> String {
     }
 }
 
+/// Name for a stylesheet that was just imported from a file or URL. An import never edits the selected saved theme (the
+/// editor detaches from it and saving adds a new one), so a selected theme's name is not reused; a name typed for a new
+/// theme is kept.
+pub fn import_name(selected: bool, typed: &str, file: &str) -> String {
+    if selected || typed.trim().is_empty() {
+        file.to_string()
+    } else {
+        typed.to_string()
+    }
+}
+
 const MAX_URL: usize = 2048;
 
 /// Only the URL the user typed is contacted: https (plain http only for loopback), a host, no
@@ -326,6 +337,21 @@ mod tests {
 
     fn accent(t: &Theme) -> Option<[u8; 3]> {
         t.accent.map(|c| [c.r, c.g, c.b])
+    }
+
+    #[test]
+    fn import_adds_a_theme_named_after_the_file_and_keeps_the_selected_one() {
+        let mut s = Store::default();
+        let marquee = s.add("marquee", RED, None);
+        // editor state while "marquee" is selected: an import detaches (sel = None) and renames
+        assert_eq!(import_name(true, "marquee", "feed"), "feed");
+        let feed = s.add(&import_name(true, "marquee", "feed"), BLUE, None);
+        assert_ne!(feed, marquee);
+        assert_eq!(s.get(marquee).unwrap().css, RED);
+        assert_eq!(s.get(feed).unwrap().name, "feed");
+        // a new theme the user already named keeps that name; a blank one takes the file's
+        assert_eq!(import_name(false, "Mine", "feed"), "Mine");
+        assert_eq!(import_name(false, "  ", "feed"), "feed");
     }
 
     #[test]

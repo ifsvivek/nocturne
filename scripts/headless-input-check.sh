@@ -26,7 +26,7 @@ ndiff() { cmp -l "$T/$1.ppm" "$T/$2.ppm" 2>/dev/null | wc -l; }
 differs() { [ "$(ndiff "$1" "$2")" -gt 600 ]; }
 same() { [ "$(ndiff "$1" "$2")" -le 600 ]; }
 check() { if "${@:2}"; then echo "PASS $1"; else echo "FAIL $1"; FAIL=1; fi; }
-clip_is() { [ "$(run wl-paste -n 2>/dev/null)" = "$1" ]; }
+clip_is() { sleep 0.6; [ "$(run wl-paste -n 2>/dev/null)" = "$1" ]; }
 
 $H start 1280x800 >/dev/null || exit 1
 run scripts/run-isolated.sh "$BIN" >"$T/app.log" 2>&1 &
@@ -37,25 +37,38 @@ shot empty
 key "$ADDR"
 shot typed
 check "typing shows text in the field" differs empty typed
-echo SENT1 | run wl-copy -n
-key -M ctrl a -m ctrl
-key -M ctrl c -m ctrl
+# Synthetic ctrl chords occasionally go missing (1 run in 5 lost the very first one), so each repeatable step retries up
+# to three times from a known clipboard sentinel; the check is still the real outcome.
+# try3 <sentinel> <c|x>: set the sentinel, send ctrl+a then ctrl+<c|x>, until the clipboard holds the address.
+try3() {
+  local n
+  for n in 1 2 3; do
+    echo "$1" | run wl-copy -n
+    key -M ctrl a -m ctrl
+    key -M ctrl "$2" -m ctrl
+    clip_is "$ADDR" && return 0
+  done
+  return 1
+}
+try3 SENT1 c
 check "Ctrl+A, Ctrl+C copies the field" clip_is "$ADDR"
-key -M ctrl x -m ctrl
+try3 SENT1 x
 shot cut
 check "Ctrl+X empties the field" same empty cut
 check "Ctrl+X keeps the text on the clipboard" clip_is "$ADDR"
+# The field moves when a validation message appears, so a fixed crop can miss it: prove the paste by state. Paste into
+# the empty field, then copy it back over a sentinel; the clipboard only holds the address again if the paste landed.
 key -M ctrl v -m ctrl
-shot pasted
-check "Ctrl+V restores the text" differs empty pasted
+try3 SENT3 c
+check "Ctrl+V restores the text" clip_is "$ADDR"
 echo SENT2 | run wl-copy -n
 key -k Tab
 key -M ctrl a -m ctrl
 key -M ctrl c -m ctrl
 check "Tab leaves the field (Ctrl+C copies nothing)" clip_is SENT2
 key -M shift -k Tab -m shift
-key -M ctrl a -m ctrl
-key -M ctrl c -m ctrl
+sleep 1
+try3 SENT4 c
 check "Shift+Tab returns to the field" clip_is "$ADDR"
 echo "SKIP sign-in password field: needs a reachable server"
 exit $FAIL

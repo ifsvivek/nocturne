@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build dist/NOCTURNE-<ver>-<arch>.dmg on a Mac.   Written without a Mac; its first run is the manual
+# Build dist/NOCTURNE-<ver>-<arch>.dmg and the self-update dist/nocturne-<ver>-<aarch64|x86_64>-macos.tar.gz on a Mac.   Written without a Mac; its first run is the manual
 # CI workflow (docs/PACKAGING.md). macOS cannot be built or tested from Linux, see docs/PLATFORMS.md.
 #
 #   usage: scripts/package-macos.sh
@@ -115,3 +115,11 @@ if [ -n "${SIGN_ID:-}" ] && [ -n "${NOTARY_PROFILE:-}" ]; then
   xcrun stapler staple "$dmg"
 fi
 shasum -a 256 "$dmg"
+
+# 8. Self-update artifact (crates/core/src/update_install.rs): tar.gz with NOCTURNE.app at the top level, named for the
+# manifest (scripts/make-update-manifest.sh). The same bundle as the dmg; the maintainer signs it like the other artifacts.
+case "$arch" in arm64) tarch=aarch64 ;; *) tarch=$arch ;; esac
+tgz=dist/nocturne-$ver-$tarch-macos.tar.gz
+COPYFILE_DISABLE=1 tar -czf "$tgz" -C dist/macos NOCTURNE.app
+(cd dist && shasum -a 256 "${tgz##*/}" > "${tgz##*/}.sha256")
+cat "$tgz.sha256"
