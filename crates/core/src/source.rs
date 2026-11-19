@@ -574,6 +574,18 @@ impl Source {
         self.media(self.client.episodes(&self.user, series, Some(season)).await)
     }
 
+    /// Direct URL of the title logo (no credentials in it), bounded to `max_w` x `max_h`; `None` without a logo.
+    pub fn logo_url(&self, m: &Media, max_w: u32, max_h: u32) -> Option<String> {
+        let (id, tag) = m.logo.as_ref()?;
+        Some(self.client.image_url_bounded(
+            id,
+            jf::ImageType::Logo,
+            Some(max_w),
+            Some(max_h),
+            Some(tag),
+        ))
+    }
+
     /// Image bytes (GET only). Disk cache first; a failed download is retried with backoff
     /// (not for 4xx: a missing image stays missing). At most a few requests in flight.
     pub async fn image(&self, m: &Media, art: Art, width: u32) -> Result<Vec<u8>, Failed> {
@@ -926,6 +938,26 @@ fn is_global_view(collection_type: Option<&str>, name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn logo_is_the_items_own_else_the_shows() {
+        use super::*;
+        let own: jf::Item = serde_json::from_str(
+            r#"{"Id":"m1","Name":"A","Type":"Movie","ImageTags":{"Logo":"lt"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            Media::from_item(&own).logo,
+            Some(("m1".into(), "lt".into()))
+        );
+        let ep: jf::Item = serde_json::from_str(
+            r#"{"Id":"e1","Name":"B","Type":"Episode","ParentLogoItemId":"s1","ParentLogoImageTag":"pt"}"#,
+        )
+        .unwrap();
+        assert_eq!(Media::from_item(&ep).logo, Some(("s1".into(), "pt".into())));
+        let none: jf::Item = serde_json::from_str(r#"{"Id":"x","Name":"C"}"#).unwrap();
+        assert_eq!(Media::from_item(&none).logo, None);
+    }
+
     #[test]
     fn user_image_key_follows_server_user_tag_and_size() {
         use super::user_image_key as k;

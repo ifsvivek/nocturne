@@ -418,9 +418,24 @@ impl Client {
         max_width: Option<u32>,
         tag: Option<&str>,
     ) -> String {
+        self.image_url_bounded(id, kind, max_width, None, tag)
+    }
+
+    /// Like [`Client::image_url`] with a height cap too (the server keeps the aspect ratio inside both bounds).
+    pub fn image_url_bounded(
+        &self,
+        id: &str,
+        kind: ImageType,
+        max_width: Option<u32>,
+        max_height: Option<u32>,
+        tag: Option<&str>,
+    ) -> String {
         let mut p = vec![];
         if let Some(w) = max_width {
             p.push(("maxWidth", w.to_string()));
+        }
+        if let Some(h) = max_height {
+            p.push(("maxHeight", h.to_string()));
         }
         if let Some(t) = tag {
             p.push(("tag", t.to_string()));
@@ -603,6 +618,10 @@ mod tests {
         assert_eq!(
             c.image_url("abc", ImageType::Logo, None, None),
             "http://jf.test:8096/Items/abc/Images/Logo"
+        );
+        assert_eq!(
+            c.image_url_bounded("abc", ImageType::Logo, Some(600), Some(200), Some("t")),
+            "http://jf.test:8096/Items/abc/Images/Logo?maxWidth=600&maxHeight=200&tag=t"
         );
     }
 

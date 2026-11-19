@@ -169,6 +169,7 @@ fn sidecars(file: &Path, dir: &Dir, parsed: &Parsed) -> (Option<PathBuf>, Art) {
     let dir_level =
         |names: &[&str]| -> Vec<String> { names.iter().map(|s| s.to_string()).collect() };
     let (mut nfos, mut poster, mut back) = (vec![stem.clone()], vec![], vec![]);
+    let mut logo = vec![format!("{stem}-logo"), format!("{stem}-clearlogo")];
     match parsed {
         Parsed::Movie { .. } | Parsed::Unmatched { .. } => {
             poster.push(format!("{stem}-poster"));
@@ -176,6 +177,7 @@ fn sidecars(file: &Path, dir: &Dir, parsed: &Parsed) -> (Option<PathBuf>, Art) {
             if sole && matches!(parsed, Parsed::Movie { .. }) {
                 poster.extend(dir_level(&["poster", "folder", "cover"]));
                 back.extend(dir_level(&["fanart", "backdrop"]));
+                logo.extend(dir_level(&["logo", "clearlogo"]));
             }
         }
         Parsed::Episode { .. } => {
@@ -194,6 +196,7 @@ fn sidecars(file: &Path, dir: &Dir, parsed: &Parsed) -> (Option<PathBuf>, Art) {
         Art {
             poster: pick(dir, &poster, &IMAGE),
             backdrop: pick(dir, &back, &IMAGE),
+            logo: pick(dir, &logo, &IMAGE),
         },
     )
 }
@@ -201,7 +204,7 @@ fn sidecars(file: &Path, dir: &Dir, parsed: &Parsed) -> (Option<PathBuf>, Art) {
 /// Signature of the sidecar files in use: changes when one is added, removed or edited.
 fn side_sig(nfo: &Option<PathBuf>, art: &Art) -> u64 {
     let mut h = 0xcbf29ce484222325u64;
-    for p in [nfo, &art.poster, &art.backdrop] {
+    for p in [nfo, &art.poster, &art.backdrop, &art.logo] {
         match p {
             Some(p) => {
                 fnv(&mut h, p.as_os_str().as_encoded_bytes());
@@ -402,6 +405,7 @@ fn show_infos(items: &[Item], scanned: &[PathBuf], warnings: &mut Vec<String>) -
                     &IMAGE,
                 ),
                 backdrop: pick(&d, &["fanart".into(), "backdrop".into()], &IMAGE),
+                logo: pick(&d, &["logo".into(), "clearlogo".into()], &IMAGE),
             },
             season_posters,
         });
