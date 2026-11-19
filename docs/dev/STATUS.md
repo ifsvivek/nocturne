@@ -16,7 +16,7 @@ On the branch `theme-engine` (cargo feature `theme-engine`, off in every normal 
 ## Still open after 0.5.1
 
 - The updater end to end from a published release (tested with unit and integration tests and a local server); the macOS update path has never run on a Mac.
-- Windows and macOS previews on real hardware (build, keyring, mpv IPC, paths, SmartScreen / Gatekeeper behaviour); signing certificates.
+- Windows and macOS previews on real hardware (build, keyring, mpv IPC, paths, SmartScreen / Gatekeeper behaviour); signing certificates. Unreleased: Windows fixes from the first real-PC (VM) test: bundled fonts, non-blocking mpv IPC with a property cache, in-window video through a child window (all written and cross-checked, to be run on Windows).
 - Pointer-only theme actions (Keep, Reset, assigning a per-server theme by click), hover zoom with a real pointer; Server UI against a server with real branding CSS and with several servers; a theme from the Jellyfin web.
 - Carried from 0.4: HDR on an HDR display, couch mode with a real gamepad and on a TV, remote control from a phone app, the .deb and .rpm on full desktop installs; Flatpak is undecided.
 - Live Trakt scrobble and import were verified in 0.4 against a real account; one-click connect with the built-in id is verified.

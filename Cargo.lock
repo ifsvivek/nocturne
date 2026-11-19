@@ -2970,6 +2970,7 @@ dependencies = [
  "wayland-client",
  "wayland-egl",
  "wayland-protocols",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

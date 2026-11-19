@@ -15,8 +15,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub enum Handles {
     /// Raw `wl_display*` / `wl_surface*` (as addresses, so the value is `Send`).
     Wayland { display: usize, surface: usize },
-    /// No Wayland handles (macOS, Windows): the in-window video cannot attach, use the external mpv.
+    /// A Win32 window (`HWND` as an address): the in-window video is a child window of it.
+    Win32 { hwnd: isize },
+    /// No handles the video can attach to (macOS): use the external mpv's own window.
     Other,
+}
+
+/// Can the picture be drawn inside the app window on this session (Wayland, or Windows)?
+/// `NOCTURNE_VIDEO` can still force either way; see `nocturne_core::video::choose`.
+pub fn can_embed() -> bool {
+    cfg!(windows) || std::env::var_os("WAYLAND_DISPLAY").is_some()
 }
 
 /// Reads the raw handles of window `id`. The callback runs on the event-loop thread, which is
@@ -30,6 +38,7 @@ pub fn handles(id: window::Id) -> Task<Handles> {
                 display: d.display.as_ptr() as usize,
                 surface: s.surface.as_ptr() as usize,
             },
+            (RawWindowHandle::Win32(h), _) => Handles::Win32 { hwnd: h.hwnd.get() },
             _ => Handles::Other,
         })
     })

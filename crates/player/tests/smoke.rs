@@ -122,6 +122,7 @@ fn killed_child_emits_closed_and_next_load_respawns() {
         ..Default::default()
     })
     .unwrap();
+    wait("spawned", || p.child_pid().is_some()); // mpv starts on a worker thread
     let old = p.child_pid().unwrap();
     assert!(
         std::process::Command::new("kill")
@@ -136,7 +137,7 @@ fn killed_child_emits_closed_and_next_load_respawns() {
     assert!(p.state().idle);
 
     p.load(path.to_str().unwrap(), &[]).unwrap();
-    assert_ne!(p.child_pid().unwrap(), old);
+    wait("respawned", || p.child_pid().is_some_and(|n| n != old));
     wait("duration after respawn", || p.state().duration.is_some());
     drop(p);
     let _ = std::fs::remove_file(path);
@@ -168,4 +169,30 @@ fn auth_header_not_on_child_command_line() {
     let s = String::from_utf8_lossy(&out.stdout);
     assert!(!s.contains("SECRET-TOKEN") && !s.contains("Authorization"));
     assert!(s.contains("--input-ipc-server="));
+}
+
+/// The UI reads properties without waiting: they come from the cache, which `Loaded` guarantees
+/// already holds the track list, and an unseen property is observed on first use.
+#[test]
+fn props_come_from_the_cache_without_blocking() {
+    let path = std::env::temp_dir().join(format!("nocturne-prop-{}.wav", std::process::id()));
+    std::fs::write(&path, wav(2)).unwrap();
+    let p = Player::new(Options {
+        headless: true,
+        ..Default::default()
+    })
+    .unwrap();
+    p.load(path.to_str().unwrap(), &[]).unwrap();
+    wait("loaded", || {
+        p.events().try_iter().any(|e| e == Event::Loaded)
+    });
+    assert!(
+        p.prop("track-list").is_some_and(|v| v.is_array()),
+        "ready at Loaded"
+    );
+    wait("lazy property", || {
+        p.prop("audio-params/samplerate").is_some()
+    });
+    drop(p);
+    let _ = std::fs::remove_file(path);
 }

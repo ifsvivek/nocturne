@@ -18,7 +18,7 @@ impl App {
             sync: self.settings.sync_progress,
             embedded_video: video::choose(
                 std::env::var("NOCTURNE_VIDEO").ok().as_deref(),
-                std::env::var_os("WAYLAND_DISPLAY").is_some(),
+                crate::platform::can_embed(),
             ) == video::Choice::Embedded,
             ..World::default()
         };
