@@ -280,10 +280,26 @@ impl Detail {
         // The line of facts: kind, rating, year, runtime, certification; and the genres.
         let chips = t_.doc.add(col, "div.detail-chips");
         let meta = t_.doc.add(chips, "div.detail-meta");
+        // The text twice: tracked capitals (the default look) and plain, for themes that set the facts as a line of text (the default sheet hides the plain one and the rating's star).
         let chip = |d: &mut Doc, parent: Id, class: &str, s: &str| {
             let c = d.add(parent, class);
             let l = d.add(c, "span.chip-label");
             d.text(l, &tracked(s));
+            let (star, plain) = match s.strip_prefix('\u{2605}') {
+                Some(r) => (true, r.trim_start()),
+                None => (false, s),
+            };
+            if star {
+                let st = d.add(c, "span.chip-star");
+                d.text(st, "\u{2605}");
+            }
+            let mut cs = plain.chars();
+            let cap: String = cs
+                .next()
+                .map(|f| f.to_uppercase().chain(cs).collect())
+                .unwrap_or_default();
+            let p = d.add(c, "span.chip-plain");
+            d.text(p, &cap);
         };
         chip(
             &mut t_.doc,
