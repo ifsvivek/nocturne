@@ -144,30 +144,21 @@ pub static CLASSES: &[(&str, To)] = &[
     ("cardIndicators", S(".card-chips")),
     ("indicator", S(":is(.card-badge, .card-chip)")),
     ("countIndicator", S(".card-badge")),
-    ("playedIndicator", S(".card-chip.on")),
+    ("playedIndicator", S(".card-chip[data-action=watched].on")),
     ("videoIndicator", N("no video-type badge")),
     ("timerIndicator", N("no recording badges")),
     ("itemProgressBar", S(":is(.card-progress, .card-bar)")),
     ("itemProgressBarForeground", S(".card-progress-fill")),
-    ("cardOverlayContainer", S(".card-ring")),
-    ("cardOverlayButton", N("no play overlay buttons on cards")),
     (
-        "cardOverlayButton-hover",
-        N("no play overlay buttons on cards"),
+        "cardOverlayContainer",
+        S(":is(.card, .poster):hover .card-ring"),
     ),
-    (
-        "cardOverlayButton-br",
-        N("no play overlay buttons on cards"),
-    ),
-    (
-        "cardOverlayButtonIcon",
-        N("no play overlay buttons on cards"),
-    ),
-    (
-        "cardOverlayFab-primary",
-        N("no play overlay buttons on cards"),
-    ),
-    ("cardOverlayFab", N("no play overlay buttons on cards")),
+    ("cardOverlayButton", S(".card-play")),
+    ("cardOverlayButton-hover", S(".card-play")),
+    ("cardOverlayButton-br", S(".card-play")),
+    ("cardOverlayButtonIcon", S(".card-play-glyph")),
+    ("cardOverlayFab-primary", S(".card-play")),
+    ("cardOverlayFab", S(".card-play")),
     (
         "portraitCard",
         S(":is(.card, .poster)[data-shape=portrait]"),
@@ -214,9 +205,9 @@ pub static CLASSES: &[(&str, To)] = &[
     ("itemName-primary", S(".detail-title")),
     ("itemName-secondary", S(".detail-season")),
     ("infoText", S(".detail-title")),
-    ("parentName", N("no parent-name link line")),
-    ("parentNameLast", N("no parent-name link line")),
-    ("musicParentName", N("no parent-name link line")),
+    ("parentName", S(".detail-parent")),
+    ("parentNameLast", S(".detail-parent")),
+    ("musicParentName", S(".detail-parent")),
     ("itemMiscInfo", S(".detail-meta")),
     ("itemMiscInfo-primary", S(".detail-meta")),
     ("itemMiscInfo-secondary", S(".detail-chips")),
@@ -268,11 +259,8 @@ pub static CLASSES: &[(&str, To)] = &[
     ("btnCancelRecording", N("no recording")),
     ("recordingButton", N("no recording")),
     ("recordingFields", N("no recording")),
-    (
-        "trackSelections",
-        N("no track selection fields on the page"),
-    ),
-    ("selectContainer", N("no select boxes")),
+    ("trackSelections", S(".detail-tracks")),
+    ("selectContainer", S(".detail-track")),
     ("selectLabel", N("no select boxes")),
     ("selectArrowContainer", N("no select boxes")),
     ("detailSection", S(".section")),
@@ -346,18 +334,9 @@ pub static CLASSES: &[(&str, To)] = &[
     ("btnMiniPlay", N("no mini play buttons")),
     ("skip-button", N("no skip-intro button")),
     // ---- the player (OSD) ----
-    (
-        "videoOsdBottom",
-        N("no single bar container (needs `div.player-bar`)"),
-    ),
-    (
-        "videoOsdBottom-maincontrols",
-        N("no single bar container (needs `div.player-bar`)"),
-    ),
-    (
-        "osdControls",
-        N("no single bar container (needs `div.player-bar`)"),
-    ),
+    ("videoOsdBottom", S(".player-bar")),
+    ("videoOsdBottom-maincontrols", S(".player-bar")),
+    ("osdControls", S(".player-bar")),
     ("osdHeader", N("no OSD header")),
     ("videoOsdHeader", N("no OSD header")),
     ("osdTitle", S(".player-title")),
@@ -409,18 +388,12 @@ pub static CLASSES: &[(&str, To)] = &[
     ("btnRepeat", N("no repeat button")),
     ("upNextContainer", N("no up-next card")),
     ("playerStats", N("no stats panel in the bar")),
-    (
-        "videoOsdBottom-hidden",
-        N("no single bar container (needs `div.player-bar`)"),
-    ),
+    ("videoOsdBottom-hidden", S(".player-bar")),
     // ---- library views (step E trees carry no jellyfin classes yet) ----
-    ("alphaPicker", N("no alphabet picker")),
-    ("alphaPickerButton", N("no alphabet picker")),
-    ("alphaPicker-fixed-right", N("no alphabet picker")),
-    (
-        "itemsViewSettingsContainer",
-        N("library toolbar classes are not emitted yet"),
-    ),
+    ("alphaPicker", S(".alpha-picker")),
+    ("alphaPickerButton", S(".az-letter")),
+    ("alphaPicker-fixed-right", S(".alpha-picker")),
+    ("itemsViewSettingsContainer", S(".library-toolbar")),
     ("padded-right-withalphapicker", K("alphabet picker spacing")),
     // ---- layout helpers ----
     ("padded-left", K("padding helper")),
@@ -565,9 +538,9 @@ pub static CLASSES: &[(&str, To)] = &[
     ("upNextDialog-countdownText", N("no up-next card")),
     ("upNextDialog-buttons", N("no up-next card")),
     ("upNextDialog-button", N("no up-next card")),
-    ("btnFilter", N("library toolbar: step E")),
-    ("btnSort", N("library toolbar: step E")),
-    ("btnSelectView", N("library toolbar: step E")),
+    ("btnFilter", S(".toolbar-button[data-action=filter]")),
+    ("btnSort", S(".toolbar-button[data-action=sort]")),
+    ("btnSelectView", S(".toolbar-button[data-action=view]")),
     ("btnNextPage", N("library toolbar: step E")),
     ("btnPreviousPage", N("library toolbar: step E")),
     ("listPaging", N("library toolbar: step E")),
@@ -615,6 +588,9 @@ pub static CLASSES: &[(&str, To)] = &[
 pub fn is_native_class(c: &str) -> bool {
     const PREFIX: &[&str] = &[
         "card-",
+        "library-",
+        "alpha-",
+        "toolbar-",
         "hero-",
         "header-",
         "row-",
@@ -658,7 +634,10 @@ pub static VARS: &[(&str, &[&str])] = &[
         "--jf-palette-secondary-contrastText",
         &["--nocturne-on-accent"],
     ),
-    ("--jf-palette-background-default", &["--nocturne-frame"]),
+    (
+        "--jf-palette-background-default",
+        &["--nocturne-frame", "--nocturne-bg"],
+    ),
     ("--jf-palette-background-paper", &["--nocturne-surface"]),
     ("--jf-palette-AppBar-defaultBg", &["--nocturne-header-bg"]),
     (
@@ -686,6 +665,55 @@ pub static VARS: &[(&str, &[&str])] = &[
     ("--dimTextColor", &["--nocturne-text-secondary"]),
     ("--headerBackground", &["--nocturne-header-bg"]),
     ("--borderColor", &["--nocturne-edge"]),
+    ("--main-color", &["--nocturne-accent"]),
+    ("--main-background", &["--nocturne-frame", "--nocturne-bg"]),
+    ("--second-background", &["--nocturne-surface"]),
+    ("--hover-background", &["--nocturne-raised"]),
+    ("--main-text", &["--nocturne-text"]),
+    ("--dimmer-text", &["--nocturne-text-tertiary"]),
+];
+
+/// Tokens that follow a mirrored one (`{v}` is the value the theme gave it), with the app's own derivation rules: secondary text and the control edge fade towards the frame, hairlines are a wash of the text colour, surfaces step from the frame towards the text, hover and tint come from the accent. They keep a theme that only sets Jellyfin's palette (a light one above all) coherent instead of mixing dark defaults into it.
+pub static DERIVED: &[(&str, &[(&str, &str)])] = &[
+    (
+        "--nocturne-frame",
+        &[
+            ("--nocturne-ink", "{v}"),
+            ("--nocturne-header-bg", "alpha({v}, 0.9)"),
+            ("--nocturne-surface", "mix({v}, var(--nocturne-text), 0.04)"),
+            ("--nocturne-raised", "mix({v}, var(--nocturne-text), 0.08)"),
+        ],
+    ),
+    (
+        "--nocturne-text",
+        &[
+            (
+                "--nocturne-text-secondary",
+                "mix({v}, var(--nocturne-frame), 0.3)",
+            ),
+            (
+                "--nocturne-text-tertiary",
+                "mix({v}, var(--nocturne-frame), 0.45)",
+            ),
+            ("--nocturne-edge", "mix({v}, var(--nocturne-frame), 0.5)"),
+            ("--nocturne-hairline", "alpha({v}, 0.08)"),
+            ("--nocturne-hairline-strong", "alpha({v}, 0.16)"),
+        ],
+    ),
+    (
+        "--nocturne-accent",
+        &[
+            (
+                "--nocturne-accent-hover",
+                "mix({v}, var(--nocturne-text), 0.17)",
+            ),
+            (
+                "--nocturne-accent-text",
+                "mix({v}, var(--nocturne-text), 0.45)",
+            ),
+            ("--nocturne-accent-tint", "alpha({v}, 0.12)"),
+        ],
+    ),
 ];
 
 /// Attribute selectors on Jellyfin data attributes: `[data-type=Movie]` and friends. `None` means no counterpart.

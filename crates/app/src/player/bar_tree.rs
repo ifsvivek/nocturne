@@ -71,16 +71,7 @@ impl BarHost {
 }
 
 fn sheet() -> String {
-    let k = t::active();
-    let a = |c: Color, a: f32| t::css_color(Color { a, ..c });
-    let mut s = crate::app::engine_ui::sheet_css();
-    s += &format!(
-        ":root {{ --nocturne-frame-77: {}; --nocturne-frame-96: {}; --nocturne-glow-10: {}; }}\n",
-        a(k.frame, 0.77),
-        a(k.frame, 0.96),
-        a(k.glow, 0.10)
-    );
-    s
+    crate::app::engine_ui::sheet_css()
 }
 
 fn px(v: f32) -> String {
@@ -110,6 +101,11 @@ impl Player {
         let f = facts(self);
         let mut doc = Doc::new("page");
         doc.attr(0, "data-screen", "player");
+        doc.attr(
+            0,
+            "data-layout",
+            if crate::couch::on() { "tv" } else { "desktop" },
+        );
         doc.attr(0, "data-video", if self.video { "true" } else { "false" });
         doc.nodes[0].classes.push("player-controls".into());
         doc.essential(0);
@@ -123,7 +119,8 @@ impl Player {
             acts: HashMap::new(),
             slots: vec![],
         };
-        let row1 = tr.doc.add(0, "div.player-row.player-row-1");
+        let bar = tr.doc.add(0, "div.player-bar");
+        let row1 = tr.doc.add(bar, "div.player-row.player-row-1");
         let ctl = tr.doc.add(row1, "div.player-transport");
         let (can_prev, can_next) = (self.prev_index().is_some(), self.next_index().is_some());
         if !self.mini {
@@ -279,7 +276,7 @@ impl Player {
             );
         }
         self.button(&mut tr, menus, "stop", "stop", "", false, false, Act::Stop);
-        let row2 = tr.doc.add(0, "div.player-row.player-row-2");
+        let row2 = tr.doc.add(bar, "div.player-row.player-row-2");
         let clock = tr.doc.add(row2, "div.player-clock");
         tr.doc.text(clock, &nocturne_core::source::fmt_clock(f.pos));
         let seek = tr.doc.add(row2, "div.player-seek");

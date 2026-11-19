@@ -188,6 +188,8 @@ pub(crate) fn sheet_css() -> String {
     ] {
         s += &format!(" --nocturne-{name}: {};", c(v));
     }
+    // The colour of scrims and washes over pictures: the built-in frame whatever stage-1 theme is active (as the hand-written pages draw them); a Jellyfin theme's palette mirrors its background onto it.
+    s += &format!(" --nocturne-ink: {};", c(t::FRAME));
     s += &format!(
         " --nocturne-r-card: {}px; --nocturne-r-panel: {}px; --nocturne-page-pad: {}px; }}\n",
         k.r_card,
@@ -315,12 +317,8 @@ impl App {
         let studio_css = self.studio.open.then(|| self.studio.css.clone());
         #[cfg(not(feature = "theme-engine"))]
         let studio_css: Option<String> = None;
-        let user = studio_css.or_else(|| {
-            self.themes
-                .active_css(self.theme_source(), self.theme_ui())
-                .filter(|c| nocturne_style::is_engine_sheet(c))
-                .map(str::to_string)
-        });
+        // Imports inlined: the fetched text, not the raw `@import` line.
+        let user = studio_css.or_else(|| self.engine_sheet_text());
         if user != self.eng.user {
             self.eng.engine.set_user_css(user.as_deref());
             self.eng.user = user;
@@ -763,6 +761,7 @@ impl App {
                         {
                             Some("fav") => chip = Some(CellAct::Fav),
                             Some("played") => chip = Some(CellAct::Played),
+                            Some("play") => chip = Some(CellAct::Play),
                             _ => {}
                         }
                         if node.virtual_item
@@ -1170,3 +1169,28 @@ fn ancestor_cell(tree: &Tree, scene: &Scene, n: Id) -> Option<(usize, usize)> {
 
 #[allow(dead_code)]
 fn _unused(_: HRow) {}
+
+/// The engine's view of a theme for `NOCTURNE_THEME_REPORT`: whether the engine takes the sheet, what the Jellyfin translation did (selectors translated, lost by design, lost because the name is not in the map, variables mirrored) and the warnings of the sheet the engine reads.
+pub(crate) fn theme_report(css: &str) -> serde_json::Value {
+    let on = nocturne_style::is_engine_sheet(css);
+    let (text, c) = nocturne_style::compat::translate(css);
+    let rep = nocturne_style::Sheet::parse(&text).report;
+    let kinds: std::collections::BTreeMap<&str, usize> = rep
+        .groups
+        .iter()
+        .map(|(k, g)| (k.label(), g.count))
+        .collect();
+    serde_json::json!({
+        "engine_sheet": on,
+        "compat_applied": c.applied,
+        "selectors": c.selectors,
+        "translated": c.translated,
+        "by_design": c.selectors - c.translated - c.unmapped(),
+        "unmapped": c.unmapped(),
+        "decls": c.decls,
+        "decls_in_kept_rules": c.decls_reachable,
+        "vars_mirrored": c.vars_mirrored,
+        "top_reasons": c.groups().iter().take(8).map(|g| format!("{}: {}", g.0, g.1)).collect::<Vec<_>>(),
+        "sheet_warnings": kinds,
+    })
+}

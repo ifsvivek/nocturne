@@ -25,6 +25,17 @@ pub(super) fn kind_attr(k: Kind) -> &'static str {
     }
 }
 
+/// `data-shape` of a card from the art box: what Jellyfin calls portrait, backdrop and square cards.
+fn shape_name((w, h): (f32, f32)) -> &'static str {
+    if (w - h).abs() <= 0.1 * w.max(h) {
+        "square"
+    } else if h > w {
+        "portrait"
+    } else {
+        "backdrop"
+    }
+}
+
 fn section_class(k: HRow) -> &'static str {
     match k {
         HRow::Resume => "section-resume",
@@ -521,6 +532,7 @@ impl App {
             for (chip, act) in n.chips.into_iter().zip([CellAct::Fav, CellAct::Played]) {
                 tree.act(chip, Message::Cell(At::Home(ri, ci), act));
             }
+            tree.act(n.play, Message::Cell(At::Home(ri, ci), CellAct::Play));
             tree.act(
                 n.card,
                 Message::Cell(
@@ -538,6 +550,7 @@ pub(super) struct CardNodes {
     pub card: Id,
     /// The favourite and the played chip.
     pub chips: [Id; 2],
+    pub play: Id,
 }
 
 /// One card as a subtree of `d` under `parent`: the stage-1 look from the strip's `Geo` and the card's data. Used by Home's strips and the library grid's virtual items (which have only a `Doc` to build into).
@@ -555,6 +568,7 @@ pub(super) fn card_doc(d: &mut Doc, parent: Id, g: &Geo, c: &CardIn) -> CardNode
             },
         );
         d.attr(card, "data-kind", c.kind);
+        d.attr(card, "data-shape", shape_name(g.dims));
         d.attr(card, "data-source", &c.source.to_string());
         d.attr(
             card,
@@ -613,11 +627,7 @@ pub(super) fn card_doc(d: &mut Doc, parent: Id, g: &Geo, c: &CardIn) -> CardNode
             let o = d.add(img, "div.card-overlay");
             d.inline(
                 o,
-                &format!(
-                    "position: absolute; left: 0; right: 0; bottom: 0; padding: 12px; display: flex; flex-direction: column; gap: 2px; background: linear-gradient(180deg, {}, {})",
-                    t::css_color(iced::Color { a: 0.0, ..t::frame() }),
-                    t::css_color(iced::Color { a: 0.92, ..t::frame() }),
-                ),
+                "position: absolute; left: 0; right: 0; bottom: 0; padding: 12px; display: flex; flex-direction: column; gap: 2px; background: linear-gradient(180deg, alpha(var(--nocturne-frame), 0), alpha(var(--nocturne-frame), 0.92))",
             );
             if !look.title_t.hidden {
                 let n = d.add(o, "div.card-title");
@@ -723,10 +733,21 @@ pub(super) fn card_doc(d: &mut Doc, parent: Id, g: &Geo, c: &CardIn) -> CardNode
                 },
             );
             d.attr(b, "data-act", if k == 0 { "fav" } else { "played" });
+            d.attr(
+                b,
+                "data-action",
+                if k == 0 { "favourite" } else { "watched" },
+            );
             let gl = d.add(b, "span.card-chip-glyph");
             d.text(gl, glyph);
             chip_nodes[k] = b;
         }
+        // A play fab for themes that show one (hidden by the default sheet, so out of focus order and hit tests).
+        let play = d.add(img, "a.card-play");
+        d.attr(play, "data-act", "play");
+        d.attr(play, "data-action", "play");
+        let gl = d.add(play, "span.card-play-glyph");
+        d.text(gl, "\u{25B6}");
         if look.bar_h() > 0.0 {
             let slot = d.add(card, "div.card-bar");
             d.inline(slot, &format!("height: {}", px(look.bar_h())));
@@ -781,6 +802,7 @@ pub(super) fn card_doc(d: &mut Doc, parent: Id, g: &Geo, c: &CardIn) -> CardNode
         CardNodes {
             card,
             chips: chip_nodes,
+            play,
         }
     }
 }

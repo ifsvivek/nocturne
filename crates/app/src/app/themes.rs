@@ -139,6 +139,19 @@ fn file_name_of(url: &str) -> String {
 impl App {
     /// The server whose override applies to what is on screen: a detail page's own server, else
     /// the single server picked in the source filter. The shell and local folders follow global.
+    /// The active theme's text for the theme engine, with its fetched imports inlined, when the engine takes the sheet (`nocturne_style::is_engine_sheet`).
+    #[cfg(feature = "theme-engine")]
+    pub(super) fn engine_sheet_text(&self) -> Option<String> {
+        let css = self
+            .themes
+            .active_css(self.theme_source(), self.theme_ui())?;
+        let text = self
+            .themes
+            .resolved_for(css)
+            .map_or(css, |r| r.css.as_str());
+        nocturne_style::is_engine_sheet(text).then(|| text.to_string())
+    }
+
     pub(super) fn theme_source(&self) -> Option<SourceId> {
         use nocturne_core::sources::SourceFilter;
         match self.stack.last() {
@@ -257,6 +270,7 @@ impl App {
                 "notes": r.map_or_else(Vec::new, |r| r.notes.iter().map(|n| format!("{}: {}", n.url, n.reason)).collect()),
             },
             "fonts": self.themes.fonts_for(css).iter().map(|f| f.family.clone()).collect::<Vec<_>>(),
+            "engine": engine_report(r.map_or(css, |r| r.css.as_str())),
         })
         .to_string()
     }
@@ -1176,4 +1190,15 @@ fn ago(at: u64) -> String {
         3600..=86399 => format!("{} h ago", d / 3600),
         _ => format!("{} days ago", d / 86400),
     }
+}
+
+/// The theme engine's numbers for the report (null in a build without the engine).
+#[cfg(feature = "theme-engine")]
+fn engine_report(css: &str) -> serde_json::Value {
+    super::engine_ui::theme_report(css)
+}
+
+#[cfg(not(feature = "theme-engine"))]
+fn engine_report(_: &str) -> serde_json::Value {
+    serde_json::Value::Null
 }
