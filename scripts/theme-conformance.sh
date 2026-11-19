@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Theme conformance harness: renders each Jellyfin web theme in the ORIGINAL jellyfin-web (headless Chrome) and in NOCTURNE
 # (Server UI on, headless sway session) from the same throwaway server and demo library, then scores the pairs.
-# usage: scripts/theme-conformance.sh [--bin PATH-TO-NOCTURNE-DEBUG-BINARY] [--hidden] [theme-name ...]
+# usage: scripts/theme-conformance.sh [--bin PATH-TO-NOCTURNE-DEBUG-BINARY] [--hidden] [--default] [--no-report] [theme-name ...]
+#   --default adds a run with no theme (the server's own look, name "default"); --no-report leaves docs/dev/THEME_CONFORMANCE.md alone.
+#   NOCTURNE_CONF_DIR, NOCTURNE_CONF_OUT, NOCTURNE_CONF_HS, NOCTURNE_CONF_PORT and NOCTURNE_CONF_CHROME_PORT move the throwaway server, the captures, the headless session and the ports (several runs side by side).
 #   no names = every active theme of awesome-jellyfin THEMES.md (fetched at run time); --hidden adds the "hidden pending v12" ones.
 # Everything lives under /tmp (server data $CONF, captures $OUT). No theme CSS is stored anywhere: only the @import line.
 # Safety: the server is a throwaway on loopback, data under /tmp; branding is written only after the guard below passes.
@@ -9,16 +11,16 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(dirname "$HERE")"
-CONF=/tmp/nocturne-conf
-OUT=/tmp/theme-conformance
+CONF="${NOCTURNE_CONF_DIR:-/tmp/nocturne-conf}"
+OUT="${NOCTURNE_CONF_OUT:-/tmp/theme-conformance}"
 PORT="${NOCTURNE_CONF_PORT:-8171}"
 CHROME_PORT="${NOCTURNE_CONF_CHROME_PORT:-9271}"
 URL="http://127.0.0.1:$PORT"
 DEMO="$CONF/demo"; JF="$DEMO/jf"
-HS=conf                              # headless session name
-BIN="$REPO/target/debug/nocturne"; HIDDEN=0; NAMES=()
+HS="${NOCTURNE_CONF_HS:-conf}"        # headless session name
+BIN="$REPO/target/debug/nocturne"; HIDDEN=0; NAMES=(); DEFAULT=0; REPORT=1
 while [[ $# -gt 0 ]]; do case "$1" in
-  --bin) BIN="$2"; shift 2;; --hidden) HIDDEN=1; shift;; -*) echo "unknown flag $1" >&2; exit 2;; *) NAMES+=("$1"); shift;; esac; done
+  --bin) BIN="$2"; shift 2;; --hidden) HIDDEN=1; shift;; --default) DEFAULT=1; shift;; --no-report) REPORT=0; shift;; -*) echo "unknown flag $1" >&2; exit 2;; *) NAMES+=("$1"); shift;; esac; done
 BIN=$(realpath "$BIN"); [[ -x $BIN ]] || { echo "no NOCTURNE binary at $BIN (cargo build -p nocturne-app)" >&2; exit 1; }
 [[ $PORT != 8097 ]] || { echo "refusing: port 8097 is the live-test server" >&2; exit 1; }
 for b in jellyfin jq curl ffmpeg python3 google-chrome-stable sway grim secret-tool; do command -v "$b" >/dev/null || { echo "missing: $b" >&2; exit 1; }; done
@@ -69,6 +71,7 @@ jq -n --arg l "$ID_MOVIES" --arg m "$(ids Movie "$MOVIE_NAME")" --arg s "$(ids S
 python3 -I "$HERE/theme-conformance.py" themes "$OUT/themes.json"
 mapfile -t LIST < <(jq -r --argjson h "$HIDDEN" '.[] | select(.import_url != null) | select($h==1 or .status=="active") | .name' "$OUT/themes.json" )
 if ((${#NAMES[@]})); then LIST=("${NAMES[@]}"); fi
+if ((DEFAULT)); then LIST=(default "${LIST[@]}"); fi
 
 # ---- 3. app side: isolated config signed in as `demo` with the server's UI on (keyring service nocturne-test only)
 PW=$(cat "$JF/demo-password")
@@ -102,7 +105,7 @@ while read -r k; do
   printf '%s' "$sess_json" | secret-tool store --label "nocturne-conf throwaway" service nocturne-test username "$k" application rust-keyring target default
 done <<<"$KEYRING_USER_KEYS"
 
-HS_NAME=$HS "$HERE/headless-session.sh" start 1920x1080
+HS_BORDERLESS=1 HS_NAME=$HS "$HERE/headless-session.sh" start 1920x1080
 app_shot() { # screen keys out.png [report.json]
   local keys=$2 out=$3 rep=${4:-}
   rm -f "$out"
@@ -125,22 +128,27 @@ declare -A KEYS=(
 declare -a SUMMARY
 for name in "${LIST[@]}"; do
   d="$OUT/$(tr -c 'A-Za-z0-9\n' _ <<<"$name")"; mkdir -p "$d"
-  imp=$(jq -r --arg n "$name" '.[]|select(.name==$n)|.import_url // empty' "$OUT/themes.json")
-  [[ -n $imp ]] || { echo "== $name: no resolvable @import, skipped"; continue; }
+  if [[ $name == default ]]; then imp=""; css=""; else
+    imp=$(jq -r --arg n "$name" '.[]|select(.name==$n)|.import_url // empty' "$OUT/themes.json")
+    [[ -n $imp ]] || { echo "== $name: no resolvable @import, skipped"; continue; }
+    css="@import url(\"$imp\");"
+  fi
   echo "== $name  ($imp)"
   guard
   cfg=$(api GET /System/Configuration/branding)
-  api POST /System/Configuration/branding "$(jq -c --arg c "@import url(\"$imp\");" '.CustomCss=$c' <<<"$cfg")" >/dev/null
+  api POST /System/Configuration/branding "$(jq -c --arg c "$css" '.CustomCss=$c' <<<"$cfg")" >/dev/null
   python3 -I "$HERE/theme-conformance.py" web --url "$URL" --user demo --pw-file "$JF/demo-password" --out "$d" \
     --chrome "$(command -v google-chrome-stable)" --ids "$CONF/ids.json" --profile "$CONF/chrome-profile" --pidfile "$PIDS_CHROME" --chrome-port "$CHROME_PORT"
   rm -rf "$CONF/chrome-profile"; rm -f "$PIDS_CHROME"
   for scr in home movies movie series; do app_shot "$scr" "${KEYS[$scr]}" "$d/app-$scr.png" "$([[ $scr == home ]] && echo "$d/report.json")"; done
   python3 -I "$HERE/theme-conformance.py" score "$d" >"$d/scores.line"
+  python3 -I "$HERE/theme-conformance.py" sheet "$d"
   [[ -s $d/report.json ]] || echo '{}' >"$d/report.json"
   jq -n --arg n "$name" --arg u "$imp" --slurpfile s "$d/scores.json" --slurpfile r "$d/report.json" '{name:$n,import:$u,scores:$s[0],report:$r[0]}' >"$d/result.json"
 done
 # reset the throwaway server's branding
 guard; cfg=$(api GET /System/Configuration/branding); api POST /System/Configuration/branding "$(jq -c '.CustomCss=""' <<<"$cfg")" >/dev/null
 DOC="$REPO/docs/dev/THEME_CONFORMANCE.md"
-[[ -f $DOC ]] && python3 -I "$HERE/theme-conformance.py" report --out "$OUT" --doc "$DOC" --commit "$COMMIT" --jf "$(api GET /System/Info | jq -r .Version)"
+((REPORT)) && [[ -f $DOC ]] && python3 -I "$HERE/theme-conformance.py" report --out "$OUT" --doc "$DOC" --commit "$COMMIT" --jf "$(api GET /System/Info | jq -r .Version)"
+python3 -I "$HERE/theme-conformance.py" all "$OUT" || true
 echo "done in $(( $(date +%s) - START )) s; captures under $OUT"

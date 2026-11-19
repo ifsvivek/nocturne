@@ -44,7 +44,7 @@ impl GridData {
     }
 }
 
-fn blank_card(i: usize) -> CardIn {
+pub(super) fn blank_card(i: usize) -> CardIn {
     CardIn {
         pic: Pic::Loading,
         pic_id: GRID_PIC + i as u32,
@@ -67,7 +67,7 @@ fn blank_card(i: usize) -> CardIn {
 }
 
 /// The page's tabs and its parts as the stamp of what the grid's cards are built from.
-fn stamp(br: &Browse, m: &Metrics, extra: (u32, u32, bool, bool)) -> u64 {
+fn stamp(br: &Browse, m: &Metrics, extra: (u32, u32, bool, bool, bool)) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (br.len(), br.epoch, br.prefs.view as u8).hash(&mut h);
     (m.w.to_bits(), m.h.to_bits(), m.cols, extra).hash(&mut h);
@@ -88,7 +88,7 @@ fn stamp(br: &Browse, m: &Metrics, extra: (u32, u32, bool, bool)) -> u64 {
 }
 
 /// The geometry of the library grid's cards: what `Geo` says for a Home strip, from the page's metrics.
-fn grid_geo(m: &Metrics, view: ViewKind) -> Geo {
+pub(super) fn grid_geo(m: &Metrics, view: ViewKind) -> Geo {
     let look = grid_look();
     Geo {
         art: look.art(if view == ViewKind::Landscape {
@@ -142,12 +142,13 @@ impl App {
     }
 
     /// The card data of every loaded item, reusing `old` when its stamp still holds.
-    fn grid_data(
+    pub(super) fn grid_data(
         &self,
         br: &Browse,
         m: &Metrics,
         geo: Geo,
         old: Option<&Rc<RefCell<GridData>>>,
+        jf: bool,
     ) -> Rc<RefCell<GridData>> {
         let several = self.several_sources();
         let writes = self.hooks.can_write();
@@ -159,6 +160,7 @@ impl App {
                 t::page_pad().to_bits(),
                 several,
                 writes,
+                jf,
             ),
         );
         if let Some(o) = old {
@@ -191,7 +193,11 @@ impl App {
                     pic_id: GRID_PIC + idx as u32,
                     key: Some((key, blur)),
                     title: md.title.clone(),
-                    meta: caption(md),
+                    meta: if jf {
+                        super::jf::second_line(md)
+                    } else {
+                        caption(md)
+                    },
                     index: idx,
                     progress: md.progress(),
                     badge: badge(md),
@@ -389,7 +395,7 @@ impl App {
             );
         } else {
             let grid = virtual_grid(d, panel, &geo, n);
-            let data = self.grid_data(br, &m, geo, old);
+            let data = self.grid_data(br, &m, geo, old, false);
             tree.builders.insert(grid, grid_builder(data.clone()));
             // Pictures that already arrived are in the cards: the new tree's table starts with them.
             for c in data.borrow().cards.iter().flatten() {
