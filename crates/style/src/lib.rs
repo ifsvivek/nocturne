@@ -4,6 +4,8 @@
 pub mod anim;
 pub mod calc;
 pub mod cascade;
+pub mod compat;
+pub mod compat_map;
 pub mod demo;
 pub mod doc;
 pub mod engine;

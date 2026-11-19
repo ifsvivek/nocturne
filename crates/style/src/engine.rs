@@ -1,6 +1,7 @@
 //! The engine's front door: a default sheet from the app, an optional user sheet layered over it, a time budget, `catch_unwind`
 //! around user styles, a fallback to the default look, and a safe mode that ignores the user sheet altogether.
 use crate::cascade::{Failure, Interaction};
+use crate::compat::{self, Compat};
 use crate::doc::Doc;
 use crate::fonts::Fonts;
 use crate::layout::Scene;
@@ -35,6 +36,9 @@ pub struct Engine {
     disabled: bool,
     pub fonts: Rc<Fonts>,
     notices: Vec<String>,
+    /// Translate jellyfin-web selectors in the user sheet (on for user and server-branding sheets; NOCTURNE's own default sheet never goes through it).
+    compat: bool,
+    compat_report: Option<Compat>,
 }
 
 fn guard<T>(f: impl FnOnce() -> T) -> Result<T, String> {
@@ -59,6 +63,8 @@ impl Engine {
             disabled: false,
             fonts: Rc::new(Fonts::new()),
             notices: vec![],
+            compat: true,
+            compat_report: None,
         }
     }
 
@@ -66,10 +72,30 @@ impl Engine {
         self.budget = d;
     }
 
+    /// Turn the jellyfin-web translation of the user sheet on or off (takes effect at the next `set_user_css`).
+    pub fn set_compat(&mut self, on: bool) {
+        self.compat = on;
+    }
+
+    /// What the translation of the current user sheet did (`None` without a user sheet or with the flag off).
+    pub fn compat_report(&self) -> Option<&Compat> {
+        self.compat_report.as_ref().filter(|c| c.applied)
+    }
+
     /// Install (or remove) the user stylesheet; this also re-enables a sheet that was switched off for being slow.
     pub fn set_user_css(&mut self, css: Option<&str>) {
-        self.layered =
-            css.map(|c| Rc::new(Sheet::layered(&[(&self.default_css, DEFAULT), (c, USER)])));
+        self.compat_report = None;
+        self.layered = css.map(|c| {
+            let (text, report) = if self.compat {
+                compat::translate(c)
+            } else {
+                (c.to_owned(), Compat::default())
+            };
+            let mut sheet = Sheet::layered(&[(&self.default_css, DEFAULT), (&text, USER)]);
+            report.add_to(&mut sheet.report);
+            self.compat_report = Some(report);
+            Rc::new(sheet)
+        });
         self.overruns = 0;
         self.disabled = false;
     }

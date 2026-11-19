@@ -294,7 +294,7 @@ fn supports(text: &str, depth: u8) -> bool {
 
 // ---- scanning a stylesheet for blocks ----
 
-fn skip_string(b: &[u8], i: usize) -> usize {
+pub(crate) fn skip_string(b: &[u8], i: usize) -> usize {
     let q = b[i];
     let mut j = i + 1;
     while j < b.len() {
@@ -308,7 +308,7 @@ fn skip_string(b: &[u8], i: usize) -> usize {
     b.len()
 }
 
-fn skip_comment(b: &[u8], i: usize) -> usize {
+pub(crate) fn skip_comment(b: &[u8], i: usize) -> usize {
     let mut j = i + 2;
     while j + 1 < b.len() {
         if b[j] == b'*' && b[j + 1] == b'/' {
@@ -320,7 +320,7 @@ fn skip_comment(b: &[u8], i: usize) -> usize {
 }
 
 /// First `{` or `;` at or after `i`, outside strings, comments and parentheses.
-fn block_start(b: &[u8], mut i: usize) -> usize {
+pub(crate) fn block_start(b: &[u8], mut i: usize) -> usize {
     let mut depth = 0i32;
     while i < b.len() {
         match b[i] {
@@ -347,7 +347,7 @@ fn block_start(b: &[u8], mut i: usize) -> usize {
 }
 
 /// Index of the `}` matching the `{` at `open`.
-fn block_end(b: &[u8], open: usize) -> usize {
+pub(crate) fn block_end(b: &[u8], open: usize) -> usize {
     let (mut depth, mut i) = (0i32, open);
     while i < b.len() {
         match b[i] {
