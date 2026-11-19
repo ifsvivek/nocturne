@@ -21,6 +21,7 @@ mod play;
 mod preview;
 mod remote;
 mod search;
+mod server_ui;
 mod settings;
 pub(crate) mod smart;
 mod sources;
@@ -184,6 +185,9 @@ pub struct App {
     confirm: Option<SourceId>,
     /// The extra-header dialog of a server.
     hdr: Option<sources::HeaderDlg>,
+    /// Server UI: each server's layout as last read, and the open home-sections dialog.
+    server_ui: HashMap<SourceId, nocturne_core::server_ui::ServerUi>,
+    sec: Option<server_ui::SecDlg>,
     folders: Option<folders::Folders>,
     online: online::State,
     trakt: trakt::State,
@@ -310,6 +314,8 @@ impl App {
             th: Default::default(),
             confirm: None,
             hdr: None,
+            server_ui: HashMap::new(),
+            sec: None,
             folders: None,
             online: Default::default(),
             trakt: Default::default(),
@@ -618,6 +624,11 @@ impl App {
             Message::Fan(pid, kind, epoch, origin, r) => {
                 self.fan_answer(pid, kind, epoch, origin, r)
             }
+            Message::ServerUi(id, r) => {
+                self.server_ui_answer(id, r);
+                Task::none()
+            }
+            Message::SectionsSaved(id, ok) => self.sections_saved(id, ok),
             Message::Latest(pid, epoch, origin, lib, r) => {
                 self.latest_answer(pid, epoch, origin, lib, r)
             }
@@ -1597,6 +1608,12 @@ impl App {
             }
             return Task::none();
         }
+        if self.sections_open() {
+            if key == "escape" {
+                self.close_sections();
+            }
+            return Task::none();
+        }
         if self.confirm.is_some() {
             if matches!(key, "escape" | "backspace") {
                 self.confirm = None;
@@ -1966,6 +1983,9 @@ impl App {
         }
         if self.hdr.is_some() {
             layers.push(self.header_dialog());
+        }
+        if self.sections_open() {
+            layers.push(self.sections_dialog());
         }
         if self.online.finder_open() {
             layers.push(self.finder_dialog());

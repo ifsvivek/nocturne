@@ -31,6 +31,10 @@ pub struct Profile {
     /// Online details and subtitle switches (local sources only; off by default). No secrets: keys are in the keyring.
     #[serde(default)]
     pub online: crate::online::Flags,
+    /// Jellyfin sources: follow the server's own home layout (section order, My media tiles,
+    /// branding CSS) when this server alone is selected. Off for new servers.
+    #[serde(default)]
+    pub server_ui: bool,
     #[serde(flatten)]
     pub kind: ProfileKind,
 }
@@ -131,6 +135,7 @@ impl Sources {
             label: label.into(),
             enabled: true,
             online: Default::default(),
+            server_ui: false,
             kind,
         });
         id
@@ -185,6 +190,14 @@ impl Sources {
             }
             None => false,
         }
+    }
+
+    pub fn set_server_ui(&mut self, id: SourceId, on: bool) -> bool {
+        let Some(p) = self.profiles.iter_mut().find(|p| p.id == id) else {
+            return false;
+        };
+        p.server_ui = on;
+        true
     }
 
     pub fn set_enabled(&mut self, id: SourceId, on: bool) {

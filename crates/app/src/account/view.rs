@@ -226,6 +226,16 @@ fn login_screen(a: &Accounts, now: Instant) -> El<'_> {
         field(&f.fields[0], Where::Login(0)),
         field(&f.fields[1], Where::Login(1)),
     ];
+    if let Some(d) = &st.disclaimer {
+        items.insert(
+            1,
+            text(d.clone())
+                .size(t::CAPTION)
+                .line_height(1.5)
+                .color(t::text_tertiary())
+                .into(),
+        );
+    }
     items.extend(note(st.msg));
     let mut r = row![action_button(
         "Sign in",

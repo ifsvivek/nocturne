@@ -19,6 +19,7 @@ What NOCTURNE does: 0.3.0 is released; entries marked **(0.4)** are on the unrel
 - [x] (0.4) Smart collections: saved rules (watched state, genres, years, rating, added within N days, resolution, runtime, sources) over every source; local only. Unit-tested; resolution rules apply to servers only
 - [x] (0.4) One watched state across sources (opt-in, write-gated), matched by provider ids only. Verified on a throwaway server with a local copy of the same title (setting off: nothing follows; on with server changes: the server copy follows; on without: only local copies; unrelated titles never touched). Not yet tried with two real servers
 - [x] (0.4) Optional extra HTTP header per server (keyring). Verified on a throwaway server
+- [x] (0.5) Server UI per server (Settings > Sources > Layout): Home in the server's own section order with a My media row and the server's library order and hidden libraries, and the server's branding CSS as that server's theme layer; a home-sections editor (reorder, on / off) that writes back only the `homesection` entries, behind server changes. Verified on a throwaway server (layout, editor with writes off and on, reload); not tried against a server with custom branding CSS or Live TV. Not shown natively: Live TV and recordings rows, audio and book continue rows, web-client plugins
 
 ## Accounts and connection
 - [x] Sign in with username and password, Quick Connect, sign out, change own password

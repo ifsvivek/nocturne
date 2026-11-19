@@ -73,7 +73,7 @@ pub struct State {
     busy: bool,
     preview: Option<Instant>,
     /// The theme id last handed to `theme::set` (`None` = not yet / must be redone).
-    applied: Option<Option<u32>>,
+    applied: Option<u64>,
 }
 
 impl Default for State {
@@ -122,7 +122,7 @@ impl App {
         if self.th.preview.is_some() {
             return;
         }
-        let want = self.themes.active_id(self.theme_source());
+        let want = self.themes.active_key(self.theme_source());
         if self.th.applied != Some(want) {
             crate::theme::set(&self.themes.resolve(self.theme_source()));
             self.th.applied = Some(want);
@@ -469,6 +469,49 @@ impl App {
                     .spacing(t::S2)
                     .align_y(Alignment::Center),
                 );
+            }
+        }
+        // Branding CSS of servers in Server UI mode: applied automatically, listed here with what
+        // could not be mapped. ponytail: parsed while drawing (milliseconds, this page only).
+        let branded: Vec<_> = self
+            .catalog
+            .slots
+            .iter()
+            .filter_map(|s| Some((s, self.themes.branding_of(s.id)?)))
+            .collect();
+        if !branded.is_empty() {
+            col = col.push(rule()).push(
+                text(tracked("Server branding"))
+                    .shaping(text::Shaping::Advanced)
+                    .size(t::CONTROL_TEXT)
+                    .font(t::bold())
+                    .color(t::text_secondary()),
+            );
+            col = col.push(
+                text("The look the server's administrator set, used for that server alone while its own layout is on. A theme you pick for the server above wins over it.")
+                    .size(t::CAPTION)
+                    .color(t::text_tertiary()),
+            );
+            for (s, css) in branded {
+                let line = match cz::parse(css) {
+                    Ok(p) => format!(
+                        "{}: {} applied, {} not understood",
+                        s.profile.label,
+                        p.theme.count(),
+                        p.warnings.len() + p.dropped_warnings
+                    ),
+                    Err(e) => format!("{}: {e}", s.profile.label),
+                };
+                col = col.push(text(line).size(t::CAPTION).color(t::text_secondary()));
+                if let Ok(p) = cz::parse(css) {
+                    for w in p.warnings.iter().take(5) {
+                        col = col.push(
+                            text(w.to_string())
+                                .size(t::CAPTION)
+                                .color(t::text_tertiary()),
+                        );
+                    }
+                }
             }
         }
         scroll(col)

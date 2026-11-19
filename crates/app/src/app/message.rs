@@ -83,6 +83,14 @@ pub enum SrcAct {
     HeaderSave,
     HeaderClear,
     HeaderCancel,
+    /// Follow the server's own layout (Server UI) or NOCTURNE's.
+    Layout(SourceId),
+    /// The home-sections editor of this server, and its buttons.
+    Sections(SourceId),
+    SecToggle(usize),
+    SecShift(usize, i32),
+    SecSave,
+    SecCancel,
 }
 
 /// A local scan's report to the root.
@@ -140,6 +148,10 @@ pub enum Message {
     Loaded(Handoff<super::catalog::Loaded>),
     /// One source's answer for Home page `pid` (libraries, continue watching, next up), to request `epoch`.
     Fan(u64, FanKind, u64, SourceId, Option<Vec<Media>>),
+    /// A server's own layout and branding (Server UI); `None` when the read failed.
+    ServerUi(SourceId, Option<nocturne_core::server_ui::ServerUi>),
+    /// The home-sections editor's save finished.
+    SectionsSaved(SourceId, bool),
     /// One library's latest items on Home page `pid`: (pid, request epoch, source, library id, items).
     Latest(u64, u64, SourceId, String, Option<Vec<Media>>),
     /// Provider ids of the series behind some episodes (for matching episodes across sources).

@@ -537,6 +537,18 @@ impl Source {
         self.media(r)
     }
 
+    /// What the server's own UI is made of (home sections, library order, branding), for Server
+    /// UI mode. Branding is public and optional: without it only the CSS and disclaimer are empty.
+    pub async fn server_ui(&self) -> Result<crate::server_ui::ServerUi, Failed> {
+        let prefs = self.client.display_prefs(&self.user).await;
+        let cfg = self.client.user_config(&self.user).await;
+        let branding = self.client.branding().await.unwrap_or_default();
+        match (prefs, cfg) {
+            (Ok(p), Ok(c)) => Ok(crate::server_ui::ServerUi::new(&p, &c, &branding)),
+            _ => Err(Failed),
+        }
+    }
+
     pub async fn latest(&self, parent: &Media) -> Result<Vec<Media>, Failed> {
         // `Items/Latest` groups new episodes under their show; if a server refuses it, fall back
         // to the plain newest-first query.

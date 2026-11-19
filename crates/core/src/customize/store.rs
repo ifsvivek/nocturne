@@ -34,6 +34,20 @@ pub struct Store {
     pub global: Option<u32>,
     /// Source id (as text, TOML keys are strings) to theme id.
     pub server_theme: BTreeMap<String, u32>,
+    /// Server branding CSS per source (only for sources in Server UI mode). Session state: never
+    /// serialized, never turned into a saved theme.
+    #[serde(skip)]
+    pub branding: BTreeMap<String, String>,
+}
+
+/// Which layer decides the look for a source; compared to skip redundant `theme::set` calls.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Active {
+    Override(u32),
+    /// Hash of the branding CSS, so changed CSS re-applies.
+    Branding(u64),
+    Global(u32),
+    Default,
 }
 
 impl Default for Store {
@@ -44,6 +58,7 @@ impl Default for Store {
             themes: vec![],
             global: None,
             server_theme: BTreeMap::new(),
+            branding: BTreeMap::new(),
         }
     }
 }
@@ -138,17 +153,52 @@ impl Store {
         self.server_theme.get(&source.0.to_string()).copied()
     }
 
-    /// Which theme applies: the source's own assignment, else the global one. `None` for the
-    /// shell (settings, header) and for local folders, which follow the global theme.
-    pub fn active_id(&self, source: Option<SourceId>) -> Option<u32> {
-        source.and_then(|s| self.override_of(s)).or(self.global)
+    /// `None` removes the branding layer of `source` (Server UI off, or the server has none).
+    pub fn set_branding(&mut self, source: SourceId, css: Option<String>) {
+        match css.filter(|c| !c.trim().is_empty()) {
+            Some(c) => self.branding.insert(source.0.to_string(), c),
+            None => self.branding.remove(&source.0.to_string()),
+        };
+    }
+
+    pub fn branding_of(&self, source: SourceId) -> Option<&str> {
+        self.branding.get(&source.0.to_string()).map(String::as_str)
+    }
+
+    /// Which layer applies, in order: the source's own assignment (an explicit choice), the
+    /// server's branding (Server UI mode), the global theme. The shell (settings, header) and
+    /// local folders follow the global theme.
+    pub fn active(&self, source: Option<SourceId>) -> Active {
+        if let Some(s) = source {
+            if let Some(i) = self.override_of(s) {
+                return Active::Override(i);
+            }
+            if let Some(c) = self.branding_of(s) {
+                use std::hash::{DefaultHasher, Hash, Hasher};
+                let mut h = DefaultHasher::new();
+                c.hash(&mut h);
+                return Active::Branding(h.finish());
+            }
+        }
+        self.global.map_or(Active::Default, Active::Global)
+    }
+
+    /// `active` as one comparable number (the type itself is not exported).
+    pub fn active_key(&self, source: Option<SourceId>) -> u64 {
+        use std::hash::{DefaultHasher, Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        self.active(source).hash(&mut h);
+        h.finish()
     }
 
     /// The tokens that apply (the built-in look when nothing is assigned).
     pub fn resolve(&self, source: Option<SourceId>) -> Theme {
-        self.active_id(source)
-            .and_then(|i| self.get(i))
-            .and_then(|t| parse(&t.css).ok())
+        let css = match self.active(source) {
+            Active::Override(i) | Active::Global(i) => self.get(i).map(|t| t.css.as_str()),
+            Active::Branding(_) => source.and_then(|s| self.branding_of(s)),
+            Active::Default => None,
+        };
+        css.and_then(|c| parse(c).ok())
             .map(|p| p.theme)
             .unwrap_or_default()
     }
@@ -285,6 +335,31 @@ mod tests {
         assert_eq!(accent(&s.resolve(Some(SourceId(7)))), Some([0, 0, 255]));
         s.set_override(SourceId(7), None);
         assert_eq!(accent(&s.resolve(Some(SourceId(7)))), Some([255, 0, 0]));
+    }
+
+    #[test]
+    fn branding_sits_between_override_and_global_and_is_never_saved() {
+        let mut s = Store::default();
+        let (red, blue) = (s.add("Red", RED, None), s.add("Blue", BLUE, None));
+        let src = SourceId(5);
+        s.set_global(Some(red));
+        s.set_branding(src, Some(":root { --nocturne-accent: #00ff00; }".into()));
+        assert_eq!(accent(&s.resolve(Some(src))), Some([0, 255, 0]));
+        assert_eq!(accent(&s.resolve(Some(SourceId(6)))), Some([255, 0, 0]));
+        assert_eq!(accent(&s.resolve(None)), Some([255, 0, 0]));
+        s.set_override(src, Some(blue));
+        assert_eq!(accent(&s.resolve(Some(src))), Some([0, 0, 255]));
+        s.set_override(src, None);
+        let a = s.active(Some(src));
+        s.set_branding(src, Some(":root { --nocturne-accent: #00fe00; }".into()));
+        assert_ne!(s.active(Some(src)), a, "changed CSS must re-apply");
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("themes.toml");
+        s.save_to(&p).unwrap();
+        assert!(!std::fs::read_to_string(&p).unwrap().contains("00fe00"));
+        assert!(Store::load_from(&p).branding.is_empty());
+        s.set_branding(src, Some("  ".into()));
+        assert_eq!(s.active(Some(src)), Active::Global(red));
     }
 
     #[test]

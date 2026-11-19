@@ -103,6 +103,14 @@ impl Backend {
         }
     }
 
+    /// Server UI data; a local source has none.
+    pub async fn server_ui(&self) -> Result<crate::server_ui::ServerUi, Failed> {
+        match self {
+            Self::Jellyfin(s) => s.server_ui().await,
+            Self::Local(_) => Err(Failed),
+        }
+    }
+
     pub async fn latest(&self, parent: &Media) -> Result<Vec<Media>, Failed> {
         match self {
             Self::Jellyfin(s) => s.latest(parent).await,

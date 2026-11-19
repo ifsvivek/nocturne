@@ -30,6 +30,7 @@ pub mod profile;
 pub mod remote;
 pub mod search;
 pub mod secret;
+pub mod server_ui;
 pub mod settings;
 pub mod smart;
 pub mod source;

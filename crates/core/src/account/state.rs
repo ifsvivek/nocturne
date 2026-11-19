@@ -93,6 +93,8 @@ pub enum LoginFail {
 pub struct Probe {
     pub name: String,
     pub quick_connect: bool,
+    /// The administrator's login disclaimer (public branding), plain text.
+    pub disclaimer: Option<String>,
     pub restored: bool,
     /// A stored session was rejected (401) and has been deleted.
     pub expired: bool,
@@ -144,6 +146,7 @@ pub struct Account {
     /// The server in use (set once a check passed).
     pub url: String,
     pub server_name: String,
+    pub disclaimer: Option<String>,
     pub connect: Form,
     pub login: Form,
     pub busy: bool,
@@ -182,6 +185,7 @@ impl Account {
             servers,
             url: String::new(),
             server_name: String::new(),
+            disclaimer: None,
             connect: Form::default(),
             login: Form::default(),
             busy: false,
@@ -263,6 +267,7 @@ impl Account {
             Ok(p) => {
                 self.url = url.into();
                 self.server_name = p.name;
+                self.disclaimer = p.disclaimer;
                 self.qc_available = p.quick_connect;
                 self.keyring_down |= p.keyring_down;
                 if p.restored {
@@ -530,6 +535,21 @@ mod tests {
             (a.stage, a.msg, a.busy),
             (Stage::Connect, Some(MSG_NOT_SERVER), false)
         );
+    }
+
+    #[test]
+    fn the_servers_login_disclaimer_is_kept_for_its_sign_in_page() {
+        let mut a = acct();
+        let (e, u) = a.begin_check("http://a:1".into(), false).unwrap();
+        a.probed(
+            e,
+            Ok(Probe {
+                disclaimer: Some("Members only".into()),
+                ..probe(false)
+            }),
+            &u,
+        );
+        assert_eq!(a.disclaimer.as_deref(), Some("Members only"));
     }
 
     #[test]
