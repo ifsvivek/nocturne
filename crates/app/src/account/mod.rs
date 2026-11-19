@@ -112,6 +112,8 @@ pub enum Msg {
     Input(Where, String),
     /// Enter inside a text input.
     Submit(Where),
+    /// Whether the input we asked the cursor for really has it (see `focus_task`).
+    Focus(String, bool),
     /// Tab, arrows or Enter reached the root; the id is the input that really has the cursor.
     Nav(&'static str, Option<widget::Id>),
     ConnectGo,
@@ -136,6 +138,8 @@ pub struct Accounts {
     from_picker: bool,
     /// The text input last asked to take the cursor (so it is asked once, not on every tick).
     focused: Option<String>,
+    /// The cursor reached `focused`; until then every tick checks and asks again.
+    focus_ok: bool,
     pub events: Vec<Event>,
 }
 
@@ -151,6 +155,7 @@ impl Accounts {
             dialog: None,
             from_picker: false,
             focused: None,
+            focus_ok: false,
             events: vec![],
         };
         let task = match last.and_then(|u| me.st.start_restore(&u)) {
@@ -264,6 +269,7 @@ impl Accounts {
                     f.value = v;
                     form.focus = i;
                     self.focused = Some(format!("acct-{scope}-{i}"));
+                    self.focus_ok = true;
                 }
             }
             Msg::Submit(w) => {
@@ -275,6 +281,15 @@ impl Accounts {
                     f.focus = i;
                 }
                 return self.form_key("enter");
+            }
+            Msg::Focus(id, ok) => {
+                if self.focused.as_deref() == Some(id.as_str()) {
+                    if ok {
+                        self.focus_ok = true;
+                    } else {
+                        return operation::focus(widget::Id::from(id));
+                    }
+                }
             }
             Msg::Nav(key, id) => {
                 let scope = self.scope().unwrap_or_default();
@@ -340,9 +355,17 @@ impl Accounts {
             })
         });
         if want == self.focused {
-            return Task::none();
+            // The input may not have existed when the cursor was first asked for: check until it has it.
+            return match want {
+                Some(id) if !self.focus_ok && id != "acct-none" => {
+                    operation::is_focused(widget::Id::from(id.clone()))
+                        .map(move |ok| Msg::Focus(id.clone(), ok))
+                }
+                _ => Task::none(),
+            };
         }
         self.focused = want.clone();
+        self.focus_ok = false;
         match want {
             Some(id) => operation::focus(widget::Id::from(id)),
             None => Task::none(),
@@ -836,6 +859,7 @@ mod tests {
             dialog: None,
             from_picker: false,
             focused: None,
+            focus_ok: false,
             events: vec![],
         };
         a.dialog = Some(Dialog {
@@ -873,6 +897,7 @@ mod tests {
                 dialog: None,
                 from_picker: false,
                 focused: None,
+                focus_ok: false,
                 events: vec![],
             }
         }
