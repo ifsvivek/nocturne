@@ -11,7 +11,7 @@ use nocturne_core::customize::{self as cz, Page, TitlePosition};
 use nocturne_core::source::{Art, Kind, Media};
 use nocturne_style::{Doc, Id};
 
-fn kind_attr(k: Kind) -> &'static str {
+pub(super) fn kind_attr(k: Kind) -> &'static str {
     match k {
         Kind::Movie => "movie",
         Kind::Series => "series",
@@ -163,16 +163,22 @@ impl App {
         Some(tree)
     }
 
-    fn pic_node(tree: &mut Tree, parent: Id, class: &str, pic: &Pic) -> Option<Id> {
-        let handle = match pic {
-            Pic::Ready(h) | Pic::Blur(h) => h.clone(),
-            _ => return None,
-        };
-        let id = tree.image(handle.clone());
+    /// A picture node under `parent` (always present, so an image that arrives later only needs its handle and size set): the cache keys let `Hosted::image_arrived` find it.
+    fn pic_node(
+        tree: &mut Tree,
+        parent: Id,
+        class: &str,
+        pic: &Pic,
+        key: (String, Option<String>),
+    ) -> Id {
+        let id = tree.pic(Some(key), pic);
         let n = tree.doc.add(parent, class);
-        let (w, h) = dims(&handle);
+        let (w, h) = match pic {
+            Pic::Ready(h) | Pic::Blur(h) => dims(h),
+            _ => (1, 1),
+        };
         tree.doc.image(n, id, w, h);
-        Some(n)
+        n
     }
 
     fn hero_nodes(&self, tree: &mut Tree, hero: Id, m: &Media, hgt: f32, focus: Option<usize>) {
@@ -187,7 +193,13 @@ impl App {
         tree.doc.attr(hero, "data-kind", kind_attr(m.kind));
         let a = tree.doc.add(hero, "div.hero-art");
         tree.doc.add(a, "div.hero-fill");
-        Self::pic_node(tree, a, "img.hero-img", &self.pic(m, art, w as u32));
+        Self::pic_node(
+            tree,
+            a,
+            "img.hero-img",
+            &self.pic(m, art, w as u32),
+            self.pic_keys(m, art, w as u32),
+        );
         tree.doc.add(hero, "div.hero-scrim-side");
         let foot = tree.doc.add(hero, "div.hero-scrim-foot");
         if let Some(f) = &hp.hero.overlay {
@@ -226,9 +238,13 @@ impl App {
         let sub_ty = t::typo(&hp.hero_meta, t::BODY_LG, iced::font::Weight::Normal).with_line(1.6);
         if m.logo.is_some() {
             let pic = self.pic(m, Art::Logo, 460);
-            if Self::pic_node(tree, col, "img.hero-logo", &pic).is_none() {
-                tree.doc.add(col, "div.hero-logo-gap");
-            }
+            Self::pic_node(
+                tree,
+                col,
+                "img.hero-logo",
+                &pic,
+                self.pic_keys(m, Art::Logo, 460),
+            );
         } else if !title_ty.hidden {
             let n = tree.doc.add(col, "div.hero-title");
             tree.doc.text(n, &m.title);
@@ -357,6 +373,10 @@ impl App {
             );
         }
         tree.strips.insert(ri, cells);
+        if !g.grid {
+            // The quiet 4 px bar of the hand-written strips, shown while the pointer is over the strip.
+            tree.doc.attr(cells, "data-scrollbar", "hover-x");
+        }
         if g.framed && !g.grid {
             tree.doc.add(panel, "div.row-fade");
         }
@@ -376,6 +396,8 @@ impl App {
                     g,
                     CardIn {
                         pic,
+                        pic_id: 0,
+                        key: None,
                         title: String::new(),
                         meta: String::new(),
                         index: i,
@@ -410,6 +432,8 @@ impl App {
                 g,
                 CardIn {
                     pic: self.pic(m, art, cw as u32),
+                    pic_id: 0,
+                    key: Some(self.pic_keys(m, art, cw as u32)),
                     title,
                     meta,
                     index: ci,
@@ -489,11 +513,39 @@ impl App {
         }
     }
 
-    fn card_nodes(tree: &mut Tree, parent: Id, g: &Geo, c: CardIn) {
+    /// A card of Home's strips: the card nodes from [`card_doc`], its picture registered for a later arrival, its clicks and its focus cell.
+    fn card_nodes(tree: &mut Tree, parent: Id, g: &Geo, mut c: CardIn) {
+        c.pic_id = tree.pic(c.key.take(), &c.pic);
+        let n = card_doc(&mut tree.doc, parent, g, &c);
+        if let Some((ri, ci)) = c.at {
+            for (chip, act) in n.chips.into_iter().zip([CellAct::Fav, CellAct::Played]) {
+                tree.act(chip, Message::Cell(At::Home(ri, ci), act));
+            }
+            tree.act(
+                n.card,
+                Message::Cell(
+                    At::Home(ri, ci),
+                    if c.play { CellAct::Play } else { CellAct::Open },
+                ),
+            );
+            tree.cell(n.card, (ri, ci));
+        }
+    }
+}
+
+/// The nodes of a card an action can be bound to.
+pub(super) struct CardNodes {
+    pub card: Id,
+    /// The favourite and the played chip.
+    pub chips: [Id; 2],
+}
+
+/// One card as a subtree of `d` under `parent`: the stage-1 look from the strip's `Geo` and the card's data. Used by Home's strips and the library grid's virtual items (which have only a `Doc` to build into).
+pub(super) fn card_doc(d: &mut Doc, parent: Id, g: &Geo, c: &CardIn) -> CardNodes {
+    {
         let look = &g.look;
         let (cw, ch) = g.dims;
         let radius = look.radius.unwrap_or_else(t::r_card);
-        let d = &mut tree.doc;
         let card = d.add(
             parent,
             if look.flat {
@@ -538,19 +590,24 @@ impl App {
             ),
         );
         match &c.pic {
-            Pic::Ready(_) | Pic::Blur(_) => {
-                Self::pic_node(tree, img, "img.card-img", &c.pic);
+            // The node stays while the picture loads (it draws nothing until its handle is in the widget's table), so an arriving image is filled in without rebuilding the scene.
+            Pic::Ready(_) | Pic::Blur(_) | Pic::Loading => {
+                let n = d.add(img, "img.card-img");
+                let (w, h) = match &c.pic {
+                    Pic::Ready(h) | Pic::Blur(h) => dims(h),
+                    _ => (1, 1),
+                };
+                d.image(n, c.pic_id, w, h);
             }
             Pic::Missing => {
                 let i = crate::widget::text::initial(&c.title);
                 if !i.is_empty() {
-                    let n = tree.doc.add(img, "div.card-initial");
-                    tree.doc.text(n, &i);
+                    let n = d.add(img, "div.card-initial");
+                    let g = d.add(n, "span.card-initial-glyph");
+                    d.text(g, &i);
                 }
             }
-            Pic::Loading => {}
         }
-        let mut d = &mut tree.doc;
         d.add(img, "div.card-dim");
         if look.title == TitlePosition::Overlay && !look.tile_center {
             let o = d.add(img, "div.card-overlay");
@@ -648,14 +705,14 @@ impl App {
                 "div.card-chips"
             },
         );
-        for (glyph, on, act) in [
-            (
-                if c.fav { "\u{2665}" } else { "\u{2661}" },
-                c.fav,
-                CellAct::Fav,
-            ),
-            ("\u{2713}", c.played, CellAct::Played),
-        ] {
+        let mut chip_nodes = [0; 2];
+        for (k, (glyph, on)) in [
+            (if c.fav { "\u{2665}" } else { "\u{2661}" }, c.fav),
+            ("\u{2713}", c.played),
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let b = d.add(
                 chips,
                 match (on, c.writes) {
@@ -665,14 +722,11 @@ impl App {
                     (false, false) => "a.card-chip.dim",
                 },
             );
+            d.attr(b, "data-act", if k == 0 { "fav" } else { "played" });
             let gl = d.add(b, "span.card-chip-glyph");
             d.text(gl, glyph);
-            if let Some((ri, ci)) = c.at {
-                tree.act(b, Message::Cell(At::Home(ri, ci), act));
-                d = &mut tree.doc;
-            }
+            chip_nodes[k] = b;
         }
-        let d = &mut tree.doc;
         if look.bar_h() > 0.0 {
             let slot = d.add(card, "div.card-bar");
             d.inline(slot, &format!("height: {}", px(look.bar_h())));
@@ -723,36 +777,33 @@ impl App {
             }
         }
         // Last child, so the focus ring and tint lie over everything in the cell.
-        tree.doc.add(card, "div.card-ring");
-        if let Some((ri, ci)) = c.at {
-            tree.act(
-                card,
-                Message::Cell(
-                    At::Home(ri, ci),
-                    if c.play { CellAct::Play } else { CellAct::Open },
-                ),
-            );
-            tree.cell(card, (ri, ci));
+        d.add(card, "div.card-ring");
+        CardNodes {
+            card,
+            chips: chip_nodes,
         }
     }
 }
 
-struct CardIn {
-    pic: Pic,
-    title: String,
-    meta: String,
-    index: usize,
-    progress: Option<f32>,
-    badge: Option<String>,
-    subtitle: bool,
-    mark: Option<String>,
-    fav: bool,
-    played: bool,
-    writes: bool,
-    at: Option<(usize, usize)>,
-    play: bool,
-    kind: &'static str,
-    source: usize,
+pub(crate) struct CardIn {
+    pub pic: Pic,
+    /// The picture node's id in the widget's image table, and the cache keys it waits for.
+    pub pic_id: u32,
+    pub key: Option<(String, Option<String>)>,
+    pub title: String,
+    pub meta: String,
+    pub index: usize,
+    pub progress: Option<f32>,
+    pub badge: Option<String>,
+    pub subtitle: bool,
+    pub mark: Option<String>,
+    pub fav: bool,
+    pub played: bool,
+    pub writes: bool,
+    pub at: Option<(usize, usize)>,
+    pub play: bool,
+    pub kind: &'static str,
+    pub source: usize,
 }
 
 impl Geo {
@@ -789,6 +840,8 @@ mod tests {
     fn card(i: usize) -> CardIn {
         CardIn {
             pic: Pic::Loading,
+            pic_id: 0,
+            key: None,
             title: "A title".into(),
             meta: "movie".into(),
             index: i,

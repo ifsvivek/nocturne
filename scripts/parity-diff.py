@@ -2,7 +2,7 @@
 """Compare two window captures pixel by pixel (used by scripts/headless-parity.sh).
 
 usage: parity-diff.py a.png b.png diff.png [tolerance=16] [max-mean=1.0] [max-over=1.5]
-Prints the mean per-channel difference (0..255), the largest difference and the share of pixels that differ by more than the tolerance in any channel; writes an amplified (x6) difference image. Exits 1 when the mean or the share is above its limit (percent of pixels for max-over).
+Prints the mean per-channel difference (0..255), the largest difference, the share of pixels that differ by more than the tolerance in any channel and the shares over 64 and over 128; writes an amplified (x6) difference image. Exits 1 when the mean or the share is above its limit (percent of pixels for max-over).
 """
 import sys
 
@@ -18,7 +18,7 @@ w, h = min(a.width, b.width), min(a.height, b.height)
 a, b = a.crop((0, 0, w, h)), b.crop((0, 0, w, h))
 d = ImageChops.difference(a, b)
 px = d.load()
-total, mx, over = 0.0, 0, 0
+total, mx, over, o64, o128 = 0.0, 0, 0, 0, 0
 for y in range(h):
     for x in range(w):
         r, g, bl = px[x, y]
@@ -26,8 +26,10 @@ for y in range(h):
         total += (r + g + bl) / 3
         mx = max(mx, m)
         over += m > tol
+        o64 += m > 64
+        o128 += m > 128
 n = w * h
 mean, share = total / n, 100 * over / n
-print(f"{w}x{h} mean {mean:.3f}/255 max {mx} over {tol}: {over} px ({share:.2f}%)")
+print(f"{w}x{h} mean {mean:.3f}/255 max {mx} over {tol}: {over} px ({share:.2f}%), over 64: {100 * o64 / n:.2f}%, over 128: {100 * o128 / n:.2f}%")
 d.point(lambda v: min(255, v * 6)).save(out)
 sys.exit(0 if mean <= max_mean and share <= max_over else 1)

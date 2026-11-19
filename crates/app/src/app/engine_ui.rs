@@ -1,16 +1,17 @@
-//! The theme engine inside the app (feature `theme-engine`): Home and the shared header are element trees (`home_tree.rs`, `header_tree.rs`) styled by the default sheet and laid out by `nocturne-style`, painted by `widget/styled.rs`. This file owns the engine, the scenes and their interaction state (hover, focus, scroll), builds a scene when the data changes (never per frame), maps pointer and keyboard events to the same messages the hand-written Home sends, and chooses what to show: the engine when the feature is on and the theme only uses what the builders reproduce, the hand-written page otherwise (also with `NOCTURNE_ENGINE_UI=0`).
-use super::header_tree::{Slot, Tree};
+//! The theme engine inside the app (feature `theme-engine`): Home, the shared header, the library page and the search overlay are element trees (`home_tree.rs`, `header_tree.rs`, `browse_tree.rs`, `search_tree.rs`) styled by the default sheet and laid out by `nocturne-style`, painted by `widget/styled.rs`. This file owns the engine, the scenes and their interaction state (hover, focus, scroll), builds a scene when the data changes (never per frame, never per arriving picture), maps pointer and keyboard events to the same messages the hand-written screens send, and chooses what to show: the engine when the feature is on and the theme only uses what the builders reproduce, the hand-written page otherwise (also with `NOCTURNE_ENGINE_UI=0`).
+use super::header_tree::{Slot, Tree, dims};
 use super::home::HRow;
-use super::message::{Message, Which};
+use super::message::{At, CellAct, Message, Which};
 use super::{App, Phase, View};
 use crate::theme as t;
-use crate::widget::cell::Look;
+use crate::widget::cell::{Look, Pic};
 use crate::widget::styled::{Nav, Styled, StyledEvent};
 use crate::widget::styled_preview::shape;
+use iced::widget::image::Handle;
 use iced::widget::{column, container, space};
 use iced::{Element, Length, Task};
 use nocturne_core::customize::{self as cz, Page};
-use nocturne_style::{Builders, Dir, Engine, Id, Interaction, MeasureCache, Scene};
+use nocturne_style::{Dir, Engine, Id, Interaction, MeasureCache, Scene};
 use std::time::Instant;
 
 const DEFAULT_CSS: &str = include_str!("../../../style/themes/default.css");
@@ -22,6 +23,78 @@ pub struct Hosted {
     pub it: Interaction,
     /// The hero item of the build: the scene is rebuilt when the focus makes it change.
     hero: Option<String>,
+    /// The sheet generation the scene was built with (a new theme or safe mode means a new scene).
+    sheet_gen: u32,
+    /// The library page: which list it shows (page id, epoch) and the selection already applied to the scene.
+    page: (u64, u64),
+    sel: usize,
+}
+
+impl Hosted {
+    fn new(scene: Scene, tree: Tree, it: Interaction, sheet_gen: u32) -> Self {
+        Self {
+            scene,
+            tree,
+            it,
+            hero: None,
+            sheet_gen,
+            page: (0, 0),
+            sel: 0,
+        }
+    }
+
+    /// A decoded picture arrived under cache key `key`: set its handle and size on the node that waits for it. No rebuild, no relayout (a picture's box never depends on its pixels).
+    fn image_arrived(&mut self, key: &str, h: &Handle) {
+        let mut ids: Vec<u32> = vec![];
+        for s in &self.tree.pics {
+            if s.key == key || (s.blur.as_deref() == Some(key) && !self.tree.done.contains(&s.id)) {
+                ids.push(s.id);
+            }
+        }
+        for &id in &ids {
+            if self.tree.pics.iter().any(|s| s.id == id && s.key == key) {
+                self.tree.done.insert(id);
+            }
+        }
+        if let Some(g) = &self.tree.grid {
+            let mut d = g.data.borrow_mut();
+            if let Some(idxs) = d.waiting.get(key).cloned() {
+                let mut real = false;
+                for idx in idxs {
+                    let Some(Some(c)) = d.cards.get(idx) else {
+                        continue;
+                    };
+                    let id = c.pic_id;
+                    if c.key.as_ref().is_some_and(|k| k.0 == key) {
+                        real = true;
+                        self.tree.done.insert(id);
+                        d.set_pic(idx, Pic::Ready(h.clone()));
+                        ids.push(id);
+                    } else if !self.tree.done.contains(&id) {
+                        d.set_pic(idx, Pic::Blur(h.clone()));
+                        ids.push(id);
+                    }
+                }
+                if real {
+                    d.waiting.remove(key);
+                }
+            }
+        }
+        if ids.is_empty() {
+            return;
+        }
+        let (w, ht) = dims(h);
+        for &id in &ids {
+            self.tree.images.insert(id, h.clone());
+        }
+        for n in &mut self.scene.doc.nodes {
+            if let Some(img) = &mut n.image
+                && ids.contains(&img.id)
+            {
+                (img.w, img.h) = (w, ht);
+            }
+        }
+    }
 }
 
 pub struct EngineUi {
@@ -32,11 +105,37 @@ pub struct EngineUi {
     cache: MeasureCache,
     pub home: Option<Hosted>,
     pub hdr: Option<Hosted>,
+    /// The body of the library page, and the search overlay.
+    pub page: Option<Hosted>,
+    pub search: Option<Hosted>,
+    /// Bumped whenever the sheet or safe mode changes: older scenes are stale.
+    sheet_gen: u32,
     /// Home's scroll while another page is in view.
     saved: Option<nocturne_style::layout::Scroll>,
     pub dirty: bool,
     pub stats: bool,
     warmed: bool,
+}
+
+impl EngineUi {
+    /// The scene an event belongs to, and the shared measure cache.
+    fn host(&mut self, w: Which) -> (Option<&mut Hosted>, &mut MeasureCache) {
+        let Self {
+            home,
+            hdr,
+            page,
+            search,
+            cache,
+            ..
+        } = self;
+        let h = match w {
+            Which::Home => home,
+            Which::Header => hdr,
+            Which::Page => page,
+            Which::Search => search,
+        };
+        (h.as_mut(), cache)
+    }
 }
 
 impl Default for EngineUi {
@@ -49,6 +148,9 @@ impl Default for EngineUi {
             cache: MeasureCache::new(),
             home: None,
             hdr: None,
+            page: None,
+            search: None,
+            sheet_gen: 0,
             saved: None,
             dirty: true,
             stats: std::env::var("NOCTURNE_ENGINE_STATS").is_ok(),
@@ -82,8 +184,9 @@ pub(crate) fn sheet_css() -> String {
         s += &format!(" --nocturne-{name}: {};", c(v));
     }
     s += &format!(
-        " --nocturne-r-card: {}px; --nocturne-page-pad: {}px; }}\n",
+        " --nocturne-r-card: {}px; --nocturne-r-panel: {}px; --nocturne-page-pad: {}px; }}\n",
         k.r_card,
+        t::r_panel(),
         t::page_pad()
     );
     s += DEFAULT_CSS;
@@ -99,6 +202,14 @@ pub(crate) fn sheet_css() -> String {
                 look.ms.unwrap_or(140)
             );
         }
+    }
+    // The library grid's cards zoom like Home's.
+    let look = Look::of(&t::parts(Some(Page::Library), None));
+    if let Some(h) = look.hover {
+        s += &format!(
+            ".page-library .card:hover {{ transform: scale({h}); z-index: 5; }} .page-library .card {{ transition: transform {}ms ease-out; }}\n",
+            look.ms.unwrap_or(140)
+        );
     }
     // Focus glow and ring width follow the theme's glow colour and couch mode (the hand-written cells' `glow_shadow` and `couch::ring`).
     let glow = |a: f32| c(iced::Color { a, ..k.glow });
@@ -131,6 +242,15 @@ impl App {
             && self.eng.home.is_some()
     }
 
+    /// Is the library page's body on the engine right now?
+    pub(super) fn eng_page_active(&self) -> bool {
+        self.eng.enabled
+            && matches!(self.phase, Phase::Ready)
+            && self.eng_overlay_free()
+            && self.stack.last().is_some_and(|p| p.view == View::Grid)
+            && self.eng.page.is_some()
+    }
+
     /// No full-screen page (settings, themes, sources...) covers the main view.
     fn eng_overlay_free(&self) -> bool {
         self.folders.is_none()
@@ -150,25 +270,28 @@ impl App {
             && !self.eng_home_active()
     }
 
-    /// Rebuild the scenes if something they show changed. Called at the end of every update.
-    pub(super) fn eng_sync(&mut self, msg_dirties: bool) {
-        if !cfg!(debug_assertions) && false {
-            return;
-        }
+    /// Rebuild the scenes if something they show changed. Called at the end of every update; the task fetches what a new view needs (pages and pictures of the library grid).
+    pub(super) fn eng_sync(&mut self, msg_dirties: bool) -> Task<Message> {
         if msg_dirties {
             self.eng.dirty = true;
         }
         if !self.eng.enabled || !self.eng.dirty || !matches!(self.phase, Phase::Ready) {
-            return;
+            return Task::none();
         }
         self.eng.dirty = false;
+        let t0 = Instant::now();
         let css = sheet_css();
+        let css_us = t0.elapsed().as_micros();
         if css != self.eng.css {
             let safe = self.eng.engine.safe_mode();
             self.eng.engine = Engine::new(&css);
             self.eng.engine.set_safe_mode(safe);
             self.eng.user = None;
             self.eng.css = css;
+            self.eng.sheet_gen += 1;
+        }
+        if self.eng.engine.safe_mode() != self.th.safe {
+            self.eng.sheet_gen += 1;
         }
         self.eng.engine.set_safe_mode(self.th.safe);
         // The active theme's own rules, layered over the default sheet.
@@ -209,6 +332,27 @@ impl App {
         } else {
             self.eng.hdr = None;
         }
+        let t1 = Instant::now();
+        let on_grid = self.stack.last().is_some_and(|p| p.view == View::Grid);
+        let task = if on_grid && self.eng_overlay_free() {
+            self.eng_build_page()
+        } else {
+            self.eng.page = None;
+            Task::none()
+        };
+        if self.search.is_some() {
+            self.eng_build_search();
+        } else {
+            self.eng.search = None;
+        }
+        if self.eng.stats {
+            eprintln!(
+                "engine: sync: sheet css {css_us} us, pages and search {} us, all {} us",
+                t1.elapsed().as_micros(),
+                t0.elapsed().as_micros()
+            );
+        }
+        task
     }
 
     fn eng_build_home(&mut self) {
@@ -243,38 +387,233 @@ impl App {
             s.scroll = scroll;
             s.clamp_scroll();
         }
-        self.eng.home = Some(Hosted {
-            scene: s,
-            tree,
-            it,
-            hero,
-        });
+        let mut h = Hosted::new(s, tree, it, self.eng.sheet_gen);
+        h.hero = hero;
+        self.eng.home = Some(h);
     }
 
     fn eng_build_header(&mut self) {
         let mut tree = Tree::new();
         self.header_nodes(&mut tree, 0, false);
+        let size = (self.win.width, t::header_h());
+        // The same header (nothing it shows changed) keeps its scene, hover and animations.
+        if self.eng.hdr.as_ref().is_some_and(|h| {
+            h.sheet_gen == self.eng.sheet_gen
+                && h.scene.viewport == size
+                && h.tree.slots == tree.slots
+                && h.scene.same_tree(&tree.doc)
+        }) {
+            return;
+        }
         let it = Interaction::default();
-        let s = self.eng_scene(&tree, it, (self.win.width, t::header_h()));
-        self.eng.hdr = Some(Hosted {
-            scene: s,
-            tree,
-            it,
-            hero: None,
+        let s = self.eng_scene(&tree, it, size);
+        self.eng.hdr = Some(Hosted::new(s, tree, it, self.eng.sheet_gen));
+    }
+
+    /// The library page: a new scene when what it shows changed, the same one (with its scroll, hover and animations) when only things happened that the page does not show.
+    fn eng_build_page(&mut self) -> Task<Message> {
+        let t0 = Instant::now();
+        let task = self.eng_build_page_inner();
+        if self.eng.stats {
+            eprintln!("engine: page sync {} us", t0.elapsed().as_micros());
+        }
+        task
+    }
+
+    fn eng_build_page_inner(&mut self) -> Task<Message> {
+        let old_data = self
+            .eng
+            .page
+            .as_ref()
+            .and_then(|h| h.tree.grid.as_ref().map(|g| g.data.clone()));
+        let Some(tree) = self.browse_tree(old_data.as_ref()) else {
+            self.eng.page = None;
+            return Task::none();
+        };
+        let Some(p) = self.stack.last() else {
+            return Task::none();
+        };
+        let br = p.br.as_deref();
+        let key = (p.pid, br.map_or(0, |b| b.epoch));
+        let (sel, off) = (p.sel, br.map_or(0.0, |b| b.off));
+        let size = (self.win.width, self.win.height);
+        let same_data = match (&old_data, &tree.grid) {
+            (Some(a), Some(b)) => std::rc::Rc::ptr_eq(a, &b.data),
+            (None, None) => true,
+            _ => false,
+        };
+        let unchanged = self.eng.page.as_ref().is_some_and(|h| {
+            h.sheet_gen == self.eng.sheet_gen
+                && h.page == key
+                && h.scene.viewport == size
+                && same_data
+                && h.tree.slots == tree.slots
+                && h.scene.same_tree(&tree.doc)
         });
+        if self.eng.stats && !unchanged {
+            eprintln!(
+                "engine: page rebuilt (gen {}, same list {}, size {}, data {same_data}, slots {}, tree {})",
+                self.eng
+                    .page
+                    .as_ref()
+                    .is_none_or(|h| h.sheet_gen == self.eng.sheet_gen),
+                self.eng.page.as_ref().is_some_and(|h| h.page == key),
+                self.eng
+                    .page
+                    .as_ref()
+                    .is_some_and(|h| h.scene.viewport == size),
+                self.eng
+                    .page
+                    .as_ref()
+                    .is_some_and(|h| h.tree.slots == tree.slots),
+                self.eng
+                    .page
+                    .as_ref()
+                    .is_some_and(|h| h.scene.same_tree(&tree.doc)),
+            );
+        }
+        if !unchanged {
+            // The same list keeps its place; a page that was left and comes back starts where the page last reported.
+            let y = self
+                .eng
+                .page
+                .as_ref()
+                .filter(|h| h.page == key)
+                .and_then(|h| {
+                    let g = h.tree.grid.as_ref()?;
+                    h.scene.scroll.offsets.get(&g.node).map(|o| o[1])
+                })
+                .unwrap_or(off);
+            let mut s = self.eng_scene(&tree, Interaction::default(), size);
+            if let Some(g) = &tree.grid
+                && y > 0.0
+            {
+                s.scroll.offsets.insert(g.node, [0.0, y]);
+                s.clamp_scroll();
+                let cache = &mut self.eng.cache;
+                s.set_page_scroll(0.0, &mut |t, st, m| cache.measure(t, st, m, &mut shape));
+            }
+            // The selection the old scene had applied: if the page moved it since, `eng_page_follow` scrolls the new scene there.
+            let applied = self
+                .eng
+                .page
+                .as_ref()
+                .filter(|h| h.page == key)
+                .map_or(sel, |h| h.sel);
+            let mut h = Hosted::new(s, tree, Interaction::default(), self.eng.sheet_gen);
+            h.page = key;
+            h.sel = applied;
+            self.eng.page = Some(h);
+        }
+        self.eng_page_follow()
+    }
+
+    /// Bring the scene in step with the page's selection (a key moved it) and report the grid's scroll to the page so that the rows in view get their pages and pictures.
+    fn eng_page_follow(&mut self) -> Task<Message> {
+        let Some(sel) = self.stack.last().map(|p| p.sel) else {
+            return Task::none();
+        };
+        let cache = &mut self.eng.cache;
+        let Some(h) = self.eng.page.as_mut() else {
+            return Task::none();
+        };
+        let node = h.tree.grid.as_ref().map(|g| g.node);
+        if h.sel != sel {
+            h.sel = sel;
+            if let Some(c) = node {
+                h.scene
+                    .scroll_to_item(c, sel, &mut |t, st, m| cache.measure(t, st, m, &mut shape));
+            }
+        }
+        h.it = h.scene.interaction;
+        let want = h.scene.item_node(sel);
+        if h.it.focus != want {
+            h.it.focus = want;
+            let it = h.it;
+            let _ = h.scene.update(it, Instant::now(), &mut |t, st, m| {
+                cache.measure(t, st, m, &mut shape)
+            });
+        }
+        self.eng_page_scrolled()
+    }
+
+    /// The grid's scroll offset and height go to the page (they decide which rows are fetched); returns the fetch.
+    fn eng_page_scrolled(&mut self) -> Task<Message> {
+        let Some(h) = self.eng.page.as_ref() else {
+            return Task::none();
+        };
+        let Some(g) = h.tree.grid.as_ref() else {
+            return Task::none();
+        };
+        let off = h.scene.scroll.offsets.get(&g.node).map_or(0.0, |o| o[1]);
+        let vh = h.scene.rects[g.node][3];
+        if self.eng.stats {
+            eprintln!(
+                "engine: grid scroll {off} of a {vh} px view at y {}",
+                h.scene.rects[g.node][1]
+            );
+        }
+        if let Some(br) = self.stack.last_mut().and_then(|p| p.br.as_deref_mut()) {
+            (br.off, br.vh) = (off, vh);
+        }
+        self.browse_visible()
+    }
+
+    /// The pointer is on item `i`: it becomes the selection (as the hand-written cells do), without scrolling.
+    fn eng_page_select(&mut self, i: usize) -> Task<Message> {
+        if let Some(p) = self.stack.last_mut() {
+            if p.sel == i {
+                return Task::none();
+            }
+            p.sel = i;
+        }
+        if let Some(h) = self.eng.page.as_mut() {
+            h.sel = i;
+            h.it.focus = h.scene.item_node(i);
+        }
+        self.eng_restyle(Which::Page);
+        Task::none()
+    }
+
+    fn eng_build_search(&mut self) {
+        let Some(tree) = self.search_tree() else {
+            self.eng.search = None;
+            return;
+        };
+        let it = Interaction {
+            focus: tree.sel.and_then(|n| (n < tree.doc.len()).then_some(n)),
+            ..Interaction::default()
+        };
+        // The list keeps its scroll across rebuilds (typing, a key moving the selection); the selection is brought into view.
+        let keep = self.eng.search.take().and_then(|h| {
+            let n = h.tree.list?;
+            h.scene.scroll.offsets.get(&n).copied()
+        });
+        let mut s = self.eng_scene(&tree, it, (self.win.width, self.win.height));
+        let cache = &mut self.eng.cache;
+        let m = &mut |t: &str, st: &nocturne_style::TextStyle, mx: Option<f32>| {
+            cache.measure(t, st, mx, &mut shape)
+        };
+        if let (Some(list), Some(o)) = (tree.list, keep) {
+            s.scroll.offsets.insert(list, o);
+            s.clamp_scroll();
+            s.set_page_scroll(0.0, m);
+        }
+        if let Some(n) = tree.sel {
+            s.reveal(n, m);
+        }
+        self.eng.search = Some(Hosted::new(s, tree, it, self.eng.sheet_gen));
     }
 
     fn eng_scene(&mut self, tree: &Tree, it: Interaction, size: (f32, f32)) -> Scene {
         let e = &mut self.eng;
         let t0 = Instant::now();
         let cache = &mut e.cache;
-        let s = e.engine.build(
-            &tree.doc,
-            size,
-            it,
-            &Builders::new(),
-            &mut |text, st, max| cache.measure(text, st, max, &mut shape),
-        );
+        let s = e
+            .engine
+            .build(&tree.doc, size, it, &tree.builders, &mut |text, st, max| {
+                cache.measure(text, st, max, &mut shape)
+            });
         for n in e.engine.take_notices() {
             eprintln!("engine: {n}");
         }
@@ -306,20 +645,9 @@ impl App {
         s
     }
 
-    fn eng_hosted(&mut self, w: Which) -> Option<&mut Hosted> {
-        match w {
-            Which::Home => self.eng.home.as_mut(),
-            Which::Header => self.eng.hdr.as_mut(),
-        }
-    }
-
     fn eng_restyle(&mut self, w: Which) {
         let stats = self.eng.stats;
-        let cache = &mut self.eng.cache;
-        let h = match w {
-            Which::Home => self.eng.home.as_mut(),
-            Which::Header => self.eng.hdr.as_mut(),
-        };
+        let (h, cache) = self.eng.host(w);
         let Some(h) = h else { return };
         let t0 = Instant::now();
         let r = h.scene.update(h.it, Instant::now(), &mut |text, st, max| {
@@ -330,7 +658,7 @@ impl App {
         }
         if r.is_err() {
             self.eng.dirty = true;
-            self.eng_sync(false);
+            let _ = self.eng_sync(false);
         }
     }
 
@@ -338,20 +666,25 @@ impl App {
     pub(super) fn eng_event(&mut self, w: Which, e: StyledEvent) -> Task<Message> {
         match e {
             StyledEvent::Resize(s) => {
-                let cache = &mut self.eng.cache;
-                if let Some(h) = match w {
-                    Which::Home => self.eng.home.as_mut(),
-                    Which::Header => self.eng.hdr.as_mut(),
-                } && h.scene.viewport != (s.width, s.height)
+                let (h, cache) = self.eng.host(w);
+                let mut resized = false;
+                if let Some(h) = h
+                    && h.scene.viewport != (s.width, s.height)
                 {
                     h.scene.resize((s.width, s.height), &mut |t, st, m| {
                         cache.measure(t, st, m, &mut shape)
                     });
+                    h.it = h.scene.interaction;
+                    resized = true;
+                }
+                if resized && w == Which::Page {
+                    return self.eng_page_scrolled();
                 }
                 Task::none()
             }
             StyledEvent::Hover(n) => {
-                let Some(h) = self.eng_hosted(w) else {
+                let (h, _) = self.eng.host(w);
+                let Some(h) = h else {
                     return Task::none();
                 };
                 if h.it.hover == n {
@@ -359,68 +692,138 @@ impl App {
                 }
                 h.it.hover = n;
                 // The pointer on a card moves the keyboard focus there (as the hand-written cells do).
-                let cell = n.and_then(|n| ancestor_cell(&h.tree, &h.scene, n));
+                let cell = match w {
+                    Which::Home => n.and_then(|n| ancestor_cell(&h.tree, &h.scene, n)),
+                    _ => None,
+                };
+                let item = match w {
+                    Which::Page => n.and_then(|n| h.scene.item_index(n)),
+                    _ => None,
+                };
                 self.eng_restyle(w);
-                match (w, cell) {
-                    (Which::Home, Some((row, col))) => self.eng_focus(row, col),
+                match (w, cell, item) {
+                    (Which::Home, Some((row, col)), _) => self.eng_focus(row, col),
+                    (Which::Page, _, Some(i)) => self.eng_page_select(i),
                     _ => Task::none(),
                 }
             }
             StyledEvent::Active(n) => {
-                if let Some(h) = self.eng_hosted(w) {
+                if let (Some(h), _) = self.eng.host(w) {
                     h.it.active = n;
                 }
                 self.eng_restyle(w);
                 Task::none()
             }
             StyledEvent::Click(n) => {
-                let Some(h) = self.eng_hosted(w) else {
+                let (h, _) = self.eng.host(w);
+                let Some(h) = h else {
                     return Task::none();
                 };
                 let mut at = Some(n);
+                let mut chip: Option<CellAct> = None;
                 while let Some(i) = at {
                     if let Some(m) = h.tree.acts.get(&i) {
                         return Task::done(m.clone());
                     }
-                    at = h.scene.doc.nodes[i].parent;
+                    let node = &h.scene.doc.nodes[i];
+                    if w == Which::Page {
+                        match node
+                            .attrs
+                            .iter()
+                            .find(|(k, _)| k == "data-act")
+                            .map(|(_, v)| v.as_str())
+                        {
+                            Some("fav") => chip = Some(CellAct::Fav),
+                            Some("played") => chip = Some(CellAct::Played),
+                            _ => {}
+                        }
+                        if node.virtual_item
+                            && let Some(idx) = h.scene.item_index(i)
+                        {
+                            return Task::done(Message::Cell(
+                                At::Grid(idx),
+                                chip.unwrap_or(CellAct::Open),
+                            ));
+                        }
+                    }
+                    at = node.parent;
                 }
                 Task::none()
             }
             StyledEvent::Wheel { target, dx, dy } => {
-                let cache = &mut self.eng.cache;
-                let Some(h) = (match w {
-                    Which::Home => self.eng.home.as_mut(),
-                    Which::Header => self.eng.hdr.as_mut(),
-                }) else {
+                let (h, cache) = self.eng.host(w);
+                let Some(h) = h else {
                     return Task::none();
                 };
                 // A plain wheel over a strip scrolls the page; shift (or a sideways gesture) scrolls the strip.
                 let moved = h.scene.wheel(target, dx, dy, &mut |t, st, m| {
                     cache.measure(t, st, m, &mut shape)
                 });
-                if moved && w == Which::Home {
-                    return self.eng_scrolled();
+                h.it.hover = h.scene.interaction.hover;
+                h.it.focus = h.scene.interaction.focus;
+                match (moved, w) {
+                    (true, Which::Home) => self.eng_scrolled(),
+                    (true, Which::Page) => self.eng_page_scrolled(),
+                    _ => Task::none(),
                 }
-                Task::none()
             }
-            StyledEvent::Nav(nav) => match nav {
-                Nav::Dir(d) => self.home_key(match d {
+            StyledEvent::Nav(nav) => match (w, nav) {
+                (Which::Home, Nav::Dir(d)) => self.home_key(match d {
                     Dir::Up => "up",
                     Dir::Down => "down",
                     Dir::Left => "left",
                     Dir::Right => "right",
                 }),
-                Nav::Activate => self.home_key("enter"),
-                Nav::Next => self.eng_tab(true),
-                Nav::Prev => self.eng_tab(false),
+                (Which::Home, Nav::Activate) => self.home_key("enter"),
+                (Which::Home, Nav::Next) => self.eng_tab(true),
+                (Which::Home, Nav::Prev) => self.eng_tab(false),
+                // Every other scene hands the key to the app's own key routing: the page's selection, the open menus and the search overlay already know what each key does.
+                _ => {
+                    let name = match nav {
+                        Nav::Dir(Dir::Up) => "up",
+                        Nav::Dir(Dir::Down) => "down",
+                        Nav::Dir(Dir::Left) => "left",
+                        Nav::Dir(Dir::Right) => "right",
+                        Nav::Activate => "enter",
+                        Nav::Next | Nav::Prev => "tab",
+                    };
+                    self.on_key(crate::keys::Key {
+                        name: name.into(),
+                        shift: nav == Nav::Prev,
+                        ..Default::default()
+                    })
+                }
             },
             StyledEvent::SafeMode => self.safe_theme(),
             StyledEvent::Frame(now) => {
-                if let Some(h) = self.eng_hosted(w) {
+                if let (Some(h), _) = self.eng.host(w) {
                     h.scene.tick(now);
                 }
                 Task::none()
             }
+        }
+    }
+
+    /// A picture was decoded (`Some`) or failed (`None`): the nodes that wait for it are filled in place, no scene is rebuilt. A failure changes what a card shows (its initial), which takes a rebuild.
+    pub(super) fn eng_image(&mut self, key: &str, big: bool) {
+        let h = match if big {
+            self.heroes.get(&key.to_string())
+        } else {
+            self.images.get(&key.to_string())
+        } {
+            Some(super::Img::Ready(h)) => h.clone(),
+            Some(super::Img::Failed(_)) => {
+                self.eng.dirty = true;
+                return;
+            }
+            _ => return,
+        };
+        let e = &mut self.eng;
+        for s in [&mut e.home, &mut e.hdr, &mut e.page, &mut e.search]
+            .into_iter()
+            .flatten()
+        {
+            s.image_arrived(key, &h);
         }
     }
 
@@ -468,7 +871,7 @@ impl App {
         if changed {
             // The hero follows the focused poster: a new tree.
             self.eng.dirty = true;
-            self.eng_sync(false);
+            let _ = self.eng_sync(false);
         } else if let Some(h) = self.eng.home.as_mut()
             && let Some(n) = h.tree.by_cell.get(&(row, col)).copied()
             && h.it.focus != Some(n)
@@ -576,6 +979,24 @@ impl App {
         Some(self.eng_widget(h, Which::Home))
     }
 
+    /// The engine's library page, or `None` (the hand-written page then draws it).
+    pub(super) fn eng_page_view(&self) -> Option<Element<'_, Message>> {
+        if !self.eng_page_active() {
+            return None;
+        }
+        let h = self.eng.page.as_ref()?;
+        Some(self.eng_widget(h, Which::Page))
+    }
+
+    /// The engine's search overlay, or `None`.
+    pub(super) fn eng_search_view(&self) -> Option<Element<'_, Message>> {
+        if !self.eng.enabled || !matches!(self.phase, Phase::Ready) || self.search.is_none() {
+            return None;
+        }
+        let h = self.eng.search.as_ref()?;
+        Some(self.eng_widget(h, Which::Search))
+    }
+
     /// The engine's header for a page other than Home, or `None`.
     pub(super) fn eng_header_view(&self) -> Option<Element<'_, Message>> {
         if !self.eng_header_active() {
@@ -645,10 +1066,12 @@ impl App {
                 if lit { t::text() } else { t::text_secondary() },
             )
             .into(),
+            Slot::Sort | Slot::Filters | Slot::View(_) => self.page_slot(s),
+            Slot::SearchInput => self.search_input(),
         }
     }
 
-    /// Does this message change what Home or the header show? Frames, ticks and the engine's own pointer events do not.
+    /// Does this message change what Home or the header show? Frames, ticks, the engine's own pointer events and arriving pictures (filled in place by `eng_image`) do not.
     pub(super) fn eng_message_dirties(m: &Message) -> bool {
         !matches!(
             m,
@@ -657,6 +1080,7 @@ impl App {
                 | Message::Eng(..)
                 | Message::Noop
                 | Message::NavScrolled(..)
+                | Message::Image(..)
         )
     }
 }

@@ -49,6 +49,11 @@ pub fn on_boot() -> Task<Message> {
                     nocturne_core::source::SourceId(i),
                 )))
             }),
+            // Search QA: `open-search` opens the overlay, `search-<text>` types the text into it (`_` is a space).
+            "open-search" => Some(Message::OpenSearch),
+            n if n.starts_with("search-") => Some(Message::Search(
+                crate::app::search::SMsg::Input(n[7..].replace('_', " ")),
+            )),
             "theme-safe" => Some(Message::Themes(crate::app::themes::Msg::Safe)),
             n if n.starts_with("sections-") => n[9..].parse().ok().map(|i| {
                 Message::Src(crate::app::message::SrcAct::Sections(

@@ -79,6 +79,23 @@ struct State {
     hover: Option<Id>,
     pressed: Option<Id>,
     size: Size,
+    /// A scrollbar thumb being dragged: the container, its axis (vertical) and the last cursor coordinate along it.
+    drag: Option<(Id, bool, f32)>,
+    /// When the pointer settled on the element it is over (a `title` tooltip shows after a short rest).
+    rest: Option<Instant>,
+}
+
+/// How long the pointer rests on an element with a `title` before its tooltip shows (the hand-written tooltips' delay).
+const TIP_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// A scrollbar the app asked for with `data-scrollbar` on a scroll container: `vertical` is always shown while the content overflows (like the hand-written grids' bar), `hover-x` is the quiet 4 px bar of a horizontal strip, shown while the pointer is over it. A theme cannot hide either (the app's decision, like focusability).
+struct Bar {
+    node: Id,
+    vertical: bool,
+    /// The thumb in widget coordinates.
+    thumb: Rectangle,
+    /// Content pixels per thumb pixel.
+    ratio: f32,
 }
 
 /// The scene a widget draws: borrowed from the app's state, or shared when the page builds it while it builds its view.
@@ -251,6 +268,28 @@ struct Pass<'a> {
     k: usize,
     ord: &'a [u32],
     end: &'a [u32],
+    /// `layered[n]`: drawing `n`'s subtree opens an Iced layer (a clipping container with children, or a transform). Layers are stacked in the order they were opened, not in tree order, so a later sibling that overlaps such a subtree has to open a layer of its own to stay above it.
+    layered: &'a [bool],
+}
+
+/// Which subtrees open a layer while they are drawn (children come after their parents in node order, so one pass from the end is enough).
+fn layered_subtrees<M>(w: &Styled<'_, M>) -> Vec<bool> {
+    let s = &*w.scene;
+    let mut has = vec![false; s.doc.len()];
+    for n in (0..s.doc.len()).rev() {
+        let c = s.style(n);
+        let own = !s.paint[n].is_empty()
+            && (c.layout.overflow.x != nocturne_style::taffy::style::Overflow::Visible
+                || c.layout.overflow.y != nocturne_style::taffy::style::Overflow::Visible)
+            || !s.eff(n).xf.unwrap_or(c.xf).is_identity();
+        has[n] |= own;
+        if has[n]
+            && let Some(p) = s.doc.nodes[n].parent
+        {
+            has[p] = true;
+        }
+    }
+    has
 }
 
 fn image_order<M>(w: &Styled<'_, M>) -> (Vec<u32>, Vec<u32>, usize) {
@@ -356,12 +395,29 @@ impl<M> Styled<'_, M> {
                 let clips = ov.x != nocturne_style::taffy::style::Overflow::Visible
                     || ov.y != nocturne_style::taffy::style::Overflow::Visible;
                 let off = s.scroll.offsets.get(&n).copied().unwrap_or_default();
-                let child_sh = (sh.0 - off[0], sh.1 - off[1]);
+                let child_sh = (sh.0 - off[0].round(), sh.1 - off[1].round());
                 let go = |r: &mut iced::Renderer, clip: Rectangle| {
+                    // Boxes of the earlier siblings that opened layers: a sibling overlapping one of them is drawn in a layer of its own, so that it lands above (a focus ring over the chips of a poster).
+                    let mut opened: Vec<Rectangle> = vec![];
                     for &k in kids {
-                        self.paint(
-                            tree, layout, r, th, style, cursor, viewport, k, o, child_sh, clip, ps,
-                        );
+                        let kr = tr(s.rects[k], Point::new(o.x + child_sh.0, o.y + child_sh.1));
+                        let above = opened.iter().any(|l| l.intersects(&kr));
+                        if above {
+                            r.with_layer(clip, |r| {
+                                self.paint(
+                                    tree, layout, r, th, style, cursor, viewport, k, o, child_sh,
+                                    clip, ps,
+                                )
+                            });
+                        } else {
+                            self.paint(
+                                tree, layout, r, th, style, cursor, viewport, k, o, child_sh, clip,
+                                ps,
+                            );
+                        }
+                        if above || ps.layered[k] {
+                            opened.push(kr);
+                        }
                     }
                 };
                 // A container that clips gets its own layer; one whose clip is empty draws nothing.
@@ -432,6 +488,8 @@ impl<M> Styled<'_, M> {
         let c = s.style(n);
         let rad = c.radius;
         let [bl, bt, br, bb] = s.borders[n];
+        // Layout is fractional (text keeps its exact size), but a box that is not being transformed is snapped to physical pixels as the hand-written pages' quads are: a 2 px underline or a hairline at y = 207.4 would otherwise straddle two rows and fade.
+        let crisp = eff.xf.unwrap_or(c.xf).is_identity();
         // Outer shadows first (an invisible quad that only casts).
         for sd in c.shadows.iter().filter(|d| !d.inset) {
             let b = Rectangle {
@@ -487,7 +545,7 @@ impl<M> Styled<'_, M> {
                             ..Border::default()
                         },
                         shadow: Shadow::default(),
-                        snap: false,
+                        snap: crisp,
                     },
                     bg,
                 );
@@ -552,7 +610,7 @@ impl<M> Styled<'_, M> {
                         radius: radius(rad),
                     },
                     shadow: Shadow::default(),
-                    snap: false,
+                    snap: crisp,
                 },
                 Background::Color(Color::TRANSPARENT),
             );
@@ -626,6 +684,8 @@ impl<M> Styled<'_, M> {
             let fitted = Rectangle::new(Point::new(rect.x + x, rect.y + y), Size::new(w, h));
             let image = iced::advanced::image::Image {
                 border_radius: radius(c.radius),
+                // Pictures sit on whole physical pixels like the hand-written pages' (a fractional layout must not blur them).
+                snap: eff.xf.unwrap_or(c.xf).is_identity(),
                 ..iced::advanced::image::Image::new(handle.clone()).opacity(opacity)
             };
             if let Some(vis) = inter(clip, rect) {
@@ -658,6 +718,7 @@ impl<M> Styled<'_, M> {
                        w: f32,
                        color: Color,
                        align: Alignment| {
+            let shaping = crate::widget::styled_preview::shaping_of(&content);
             r.fill_text(
                 Text {
                     content,
@@ -667,7 +728,7 @@ impl<M> Styled<'_, M> {
                     font,
                     align_x: align,
                     align_y: alignment::Vertical::Top,
-                    shaping: Shaping::Advanced,
+                    shaping,
                     wrapping: Wrapping::None,
                 },
                 at,
@@ -758,7 +819,7 @@ impl<M> Styled<'_, M> {
                         font,
                         align_x: al,
                         align_y: alignment::Vertical::Top,
-                        shaping: Shaping::Advanced,
+                        shaping: crate::widget::styled_preview::shaping_of(&shown),
                         wrapping: if one_line {
                             Wrapping::None
                         } else {
@@ -867,6 +928,257 @@ fn stats_on() -> bool {
 }
 
 impl<M> Styled<'_, M> {
+    /// The scrollbars of the containers that asked for one, with the thumb geometry (also used to start a drag).
+    fn bars(&self, hover: Option<Id>, dragging: Option<Id>) -> Vec<Bar> {
+        let s = &*self.scene;
+        let mut out = vec![];
+        for n in 1..s.doc.len() {
+            let mode = s.doc.nodes[n]
+                .attrs
+                .iter()
+                .find(|(k, _)| k == "data-scrollbar")
+                .map(|(_, v)| v.as_str());
+            let Some(mode) = mode else { continue };
+            if s.is_hidden(n) {
+                continue;
+            }
+            let [_, _, w, h] = s.rects[n];
+            let [cw, ch] = s.content[n];
+            let off = s.scroll.offsets.get(&n).copied().unwrap_or_default();
+            let r = s.screen_rect(n);
+            if mode == "vertical" && ch > h + 0.5 {
+                let len = (h * h / ch).clamp(24.0, h);
+                let top = off[1].clamp(0.0, ch - h) / (ch - h) * (h - len);
+                out.push(Bar {
+                    node: n,
+                    vertical: true,
+                    thumb: Rectangle::new(
+                        Point::new(r[0] + r[2] - 10.0, r[1] + top),
+                        Size::new(10.0, len),
+                    ),
+                    ratio: (ch - h) / (h - len).max(1.0),
+                });
+            } else if mode == "hover-x" && cw > w + 0.5 {
+                let mut up = hover;
+                let mut over = dragging == Some(n);
+                while let Some(i) = up {
+                    over |= i == n;
+                    up = s.doc.nodes[i].parent;
+                }
+                if !over {
+                    continue;
+                }
+                let len = (w * w / cw).clamp(24.0, w);
+                let left = off[0].clamp(0.0, cw - w) / (cw - w) * (w - len);
+                out.push(Bar {
+                    node: n,
+                    vertical: false,
+                    thumb: Rectangle::new(
+                        Point::new(r[0] + left, r[1] + r[3] - 4.0),
+                        Size::new(len, 4.0),
+                    ),
+                    ratio: (cw - w) / (w - len).max(1.0),
+                });
+            }
+        }
+        out
+    }
+
+    /// The `title` of the element under the pointer (or of its nearest ancestor that has one) and the element it sits on.
+    pub(super) fn tip_of(&self, hover: Option<Id>) -> Option<(Id, &str)> {
+        let mut at = hover;
+        while let Some(i) = at {
+            if let Some((_, v)) = self.scene.doc.nodes[i]
+                .attrs
+                .iter()
+                .find(|(k, _)| k == "title")
+            {
+                return Some((i, v.as_str()));
+            }
+            at = self.scene.doc.nodes[i].parent;
+        }
+        None
+    }
+
+    /// A small tooltip under the element (the look of the hand-written `tip`): drawn over everything in the window, so it can leave the scene's own box (a header is only as tall as its bar).
+    fn paint_tip(&self, tree: &Tree, r: &mut iced::Renderer, b: Rectangle, window: Rectangle) {
+        let st = tree.state.downcast_ref::<State>();
+        if st.rest.is_none_or(|t| t.elapsed() < TIP_DELAY) || st.drag.is_some() {
+            return;
+        }
+        let Some((n, text)) = self.tip_of(st.hover) else {
+            return;
+        };
+        let ts = nocturne_style::TextStyle {
+            size: theme::MICRO,
+            weight: 400,
+            italic: false,
+            font: FontChoice::Monospace,
+            line_height: 1.3,
+            lines: None,
+            letter_spacing: 0.0,
+            ellipsis: false,
+        };
+        let (tw, th) = crate::widget::styled_preview::shape(text, &ts, None);
+        let (padx, pady) = (theme::S2, theme::S1);
+        let (w, h) = (tw + 2.0 * padx + 2.0, th + 2.0 * pady + 2.0);
+        let rect = self.scene.screen_rect(n);
+        let x = (b.x + rect[0] + (rect[2] - w) / 2.0)
+            .clamp(window.x, (window.x + window.width - w).max(window.x));
+        let y = b.y + rect[1] + rect[3] + 4.0;
+        let body = Rectangle::new(Point::new(x, y), Size::new(w, h));
+        r.with_layer(window, |r| {
+            r.fill_quad(
+                Quad {
+                    bounds: body,
+                    border: Border {
+                        color: theme::hairline_strong(),
+                        width: 1.0,
+                        radius: border::radius(theme::r_xs()),
+                    },
+                    shadow: Shadow::default(),
+                    snap: false,
+                },
+                theme::raised(),
+            );
+            r.fill_text(
+                Text {
+                    content: text.to_string(),
+                    bounds: Size::new(tw + 1.0, th),
+                    size: Pixels(ts.size),
+                    line_height: LineHeight::Relative(ts.line_height),
+                    font: font_for(400, false, &FontChoice::Monospace),
+                    align_x: Alignment::Left,
+                    align_y: alignment::Vertical::Top,
+                    shaping: Shaping::Advanced,
+                    wrapping: Wrapping::None,
+                },
+                Point::new(x + 1.0 + padx, y + 1.0 + pady),
+                theme::text(),
+                window,
+            );
+        });
+    }
+
+    /// The chevrons at the ends of a scroll strip that asked for them (`data-chevrons`): 48 px wide, over a fade into the frame colour, where links are hidden past the edge. Widget coordinates; `true` is the left one.
+    fn chevrons(&self) -> Vec<(Rectangle, bool, Id)> {
+        let s = &*self.scene;
+        let mut out = vec![];
+        for n in 1..s.doc.len() {
+            if !s.doc.nodes[n]
+                .attrs
+                .iter()
+                .any(|(k, _)| k == "data-chevrons")
+                || s.is_hidden(n)
+            {
+                continue;
+            }
+            let [_, _, w, h] = s.rects[n];
+            let [cw, _] = s.content[n];
+            let off = s.scroll.offsets.get(&n).map_or(0.0, |o| o[0]);
+            let r = s.screen_rect(n);
+            if cw <= w + 1.0 {
+                continue;
+            }
+            if off > 1.0 {
+                out.push((
+                    Rectangle::new(Point::new(r[0], r[1]), Size::new(48.0, h)),
+                    true,
+                    n,
+                ));
+            }
+            if off + w < cw - 1.0 {
+                out.push((
+                    Rectangle::new(Point::new(r[0] + r[2] - 48.0, r[1]), Size::new(48.0, h)),
+                    false,
+                    n,
+                ));
+            }
+        }
+        out
+    }
+
+    fn paint_chevrons(
+        &self,
+        r: &mut iced::Renderer,
+        b: Rectangle,
+        cursor: mouse::Cursor,
+        vis: Rectangle,
+    ) {
+        for (rect, left, _) in self.chevrons() {
+            let at = Rectangle::new(Point::new(b.x + rect.x, b.y + rect.y), rect.size());
+            let hot = cursor.position().is_some_and(|p| at.contains(p));
+            let clear = Color {
+                a: 0.0,
+                ..theme::frame()
+            };
+            let g = gradient::Linear::new(Degrees(if left { 270.0 } else { 90.0 }))
+                .add_stop(0.0, clear)
+                .add_stop(1.0, theme::frame());
+            r.with_layer(vis, |r| {
+                r.fill_quad(
+                    Quad {
+                        bounds: at,
+                        border: Border::default(),
+                        shadow: Shadow::default(),
+                        snap: false,
+                    },
+                    Background::Gradient(Gradient::Linear(g)),
+                );
+                r.fill_text(
+                    Text {
+                        content: if left { "\u{2039}" } else { "\u{203A}" }.to_string(),
+                        bounds: at.size(),
+                        size: Pixels(theme::HEADING),
+                        line_height: LineHeight::Relative(1.3),
+                        font: theme::font(Weight::Normal),
+                        align_x: Alignment::Center,
+                        align_y: alignment::Vertical::Center,
+                        shaping: Shaping::Advanced,
+                        wrapping: Wrapping::None,
+                    },
+                    Point::new(at.center_x(), at.center_y()),
+                    if hot {
+                        theme::accent_text()
+                    } else {
+                        theme::text()
+                    },
+                    at,
+                );
+            });
+        }
+    }
+
+    fn paint_bars(&self, tree: &Tree, r: &mut iced::Renderer, b: Rectangle, vis: Rectangle) {
+        let st = tree.state.downcast_ref::<State>();
+        for bar in self.bars(st.hover, st.drag.map(|d| d.0)) {
+            let clip = self
+                .scene
+                .clip_of(bar.node)
+                .map_or(vis, |c| inter(vis, tr(c, b.position())).unwrap_or(vis));
+            let thumb = Rectangle::new(
+                Point::new(b.x + bar.thumb.x, b.y + bar.thumb.y),
+                bar.thumb.size(),
+            );
+            let hot = st.drag.is_some_and(|d| d.0 == bar.node);
+            r.with_layer(clip, |r| {
+                r.fill_quad(
+                    Quad {
+                        bounds: thumb,
+                        border: border::rounded(3.0),
+                        shadow: Shadow::default(),
+                        snap: false,
+                    },
+                    if hot || !bar.vertical {
+                        theme::edge()
+                    } else {
+                        theme::hairline_strong()
+                    },
+                );
+            });
+        }
+    }
+
     /// The page's scrollbar: a quiet thumb at the right edge like the hand-written pages' (10 px wide, hairline colour), below a window-top fixed bar (a header) as that one lay over the scrollbar too. Nothing when the page fits.
     fn paint_scrollbar(&self, r: &mut iced::Renderer, b: Rectangle, vis: Rectangle) {
         let s: &Scene = &self.scene;
@@ -1021,11 +1333,83 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
         let st = tree.state.downcast_mut::<State>();
         let _ = (hover, pressed, size);
         let hit = |c: mouse::Cursor| c.position_in(b).and_then(|p| self.scene.hit_test(p.x, p.y));
+        // A press on a scrollbar thumb (a little wider than drawn, so the 4 px strip bar can be caught) starts a drag.
+        let grab = match (event, cursor.position_in(b)) {
+            (Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)), Some(p))
+                if !captured =>
+            {
+                self.bars(st.hover, None).into_iter().find_map(|bar| {
+                    let t = bar.thumb;
+                    Rectangle::new(
+                        Point::new(t.x - 4.0, t.y - 4.0),
+                        Size::new(t.width + 8.0, t.height + 8.0),
+                    )
+                    .contains(p)
+                    .then_some((
+                        bar.node,
+                        bar.vertical,
+                        if bar.vertical { p.y } else { p.x },
+                    ))
+                })
+            }
+            _ => None,
+        };
+        let chev = match (event, cursor.position_in(b)) {
+            (Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)), Some(p))
+                if !captured =>
+            {
+                self.chevrons()
+                    .into_iter()
+                    .find(|(r, ..)| r.contains(p))
+                    .map(|(_, left, n)| (n, left, self.scene.rects[n][2]))
+            }
+            _ => None,
+        };
         match event {
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) if chev.is_some() => {
+                if let Some((n, left, w)) = chev {
+                    // The scene's wheel handling moves the strip: a wheel of +dx scrolls toward the start.
+                    let d = w * 0.7;
+                    shell.publish((self.on_event)(StyledEvent::Wheel {
+                        target: Some(n),
+                        dx: if left { d } else { -d },
+                        dy: 0.0,
+                    }));
+                    shell.capture_event();
+                }
+            }
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) if grab.is_some() => {
+                st.drag = grab;
+                shell.capture_event();
+            }
+            Event::Mouse(mouse::Event::CursorMoved { .. }) if st.drag.is_some() => {
+                if let (Some((node, vertical, last)), Some(p)) = (st.drag, cursor.position_in(b)) {
+                    let now = if vertical { p.y } else { p.x };
+                    let ratio = self
+                        .bars(st.hover, Some(node))
+                        .iter()
+                        .find(|bar| bar.node == node)
+                        .map_or(1.0, |bar| bar.ratio);
+                    // The scene's own wheel handling moves the container: dragging the thumb by `d` px is a wheel of `-d * ratio`.
+                    let d = (now - last) * ratio;
+                    st.drag = Some((node, vertical, now));
+                    let (dx, dy) = if vertical { (0.0, -d) } else { (-d, 0.0) };
+                    shell.publish((self.on_event)(StyledEvent::Wheel {
+                        target: Some(node),
+                        dx,
+                        dy,
+                    }));
+                    shell.capture_event();
+                }
+            }
             Event::Mouse(mouse::Event::CursorMoved { .. } | mouse::Event::CursorLeft) => {
                 let h = hit(cursor);
                 if h != st.hover {
                     st.hover = h;
+                    st.rest = Some(Instant::now());
+                    if self.tip_of(h).is_some() {
+                        shell.request_redraw_at(Instant::now() + TIP_DELAY);
+                    }
                     shell.publish((self.on_event)(StyledEvent::Hover(h)));
                 }
             }
@@ -1036,6 +1420,10 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
                 }
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                if st.drag.take().is_some() {
+                    shell.capture_event();
+                    return;
+                }
                 if let Some(p) = st.pressed.take() {
                     shell.publish((self.on_event)(StyledEvent::Active(None)));
                     if hit(cursor) == Some(p) && !captured {
@@ -1138,11 +1526,13 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
         };
         let t0 = std::time::Instant::now();
         let (ord, end, images) = image_order(self);
+        let layered = layered_subtrees(self);
         for k in 0..=2 * images {
             let ps = Pass {
                 k,
                 ord: &ord,
                 end: &end,
+                layered: &layered,
             };
             r.with_layer(vis, |r| {
                 self.paint(
@@ -1155,13 +1545,16 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
                     viewport,
                     0,
                     b.position(),
-                    (0.0, -self.scene.scroll.page_y),
+                    (0.0, -self.scene.scroll.page_y.round()),
                     vis,
                     &ps,
                 );
             });
         }
         self.paint_scrollbar(r, b, vis);
+        self.paint_bars(tree, r, b, vis);
+        self.paint_chevrons(r, b, cursor, vis);
+        self.paint_tip(tree, r, b, *viewport);
         if stats_on() {
             eprintln!(
                 "engine: draw {} us ({} images, {} passes)",

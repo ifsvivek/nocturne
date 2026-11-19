@@ -55,7 +55,7 @@ pub struct SearchUi {
     failed: usize,
     answers: Vec<(SourceId, Vec<Media>)>,
     /// How many sources have a copy of each hit.
-    copies: HashMap<(SourceId, String), usize>,
+    pub(super) copies: HashMap<(SourceId, String), usize>,
     off: f32,
 }
 
@@ -251,6 +251,26 @@ impl App {
         }
     }
 
+    /// The query field (a real `text_input`).
+    pub(super) fn search_input(&self) -> El<'_> {
+        let q = self.search.as_deref().map_or("", |u| u.s.query.as_str());
+        text_input("Movies, shows, people, collections", q)
+            .id(Id::from(INPUT_ID))
+            .on_input(|q| Message::Search(SMsg::Input(q)))
+            .on_submit(Message::Search(SMsg::Enter))
+            .size(t::BODY_LG)
+            .padding(0)
+            .style(|_, _| text_input::Style {
+                background: iced::Background::Color(t::NONE),
+                border: border(t::NONE, 0.0, 0.0),
+                icon: t::text_secondary(),
+                placeholder: t::text_tertiary(),
+                value: t::text(),
+                selection: t::accent_tint(),
+            })
+            .into()
+    }
+
     pub(super) fn search_overlay(&self) -> El<'_> {
         let Some(ui) = self.search.as_deref() else {
             return space().into();
@@ -333,20 +353,7 @@ impl App {
                 ));
             }
         }
-        let input = text_input("Movies, shows, people, collections", &s.query)
-            .id(Id::from(INPUT_ID))
-            .on_input(|q| Message::Search(SMsg::Input(q)))
-            .on_submit(Message::Search(SMsg::Enter))
-            .size(t::BODY_LG)
-            .padding(0)
-            .style(|_, _| text_input::Style {
-                background: iced::Background::Color(t::NONE),
-                border: border(t::NONE, 0.0, 0.0),
-                icon: t::text_secondary(),
-                placeholder: t::text_tertiary(),
-                value: t::text(),
-                selection: t::accent_tint(),
-            });
+        let input = self.search_input();
         let head = container(
             row![
                 mono("SEARCH"),

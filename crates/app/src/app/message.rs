@@ -11,12 +11,14 @@ use nocturne_core::source::{ConnectError, Media, Source, SourceId};
 use nocturne_jellyfin_user::Session;
 use std::time::Instant;
 
-/// Which of the engine's two scenes an event belongs to: the whole Home page (header included) or the header alone on other pages.
+/// Which of the engine's scenes an event belongs to: the whole Home page (header included), the header alone on other pages, the library page's body, or the search overlay.
 #[cfg(feature = "theme-engine")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Which {
     Home,
     Header,
+    Page,
+    Search,
 }
 
 /// Which fan-out on the Home page an answer belongs to.

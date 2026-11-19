@@ -2,6 +2,8 @@
 //! (`crates/app/src/app.rs`).
 mod actions;
 mod browse;
+#[cfg(feature = "theme-engine")]
+mod browse_tree;
 mod cascade;
 mod catalog;
 mod cells;
@@ -26,7 +28,9 @@ mod online;
 mod play;
 mod preview;
 mod remote;
-mod search;
+pub(crate) mod search;
+#[cfg(feature = "theme-engine")]
+mod search_tree;
 mod server_ui;
 mod settings;
 pub(crate) mod smart;
@@ -562,12 +566,24 @@ impl App {
     pub fn update(&mut self, msg: Message) -> Task<Message> {
         #[cfg(feature = "theme-engine")]
         let dirties = Self::eng_message_dirties(&msg);
+        #[cfg(feature = "theme-engine")]
+        let t0 = self.eng.stats.then(std::time::Instant::now);
         let task = self.update_inner(msg);
         let ui = self.sync_ui();
         let theme = self.sync_theme();
         #[cfg(feature = "theme-engine")]
-        self.eng_sync(dirties);
-        Task::batch([task, ui, theme])
+        let eng = self.eng_sync(dirties);
+        #[cfg(not(feature = "theme-engine"))]
+        let eng = Task::none();
+        #[cfg(feature = "theme-engine")]
+        if let Some(t0) = t0 {
+            // `NOCTURNE_ENGINE_STATS=1`: what one update cost (handling the message and rebuilding what it changed).
+            eprintln!(
+                "engine: update {} us (rebuilds scenes: {dirties})",
+                t0.elapsed().as_micros()
+            );
+        }
+        Task::batch([task, ui, theme, eng])
     }
 
     fn update_inner(&mut self, msg: Message) -> Task<Message> {
@@ -793,7 +809,11 @@ impl App {
             }
             Message::SeriesIds(origin, v) => self.series_arrived(origin, v),
             Message::Image(key, big, h) => {
+                #[cfg(feature = "theme-engine")]
+                let k = key.clone();
                 self.image_arrived(key, big, h);
+                #[cfg(feature = "theme-engine")]
+                self.eng_image(&k, big);
                 Task::none()
             }
             Message::Cell(at, act) => self.update_cell(at, act),
@@ -2151,7 +2171,13 @@ impl App {
             layers.push(self.account_menu());
         }
         if self.search.is_some() && ready {
-            layers.push(self.search_overlay());
+            #[cfg(feature = "theme-engine")]
+            let overlay = self
+                .eng_search_view()
+                .unwrap_or_else(|| self.search_overlay());
+            #[cfg(not(feature = "theme-engine"))]
+            let overlay = self.search_overlay();
+            layers.push(overlay);
         }
         if let Some(h) = self.hints() {
             layers.push(h);
@@ -2213,7 +2239,13 @@ impl App {
     fn page_view(&self) -> Element<'_, Message> {
         match self.stack.last().map(|p| p.view) {
             Some(View::Home) => self.home_page(),
-            Some(View::Grid) => self.grid_page(),
+            Some(View::Grid) => {
+                #[cfg(feature = "theme-engine")]
+                if let Some(p) = self.eng_page_view() {
+                    return p;
+                }
+                self.grid_page()
+            }
             _ => match self
                 .stack
                 .last()

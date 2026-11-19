@@ -44,6 +44,15 @@ fn env(k: &str) -> Option<String> {
     std::env::var(k).ok()
 }
 
+/// Plain ASCII text is shaped the way the hand-written pages' `text()` widgets shape it (Iced's basic shaping), so a label measures and lands on the same pixels; anything else (accents, emoji, scripts, the tracked labels' hair spaces) needs the advanced shaper.
+pub(crate) fn shaping_of(s: &str) -> Shaping {
+    if s.is_ascii() {
+        Shaping::Basic
+    } else {
+        Shaping::Advanced
+    }
+}
+
 /// The real text shaper (cosmic-text through Iced); the cache sits in front of it in `Preview::measure`.
 pub(crate) fn shape(text: &str, st: &TextStyle, max: Option<f32>) -> (f32, f32) {
     let p = Paragraph::with_text(Text {
@@ -54,7 +63,7 @@ pub(crate) fn shape(text: &str, st: &TextStyle, max: Option<f32>) -> (f32, f32) 
         font: font_for(st.weight, st.italic, &st.font),
         align_x: Alignment::Default,
         align_y: alignment::Vertical::Top,
-        shaping: Shaping::Advanced,
+        shaping: shaping_of(text),
         wrapping: Wrapping::Word,
     });
     let b = p.min_bounds();

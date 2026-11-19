@@ -265,3 +265,36 @@ fn ten_thousand_items_lay_out_quickly() {
     // Debug build, shared machine: only a gross regression fails this.
     assert!(first.as_millis() < 2000 && scrolls.as_millis() < 5000);
 }
+
+#[test]
+fn focus_and_hover_follow_their_item_when_rows_are_recycled() {
+    let (d, grid, b) = list(1_000);
+    let mut s = build(&d, CSS, &b, (1000.0, 700.0));
+    let focus = s.item_node(10).unwrap();
+    let hover = s.doc.nodes[focus].children[1];
+    s.update(
+        Interaction {
+            hover: Some(hover),
+            focus: Some(focus),
+            ..Default::default()
+        },
+        Instant::now(),
+        &mut approx,
+    )
+    .unwrap();
+    // Rows scroll by: the nodes are rebuilt, the state stays with item 10.
+    let old = s.item_node(10).unwrap();
+    s.wheel(Some(grid), 0.0, -600.0, &mut approx);
+    let now = s.item_node(10);
+    assert!(
+        now.is_some() && now != Some(old),
+        "item 10 survived, as a new node"
+    );
+    assert_eq!(s.interaction.focus, now);
+    assert_eq!(s.item_index(s.interaction.hover.unwrap()), Some(10));
+    assert_eq!(s.interaction.hover, now.map(|n| s.doc.nodes[n].children[1]));
+    // Far away, the item is gone and the state with it.
+    s.scroll_to_item(grid, 900, &mut approx);
+    assert!(s.item_node(10).is_none());
+    assert_eq!(s.interaction.focus, None);
+}

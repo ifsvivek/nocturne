@@ -150,6 +150,14 @@ impl App {
         }
     }
 
+    /// The cache keys `pic` looks at: the real image and its blurhash stand-in.
+    pub(super) fn pic_keys(&self, m: &Media, art: Art, draw_w: u32) -> (String, Option<String>) {
+        (
+            image_key(m, art, request_width(draw_w, self.scale, art), 0),
+            m.blur_for(art).map(blur_key),
+        )
+    }
+
     /// Start whatever of `wants` is not cached or in flight. Called after a list or a scroll
     /// changes what is on screen.
     pub(super) fn want(&mut self, wants: &[Want]) -> Task<Message> {

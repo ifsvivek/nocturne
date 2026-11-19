@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Parity check of the theme engine's Home and header against the hand-written ones, in an invisible sway (scripts/headless-session.sh): the same debug binary runs twice, once with NOCTURNE_ENGINE_UI=0 (hand-written pages) and once with the engine (needs `--features theme-engine`), against a throwaway Jellyfin with the generated demo library, and the window captures are compared per pixel (scripts/parity-diff.py, needs python3 with Pillow). Also replays a key sequence (arrows, Enter, Escape) through both and compares the captures.
+# Parity check of the theme engine's Home, header, library grid and search overlay against the hand-written ones, in an invisible sway (scripts/headless-session.sh): the same debug binary runs twice, once with NOCTURNE_ENGINE_UI=0 (hand-written pages) and once with the engine (needs `--features theme-engine`), against a throwaway Jellyfin with the generated demo library, and the window captures are compared per pixel (scripts/parity-diff.py, needs python3 with Pillow). Also replays key sequences (Home: arrows, Enter, Escape; library: arrows, Page keys, Home/End, Tab) through both and compares the captures.
 # usage: NOCTURNE_JF_URL=http://127.0.0.1:8097 NOCTURNE_JF_TOKEN_FILE=<file with a user access token> scripts/headless-parity.sh [WxH] [out dir]
 #   (default 1600x900 and /tmp/nocturne-parity). The token is a throwaway server's user token (never a real server's); the app runs through scripts/run-isolated.sh with throwaway XDG dirs.
 #   Presets: the three bundled themes are written as the global theme into per-preset throwaway config dirs.
@@ -49,6 +49,16 @@ for p in default marquee feed classic; do
   run "$p-legacy" 0 "$keep" 7000
   run "$p-engine" 1 "$keep" 7000
   check "$p" "$OUT/$p-legacy.png" "$OUT/$p-engine.png"
+  # The library grid (poster view, then the thumb view) and the search overlay with results, same theme.
+  run "$p-lib-legacy" 0 "$keep" 8000 "open-movies@4500"
+  run "$p-lib-engine" 1 "$keep" 8000 "open-movies@4500"
+  check "$p-lib" "$OUT/$p-lib-legacy.png" "$OUT/$p-lib-engine.png"
+  run "$p-thumb-legacy" 0 "$keep" 8500 "open-movies@4500,v@6000"
+  run "$p-thumb-engine" 1 "$keep" 8500 "open-movies@4500,v@6000"
+  check "$p-thumb" "$OUT/$p-thumb-legacy.png" "$OUT/$p-thumb-engine.png"
+  run "$p-search-legacy" 0 "$keep" 9000 "open-search@4500,search-the@5500"
+  run "$p-search-engine" 1 "$keep" 9000 "open-search@4500,search-the@5500"
+  check "$p-search" "$OUT/$p-search-legacy.png" "$OUT/$p-search-engine.png"
 done
 
 # Keyboard: down, right, right, down, up, left (focus and hero follow), Enter (opens the item), Escape (back).
@@ -58,4 +68,14 @@ run keys-legacy 0 "" "$SNAPS" "$KEYS"
 run keys-engine 1 "" "$SNAPS" "$KEYS"
 # The third capture differs on purpose after Down then Up: the hand-written page decides from a scroll offset it has not heard back about yet, the engine from the real one; focus and items are the same.
 for i in "" -2 -4 -5; do check "keys$i" "$OUT/keys-legacy$i.png" "$OUT/keys-engine$i.png"; done
+
+# Library keyboard: Right, Right, Down (the selection scrolls into view), End, Home, Down, Tab (next tab: the list reloads).
+# The scroll after a key lands within a pixel of the hand-written page's, so the first three captures are allowed a larger mean.
+KEYS="open-movies@4500,right@5500,right@5800,down@6100,end@7000,home@8000,down@8500,tab@9000"
+SNAPS="6600,7600,8800,10500"
+run libkeys-legacy 0 "" "$SNAPS" "$KEYS"
+run libkeys-engine 1 "" "$SNAPS" "$KEYS"
+for i in "" -2 -3 -4; do
+  if python3 -I scripts/parity-diff.py "$OUT/libkeys-legacy$i.png" "$OUT/libkeys-engine$i.png" "$OUT/libkeys-diff$i.png" 16 1.5 3; then echo "PASS libkeys$i"; else echo "FAIL libkeys$i"; FAIL=1; fi
+done
 exit $FAIL
