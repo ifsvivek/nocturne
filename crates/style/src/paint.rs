@@ -813,7 +813,8 @@ mod pic_tests {
 
     #[test]
     fn reads_the_picture_layer_of_a_shorthand() {
-        let p = pic("url(\"a b.png\") center / cover no-repeat #000, linear-gradient(red, blue)").unwrap();
+        let p = pic("url(\"a b.png\") center / cover no-repeat #000, linear-gradient(red, blue)")
+            .unwrap();
         assert_eq!(&*p.url, "a b.png");
         assert_eq!(p.size, BgSize::Cover);
         assert_eq!(p.repeat, (false, false));
@@ -830,10 +831,16 @@ mod pic_tests {
     fn places_and_tiles() {
         let mut p = pic("url(x.png) 100% 0 / 50px auto no-repeat").unwrap();
         // 100 x 50 image shown 50 wide: 25 high, flush right and top.
-        assert_eq!(pic_rects(&p, 200.0, 100.0, 100.0, 50.0), vec![[150.0, 0.0, 50.0, 25.0]]);
+        assert_eq!(
+            pic_rects(&p, 200.0, 100.0, 100.0, 50.0),
+            vec![[150.0, 0.0, 50.0, 25.0]]
+        );
         p.size = BgSize::Cover;
         p.pos = bg_pos(&["center"]).unwrap();
-        assert_eq!(pic_rects(&p, 200.0, 200.0, 100.0, 50.0), vec![[-100.0, 0.0, 400.0, 200.0]]);
+        assert_eq!(
+            pic_rects(&p, 200.0, 200.0, 100.0, 50.0),
+            vec![[-100.0, 0.0, 400.0, 200.0]]
+        );
         p.size = BgSize::Auto;
         p.repeat = (true, false);
         p.pos = BG_POS0;

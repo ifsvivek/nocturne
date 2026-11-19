@@ -678,7 +678,14 @@ impl<M> Styled<'_, M> {
     }
 
     /// The `url()` picture of the node's background: placed by `background-size`, `-position` and `-repeat`, clipped to the box.
-    fn paint_pic(&self, r: &mut iced::Renderer, n: Id, rect: Rectangle, opacity: f32, clip: Rectangle) {
+    fn paint_pic(
+        &self,
+        r: &mut iced::Renderer,
+        n: Id,
+        rect: Rectangle,
+        opacity: f32,
+        clip: Rectangle,
+    ) {
         use iced::advanced::svg::Renderer as _;
         let s: &Scene = &self.scene;
         let c = s.style(n);

@@ -1440,7 +1440,9 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
             let mut ops = vec![Op::Bg(paint::layers(v).or_else(bad)?.into())];
             let p = paint::pic(v);
             ops.push(Op::PicUrl(p.as_ref().map(|p| p.url.clone())));
-            ops.push(Op::PicSize(p.as_ref().map_or(paint::BgSize::Auto, |p| p.size)));
+            ops.push(Op::PicSize(
+                p.as_ref().map_or(paint::BgSize::Auto, |p| p.size),
+            ));
             ops.push(Op::PicPos(p.as_ref().map_or(paint::BG_POS0, |p| p.pos)));
             ops.push(Op::PicRepeat(p.as_ref().map_or((true, true), |p| p.repeat)));
             Ok(Outcome::Ops(ops))

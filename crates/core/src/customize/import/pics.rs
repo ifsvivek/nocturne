@@ -1,7 +1,5 @@
 //! Pictures a stylesheet refers to with `url()` (logos, tiles, textures, icons), fetched when the engine paints them. Same rules as the rest of this module for anything that is not the configured server's own: https only, public hosts only, no credentials or `Referer`, a fixed User-Agent, 10 s, 3 redirects (each checked again), 4 MB, an image content type AND the first bytes of a PNG, JPEG, WebP or SVG, a disk cache by address, and only with `remote_css` on. The configured server's own files (`origin`, any scheme and host, for the `/web/` assets of its client) are the exception to the https and public-host rules: they are what the user pointed the app at. `data:` addresses are decoded in place. Nothing is executed; the app decodes the bytes.
-use super::{
-    AGENT, Url, cache_read, cache_write, check_url, default_cache_dir, describe, norm,
-};
+use super::{AGENT, Url, cache_read, cache_write, check_url, default_cache_dir, describe, norm};
 use std::time::Duration;
 
 pub const MAX_FILE: usize = 4 << 20;
@@ -22,8 +20,9 @@ pub fn sniff(b: &[u8]) -> Option<bool> {
     }
     let head = String::from_utf8_lossy(&b[..b.len().min(1024)]).to_ascii_lowercase();
     let t = head.trim_start_matches('\u{feff}').trim_start();
-    (t.starts_with("<svg") || ((t.starts_with("<?xml") || t.starts_with("<!--")) && t.contains("<svg")))
-        .then_some(true)
+    (t.starts_with("<svg")
+        || ((t.starts_with("<?xml") || t.starts_with("<!--")) && t.contains("<svg")))
+    .then_some(true)
 }
 
 fn percent_decode(s: &str) -> Vec<u8> {
@@ -68,13 +67,11 @@ pub fn join_url(base: &str, raw: &str) -> Option<String> {
 }
 
 fn same_origin(u: &Url, origin: Option<&str>) -> bool {
-    origin
-        .and_then(|o| Url::parse(o).ok())
-        .is_some_and(|o| {
-            o.scheme() == u.scheme()
-                && o.host_str() == u.host_str()
-                && o.port_or_known_default() == u.port_or_known_default()
-        })
+    origin.and_then(|o| Url::parse(o).ok()).is_some_and(|o| {
+        o.scheme() == u.scheme()
+            && o.host_str() == u.host_str()
+            && o.port_or_known_default() == u.port_or_known_default()
+    })
 }
 
 /// The picture at `url` (already absolute, or a `data:` address). `origin`: the configured server's address.
@@ -191,8 +188,13 @@ mod tests {
 
     #[test]
     fn other_sites_need_the_setting_and_https() {
-        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
-        let err = |u: &str, remote: bool| rt.block_on(fetch(u, Some("http://192.168.1.5:8096"), remote)).unwrap_err();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let err = |u: &str, remote: bool| {
+            rt.block_on(fetch(u, Some("http://192.168.1.5:8096"), remote))
+                .unwrap_err()
+        };
         assert!(err("https://example.com/a.png", false).contains("remote styles"));
         assert!(err("http://example.com/a.png", true).contains("https"));
         assert!(err("https://127.0.0.1/a.png", true).contains("private"));
