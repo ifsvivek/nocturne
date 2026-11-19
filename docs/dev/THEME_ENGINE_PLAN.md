@@ -205,6 +205,63 @@ A debug build is about ten times slower (cold first build 8 ms).
 - The scene is rebuilt on every message that can change what Home shows (about 40 times while images load); it is cheap, but step E should make image arrival a targeted update.
 - Slots cost an `update` call per event each; fine for the dozen the header has, not for a slot per card.
 
+## 11. Step E as shipped: the library grid and Search on the engine
+
+Behind the cargo feature `theme-engine`, like Home (`NOCTURNE_ENGINE_UI=0` shows the hand-written pages). The list view and the name tabs (Genres, Studios, Years, Tags) of a library page stay hand-written; the page switches to them when the user picks them.
+
+### What moved
+
+- `app/browse_tree.rs`: the library, collection and favourites pages. Root `.page-library` (`data-screen="library"`), `.page-head`, `.page-title`, `.page-sub`, `.page-tabs` / `.page-tab`, `.toolbar`, `.az-letter`, `.library-panel`, `.library-grid`, `.library-frame`, `.library-count`, and the stage-1 `.card*` classes from the same `card_doc` Home's strips use. The grid is the engine's **virtual container**: one prototype card gives the cell metrics (the theme controls the grid with ordinary CSS), `GridData` (shared with the scene's item builder) holds the card data of every loaded item, and only the rows near the view exist as nodes (about 400 nodes for 5,000 items). Sort, Filters and the three view buttons are slots with the hand-written pop-overs; tabs, letters and the count are tree elements; the search field of the overlay is a real `text_input` slot.
+- `app/search_tree.rs`: the overlay as `.page-search` > `.search-layer` (scrim, a click outside closes) > `.search-panel` > `.search-head`, `.search-list`, `.hit-group`, `.hit` rows (the selection is the focused row: `.hit:focus`).
+- Pictures: a card's picture node exists from the start (it draws nothing until its handle is in the widget's table). **An arriving image is a targeted update** (`Hosted::image_arrived`: handle and size set on the waiting nodes by cache key, blurhash stand-ins replaced by the real picture, no rebuild, no relayout); a failed image rebuilds (the card shows its initial). Home uses the same path: a Home load that rebuilt the scene about 40 times now builds it about 10 times, all for data. The library page keeps its scene while the tree is unchanged (`Scene::same_tree`), so keys, hovers and ticks rebuild nothing; the header scene too.
+- Virtual items keep hover, focus and active when rows are recycled (`Scene::item_node`, `item_index`; interaction ids are remapped by item index and offset).
+- Keyboard: the page's selection stays the model (`nav::step`, so the legacy rules), arrows, Tab (next tab), `o`, `l`, `v`, `[`, `]`, Enter and Escape reach the app's own key routing (a scene hands the widget's navigation keys to `on_key`); Page Up, Page Down, Home and End are new on the grid (rows in view, first, last item), also on the hand-written grid. The scene scrolls the selection into view and focuses it.
+- D's gaps: the quiet 4 px strip scrollbar of Home (`data-scrollbar="hover-x"`) and the grid's always-on vertical bar, both draggable; chevrons and fades at the ends of an overflowing header link strip (`data-chevrons`); `title` tooltips (the Search button keeps "Search (Ctrl+K or /)") drawn over the whole window after 500 ms.
+
+### Paint widget changes that parity needed
+
+- Boxes and pictures are **pixel-snapped** (a 2 px underline at y = 207.4 straddled two rows); scroll offsets are drawn **rounded** like Iced's scrollables.
+- Iced stacks layers in the order they were opened, so a later sibling over a clipping container (a focus ring over the chips of a poster) landed under it: a sibling that overlaps an earlier layered sibling now opens a layer of its own.
+- Plain ASCII text is shaped like the hand-written `text()` widgets (basic shaping), in the measure and in the draw; anything else keeps advanced shaping. This took the header and tab labels from one to three pixels off to exact, and Home from 0.32 to 0.10 mean difference.
+
+### Parity (the gate)
+
+`scripts/headless-parity.sh` (now with the library, thumb view, search and keyboard captures; `scripts/parity-diff.py` prints the shares over 64 and 128 too), demo library, window captured through Iced, per pixel over all channels, mean difference / pixels over 16 / over 64:
+
+| capture | 1600x900 | 1920x1080 |
+|---|---|---|
+| Home (default) | 0.10 / 0.10 % / 0.05 % | 0.08 / 0.07 % / 0.04 % |
+| library, poster view | 0.07 / 0.10 % / 0.01 % | 0.02 / 0.02 % / 0.01 % |
+| library, thumb view | 0.03 / 0.02 % / 0.01 % | 0.05 / 0.09 % / 0.01 % |
+| search with results | 0.04 / 0.10 % / 0.00 % | 0.03 / 0.08 % / 0.00 % |
+| Marquee library | 0.10 / 0.24 % / 0.01 % | 0.05 / 0.13 % / 0.01 % |
+| Feed library | 0.08 / 0.18 % / 0.01 % | 0.04 / 0.07 % / 0.01 % |
+| Classic library | 0.11 / 0.23 % / 0.01 % | 0.07 / 0.17 % / 0.01 % |
+| library keys (Right, Right, Down, End, Home, Down, Tab), 4 captures | 0.02 to 0.04 | 0.01 to 0.03 |
+
+Marquee and Feed set their own card aspect, so their thumb view is their poster view (same numbers). What is left is anti-aliasing, a fractional glow and one pixel of a few glyph edges. The geometry tests of the hand-written grid hold through the engine (`browse_tree::tests`: columns, pitch and row height equal `metrics` at four widths in both views, 5,000 items stay under 1,500 nodes). `scripts/headless-input-check.sh` 7/7.
+
+### Performance (5,000-item local library, `fast-release` with debug assertions on so the debug-only key injection works, 16 cores shared)
+
+| step | cost |
+|---|---|
+| card data of 5,000 items (once per data change) plus the scene | 2.6 to 3.3 ms |
+| a key that moves the selection and scrolls (sync of header, page and search) | 0.17 to 0.25 ms |
+| `Scene::wheel` of one to three rows (style crate, 50,000 items) | 0.5 ms |
+| recording a frame | 0.07 ms median, 0.23 ms at p95, 0.9 ms worst |
+| idle | nothing requested |
+
+### Known differences and gaps
+
+- After Escape from a detail page the engine's Home returns to the scroll position it was left at (D's design); the hand-written Home returns to the top with the focus ring below the fold, so that one capture differs on purpose.
+- The list view and the name tabs are hand-written; so are Sort/Filter pop-over contents (their text is not themable), the account menu, banners and dialogs.
+- No live pointer in the headless session: hover, click, wheel and the scrollbar drag are covered by `iced_test` (`widget/styled_tests.rs`) and the scene tests, not by a real device. Hover over a card selects it (as before); the selection does not scroll.
+- A grid card's chips and clicks rely on the `data-act` attribute and the item index (a theme cannot change what a click does).
+
+### Turning the feature on by default (proposal, not done)
+
+Parity now holds for Home, header, library and search. What else must hold first: a live pointer pass on a real desktop (hover zoom, wheel, drag of the scrollbar thumb, tooltips); the second capture of Home after Escape (decide: keep the restored scroll and change the hand-written page, or drop it); the Detail and player work of F2 re-run through the same parity script; Server UI mode (the hand-written Home stays for it) and the list view either on the engine or kept as the documented exception; a release-profile size and idle check (+1.6 MB measured in step B); then flip `default = [...]` in `crates/app/Cargo.toml`, keep `NOCTURNE_ENGINE_UI=0` for one release, and re-run `cargo deny`.
+
 ## 12. Step F2 as shipped: the Detail page and the player's controls bar on the engine
 
 Behind the same cargo feature `theme-engine`; `NOCTURNE_ENGINE_UI=0` shows the hand-written Detail page and bar.
