@@ -5,6 +5,7 @@ use crate::*;
 use std::rc::Rc;
 
 mod cascade;
+mod compat;
 mod default_sheet;
 mod engine;
 mod floor;

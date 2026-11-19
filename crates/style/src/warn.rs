@@ -10,6 +10,8 @@ pub enum Kind {
     Limit,
     Syntax,
     UnsupportedSelector,
+    /// A jellyfin-web selector with no counterpart in NOCTURNE's trees (see `compat.rs`): the rest of the theme still applies.
+    Compat,
     UnsupportedAtRule,
     UnsupportedProperty,
     BadValue,
@@ -30,6 +32,7 @@ impl Kind {
             Kind::Limit => "limits reached",
             Kind::Syntax => "syntax problems",
             Kind::UnsupportedSelector => "unsupported selectors",
+            Kind::Compat => "jellyfin selectors with no counterpart",
             Kind::UnsupportedAtRule => "unsupported at-rules",
             Kind::UnsupportedProperty => "unsupported properties",
             Kind::BadValue => "values that could not be read",
@@ -42,7 +45,7 @@ impl Kind {
 
     /// Low-priority kinds are accepted rules, not failures.
     pub fn is_failure(self) -> bool {
-        !matches!(self, Kind::NoEffect | Kind::Approximated)
+        !matches!(self, Kind::NoEffect | Kind::Approximated | Kind::Compat)
     }
 }
 

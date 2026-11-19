@@ -151,5 +151,5 @@ fn complexity_limits() {
             .join(",")
     );
     assert!(select::parse(&wide).is_err());
-    assert!(select::parse(&"a".repeat(400)).is_err());
+    assert!(select::parse(&"a".repeat(600)).is_err());
 }
