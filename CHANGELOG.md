@@ -17,6 +17,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Settings > Sources > Sections edits the server's home sections (reorder, on / off) for your account. It is a server change: only with "allow server changes" on, never with a developer token, and it replaces only the home section entries of your display preferences on that server, leaving every other setting as it was ([WRITES.md](docs/WRITES.md)).
 
 ### Fixed
+- Local library: after a scan was interrupted before saving its index, a newly found file could take the id of an existing item; ids are now recovered from the indexed items too.
 - The connect and sign-in forms put the cursor in the first field when they open, so you can type straight away and Tab cycles the fields and buttons.
 - Every text field can now be edited like a normal one: select with the mouse or Shift+arrows, double-click a word, Ctrl+A, Ctrl+C / Ctrl+X / Ctrl+V. The sign-in, add-server, account dialog, admin dialog and SyncPlay name fields used a hand-rolled input that could only append and delete characters. Password fields cannot be copied or cut.
 
