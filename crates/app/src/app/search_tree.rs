@@ -95,7 +95,8 @@ impl App {
                         let init = crate::widget::text::initial(&m.title);
                         if !init.is_empty() {
                             let n = tree.doc.add(pic_box, "div.card-initial");
-                            tree.doc.text(n, &init);
+                            let g = tree.doc.add(n, "span.card-initial-glyph");
+                            tree.doc.text(g, &init);
                         }
                     }
                     _ => {

@@ -881,7 +881,8 @@ impl Scene {
                         && a.text == b.text
                         && a.inline == b.inline
                         && a.parent == b.parent
-                        && a.children == b.children
+                        // Virtual items are appended to their container's children beyond the app's own nodes.
+                        && a.children.iter().filter(|&&k| k < self.real_len).eq(b.children.iter())
                         && a.focusable == b.focusable
                         && a.essential == b.essential
                         && a.slot == b.slot

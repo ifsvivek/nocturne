@@ -566,6 +566,8 @@ impl App {
     pub fn update(&mut self, msg: Message) -> Task<Message> {
         #[cfg(feature = "theme-engine")]
         let dirties = Self::eng_message_dirties(&msg);
+        #[cfg(feature = "theme-engine")]
+        let t0 = self.eng.stats.then(std::time::Instant::now);
         let task = self.update_inner(msg);
         let ui = self.sync_ui();
         let theme = self.sync_theme();
@@ -573,6 +575,14 @@ impl App {
         let eng = self.eng_sync(dirties);
         #[cfg(not(feature = "theme-engine"))]
         let eng = Task::none();
+        #[cfg(feature = "theme-engine")]
+        if let Some(t0) = t0 {
+            // `NOCTURNE_ENGINE_STATS=1`: what one update cost (handling the message and rebuilding what it changed).
+            eprintln!(
+                "engine: update {} us (rebuilds scenes: {dirties})",
+                t0.elapsed().as_micros()
+            );
+        }
         Task::batch([task, ui, theme, eng])
     }
 

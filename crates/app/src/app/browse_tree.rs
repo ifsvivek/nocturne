@@ -87,6 +87,50 @@ fn stamp(br: &Browse, m: &Metrics, extra: (u32, u32, bool, bool)) -> u64 {
     h.finish()
 }
 
+/// The geometry of the library grid's cards: what `Geo` says for a Home strip, from the page's metrics.
+fn grid_geo(m: &Metrics, view: ViewKind) -> Geo {
+    let look = grid_look();
+    Geo {
+        art: look.art(if view == ViewKind::Landscape {
+            Art::Landscape
+        } else {
+            Art::Poster
+        }),
+        dims: (m.w, m.h),
+        look,
+        grid: true,
+        cols: m.cols,
+        inset: t::page_pad(),
+        hidden: false,
+        title_t: t::typo(&Default::default(), 28.0, iced::font::Weight::Bold),
+        details: false,
+        framed: false,
+        arrows: Default::default(),
+    }
+}
+
+/// The virtual container of the grid under `parent`, with its prototype card (the cell metrics come from it).
+fn virtual_grid(d: &mut Doc, parent: Id, geo: &Geo, count: usize) -> Id {
+    let grid = d.add(parent, "div.library-grid");
+    d.attr(grid, "data-scrollbar", "vertical");
+    d.virtual_list(grid, count);
+    let proto = card_doc(d, grid, geo, &blank_card(0)).card;
+    d.virtual_proto(proto);
+    grid
+}
+
+/// What the scene calls to build the card of item `idx`: the loaded one, or a skeleton while its page is on the way.
+fn grid_builder(data: Rc<RefCell<GridData>>) -> VirtBuilder {
+    Rc::new(move |d: &mut Doc, parent: Id, idx: usize| {
+        let g = data.borrow();
+        let n = match g.cards.get(idx).and_then(Option::as_ref) {
+            Some(c) => card_doc(d, parent, &g.geo, c),
+            None => card_doc(d, parent, &g.geo, &blank_card(idx)),
+        };
+        d.focusable(n.card);
+    })
+}
+
 impl App {
     /// Does the page in view run on the engine? A browse page does unless it shows the list view or the name tabs.
     pub(super) fn engine_supports_browse(&self) -> bool {
@@ -201,24 +245,7 @@ impl App {
         let pid = p.pid;
         let view = br.prefs.view;
         let m = metrics(self.win.width, self.settings.density.card(), view, false);
-        let look = grid_look();
-        let geo = Geo {
-            art: look.art(if view == ViewKind::Landscape {
-                Art::Landscape
-            } else {
-                Art::Poster
-            }),
-            dims: (m.w, m.h),
-            look,
-            grid: true,
-            cols: m.cols,
-            inset: t::page_pad(),
-            hidden: false,
-            title_t: t::typo(&Default::default(), 28.0, iced::font::Weight::Bold),
-            details: false,
-            framed: false,
-            arrows: Default::default(),
-        };
+        let geo = grid_geo(&m, view);
         let n = br.len();
         let pad = t::page_pad();
         let mut tree = Tree::screen("library");
@@ -355,26 +382,96 @@ impl App {
                 },
             );
         } else {
-            let grid = d.add(panel, "div.library-grid");
-            d.attr(grid, "data-scrollbar", "vertical");
-            d.virtual_list(grid, n);
-            let proto = card_doc(d, grid, &geo, &blank_card(0)).card;
-            d.virtual_proto(proto);
+            let grid = virtual_grid(d, panel, &geo, n);
             let data = self.grid_data(br, &m, geo, old);
-            let for_builder = data.clone();
-            let build: VirtBuilder = Rc::new(move |d: &mut Doc, parent: Id, idx: usize| {
-                let g = for_builder.borrow();
-                let n = match g.cards.get(idx).and_then(Option::as_ref) {
-                    Some(c) => card_doc(d, parent, &g.geo, c),
-                    None => card_doc(d, parent, &g.geo, &blank_card(idx)),
-                };
-                d.focusable(n.card);
-            });
-            tree.builders.insert(grid, build);
+            tree.builders.insert(grid, grid_builder(data.clone()));
+            // Pictures that already arrived are in the cards: the new tree's table starts with them.
+            for c in data.borrow().cards.iter().flatten() {
+                if let Pic::Ready(h) | Pic::Blur(h) = &c.pic {
+                    tree.images.insert(c.pic_id, h.clone());
+                    if matches!(c.pic, Pic::Ready(_)) {
+                        tree.done.insert(c.pic_id);
+                    }
+                }
+            }
             tree.grid = Some(GridRef { node: grid, data });
         }
         // The hairline frame lies over the content and takes no room (as the hand-written panel's border).
         tree.doc.add(panel, "div.library-frame");
         Some(tree)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! The grid on the engine has the cells of the hand-written grid: the columns, the pitch and the row height come out of the prototype card and the default sheet as `metrics` computes them.
+    use super::*;
+    use crate::app::browse::metrics;
+    use crate::app::engine_ui::sheet_css;
+    use nocturne_style::{Builders, Engine, Interaction, Scene, approx};
+
+    fn scene(w: f32, view: ViewKind, count: usize) -> (Scene, Id, Metrics) {
+        let m = metrics(w, 176.0, view, false);
+        let geo = grid_geo(&m, view);
+        let mut d = Doc::new("page");
+        let panel = d.add(0, "div.library-panel");
+        d.inline(
+            panel,
+            &format!("height: 600px; margin: 0 {}", px(t::page_pad())),
+        );
+        let grid = virtual_grid(&mut d, panel, &geo, count);
+        let data = Rc::new(RefCell::new(GridData {
+            cards: (0..count).map(|_| None).collect(),
+            geo,
+            waiting: HashMap::new(),
+            stamp: 0,
+        }));
+        let mut b = Builders::new();
+        b.insert(grid, grid_builder(data));
+        let s = Engine::new(&sheet_css()).build(
+            &d,
+            (w, 900.0),
+            Interaction::default(),
+            &b,
+            &mut approx,
+        );
+        (s, grid, m)
+    }
+
+    #[test]
+    fn cells_are_as_big_and_as_many_as_the_hand_written_grid_says() {
+        for view in [ViewKind::Poster, ViewKind::Landscape] {
+            for w in [1000.0, 1280.0, 1600.0, 1920.0] {
+                let (s, _, m) = scene(w, view, 5000);
+                let at = |i: usize| s.rects[s.item_node(i).expect("instantiated")];
+                // Items 0..cols fill the first row: the next one starts a new row.
+                let (a, b) = (at(0), at(1));
+                assert_eq!(a[2], m.cell_w, "{view:?} {w}: cell width");
+                assert_eq!(b[0] - a[0], m.cell_w, "{view:?} {w}: pitch");
+                assert_eq!(a[3], m.row_h, "{view:?} {w}: row height");
+                let row2 = at(m.cols);
+                assert_eq!(row2[0], a[0], "{view:?} {w}: second row starts at the left");
+                assert_eq!(row2[1] - a[1], m.row_h, "{view:?} {w}: row pitch");
+                let last = at(m.cols - 1);
+                assert!(
+                    s.item_node(m.cols).is_some() && last[0] + last[2] <= w - t::page_pad(),
+                    "{view:?} {w}: {} columns fit",
+                    m.cols
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn five_thousand_items_stay_a_few_hundred_nodes() {
+        let (s, _, m) = scene(1600.0, ViewKind::Poster, 5000);
+        assert!(s.doc.len() < 1500, "{} nodes for 5,000 items", s.doc.len());
+        let rows = lv::rows(5000, m.cols);
+        // The scroll range is the whole list: rows x row height.
+        let total = s.content.iter().map(|c| c[1] as i64).max().unwrap_or(0) as f32;
+        assert!(
+            total >= (rows as f32 * m.row_h).floor() - 1.0,
+            "{total} for {rows} rows"
+        );
     }
 }

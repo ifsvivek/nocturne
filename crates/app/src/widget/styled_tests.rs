@@ -231,3 +231,136 @@ fn a_hidden_slot_takes_no_space_and_no_input() {
     let mut sim = Simulator::new(view(&s, ""));
     assert!(sim.click(selector::id(WidgetId::new("in"))).is_err());
 }
+
+/// page > .list (a scroll container of 100 px with 400 px of content, `data-scrollbar`), page > .strip (a 200 px strip with 800 px of
+/// content, `data-chevrons`) scrolled by `x`.
+fn scroller(x: f32) -> Scene {
+    let mut d = Doc::new("page");
+    let list = d.add(0, "div.list");
+    d.attr(list, "data-scrollbar", "vertical");
+    let inner = d.add(list, "div.inner");
+    d.inline(inner, "height: 400px");
+    let strip = d.add(0, "div.strip");
+    d.attr(strip, "data-chevrons", "");
+    let inner = d.add(strip, "div.inner");
+    d.inline(inner, "width: 800px; height: 20px; flex: none");
+    let mut s = Scene::build(
+        d,
+        Rc::new(Sheet::parse(
+            ".list { height: 100px; width: 300px; overflow-y: scroll } .strip { height: 20px; width: 200px; overflow-x: scroll; display: flex }",
+        )),
+        Rc::new(Fonts::new()),
+        (1024.0, 768.0),
+        Interaction::default(),
+        None,
+        &Builders::new(),
+        &mut approx,
+    )
+    .expect("builds");
+    let strip = node_of(&s, |n| n.classes.iter().any(|c| c == "strip"));
+    s.scroll.offsets.insert(strip, [x, 0.0]);
+    s.clamp_scroll();
+    s
+}
+
+#[test]
+fn dragging_a_scrollbar_thumb_scrolls_its_container() {
+    let _g = serial();
+    let s = scroller(0.0);
+    let list = node_of(&s, |n| n.classes.iter().any(|c| c == "list"));
+    let [x, y, w, _] = s.screen_rect(list);
+    // The thumb is 25 px tall (100 * 100 / 400) at the right edge, 10 px wide.
+    let grab = Point::new(x + w - 5.0, y + 10.0);
+    let mut sim = Simulator::new(view(&s, ""));
+    sim.simulate([Event::Mouse(mouse::Event::CursorMoved { position: grab })]);
+    sim.simulate(iced_test::simulator::press());
+    sim.simulate([Event::Mouse(mouse::Event::CursorMoved {
+        position: Point::new(grab.x, grab.y + 15.0),
+    })]);
+    let msgs: Vec<T> = sim.into_messages().collect();
+    // 15 px of thumb travel is 15 * (400 - 100) / (100 - 25) = 60 px of content: a wheel of -60.
+    assert!(
+        msgs.contains(&T::Ev(StyledEvent::Wheel {
+            target: Some(list),
+            dx: 0.0,
+            dy: -60.0
+        })),
+        "{msgs:?}"
+    );
+    // A press beside the thumb starts nothing.
+    let mut sim = Simulator::new(view(&s, ""));
+    let off = Point::new(x + 50.0, y + 10.0);
+    sim.simulate([Event::Mouse(mouse::Event::CursorMoved { position: off })]);
+    sim.simulate(iced_test::simulator::press());
+    sim.simulate([Event::Mouse(mouse::Event::CursorMoved {
+        position: Point::new(off.x, off.y + 15.0),
+    })]);
+    let msgs: Vec<T> = sim.into_messages().collect();
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, T::Ev(StyledEvent::Wheel { .. })))
+    );
+}
+
+#[test]
+fn a_chevron_scrolls_its_strip_by_most_of_a_page() {
+    let _g = serial();
+    // At the start only the right chevron shows; in the middle both do.
+    for (x, left, right) in [(0.0, false, true), (300.0, true, true)] {
+        let s = scroller(x);
+        let strip = node_of(&s, |n| n.classes.iter().any(|c| c == "strip"));
+        let [sx, sy, sw, sh] = s.screen_rect(strip);
+        let click = |p: Point| {
+            let mut sim = Simulator::new(view(&s, ""));
+            sim.simulate([Event::Mouse(mouse::Event::CursorMoved { position: p })]);
+            sim.simulate(iced_test::simulator::click());
+            sim.into_messages().collect::<Vec<T>>()
+        };
+        let wheel = |dx: f32| {
+            T::Ev(StyledEvent::Wheel {
+                target: Some(strip),
+                dx,
+                dy: 0.0,
+            })
+        };
+        let msgs = click(Point::new(sx + sw - 20.0, sy + sh / 2.0));
+        assert_eq!(
+            msgs.contains(&wheel(-0.7 * sw)),
+            right,
+            "right at {x}: {msgs:?}"
+        );
+        let msgs = click(Point::new(sx + 20.0, sy + sh / 2.0));
+        assert_eq!(
+            msgs.contains(&wheel(0.7 * sw)),
+            left,
+            "left at {x}: {msgs:?}"
+        );
+    }
+}
+
+#[test]
+fn an_element_with_a_title_names_itself_to_the_tooltip() {
+    let mut d = Doc::new("page");
+    let a = d.add(0, "a.search");
+    d.attr(a, "title", "Search (Ctrl+K or /)");
+    let inner = d.add(a, "span.label");
+    d.text(inner, "Search");
+    let plain = d.add(0, "div.plain");
+    let s = Scene::build(
+        d,
+        Rc::new(Sheet::parse(CSS)),
+        Rc::new(Fonts::new()),
+        (1024.0, 768.0),
+        Interaction::default(),
+        None,
+        &Builders::new(),
+        &mut approx,
+    )
+    .expect("builds");
+    let w = Styled::new(&s, T::Ev);
+    // The label inside the button gets the button's title; an element with none (and no ancestor with one) gets nothing.
+    assert_eq!(w.tip_of(Some(inner)), Some((a, "Search (Ctrl+K or /)")));
+    assert_eq!(w.tip_of(Some(plain)), None);
+    assert_eq!(w.tip_of(None), None);
+}

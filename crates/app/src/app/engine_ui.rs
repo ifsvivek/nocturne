@@ -279,7 +279,9 @@ impl App {
             return Task::none();
         }
         self.eng.dirty = false;
+        let t0 = Instant::now();
         let css = sheet_css();
+        let css_us = t0.elapsed().as_micros();
         if css != self.eng.css {
             let safe = self.eng.engine.safe_mode();
             self.eng.engine = Engine::new(&css);
@@ -319,6 +321,7 @@ impl App {
         } else {
             self.eng.hdr = None;
         }
+        let t1 = Instant::now();
         let on_grid = self.stack.last().is_some_and(|p| p.view == View::Grid);
         let task = if on_grid && self.eng_overlay_free() {
             self.eng_build_page()
@@ -330,6 +333,13 @@ impl App {
             self.eng_build_search();
         } else {
             self.eng.search = None;
+        }
+        if self.eng.stats {
+            eprintln!(
+                "engine: sync: sheet css {css_us} us, pages and search {} us, all {} us",
+                t1.elapsed().as_micros(),
+                t0.elapsed().as_micros()
+            );
         }
         task
     }
@@ -374,13 +384,32 @@ impl App {
     fn eng_build_header(&mut self) {
         let mut tree = Tree::new();
         self.header_nodes(&mut tree, 0, false);
+        let size = (self.win.width, t::header_h());
+        // The same header (nothing it shows changed) keeps its scene, hover and animations.
+        if self.eng.hdr.as_ref().is_some_and(|h| {
+            h.sheet_gen == self.eng.sheet_gen
+                && h.scene.viewport == size
+                && h.tree.slots == tree.slots
+                && h.scene.same_tree(&tree.doc)
+        }) {
+            return;
+        }
         let it = Interaction::default();
-        let s = self.eng_scene(&tree, it, (self.win.width, t::header_h()));
+        let s = self.eng_scene(&tree, it, size);
         self.eng.hdr = Some(Hosted::new(s, tree, it, self.eng.sheet_gen));
     }
 
     /// The library page: a new scene when what it shows changed, the same one (with its scroll, hover and animations) when only things happened that the page does not show.
     fn eng_build_page(&mut self) -> Task<Message> {
+        let t0 = Instant::now();
+        let task = self.eng_build_page_inner();
+        if self.eng.stats {
+            eprintln!("engine: page sync {} us", t0.elapsed().as_micros());
+        }
+        task
+    }
+
+    fn eng_build_page_inner(&mut self) -> Task<Message> {
         let old_data = self
             .eng
             .page
@@ -410,6 +439,28 @@ impl App {
                 && h.tree.slots == tree.slots
                 && h.scene.same_tree(&tree.doc)
         });
+        if self.eng.stats && !unchanged {
+            eprintln!(
+                "engine: page rebuilt (gen {}, same list {}, size {}, data {same_data}, slots {}, tree {})",
+                self.eng
+                    .page
+                    .as_ref()
+                    .is_none_or(|h| h.sheet_gen == self.eng.sheet_gen),
+                self.eng.page.as_ref().is_some_and(|h| h.page == key),
+                self.eng
+                    .page
+                    .as_ref()
+                    .is_some_and(|h| h.scene.viewport == size),
+                self.eng
+                    .page
+                    .as_ref()
+                    .is_some_and(|h| h.tree.slots == tree.slots),
+                self.eng
+                    .page
+                    .as_ref()
+                    .is_some_and(|h| h.scene.same_tree(&tree.doc)),
+            );
+        }
         if !unchanged {
             // The same list keeps its place; a page that was left and comes back starts where the page last reported.
             let y = self
@@ -431,17 +482,16 @@ impl App {
                 let cache = &mut self.eng.cache;
                 s.set_page_scroll(0.0, &mut |t, st, m| cache.measure(t, st, m, &mut shape));
             }
+            // The selection the old scene had applied: if the page moved it since, `eng_page_follow` scrolls the new scene there.
+            let applied = self
+                .eng
+                .page
+                .as_ref()
+                .filter(|h| h.page == key)
+                .map_or(sel, |h| h.sel);
             let mut h = Hosted::new(s, tree, Interaction::default(), self.eng.sheet_gen);
             h.page = key;
-            h.sel = sel;
-            h.it.focus = h.scene.item_node(sel);
-            if h.it.focus.is_some() {
-                let cache = &mut self.eng.cache;
-                let it = h.it;
-                let _ = h.scene.update(it, Instant::now(), &mut |t, st, m| {
-                    cache.measure(t, st, m, &mut shape)
-                });
-            }
+            h.sel = applied;
             self.eng.page = Some(h);
         }
         self.eng_page_follow()
@@ -486,6 +536,12 @@ impl App {
         };
         let off = h.scene.scroll.offsets.get(&g.node).map_or(0.0, |o| o[1]);
         let vh = h.scene.rects[g.node][3];
+        if self.eng.stats {
+            eprintln!(
+                "engine: grid scroll {off} of a {vh} px view at y {}",
+                h.scene.rects[g.node][1]
+            );
+        }
         if let Some(br) = self.stack.last_mut().and_then(|p| p.br.as_deref_mut()) {
             (br.off, br.vh) = (off, vh);
         }

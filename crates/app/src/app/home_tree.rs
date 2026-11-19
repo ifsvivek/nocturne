@@ -603,7 +603,8 @@ pub(super) fn card_doc(d: &mut Doc, parent: Id, g: &Geo, c: &CardIn) -> CardNode
                 let i = crate::widget::text::initial(&c.title);
                 if !i.is_empty() {
                     let n = d.add(img, "div.card-initial");
-                    d.text(n, &i);
+                    let g = d.add(n, "span.card-initial-glyph");
+                    d.text(g, &i);
                 }
             }
         }

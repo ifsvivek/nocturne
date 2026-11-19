@@ -437,10 +437,11 @@ impl Scene {
         if ov {
             let view = self.rects[c][3];
             let off = self.scroll.offsets.entry(c).or_default();
+            // Whole pixels, so a row lands on the pixel grid (the item edge that is aligned stays inside the view).
             if item_top < off[1] {
-                off[1] = item_top;
+                off[1] = item_top.floor();
             } else if item_bot > off[1] + view {
-                off[1] = item_bot - view;
+                off[1] = (item_bot - view).ceil();
             }
         } else {
             let (py, vh) = (self.scroll.page_y, self.viewport.1);

@@ -361,7 +361,7 @@ impl<M> Styled<'_, M> {
                 let clips = ov.x != nocturne_style::taffy::style::Overflow::Visible
                     || ov.y != nocturne_style::taffy::style::Overflow::Visible;
                 let off = s.scroll.offsets.get(&n).copied().unwrap_or_default();
-                let child_sh = (sh.0 - off[0], sh.1 - off[1]);
+                let child_sh = (sh.0 - off[0].round(), sh.1 - off[1].round());
                 let go = |r: &mut iced::Renderer, clip: Rectangle| {
                     // Boxes of the earlier siblings that opened layers: a sibling overlapping one of them is drawn in a layer of its own, so that it lands above (a focus ring over the chips of a poster).
                     let mut opened: Vec<Rectangle> = vec![];
@@ -941,7 +941,7 @@ impl<M> Styled<'_, M> {
     }
 
     /// The `title` of the element under the pointer (or of its nearest ancestor that has one) and the element it sits on.
-    fn tip_of(&self, hover: Option<Id>) -> Option<(Id, &str)> {
+    pub(super) fn tip_of(&self, hover: Option<Id>) -> Option<(Id, &str)> {
         let mut at = hover;
         while let Some(i) = at {
             if let Some((_, v)) = self.scene.doc.nodes[i]
@@ -1498,7 +1498,7 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
                     viewport,
                     0,
                     b.position(),
-                    (0.0, -self.scene.scroll.page_y),
+                    (0.0, -self.scene.scroll.page_y.round()),
                     vis,
                     &ps,
                 );
