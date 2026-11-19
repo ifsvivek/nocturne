@@ -925,6 +925,7 @@ mod tests {
         /// Clicks the input, presses End (the click may land inside a long text), runs `f` on the simulator and applies
         /// the produced messages through `update`.
         fn act(a: &mut Accounts, w: Where, f: impl FnOnce(&mut Simulator<'_, Msg>)) -> Vec<Msg> {
+            let _sim = crate::sim_lock();
             let mut sim = Simulator::new(a.view(Instant::now()));
             sim.click(selector::id(w.id())).expect("field is on screen");
             sim.tap_key(Key::Named(Named::End));
