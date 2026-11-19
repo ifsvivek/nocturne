@@ -47,9 +47,7 @@ impl Hosted {
     fn image_arrived(&mut self, key: &str, h: &Handle) {
         let mut ids: Vec<u32> = vec![];
         for s in &self.tree.pics {
-            if s.key == key {
-                ids.push(s.id);
-            } else if s.blur.as_deref() == Some(key) && !self.tree.done.contains(&s.id) {
+            if s.key == key || (s.blur.as_deref() == Some(key) && !self.tree.done.contains(&s.id)) {
                 ids.push(s.id);
             }
         }
@@ -821,10 +819,11 @@ impl App {
             _ => return,
         };
         let e = &mut self.eng;
-        for s in [&mut e.home, &mut e.hdr, &mut e.page, &mut e.search] {
-            if let Some(s) = s {
-                s.image_arrived(key, &h);
-            }
+        for s in [&mut e.home, &mut e.hdr, &mut e.page, &mut e.search]
+            .into_iter()
+            .flatten()
+        {
+            s.image_arrived(key, &h);
         }
     }
 

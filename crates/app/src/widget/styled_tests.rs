@@ -272,8 +272,12 @@ fn dragging_a_scrollbar_thumb_scrolls_its_container() {
     // The thumb is 25 px tall (100 * 100 / 400) at the right edge, 10 px wide.
     let grab = Point::new(x + w - 5.0, y + 10.0);
     let mut sim = Simulator::new(view(&s, ""));
+    sim.point_at(grab);
     sim.simulate([Event::Mouse(mouse::Event::CursorMoved { position: grab })]);
-    sim.simulate(iced_test::simulator::press());
+    sim.simulate([Event::Mouse(mouse::Event::ButtonPressed(
+        mouse::Button::Left,
+    ))]);
+    sim.point_at(Point::new(grab.x, grab.y + 15.0));
     sim.simulate([Event::Mouse(mouse::Event::CursorMoved {
         position: Point::new(grab.x, grab.y + 15.0),
     })]);
@@ -290,8 +294,11 @@ fn dragging_a_scrollbar_thumb_scrolls_its_container() {
     // A press beside the thumb starts nothing.
     let mut sim = Simulator::new(view(&s, ""));
     let off = Point::new(x + 50.0, y + 10.0);
+    sim.point_at(off);
     sim.simulate([Event::Mouse(mouse::Event::CursorMoved { position: off })]);
-    sim.simulate(iced_test::simulator::press());
+    sim.simulate([Event::Mouse(mouse::Event::ButtonPressed(
+        mouse::Button::Left,
+    ))]);
     sim.simulate([Event::Mouse(mouse::Event::CursorMoved {
         position: Point::new(off.x, off.y + 15.0),
     })]);
@@ -313,6 +320,7 @@ fn a_chevron_scrolls_its_strip_by_most_of_a_page() {
         let [sx, sy, sw, sh] = s.screen_rect(strip);
         let click = |p: Point| {
             let mut sim = Simulator::new(view(&s, ""));
+            sim.point_at(p);
             sim.simulate([Event::Mouse(mouse::Event::CursorMoved { position: p })]);
             sim.simulate(iced_test::simulator::click());
             sim.into_messages().collect::<Vec<T>>()
