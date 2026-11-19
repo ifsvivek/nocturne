@@ -54,3 +54,33 @@
 /repo/*.pkg.tar.zst.sig
   ! Cache-Control
   Cache-Control: public, max-age=31536000, immutable, no-transform
+
+# apt (deb/) and dnf (rpm/) repositories: metadata and keys must never be served stale; the rpm/deb files are named by version.
+/repo/NOCTURNE-GPG-KEY*
+  ! Cache-Control
+  Cache-Control: no-cache, no-transform
+
+/repo/deb/dists/*
+  ! Cache-Control
+  Cache-Control: no-cache, no-transform
+
+/repo/rpm/nocturne.repo
+  ! Cache-Control
+  Cache-Control: no-cache, no-transform
+
+/repo/deb/pool/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable, no-transform
+
+/repo/rpm/repodata/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable, no-transform
+
+/repo/rpm/*.rpm
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable, no-transform
+
+# Last on purpose: repomd.xml also matches repodata/* above, and the later rule must win so the index is never cached.
+/repo/rpm/repodata/repomd.xml*
+  ! Cache-Control
+  Cache-Control: no-cache, no-transform

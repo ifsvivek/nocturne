@@ -13,3 +13,7 @@ Status: not started. After 0.5 (and only with the maintainer's go-ahead).
 - **Save to library** (off by default, Settings): save a link's video into one of the user's local folders with yt-dlp, through the existing downloads queue; it then appears in the local library like any other file. Neutral wording ("Save to library"), never branded as a YouTube downloader, with a short note to save only videos you have the right to keep.
 - `yt-dlp` is an optional dependency, never bundled; when it is missing the app explains how to install it with the system package manager.
 - Not in scope: browsing or searching YouTube inside NOCTURNE (needs a Google API key and quota or fragile scraping; a different product).
+
+## Native layout engine for themes (decided 2026-11-19)
+
+0.5 lets CSS restyle NOCTURNE's named app parts (cards, rows, hero, header, typography, hiding and reordering sections). The next stage gives themes real layout power without a browser: each screen becomes a tree of NOCTURNE components laid out by a native flexbox/grid engine (Taffy, MIT, used by other Rust UI toolkits), so `display: flex` / `grid`, sizes, gaps, alignment and ordering in a stylesheet can rearrange whole screens. Still no WebView, browser engine or HTML: the tree contains only NOCTURNE's own components, and CSS never adds arbitrary elements or runs code. Scope, performance budget (layout once per change, never per frame) and the migration path from the 0.5 named parts are to be planned when 0.6 starts; it may move to 0.7 if it is too large.

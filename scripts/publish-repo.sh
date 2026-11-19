@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the Arch package in a clean container and (re)generate the signed pacman repository under
 # website/static/repo/ (generated, git-ignored; shipped by deploying the website).   usage: scripts/publish-repo.sh [VERSION]
-# VERSION must match pkgver in packaging/PKGBUILD (its sha256 is for that tag's source archive). Needs docker, gpg, repo-add.
+# VERSION must match pkgver in packaging/PKGBUILD (its sha256 is for that tag's source archive). Needs docker, gpg, repo-add. Also builds the apt and dnf repositories (scripts/publish-repo-deb-rpm.sh).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 scripts/cache-budget.sh --quiet || true
@@ -52,6 +52,9 @@ Server = https://nocturne.ifsvivek.in/repo/arch/\$arch
 
 Then: sudo pacman -Syu nocturne
 EOT
+
+# apt (deb/) and dnf (rpm/) repositories from the same key; SKIP_DEB_RPM=1 leaves them out
+[ -n "${SKIP_DEB_RPM:-}" ] || scripts/publish-repo-deb-rpm.sh
 
 # verify
 cd "$repo"

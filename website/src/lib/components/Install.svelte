@@ -1,9 +1,9 @@
 <script>
-  import { RELEASED, REPO, RELEASES, VERSION, DEB, RPM } from "#lib/site.js";
+  import { RELEASED, REPO, RELEASES, VERSION } from "#lib/site.js";
   import Next from "./Next.svelte";
   // [needs, detail, status, version that ships the detail (marked until VERSION reaches it)]
   const specs = [
-    ["Platform", "Linux, x86_64: a signed repository for Arch Linux, a .deb for Debian 13 and Ubuntu 24.04 or newer, an .rpm for Fedora (with RPM Fusion for mpv-libs), and the tarball. No AppImage; Flatpak is being evaluated. macOS and Windows are planned, not available.", "Linux only today", "0.4.0"],
+    ["Platform", "Linux, x86_64: signed repositories for Arch Linux (pacman), Debian 13 and Ubuntu 24.04 or newer (apt) and Fedora (dnf, with RPM Fusion for mpv-libs), and the tarball. No AppImage; Flatpak is being evaluated. macOS and Windows are planned, not available.", "Linux only today", "0.4.0"],
     ["libmpv", "Comes with the package: the Arch package depends on mpv, and the tarball installer installs it with your distribution's package manager. NOCTURNE also starts without it and tells you what to install.", "mpv 0.41 tested; 0.42's certificate check needs no change", "0.3.0"],
     ["Display", "Wayland for in-window video. On X11 the UI runs and video plays in an external mpv window (NOCTURNE_VIDEO=external forces that anywhere).", "Wayland and X11 fallback verified"],
     ["Graphics", "A Vulkan driver for the UI, OpenGL/EGL for video.", "Other GPU setups not yet tested"],
@@ -39,9 +39,9 @@ makepkg -si</code></pre>
       </div>
       <div>
         <h3 class="role text-ink">Debian, Ubuntu, Fedora</h3>
-        <p class="m-0 mt-3 text-ink-2">A .deb for Debian 13 and Ubuntu 24.04 or newer, and an .rpm for Fedora, which needs RPM Fusion for mpv-libs. Download the file from the release and install it with its dependencies; <a href={RELEASED ? "/repo#deb" : "/repo"}>step by step</a>. <Next v="0.4.0" /></p>
-        {#if RELEASED}<pre class="code"><code>sudo apt install ./{DEB}
-sudo dnf install ./{RPM}</code></pre>{/if}
+        <p class="m-0 mt-3 text-ink-2">Signed apt and dnf repositories for Debian 13 and Ubuntu 24.04 or newer, and for Fedora, which needs RPM Fusion for mpv-libs: add one once, and NOCTURNE updates with the rest of your system. <a href={RELEASED ? "/repo#deb" : "/repo"}>Set up the repository</a>. <Next v="0.4.0" /></p>
+        {#if RELEASED}<pre class="code"><code>sudo apt install nocturne
+sudo dnf install nocturne</code></pre>{/if}
       </div>
       <div>
         <h3 class="role text-ink">Tarball</h3>

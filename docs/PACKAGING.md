@@ -65,6 +65,15 @@ cd packaging && makepkg -si
 
 `packaging/PKGBUILD` sets `options=(!lto)`: makepkg's default C `-flto` breaks linking of aws-lc-sys's C objects. Release profile: fat LTO, one codegen unit, stripped, `panic = "unwind"` (a panic in a worker thread must not abort the UI). Clean build on 16 cores: about 4.5 minutes, about 24 MB binary (thin LTO: 2.3 minutes, 31 MB).
 
+## Releasing
+
+1. Bump the version in `Cargo.toml`, finish the `CHANGELOG.md` section for it (`## [x.y.z] - date`), commit, tag `vX.Y.Z` and push the tag.
+2. `.github/workflows/release.yml` runs on the tag push (it is the only automatic workflow; `ci.yml` and `platforms.yml` stay manual). `linux` builds the binary once in `debian:stable` (release profile) and packages the tarball, .deb and .rpm from it; `appimage` is best effort (`continue-on-error`, the size goes into the job summary, and the release notes say when it is missing); `platforms` calls `platforms.yml` for the Windows installer and zip and the macOS .dmg; `publish` collects everything, writes a combined `SHA256SUMS`, takes the release notes from the matching CHANGELOG section (`scripts/changelog-section.sh x.y.z`) and creates a **draft** release. A draft left by an earlier run of the same tag is replaced; nothing is ever published by CI.
+3. The maintainer downloads and checks the draft's artifacts, then runs `scripts/publish-repo.sh` locally (builds and signs the pacman, apt and dnf repositories; signing keys never go to CI) and deploys the website. Only the package repositories live on the website; Windows, macOS, AppImage and tarball are hosted on the GitHub release.
+4. Publish the draft in the GitHub UI.
+
+To rebuild a tag (a failed job, a flaky runner): Actions > Release > Run workflow with the `tag` input, started from `main`. Caches are scoped to the ref that saved them, and a tag can only read caches saved from the default branch, so a dispatch from `main` is what warms the Linux/Windows/macOS cargo caches for the next tag; a tag-triggered run saves a cache nothing else can read. Expect a cold build on a first tag: about 6 minutes of Linux compile with fat LTO, the Windows and macOS jobs 10 to 25 minutes each including smoke tests and `cargo test`, the AppImage about 10, so roughly 55 to 75 runner minutes per release (the repository is public, so standard runners are free; macOS minutes would otherwise bill 10x).
+
 ## Pacman repository
 
 Served from the website at `https://nocturne.ifsvivek.in/repo/arch/x86_64/` (`nocturne.db`, `nocturne.files`, the two newest `nocturne-*.pkg.tar.zst`, each with a `.sig`); `repo/ARCH-GPG-KEY` is the public key, `repo/index.txt` the instructions. The directory `website/static/repo/` is generated and git-ignored; it ships when the website is deployed. Package, database and files database are all signed, so users set `SigLevel = Required TrustedOnly` (setup commands in the README). Static hosting cannot serve symlinks, so `nocturne.db`/`nocturne.files` are real copies.
@@ -76,6 +85,16 @@ Release procedure:
 1. Tag `vX.Y.Z`, set `pkgver` and the real `sha256sums` in `packaging/PKGBUILD` (sha256 of the GitHub tag archive).
 2. `scripts/publish-repo.sh` builds the package in a clean `archlinux:base-devel` container (deps installed as root, `makepkg --nocheck` as a normal user, so it targets current Arch rather than the host), then on the host signs it, runs `repo-add --sign --remove`, prunes to the newest two versions and verifies every signature.
 3. Deploy the website. The server never holds the key.
+
+## apt and dnf repositories
+
+`scripts/publish-repo-deb-rpm.sh` (called at the end of `scripts/publish-repo.sh`; `SKIP_DEB_RPM=1` skips it, `OUT=dir SKIP_BUILD=1` writes elsewhere from the packages already in `dist/`, which is how it is tested) builds `scripts/package.sh deb` and `rpm` (release profile) and generates, under the same git-ignored `website/static/repo/`:
+
+- `NOCTURNE-GPG-KEY` (armored, for dnf `gpgkey=`) and `NOCTURNE-GPG-KEY.gpg` (binary, for apt `signed-by=`): the public key; `ARCH-GPG-KEY` stays for pacman.
+- `deb/`: `pool/main/n/nocturne/*.deb` (newest two) and `dists/stable/main/binary-amd64/{Packages,Packages.gz}` from `apt-ftparchive` in a debian container, `dists/stable/Release` plus `InRelease` (clearsigned) and `Release.gpg`. A `dists/` layout, not a flat one, so users write `deb [signed-by=...] URL stable main`; apt warns about nothing. Debian and Ubuntu read the same suite.
+- `rpm/`: the two newest `nocturne-*.rpm`, each signed with `rpmsign`, `repodata/` from `createrepo_c` (gzip metadata), a detached `repodata/repomd.xml.asc`, and `nocturne.repo` (`gpgcheck=1`, `repo_gpgcheck=1`, `gpgkey=` the public key URL).
+
+Signing never exposes the secret key: the apt and repomd signatures run on the host gpg, and the rpm signing container reaches the host gpg-agent through its restricted extra socket (only the public key is imported in the container). Tools live in two local images, `nocturne-build:debian-repo` and `nocturne-build:fedora-repo` (made on first use). The script verifies every signature, that `Packages` lists the .deb, `rpm -K` on the .rpm, and fails if any file exceeds the Worker's 25 MiB per-file limit. `website/static/_headers` makes metadata, keys and `nocturne.repo` `no-cache` and the versioned files immutable. Tested locally (2026-11-19, repo served by `python3 -m http.server` on loopback, signature checks on): `apt update`/`install`/`upgrade` on debian:stable and ubuntu:24.04, `dnf makecache`/`install`/`upgrade` on Fedora 45; the headless binary prints its no-graphical-session message and exits 1.
 
 ## Linux packages (.deb, .rpm)
 
@@ -137,7 +156,7 @@ Not tested: a window or playback inside these containers (the Arch gate `scripts
 
 ## CI build of the Windows and macOS packages
 
-`.github/workflows/platforms.yml` is `workflow_dispatch` only and is meant to be **run manually once per release** (there is no push/PR/schedule trigger; `ci.yml` is the separate manual Linux check). No secrets, no publishing: artifacts (`windows`: setup.exe, portable zip, `.sha256` files; `macos`: .dmg and `.sha256`) are kept 7 days and the maintainer attaches them to a release by hand.
+`.github/workflows/platforms.yml` can be run manually for a preview build (`workflow_dispatch`) and is called by `release.yml` on a version tag (`workflow_call`, see "Releasing"); `ci.yml` is the separate manual Linux check. No secrets, no publishing: artifacts (`windows`: setup.exe, portable zip, `.sha256` files; `macos`: .dmg and `.sha256`) are kept 7 days and the maintainer attaches them to a release by hand.
 
 - **windows** (`windows-latest`): native `x86_64-pc-windows-msvc` release build (the Docker script cross-compiles `-gnu`; CI uses MSVC because the runner has it), pinned mpv fetched and SHA256-verified from `mpv.pin`, `makensis` installer and portable zip with the same layout as `scripts/package-windows.sh` (icon via Pillow instead of ImageMagick), then a smoke test: silent install, `mpv.exe --version`, launch `nocturne.exe` (a GPU/window exit is fine, a loader error code is not), silent uninstall with file and registry checks. Unsigned.
 - **macos** (`macos-latest`, arm64 only): Homebrew `mpv` + `dylibbundler`, `scripts/package-macos.sh` (ad-hoc signed, plain `hdiutil` dmg because `create-dmg` needs Finder), then `otool -L` over the bundle (no `/opt/homebrew` or `/usr/local`), bundled `mpv --version`, libmpv `dlopen`, brief launch (dyld errors fail, GPU errors do not).
