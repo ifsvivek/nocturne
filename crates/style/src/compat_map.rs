@@ -662,6 +662,12 @@ pub static VARS: &[(&str, &[&str])] = &[
     ("--dimTextColor", &["--nocturne-text-secondary"]),
     ("--headerBackground", &["--nocturne-header-bg"]),
     ("--borderColor", &["--nocturne-edge"]),
+    ("--main-color", &["--nocturne-accent"]),
+    ("--main-background", &["--nocturne-frame", "--nocturne-bg"]),
+    ("--second-background", &["--nocturne-surface"]),
+    ("--hover-background", &["--nocturne-raised"]),
+    ("--main-text", &["--nocturne-text"]),
+    ("--dimmer-text", &["--nocturne-text-tertiary"]),
 ];
 
 /// Tokens that follow a mirrored one (`{v}` is the value the theme gave it), with the app's own derivation rules: secondary text and the control edge fade towards the frame, hairlines are a wash of the text colour, surfaces step from the frame towards the text, hover and tint come from the accent. They keep a theme that only sets Jellyfin's palette (a light one above all) coherent instead of mixing dark defaults into it.

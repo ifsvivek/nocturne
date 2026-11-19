@@ -297,11 +297,7 @@ impl App {
         }
         self.eng.engine.set_safe_mode(self.th.safe);
         // The active theme's own rules, layered over the default sheet.
-        let user = self
-            .themes
-            .active_css(self.theme_source(), self.theme_ui())
-            .filter(|c| nocturne_style::is_engine_sheet(c))
-            .map(str::to_string);
+        let user = self.engine_sheet_text();
         if user != self.eng.user {
             self.eng.engine.set_user_css(user.as_deref());
             self.eng.user = user;
