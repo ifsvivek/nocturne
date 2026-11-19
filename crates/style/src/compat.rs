@@ -749,6 +749,8 @@ fn rule(prelude: &str, body: &str, out: &mut String, st: &mut State) {
         }
     }
     let mut alias = String::new();
+    // Tokens derived from a mirrored one (a light theme that only sets its palette gets matching secondary text, hairlines, surfaces...); written first so an explicit mirror of the same token wins.
+    let mut derived = String::new();
     for d in &decls {
         let Some((n, v)) = d.split_once(':') else {
             continue;
@@ -758,9 +760,15 @@ fn rule(prelude: &str, body: &str, out: &mut String, st: &mut State) {
             st.defined.insert(n.to_owned());
             if let Some((_, toks)) = map::VARS.iter().find(|(k, _)| *k == n) {
                 st.c.hits += 1;
+                let v = v.trim().trim_end_matches("!important").trim();
                 for t in *toks {
                     alias += &format!("{t}:{v};");
                     st.c.vars_mirrored += 1;
+                    for (_, list) in map::DERIVED.iter().filter(|(k, _)| k == t) {
+                        for (name, f) in *list {
+                            derived += &format!("{name}:{};", f.replace("{v}", v));
+                        }
+                    }
                 }
             }
         }
@@ -774,6 +782,7 @@ fn rule(prelude: &str, body: &str, out: &mut String, st: &mut State) {
     *out += "{";
     *out += body.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
     *out += ";";
+    *out += &derived;
     *out += &alias;
     *out += "}\n";
 }

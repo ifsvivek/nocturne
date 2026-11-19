@@ -106,8 +106,15 @@ fn card_family_collapses() {
         sel(".card.squareCard .cardText"),
         ":is(.card, .poster)[data-shape=square] :is(.card-title, .card-meta, .poster-title, .poster-meta)"
     );
-    assert!(lost(".cardOverlayButton"));
-    assert!(lost(".card .cardOverlayButton-hover"));
+    assert_eq!(sel(".cardOverlayButton"), ".card-play");
+    assert_eq!(
+        sel(".card .cardOverlayButton-hover"),
+        ":is(.card, .poster) .card-play"
+    );
+    assert_eq!(
+        sel(".playedIndicator"),
+        ".card-chip[data-action=watched].on"
+    );
 }
 
 #[test]
@@ -160,8 +167,8 @@ fn detail_family() {
         ":is(.episode, .entry):hover :is(.episode-title, .episode-meta, .entry-title, .entry-meta)"
     );
     assert_eq!(sel(".backdropImage"), ":is(.detail-backdrop, .hero-img)");
-    assert!(lost(".trackSelections"));
-    assert!(lost(".parentName"));
+    assert_eq!(sel(".trackSelections"), ".detail-tracks");
+    assert_eq!(sel(".parentName"), ".detail-parent");
 }
 
 #[test]
@@ -169,8 +176,7 @@ fn player_family() {
     assert_eq!(sel(".osdTextContainer"), ".player-info");
     assert_eq!(sel(".btnPause"), ".player-btn[data-action=pause]");
     assert_eq!(sel(".osdPositionSliderContainer"), ".player-seek");
-    // No single bar element yet: a builder change (`div.player-bar`) is listed in THEME_COMPAT.md.
-    assert!(lost(".osdControls"));
+    assert_eq!(sel(".osdControls"), ".player-bar");
     assert!(lost(".videoOsdBottom .btnCast"));
 }
 
@@ -313,18 +319,10 @@ fn a_jellyfin_style_sheet_mostly_translates() {
     let (out, c) = translate(SAMPLE);
     assert!(c.applied);
     assert_eq!(c.selectors, 30, "{c:?}");
-    // The four rules about things NOCTURNE does not have, and nothing else, are lost.
-    assert_eq!(c.selectors - c.translated, 5, "{:?}", c.groups());
+    // The rules about things NOCTURNE does not have, and nothing else, are lost.
+    assert_eq!(c.selectors - c.translated, 3, "{:?}", c.groups());
     assert!(c.percent_selectors() > 80.0);
     let reasons: Vec<&str> = c.groups().iter().map(|g| g.0).collect();
-    assert!(
-        reasons.iter().any(|r| r.contains("single bar container")),
-        "{reasons:?}"
-    );
-    assert!(
-        reasons.iter().any(|r| r.contains("no play overlay")),
-        "{reasons:?}"
-    );
     assert!(
         reasons.contains(&"class with no entry in the map"),
         "{reasons:?}"
@@ -522,7 +520,7 @@ fn a_jellyfin_theme_restyles_the_trees_through_the_engine() {
         .card[data-type=Movie] .cardFooter .cardText-first { color: rgb(200, 100, 50); }
         .cardText-secondary { color: rgb(40, 50, 60); }
         .cardBox > .cardScalable > .cardPadder + .cardImageContainer { border-radius: 9px; }
-        .cardOverlayButton { color: red; }
+        .emby-checkbox { color: red; }
     ";
     let mut e = Engine::new(&default_css());
     e.set_user_css(Some(css));

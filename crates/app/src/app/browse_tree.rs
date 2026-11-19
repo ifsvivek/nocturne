@@ -296,7 +296,7 @@ impl App {
         let d = &mut tree.doc;
         // Toolbar: the controls, the count, the A-Z bar.
         let loading = Self::browse_loading(br);
-        let tool = d.add(0, "div.toolbar");
+        let tool = d.add(0, "div.toolbar.library-toolbar");
         d.inline(tool, &format!("padding: {} {}", px(t::S3), px(pad)));
         let bar = d.add(tool, "div.toolbar-bar");
         let mut slots: Vec<(Id, Slot)> = vec![];
@@ -309,6 +309,11 @@ impl App {
             ] {
                 let n = d.add(bar, "div.slot.toolbar-button");
                 d.inline(n, &format!("width: {}; height: 32px", px(w)));
+                d.attr(
+                    n,
+                    "data-action",
+                    if s == Slot::Sort { "sort" } else { "filter" },
+                );
                 slots.push((n, s));
             }
         }
@@ -316,6 +321,7 @@ impl App {
         for v in ViewKind::ALL {
             let n = d.add(seg, "div.slot.toolbar-button");
             d.inline(n, &format!("width: {}; height: 32px", px(w_of(v.label()))));
+            d.attr(n, "data-action", "view");
             slots.push((n, Slot::View(v)));
         }
         d.add(bar, "div.toolbar-fill");
@@ -323,7 +329,7 @@ impl App {
         d.text(c, &Self::browse_count(br, loading));
         let mut letters = vec![];
         if br.show_letters() {
-            let az = d.add(tool, "div.az");
+            let az = d.add(tool, "div.az.alpha-picker");
             for ch in lv::letters() {
                 let l = d.add(
                     az,

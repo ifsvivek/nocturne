@@ -34,6 +34,11 @@ impl DTree {
     fn new(kind: &str) -> Self {
         let mut doc = Doc::new("page");
         doc.attr(0, "data-screen", "detail");
+        doc.attr(
+            0,
+            "data-layout",
+            if crate::couch::on() { "tv" } else { "desktop" },
+        );
         doc.attr(0, "data-kind", kind);
         doc.nodes[0].classes.push("page-detail".into());
         Self {
@@ -316,6 +321,11 @@ impl Detail {
         for gname in m.genres.iter().take(3) {
             chip(&mut t_.doc, genres, "div.chip.detail-genre", gname);
         }
+        // The parent's name above the title (the series of an episode); the eyebrow already says it, so the default sheet hides this line.
+        if let Some(parent) = m.series_name.as_deref().filter(|_| m.kind != Kind::Series) {
+            let n = t_.doc.add(col, "div.detail-parent");
+            t_.doc.text(n, parent);
+        }
         // The title: the logo art when the item has one, else text.
         let size = (w / 26.0).clamp(40.0, 72.0);
         let logo = m
@@ -435,6 +445,16 @@ impl Detail {
             let n = t_.doc.add(row, "div.detail-note-inline");
             t_.doc.text(n, "Not playable in NOCTURNE yet.");
         }
+        // The chosen version as a line of its own for themes that show the track block (hidden by default: the Versions button says it).
+        if list.len() > 1
+            && let Some(v) = list.get(self.picked(&list))
+            && !v.detail.is_empty()
+        {
+            let tracks = t_.doc.add(parent, "div.detail-tracks");
+            let n = t_.doc.add(tracks, "div.detail-track");
+            t_.doc.attr(n, "data-track", "version");
+            t_.doc.text(n, &v.detail);
+        }
     }
 
     // ---- bands ----
@@ -454,16 +474,8 @@ impl Detail {
             if half {
                 let n = t_.doc.add(st, "div.star-half");
                 t_.doc.text(n, "\u{2605}");
-                t_.doc.inline(
-                    n,
-                    &format!(
-                        "color: {}",
-                        t::css_color(iced::Color {
-                            a: 0.5,
-                            ..t::accent_text()
-                        })
-                    ),
-                );
+                t_.doc
+                    .inline(n, "color: alpha(var(--nocturne-accent-text), 0.5)");
             }
             let n = t_.doc.add(st, "div.star-empty");
             t_.doc.text(n, &"\u{2606}".repeat(empty as usize));
@@ -911,6 +923,11 @@ impl Detail {
             let wrap = t_.doc.add(strip, "div.poster-wrap");
             let p = t_.doc.add(wrap, "a.poster");
             t_.doc.attr(p, "data-kind", kind_attr(m.kind));
+            t_.doc.attr(
+                p,
+                "data-shape",
+                if ch > cw { "portrait" } else { "backdrop" },
+            );
             t_.doc
                 .attr(p, "data-watched", if m.played { "true" } else { "false" });
             t_.doc.inline(p, &format!("width: {}", px(cw + 24.0)));

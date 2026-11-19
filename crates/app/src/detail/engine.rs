@@ -56,20 +56,7 @@ impl Host {
 
 /// The app's sheet (tokens of the active theme, default rules, hover and focus rules) plus the page's own derived tokens.
 fn sheet() -> String {
-    use crate::theme as t;
-    let k = t::active();
-    let c = t::css_color;
-    let a = |col: iced::Color, a: f32| c(iced::Color { a, ..col });
-    let mut s = crate::app::engine_ui::sheet_css();
-    s += &format!(
-        ":root {{ --nocturne-frame-94: {}; --nocturne-frame-0: {}; --nocturne-accent-60: {}; --nocturne-glow-50: {}; --nocturne-r-panel: {}px; }}\n",
-        a(k.frame, 0.94),
-        a(k.frame, 0.0),
-        a(k.accent, 0.6),
-        a(k.glow, 0.5),
-        k.r_panel
-    );
-    s
+    crate::app::engine_ui::sheet_css()
 }
 
 fn warm() {

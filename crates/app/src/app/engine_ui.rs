@@ -735,6 +735,7 @@ impl App {
                         {
                             Some("fav") => chip = Some(CellAct::Fav),
                             Some("played") => chip = Some(CellAct::Played),
+                            Some("play") => chip = Some(CellAct::Play),
                             _ => {}
                         }
                         if node.virtual_item

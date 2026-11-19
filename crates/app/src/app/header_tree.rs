@@ -86,6 +86,11 @@ impl Tree {
     pub fn screen(name: &str) -> Self {
         let mut doc = Doc::new("page");
         doc.attr(0, "data-screen", name);
+        doc.attr(
+            0,
+            "data-layout",
+            if crate::couch::on() { "tv" } else { "desktop" },
+        );
         Self {
             doc,
             images: HashMap::new(),

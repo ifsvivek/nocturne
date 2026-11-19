@@ -150,6 +150,28 @@ pub fn color(s: &str) -> Result<Color, String> {
     let Some((name, args)) = s.strip_suffix(')').and_then(|x| x.split_once('(')) else {
         return Err(bad());
     };
+    // NOCTURNE extensions so a sheet can derive colours from its tokens: `alpha(<colour>, <alpha>)` sets the alpha (`alpha(var(--nocturne-frame), 0.8)`), `mix(<colour>, <colour>, <0..1>)` blends towards the second.
+    if name == "alpha" || name == "mix" {
+        let p = split_top(args, Some(','));
+        let frac = |v: &str| match v.trim().strip_suffix('%') {
+            Some(x) => num(x).map(|v| v / 100.0),
+            None => num(v),
+        };
+        return match (name, p.as_slice()) {
+            ("alpha", [c, a]) => {
+                let c = color(c)?;
+                let a = frac(a).ok_or_else(bad)?.clamp(0.0, 1.0);
+                Ok(Color::rgba(c.r, c.g, c.b, (a * 255.0).round() as u8))
+            }
+            ("mix", [a, b, t]) => {
+                let (a, b) = (color(a)?, color(b)?);
+                let t = frac(t).ok_or_else(bad)?.clamp(0.0, 1.0);
+                let m = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+                Ok(Color::rgba(m(a.r, b.r), m(a.g, b.g), m(a.b, b.b), a.a))
+            }
+            _ => Err(bad()),
+        };
+    }
     let parts: Vec<&str> = if args.contains(',') {
         args.split(',').map(str::trim).collect()
     } else {
@@ -357,6 +379,23 @@ pub fn fill(s: &str) -> Result<(Fill, Vec<String>), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn derived_colour_functions() {
+        assert_eq!(
+            color("alpha(#ff0000, 0.5)"),
+            Ok(Color::rgba(255, 0, 0, 128))
+        );
+        assert_eq!(
+            color("alpha(rgb(1, 2, 3), 50%)"),
+            Ok(Color::rgba(1, 2, 3, 128))
+        );
+        assert_eq!(
+            color("mix(#000, rgb(100, 200, 50), 0.5)"),
+            Ok(Color::rgba(50, 100, 25, 255))
+        );
+        assert!(color("alpha(#fff)").is_err() && color("mix(#fff, #000)").is_err());
+    }
 
     #[test]
     fn hex_forms() {
