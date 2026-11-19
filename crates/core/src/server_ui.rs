@@ -149,6 +149,8 @@ pub struct ServerUi {
     pub hide_played_in_latest: bool,
     pub css: Option<String>,
     pub disclaimer: Option<String>,
+    /// The server's own jellyfin-web stylesheets (`webcss`), the base layer of Jellyfin layout mode. `None`: the server runs without its web client.
+    pub web_css: Option<std::sync::Arc<String>>,
 }
 
 impl ServerUi {
@@ -162,6 +164,7 @@ impl ServerUi {
             hide_played_in_latest: cfg.hide_played_in_latest,
             css: text(&branding.custom_css),
             disclaimer: text(&branding.login_disclaimer),
+            web_css: None,
         }
     }
 
@@ -401,6 +404,7 @@ impl ServerUi {
             sections: self.sections.clone(),
             css: self.css.clone(),
             disclaimer: self.disclaimer.clone(),
+            web_css: self.web_css.clone(),
             ..Default::default()
         }
     }

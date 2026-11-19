@@ -16,6 +16,7 @@ pub mod header;
 mod model;
 mod play;
 mod server_ui;
+mod web;
 
 pub use browse::{
     BrowseQuery, Chapter, ExternalUrl, FilterOptions, ItemExtra, MediaSource, NameId, Person,
@@ -26,6 +27,7 @@ pub use config::Config;
 pub use model::{Item, Items, PublicInfo, User, UserData};
 pub use play::{MediaStream, PlayItem, Segment, SegmentKind, Transcode, TrickplayInfo};
 pub use server_ui::{Branding, DisplayPrefs, UserConfig};
+pub use web::{WebFiles, css_chunks, index_stylesheets};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
