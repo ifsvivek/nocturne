@@ -4,7 +4,7 @@ Built and checked on Arch Linux, x86_64, Wayland (Hyprland), mpv 0.41.0, Rust 1.
 
 **One variable names the app package.** `scripts/package.sh`, `scripts/perf.sh` and `packaging/PKGBUILD` default to package `nocturne-app` (`crates/app`) / binary `nocturne`; `scripts/gen-notices.py` and `scripts/test-playback.sh` take the same `PKG`/`BIN`). The installed name is always `nocturne`.
 
-Linux formats: Arch package, tarball, **.deb** and **.rpm** (0.4, built in distro containers, see below). AppImage was evaluated and is not shipped (below). The Windows installer is built (wine-tested; first native run is the manual CI workflow) and the macOS script is written, first run also via that workflow (below). Per-platform libmpv handling and the footprint budget are in [PLATFORMS.md](PLATFORMS.md).
+Linux formats: Arch package, tarball, **.deb** and **.rpm** (0.4, built in distro containers, see below). Since 0.5.0 an AppImage is built by the release workflow and shipped as **experimental** (about 107 MB, bundles its own libraries; the repositories are the recommended way). The Windows installer is built (wine-tested; first native run is the manual CI workflow) and the macOS script is written, first run also via that workflow (below). Per-platform libmpv handling and the footprint budget are in [PLATFORMS.md](PLATFORMS.md).
 
 **libmpv version the app really needs: mpv 0.40 or newer.** The embedded player sets `background=color` (`crates/player/src/embedded.rs`), which mpv 0.35 and 0.37 reject (`mpv_set_option_string` returns -7, verified on Debian 12's 0.35.1 and Ubuntu 24.04's 0.37.0; accepted by Debian 13's 0.40.0 and Arch's 0.41). With an older libmpv the app does not crash: it logs `embedded unavailable (mpv: init: error setting option), using the external player` and plays through the external `mpv` binary (hence `mpv` is a Recommends in the .deb). A code change (set that option after init and ignore the error, or drop it when unsupported) would make in-window video work on Ubuntu 24.04; it is not part of the packaging.
 
@@ -40,7 +40,7 @@ How each artifact handles them:
 - **Arch package (PKGBUILD)**: `depends` lists all of the above, including `mpv` for the dlopen'd libmpv.
 - **Tarball `install.sh`**: on `install` it checks each soname with `ldconfig -p` and the `mpv` binary, installs the missing packages with the distro's package manager (via `sudo` unless root; the exact command is printed first), then runs `ldd` on the installed binary and warns about anything "not found". The soname-to-package table is the `pkg_for` function at the top of the script, the single place to edit. `--no-deps` skips this; `NOCTURNE_YES=1` makes the package manager non-interactive; an unrecognised distribution fails with the list of what is missing; `DESTDIR` (staging) skips dependency handling.
 - **.deb / .rpm**: `Depends`/`Requires` list the dlopen()ed libraries by hand (the package tools only see the linked ones); libmpv comes from the distribution (`libmpv2` / `mpv-libs`). See "Linux packages".
-- **AppImage**: not provided (see below).
+- **AppImage**: experimental since 0.5.0, built by `release.yml` (best effort; a failed build only drops it from the release).
 
 The tarball binary is built on a rolling distribution and is not an "any Linux" artifact.
 
@@ -57,7 +57,7 @@ sudo ./install.sh uninstall
 # .deb (debian:stable container), .rpm (fedora:latest container), AppImage (debian:bookworm container, evaluation only):
 scripts/package.sh deb        # -> dist/nocturne_<ver>_amd64.deb
 scripts/package.sh rpm        # -> dist/nocturne-<ver>-1.fc<N>.x86_64.rpm
-scripts/package.sh appimage   # -> dist/NOCTURNE-<ver>-x86_64.AppImage (not a release artifact, see below)
+scripts/package.sh appimage   # -> dist/NOCTURNE-<ver>-x86_64.AppImage (experimental release artifact since 0.5.0)
 
 # Arch package (set the real sha256 first; builds from the GitHub source archive of the v<version> tag)
 cd packaging && makepkg -si
