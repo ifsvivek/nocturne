@@ -723,6 +723,18 @@ impl App {
                 }
                 self.home_wants()
             }
+            Message::HomeStripPage(row, dir) => {
+                let vw = self.win.width - 2.0 * t::page_pad();
+                let Some(h) = self.stack.first_mut().and_then(|p| p.home.as_deref_mut()) else {
+                    return Task::none();
+                };
+                let x = (h.strips.get(&row).copied().unwrap_or(0.0) + dir * vw * 0.9).max(0.0);
+                h.strips.insert(row, x);
+                iced::widget::operation::scroll_to(
+                    home::strip_id(row),
+                    iced::widget::scrollable::AbsoluteOffset { x, y: 0.0 },
+                )
+            }
             Message::Browse(pid, m) => self.browse_msg(pid, m),
             Message::Search(m) => self.search_msg(m),
             Message::SearchScrolled(off) => {

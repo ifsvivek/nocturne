@@ -8,7 +8,8 @@ use crate::theme as t;
 use crate::widget::popover::Popover;
 use crate::widget::press::Press;
 use crate::widget::{
-    avatar, menu_row, mono, nav_link, rule, source_mark, tip, value_chip, wordmark,
+    avatar, icon, menu_row, mono, nav_link, nav_link_icon, rule, source_mark, tip, value_chip,
+    wordmark,
 };
 use iced::widget::button::{Status, Style};
 use iced::widget::{column, container, mouse_area, opaque, row, scrollable, space, text};
@@ -61,19 +62,36 @@ impl App {
             .and_then(|p| p.home.as_deref())
             .filter(|h| h.layout().get(h.row) == Some(&HRow::Nav))
             .map(|h| h.col);
+        let hp = t::parts(None, None);
+        let icons = hp.header.link_icons == Some(true);
+        let ico = |l: &Link| icons.then(|| link_icon(l, libs)).flatten();
         let mut nav_row = row![].spacing(t::S1).align_y(Alignment::Center);
+        if hp.header.align == Some(nocturne_core::customize::HeaderAlign::Center) {
+            // The links fit in the strip: push them to the middle (they scroll as before when not).
+            let (_, vw, _) = self.nav_geom();
+            let content: f32 = self.nav_widths().iter().sum();
+            nav_row = nav_row.push(space().width(((vw - content) / 2.0).max(0.0)));
+        }
         for (n, link) in self.nav_links().into_iter().enumerate() {
             let focused = nav_focus == Some(n);
             nav_row = nav_row.push(match link {
-                Link::Home => nav_link("Home", at_home && !blur, focused, Message::GoHome),
-                Link::Kind(k) => nav_link(
+                Link::Home => nav_link_icon(
+                    "Home",
+                    ico(&link),
+                    at_home && !blur,
+                    focused,
+                    Message::GoHome,
+                ),
+                Link::Kind(k) => nav_link_icon(
                     k.label(),
+                    ico(&link),
                     cur.is_some_and(|c| c.1 == k.scope().key) && !at_home && !blur,
                     focused,
                     Message::OpenKind(k),
                 ),
-                Link::Lib(i) => nav_link(
+                Link::Lib(i) => nav_link_icon(
                     &libs[i].title,
+                    ico(&link),
                     Some((libs[i].origin, libs[i].id.as_str())) == cur && !at_home && !blur,
                     focused,
                     Message::OpenLibrary(i),
@@ -85,8 +103,9 @@ impl App {
                         && !blur,
                     focused,
                 ),
-                Link::Global(gi) => nav_link(
+                Link::Global(gi) => nav_link_icon(
                     GLOBALS[gi].1,
+                    ico(&link),
                     cur.is_some_and(|c| c.1 == GLOBALS[gi].0) && !at_home && !blur,
                     focused,
                     Message::OpenGlobal(gi),
@@ -95,7 +114,13 @@ impl App {
                     cur.is_some_and(|c| c.1.starts_with("smart-")) && !at_home && !blur,
                     focused,
                 ),
-                Link::Admin => nav_link("Admin", self.admin_open, focused, Message::OpenAdmin),
+                Link::Admin => nav_link_icon(
+                    "Admin",
+                    ico(&link),
+                    self.admin_open,
+                    focused,
+                    Message::OpenAdmin,
+                ),
             });
         }
         // Couch mode drops the pointer-sized history buttons (B goes back) and keeps the big tabs.
@@ -116,8 +141,29 @@ impl App {
                 ))
                 .push(space().width(t::S3));
         }
+        let name: El = match hp
+            .header_brand
+            .shown()
+            .then(|| self.brand_text(&hp.header_brand))
+        {
+            Some(n) => {
+                let b = &hp.header_brand;
+                let ty = t::typo(
+                    &nocturne_core::customize::Text {
+                        font_size: b.font_size,
+                        font_weight: b.font_weight,
+                        color: b.color,
+                        ..Default::default()
+                    },
+                    t::BODY_LG,
+                    iced::font::Weight::Bold,
+                );
+                ty.text(n, t::text()).wrapping(text::Wrapping::None).into()
+            }
+            None => wordmark(t::CAPTION + 1.0).into(),
+        };
         let left = row![
-            brand.push(wordmark(t::CAPTION + 1.0)),
+            brand.push(name),
             // Many sources make a long link row: it scrolls sideways (wheel, chevrons, or the focus
             // on Home) instead of pushing the search and avatar out of the window.
             self.nav_strip(nav_row),
@@ -167,6 +213,14 @@ impl App {
                 "Show one source or all",
             ));
         }
+        if hp.header_icons.hidden == Some(false) {
+            right = right.push(tip(
+                Press::new(icon("people", 22.0, t::text()))
+                    .on_press(Message::SyncPlay(crate::syncplay::Msg::OpenScreen))
+                    .style(|_| Style::default()),
+                "Watch together",
+            ));
+        }
         if t::header_item(t::HeaderItem::Search) {
             right = right.push(search);
         }
@@ -188,6 +242,27 @@ impl App {
             .height(Length::Fill)
             .align_y(Alignment::Start)
             .into()
+    }
+
+    /// The name `.header-brand` shows: the active server, the signed-in user or the app.
+    fn brand_text(&self, b: &nocturne_core::customize::Brand) -> String {
+        use nocturne_core::customize::BrandContent;
+        let app = "NOCTURNE".to_string();
+        match b.content {
+            Some(BrandContent::User) => self.session().map_or(app, |(_, s)| s.user_name.clone()),
+            Some(BrandContent::App) => app,
+            _ => self
+                .active
+                .map(|id| self.label_of(id))
+                .filter(|l| !l.is_empty())
+                .or_else(|| {
+                    self.catalog
+                        .online()
+                        .next()
+                        .map(|s| s.profile.label.clone())
+                })
+                .unwrap_or(app),
+        }
     }
 
     /// Initial in a hairline circle; opens the account menu.
@@ -406,6 +481,30 @@ impl App {
 }
 
 pub const NAV_ID: &str = "nav-scroll";
+
+/// The small icon in front of a header link (`--header-link-icons: on`).
+fn link_icon(l: &Link, libs: &[nocturne_core::source::Media]) -> Option<&'static str> {
+    use nocturne_core::unified::UKind;
+    let by_collection = |c: Option<&str>| match c {
+        Some("movies") => "film",
+        Some("tvshows") => "tv",
+        Some("music") => "music",
+        _ => "folder",
+    };
+    Some(match l {
+        Link::Home => "home",
+        Link::Kind(UKind::Movies) => "film",
+        Link::Kind(UKind::Shows) => "tv",
+        Link::Kind(UKind::Music) => "music",
+        Link::Kind(_) => "folder",
+        Link::Lib(i) => by_collection(libs.get(*i)?.collection.as_deref()),
+        Link::Global(0) => "layers",
+        Link::Global(1) => "queue",
+        Link::Global(_) => "heart",
+        Link::Admin => "gear",
+        Link::Libraries | Link::Smart => return None,
+    })
+}
 
 /// Rough width of one header link (label at body size plus its padding and gap); the real widths
 /// are not known until layout, and the strip only needs to land near the focused link.

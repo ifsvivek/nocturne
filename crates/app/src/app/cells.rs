@@ -1,5 +1,6 @@
 //! Cell text shared by Home, browse and search: captions, badges and the source mark.
 use nocturne_core::catalog::Catalog;
+use nocturne_core::customize::EpisodeFormat;
 use nocturne_core::source::{Kind, Media};
 
 /// Mono line under a title: kind (or episode / artist) and the year / runtime.
@@ -14,6 +15,24 @@ pub fn caption(m: &Media) -> String {
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join(" \u{b7} ")
+}
+
+/// The line under an episode's series title on a landscape card: "S1:E2 · Name" as built in,
+/// "S1:E2 - Name" (`short`) or "Season 1, Episode 2 - Name" (`long`) when a theme asks.
+pub fn episode_line(m: &Media, fmt: Option<EpisodeFormat>) -> String {
+    let (code, sep) = match (fmt, m.season_number, m.number) {
+        (Some(EpisodeFormat::Long), Some(s), Some(e)) => {
+            (format!("Season {s}, Episode {e}"), " - ")
+        }
+        (Some(EpisodeFormat::Long), None, Some(e)) => (format!("Episode {e}"), " - "),
+        (Some(_), ..) => (m.short_ep(), " - "),
+        (None, ..) => (m.short_ep(), " \u{b7} "),
+    };
+    [code, m.title.clone()]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(sep)
 }
 
 /// Unwatched count badge for shows and seasons.
@@ -40,6 +59,18 @@ mod tests {
         m.year = Some(2022);
         assert_eq!(caption(&m), "movie \u{b7} 2022");
         assert_eq!(badge(&m), None);
+        m.kind = Kind::Episode;
+        (m.season_number, m.number, m.title) = (Some(1), Some(2), "Pilot".into());
+        assert_eq!(episode_line(&m, None), "S1:E2 \u{b7} Pilot");
+        assert_eq!(
+            episode_line(&m, Some(EpisodeFormat::Short)),
+            "S1:E2 - Pilot"
+        );
+        assert_eq!(
+            episode_line(&m, Some(EpisodeFormat::Long)),
+            "Season 1, Episode 2 - Pilot"
+        );
+        m.kind = Kind::Movie;
         m.unplayed = Some(3);
         assert_eq!(badge(&m).as_deref(), Some("3"));
         assert_eq!(

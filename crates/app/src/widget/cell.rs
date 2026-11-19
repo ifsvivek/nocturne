@@ -46,6 +46,24 @@ pub struct Look {
     title_t: t::Typo,
     meta_t: t::Typo,
     meta_set: bool,
+    /// `.card-subtitle` over `.card-meta`: the line under the title of an episode.
+    sub_t: t::Typo,
+    sub_set: bool,
+    /// `text-align: center` on the title / the details lines.
+    pub center_title: bool,
+    pub center_meta: bool,
+    pub episode_format: Option<cz::EpisodeFormat>,
+    /// The library name is drawn large and centred over the image (My media tiles).
+    pub tile_center: bool,
+    /// No hairlines between cards and no index tag (`.row --row-frame: none`).
+    pub flat: bool,
+    badge: cz::Badge,
+    progress: cz::Progress,
+}
+
+fn ic(c: cz::Color) -> Color {
+    let [r, g, b, a] = c.to_f32();
+    Color { r, g, b, a }
 }
 
 impl Default for Look {
@@ -68,12 +86,60 @@ impl Look {
             title_t: t::typo(&p.card_title, t::BODY, iced::font::Weight::Semibold),
             meta_t: t::typo(&p.card_meta, t::MICRO, iced::font::Weight::Normal),
             meta_set: p.card_meta != cz::Text::default(),
+            sub_t: t::typo(
+                &p.card_meta.merged(&p.card_subtitle),
+                t::MICRO,
+                iced::font::Weight::Normal,
+            ),
+            sub_set: p.card_meta.merged(&p.card_subtitle) != cz::Text::default(),
+            center_title: p.card_title.align == Some(cz::TextAlign::Center),
+            center_meta: p.card_meta.align == Some(cz::TextAlign::Center),
+            episode_format: p.card.episode_format,
+            tile_center: false,
+            flat: p.row.framed == Some(false),
+            badge: p.card_badge.clone(),
+            progress: p.card_progress.clone(),
+        }
+    }
+
+    /// The look of the My media tiles: `.library-tile` over the card.
+    pub fn tiles(p: &cz::Parts) -> Self {
+        let mut l = Self::of(p);
+        if p.card.tile_label == Some(cz::TileLabel::OverlayCenter) {
+            l.tile_center = true;
+            l.title_t = t::typo(&p.library_tile, 26.0, iced::font::Weight::Semibold);
+        } else if p.library_tile != cz::Text::default() {
+            l.title_t = t::typo(&p.library_tile, t::BODY, iced::font::Weight::Semibold);
+        }
+        l
+    }
+
+    /// Details line typography (the subtitle's for an episode line).
+    fn meta_typo(&self, subtitle: bool) -> (&t::Typo, bool) {
+        if subtitle {
+            (&self.sub_t, self.sub_set || self.meta_set)
+        } else {
+            (&self.meta_t, self.meta_set)
+        }
+    }
+
+    fn badge_shown(&self) -> bool {
+        self.badge.hidden != Some(true)
+    }
+
+    /// Height of a bar under the image (`--progress-position: below`), reserved on every card.
+    fn bar_h(&self) -> f32 {
+        match (self.progress.position, self.progress.hidden) {
+            (Some(cz::ProgressPos::Below), h) if h != Some(true) => {
+                self.progress.height.unwrap_or(3.0)
+            }
+            _ => 0.0,
         }
     }
 
     /// The caption (title and details) is drawn under the image.
     fn caption(&self) -> bool {
-        self.title == TitlePosition::Below
+        self.title == TitlePosition::Below && !self.tile_center
     }
 
     fn title_h(&self) -> f32 {
@@ -87,8 +153,8 @@ impl Look {
     fn meta_h(&self) -> f32 {
         if self.meta_t.hidden {
             0.0
-        } else if self.meta_set {
-            line(self.meta_t.size())
+        } else if self.meta_set || self.sub_set {
+            line(self.meta_t.size().max(self.sub_t.size()))
         } else {
             16.0
         }
@@ -111,7 +177,7 @@ impl Look {
 
     /// Total height of a cell whose image is `h` tall (padding, caption and the bottom hairline).
     pub fn cell_h(&self, h: f32) -> f32 {
-        h + 2.0 * self.pad + self.caption_h() + 1.0
+        h + 2.0 * self.pad + self.caption_h() + self.bar_h() + 1.0
     }
 
     /// Image height for an image `w` wide: the card's aspect, else `default` (height / width).
@@ -200,8 +266,10 @@ pub struct Cell<M> {
     pub h: f32,
     pub focused: bool,
     pub progress: Option<f32>,
-    /// Unwatched count (bottom-right of the image).
+    /// Unwatched count (bottom-right of the image unless `.card-badge` moves it).
     pub badge: Option<String>,
+    /// The details line is an episode line (`.card-subtitle` styles it).
+    pub subtitle: bool,
     /// Where the item lives, when several sources exist ("LOCAL", "2 SOURCES"; bottom-left).
     pub mark: Option<String>,
     /// `(favourite, played, writes allowed)`; `None` hides the chips.
@@ -250,8 +318,76 @@ fn chip_button<'a, M: Clone + 'a>(
         .into()
 }
 
+/// Centre a caption text across the cell when the stylesheet says `text-align: center`.
+fn align<'a>(x: text::Text<'a>, center: bool) -> text::Text<'a> {
+    if center {
+        x.width(Length::Fill)
+            .align_x(iced::alignment::Horizontal::Center)
+    } else {
+        x
+    }
+}
+
+impl Look {
+    /// The unplayed count in its corner (default: bottom-right, accent, 4 px corners).
+    fn badge_layer<'a, M: 'a>(
+        &self,
+        n: String,
+        corner: impl Fn(Element<'a, M>, Alignment, Alignment, f32) -> Element<'a, M>,
+    ) -> Element<'a, M> {
+        let b = &self.badge;
+        let bg = b.background.map_or_else(t::accent, ic);
+        let ink = b.color.map_or_else(t::on_accent, ic);
+        let radius = b.radius.unwrap_or(4.0);
+        let n_len = n.chars().count();
+        let label: Element<'a, M> = match b.font_size {
+            Some(sz) => text(n).size(sz).font(t::semibold()).color(ink).into(),
+            None => mono(n).color(ink).into(),
+        };
+        let (ax, ay) = match b.position {
+            Some(cz::BadgePos::TopRight) => (Alignment::End, Alignment::Start),
+            Some(cz::BadgePos::TopLeft) => (Alignment::Start, Alignment::Start),
+            _ => (Alignment::End, Alignment::End),
+        };
+        // With a set size the badge is a round chip: as wide as it is tall for one digit.
+        let one = n_len == 1;
+        let mut bx = container(label).padding([0.0, t::S2]);
+        if let Some(sz) = b.font_size {
+            let hgt = sz + 10.0;
+            bx = bx.height(hgt).center_y(hgt);
+            if one {
+                bx = bx.width(hgt).center_x(hgt).padding(0);
+            }
+        }
+        let bx = bx.style(move |_| container::Style {
+            background: Some(bg.into()),
+            border: border(t::NONE, 0.0, radius),
+            ..Default::default()
+        });
+        corner(bx.into(), ax, ay, t::S2)
+    }
+
+    /// A progress bar with the stylesheet's track and fill.
+    fn bar<'a, M: 'a>(&self, frac: f32, h: f32) -> Element<'a, M> {
+        let (track, fill) = (
+            self.progress.background.map_or(t::PROGRESS_TRACK, ic),
+            self.progress.color.map_or_else(t::accent, ic),
+        );
+        iced::widget::progress_bar(0.0..=1.0, frac.clamp(0.0, 1.0))
+            .girth(h)
+            .style(move |_| iced::widget::progress_bar::Style {
+                background: track.into(),
+                bar: fill.into(),
+                border: iced::Border::default(),
+            })
+            .into()
+    }
+}
+
 pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
     let (w, h) = (c.w, c.h);
+    let (meta_t, meta_set) = c.look.meta_typo(c.subtitle);
+    let (meta_t, c_meta) = (meta_t.clone(), c.look.center_meta);
     let look = c.look.clone();
     let pad = look.pad;
     let radius = look.radius.unwrap_or_else(t::r_card);
@@ -279,7 +415,28 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
                 .into(),
         );
     }
-    if look.title == TitlePosition::Overlay {
+    if look.tile_center && !look.title_t.hidden {
+        layers.push(
+            container(
+                look.title_t
+                    .text(&c.title, Color::WHITE)
+                    .wrapping(text::Wrapping::None)
+                    .width(Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Center),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(t::S3)
+            .center_y(Length::Fill)
+            .clip(true)
+            .style(|_| container::Style {
+                background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.35).into()),
+                ..Default::default()
+            })
+            .into(),
+        );
+    }
+    if look.title == TitlePosition::Overlay && !look.tile_center {
         let clear = Color {
             a: 0.0,
             ..t::frame()
@@ -290,20 +447,24 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
         };
         let mut col: iced::widget::Column<'a, M> = column![].spacing(2);
         if !look.title_t.hidden {
-            col = col.push(
+            col = col.push(align(
                 look.title_t
                     .text(&c.title, t::text())
                     .wrapping(text::Wrapping::None),
-            );
+                look.center_title,
+            ));
         }
-        if !look.meta_t.hidden {
-            col = col.push(if look.meta_set {
-                look.meta_t
-                    .text(&c.meta, t::text_tertiary())
-                    .wrapping(text::Wrapping::None)
-            } else {
-                mono(c.meta.clone()).wrapping(text::Wrapping::None)
-            });
+        if !meta_t.hidden {
+            col = col.push(align(
+                if meta_set {
+                    meta_t
+                        .text(&c.meta, t::text_tertiary())
+                        .wrapping(text::Wrapping::None)
+                } else {
+                    mono(c.meta.clone()).wrapping(text::Wrapping::None)
+                },
+                c_meta,
+            ));
         }
         layers.push(
             container(
@@ -323,14 +484,16 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
             .into(),
         );
     }
-    layers.push(corner(
-        mono(format!("0x{:02x}", c.index + 1))
-            .color(t::INDEX_TAG)
-            .into(),
-        Alignment::Start,
-        Alignment::Start,
-        t::S2,
-    ));
+    if !look.flat {
+        layers.push(corner(
+            mono(format!("0x{:02x}", c.index + 1))
+                .color(t::INDEX_TAG)
+                .into(),
+            Alignment::Start,
+            Alignment::Start,
+            t::S2,
+        ));
+    }
     if let Some(mk) = c.mark {
         layers.push(corner(
             container(mono(mk).color(t::text()))
@@ -346,24 +509,15 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
             t::S2 + if c.progress.is_some() { 3.0 } else { 0.0 },
         ));
     }
-    if let Some(b) = c.badge {
-        layers.push(corner(
-            container(mono(b).color(t::on_accent()))
-                .padding([0.0, t::S2])
-                .style(|_| container::Style {
-                    background: Some(t::accent().into()),
-                    border: border(t::NONE, 0.0, 4.0),
-                    ..Default::default()
-                })
-                .into(),
-            Alignment::End,
-            Alignment::End,
-            t::S2,
-        ));
+    if let Some(b) = c.badge.clone().filter(|_| look.badge_shown()) {
+        layers.push(look.badge_layer(b, corner));
     }
-    if let Some(p) = c.progress {
+    let shown_progress = c.progress.filter(|_| look.progress.hidden != Some(true));
+    if let Some(p) = shown_progress
+        && look.bar_h() == 0.0
+    {
         layers.push(corner(
-            super::progress_bar(p, 3.0),
+            look.bar(p, look.progress.height.unwrap_or(3.0)),
             Alignment::Start,
             Alignment::End,
             0.0,
@@ -406,6 +560,13 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
     });
     let caption_h = look.caption_h();
     let mut body = column![image_box];
+    if look.bar_h() > 0.0 {
+        // Under the image: a band reserved on every card so the cell height stays fixed.
+        body = body.push(match shown_progress {
+            Some(p) => look.bar(p, look.bar_h()),
+            None => space().height(look.bar_h()).into(),
+        });
+    }
     if caption_h > 0.0 {
         let mut cap: iced::widget::Column<'a, M> = column![]
             .spacing(2)
@@ -413,7 +574,7 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
             .height(caption_h - t::S3)
             .clip(true);
         if !look.title_t.hidden {
-            cap = cap.push(
+            cap = cap.push(align(
                 look.title_t
                     .text(
                         &c.title,
@@ -424,17 +585,21 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
                         },
                     )
                     .wrapping(text::Wrapping::None),
-            );
+                look.center_title,
+            ));
         }
-        if !look.meta_t.hidden {
+        if !meta_t.hidden {
             cap = cap.push(
-                container(if look.meta_set {
-                    look.meta_t
-                        .text(&c.meta, t::text_tertiary())
-                        .wrapping(text::Wrapping::None)
-                } else {
-                    mono(c.meta).wrapping(text::Wrapping::None)
-                })
+                container(align(
+                    if meta_set {
+                        meta_t
+                            .text(&c.meta, t::text_tertiary())
+                            .wrapping(text::Wrapping::None)
+                    } else {
+                        mono(c.meta).wrapping(text::Wrapping::None)
+                    },
+                    c_meta,
+                ))
                 .height(look.meta_h())
                 .clip(true),
             );
@@ -466,12 +631,14 @@ pub fn poster_cell<'a, M: Clone + 'a>(c: Cell<M>) -> Element<'a, M> {
         .width(w + 2.0 * pad)
         .height(look.cell_h(h) - 1.0);
     // Shared edges: a hairline right and below each cell.
-    let hair = |w: Length, h: Length| -> Element<'a, M> {
-        container(space())
-            .width(w)
-            .height(h)
-            .style(crate::style::rule)
-            .into()
+    let flat = look.flat;
+    let hair = move |w: Length, h: Length| -> Element<'a, M> {
+        let c = container(space()).width(w).height(h);
+        if flat {
+            c.into()
+        } else {
+            c.style(crate::style::rule).into()
+        }
     };
     let with_edges = row![
         column![cell, hair(Length::Fixed(w + 2.0 * pad), Length::Fixed(1.0))],
@@ -497,6 +664,48 @@ mod tests {
         let l = Look::default();
         assert_eq!((l.pad, l.caption_h(), CAPTION_H), (t::S3, CAPTION_H, 50.0));
         assert_eq!(cell_h(100.0), 100.0 + 24.0 + 50.0 + 1.0);
+    }
+
+    #[test]
+    fn the_new_parts_change_nothing_until_asked() {
+        let l = Look::default();
+        assert_eq!(
+            (l.bar_h(), l.badge_shown(), l.tile_center),
+            (0.0, true, false)
+        );
+        assert!(!l.center_title && !l.center_meta && l.episode_format.is_none());
+        // Same cell height with every web-home part present but the bar inside the image.
+        let classic = Look::of(
+            &cz::parse(cz::PRESETS[2].1)
+                .unwrap()
+                .layout
+                .parts(None, None),
+        );
+        assert_eq!(classic.bar_h(), 0.0);
+    }
+
+    #[test]
+    fn bars_below_tiles_and_subtitles_resize_the_cell() {
+        assert_eq!(
+            look(".card-progress{--progress-position:below;height:5px}").bar_h(),
+            5.0
+        );
+        assert_eq!(
+            look(".card-progress{--progress-position:below;height:5px}").cell_h(90.0),
+            Look::default().cell_h(90.0) + 5.0
+        );
+        let p =
+            cz::parse(".card{--title-position:below}.library-tile{--tile-label:overlay-center}")
+                .unwrap()
+                .layout
+                .parts(None, None);
+        let tiles = Look::tiles(&p);
+        assert!(tiles.tile_center);
+        assert_eq!(tiles.caption_h(), 0.0);
+        // A bigger subtitle makes the details line taller for every card of the strip.
+        let l = look(".card-subtitle{font-size:24px}");
+        assert_eq!(l.caption_h(), t::S3 + 20.0 + 2.0 + 32.0);
+        assert!(!look(".card-badge{--badge-position:none}").badge_shown());
     }
 
     #[test]

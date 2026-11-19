@@ -8,8 +8,10 @@ mod store;
 mod value;
 
 pub use layout::{
-    Aspect, Card, CardImage, Controls, Header, HeaderPosition, Hero, HeroStyle, Layout, Page,
-    Parts, Row, RowLayout, Scope, Section, Shadow, Text, TextTransform, TitlePosition, Visibility,
+    Arrows, Aspect, Badge, BadgePos, Brand, BrandContent, Card, CardImage, Controls, EpisodeFormat,
+    Header, HeaderAlign, HeaderPosition, Hero, HeroStyle, Layout, Page, Parts, Progress,
+    ProgressPos, Row, RowLayout, Scope, Section, Shadow, Text, TextAlign, TextTransform, TileLabel,
+    TitlePosition, Visibility,
 };
 pub use store::{Saved, Store, content_type_ok, fetch, import_name, validate_url};
 pub use value::{Color, Fill};
@@ -872,6 +874,7 @@ fn translate(rules: &[css::Rule], w: &mut Warnings) -> (Theme, Layout) {
 pub const PRESETS: &[(&str, &str)] = &[
     ("Marquee", include_str!("examples/marquee.css")),
     ("Feed", include_str!("examples/feed.css")),
+    ("Classic", include_str!("examples/classic.css")),
 ];
 
 #[cfg(test)]
