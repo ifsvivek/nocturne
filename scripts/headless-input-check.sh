@@ -12,14 +12,25 @@ pid=""
 cleanup() { [ -n "$pid" ] && kill "$pid" 2>/dev/null; $H stop >/dev/null; [ -n "${KEEP:-}" ] || rm -rf "$T"; }
 trap cleanup EXIT
 run() { $H run "$@"; }
-# Synthetic keys only arrive when the window is re-focused after wtype's virtual keyboard connects.
+# One wtype process is one virtual keyboard (it vanishes when the process exits), and the app only receives its keys when the
+# window is re-focused AFTER the compositor has seen that keyboard. A fixed sleep raced the keyboard's start-up and lost about
+# one chord in five, so a key is sent as: start wtype with a long lead-in sleep, wait until sway lists the new keyboard,
+# refocus, check that NOCTURNE really holds the focus, then let the keys fire.
+focused() { [ "$(run swaymsg -t get_tree -r 2>/dev/null | jq -r '.. | objects | select(.focused == true) | .name' | head -1)" = NOCTURNE ]; }
 key() {
-  (run wtype -s 900 "$@" >/dev/null 2>&1 &)
-  sleep 0.4
-  run swaymsg 'focus parent; focus child' >/dev/null 2>&1
-  run swaymsg '[title="NOCTURNE"] focus' >/dev/null 2>&1
-  sleep 1.3
+  run wtype -s 1300 "$@" >/dev/null 2>&1 &
+  local w=$! n
+  for n in $(seq 60); do run swaymsg -t get_inputs -r 2>/dev/null | grep -q wlr_virtual_keyboard && break; sleep 0.05; done
+  for n in 1 2 3 4 5; do
+    run swaymsg 'focus parent; focus child' >/dev/null 2>&1
+    run swaymsg '[title="NOCTURNE"] focus' >/dev/null 2>&1
+    focused && break
+    sleep 0.1
+  done
+  wait "$w" 2>/dev/null
+  sleep 0.3
 }
+chord() { key -M ctrl "$1" -m ctrl; }
 # The server address field on the 1280x800 output.
 shot() { run grim -t ppm -g "444,537 392x44" "$T/$1.ppm"; }
 ndiff() { cmp -l "$T/$1.ppm" "$T/$2.ppm" 2>/dev/null | wc -l; }
@@ -37,38 +48,29 @@ shot empty
 key "$ADDR"
 shot typed
 check "typing shows text in the field" differs empty typed
-# Synthetic ctrl chords occasionally go missing (1 run in 5 lost the very first one), so each repeatable step retries up
-# to three times from a known clipboard sentinel; the check is still the real outcome.
-# try3 <sentinel> <c|x>: set the sentinel, send ctrl+a then ctrl+<c|x>, until the clipboard holds the address.
-try3() {
-  local n
-  for n in 1 2 3; do
-    echo "$1" | run wl-copy -n
-    key -M ctrl a -m ctrl
-    key -M ctrl "$2" -m ctrl
-    clip_is "$ADDR" && return 0
-  done
-  return 1
-}
-try3 SENT1 c
+# Every step starts from a known clipboard sentinel and selects the whole field first, so a lost chord is simply sent once more
+# (retry2); the check itself stays the real outcome.
+retry2() { "$@" || { echo "RETRY $*"; "$@"; }; }
+copy_a() { echo "$1" | run wl-copy -n; chord a; chord c; clip_is "$ADDR"; }
+cut_a() { echo SENT1 | run wl-copy -n; chord a; chord x; clip_is "$ADDR"; }
+paste_a() { echo "$ADDR" | run wl-copy -n; chord a; chord v; copy_a SENT3; }
+retry2 copy_a SENT1
 check "Ctrl+A, Ctrl+C copies the field" clip_is "$ADDR"
-try3 SENT1 x
+retry2 cut_a
 shot cut
 check "Ctrl+X empties the field" same empty cut
 check "Ctrl+X keeps the text on the clipboard" clip_is "$ADDR"
-# The field moves when a validation message appears, so a fixed crop can miss it: prove the paste by state. Paste into
-# the empty field, then copy it back over a sentinel; the clipboard only holds the address again if the paste landed.
-key -M ctrl v -m ctrl
-try3 SENT3 c
+# The field moves when a validation message appears, so a fixed crop can miss it: prove the paste by state. Paste over the
+# (empty) field, then copy it back over a sentinel; the clipboard only holds the address again if the paste landed.
+retry2 paste_a
 check "Ctrl+V restores the text" clip_is "$ADDR"
-echo SENT2 | run wl-copy -n
+# After Tab the field no longer has the focus, so select-all + copy leaves the sentinel alone; a lost Tab shows as the address and is pressed again.
+tab_a() { echo SENT2 | run wl-copy -n; chord a; chord c; clip_is SENT2; }
 key -k Tab
-key -M ctrl a -m ctrl
-key -M ctrl c -m ctrl
+tab_a || { echo "RETRY tab"; key -k Tab; tab_a; }
 check "Tab leaves the field (Ctrl+C copies nothing)" clip_is SENT2
 key -M shift -k Tab -m shift
-sleep 1
-try3 SENT4 c
+retry2 copy_a SENT4
 check "Shift+Tab returns to the field" clip_is "$ADDR"
 echo "SKIP sign-in password field: needs a reachable server"
 exit $FAIL

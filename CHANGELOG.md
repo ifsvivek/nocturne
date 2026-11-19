@@ -13,6 +13,14 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Settings > Sources has a "UI:" button on every source and on a new "All sources" row to choose whose UI is used (NOCTURNE, this server, another server); a fallback is explained on the row. Settings > Themes lists the built-in themes first, has "Refresh imports", shows what was fetched and which fonts loaded, and previews a pasted or imported theme on the whole app until Keep or Revert (a floating bar on every screen).
 - Safe look: Ctrl+Shift+0 or starting with `NOCTURNE_SAFE_THEME=1` restores the built-in look at once, whatever theme is saved.
 
+- Debug builds can write what the active theme did (tokens applied, not applied by kind, imports fetched, fonts loaded) as JSON with `NOCTURNE_THEME_REPORT=<file>` and the `theme-report@<ms>` key hook; `scripts/theme-conformance.sh` fills its applied / not applied column from it.
+
+### Fixed
+- The app's test run no longer crashes now and then with SIGSEGV: tests that build an `iced_test` simulator ran concurrently and now take a shared lock.
+- Signing in to a server whose old token was still in the keyring no longer opens with "Your session ended. Please sign in again."; the note only shows when the session restored at launch was rejected or the session ended while the app was open.
+- `scripts/headless-input-check.sh` no longer loses chords: it waits for the virtual keyboard to appear, refocuses, checks the focus and only then sends the keys; each check starts from a known state and is repeated once if a chord went missing.
+- `scripts/theme-conformance.sh` runs each theme with the import its own project documents (ElegantFin no longer resolves to a Jellyfin 12 fork) and makes "All" use the server's UI, so the NOCTURNE side shows the server's sections.
+
 ### Changed
 - Loaded theme fonts apply at once to headings, labels and buttons (text without an explicit font keeps the launch font).
 - `sources.toml` is version 2: the per-server Server UI switch is now `ui_from = "self"` (migrated automatically).
