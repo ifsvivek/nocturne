@@ -1110,4 +1110,78 @@ mod tests {
             )
         );
     }
+
+    /// WCAG contrast of the primary label against the solid colour of its button under `user` CSS.
+    fn primary_contrast(user: Option<&str>, hero: bool) -> f32 {
+        let mut tree = Tree::new();
+        let parent = if hero {
+            let h = tree.doc.add(0, "section.hero");
+            tree.doc.add(h, "div.hero-actions")
+        } else {
+            tree.doc.add(0, "div.detail-actions")
+        };
+        let b = tree.doc.add(
+            parent,
+            if hero {
+                "a.button.primary"
+            } else {
+                "a.button.button-primary"
+            },
+        );
+        let l = tree.doc.add(b, "span.button-label");
+        tree.doc.text(l, "Play");
+        let mut engine = Engine::new(&sheet_css());
+        engine.set_user_css(user);
+        let s = engine.build(
+            &tree.doc,
+            (800.0, 600.0),
+            Interaction::default(),
+            &Builders::new(),
+            &mut approx,
+        );
+        let lum = |c: nocturne_core::customize::value::Color| {
+            let f = |v: u8| {
+                let v = v as f32 / 255.0;
+                if v <= 0.03928 {
+                    v / 12.92
+                } else {
+                    ((v + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b)
+        };
+        let bg = s
+            .style(find(&s, "button")[0])
+            .bg
+            .iter()
+            .rev()
+            .find_map(|f| match f {
+                nocturne_style::paint::Fill::Solid(c) => Some(*c),
+                _ => None,
+            })
+            .expect("a solid button fill");
+        let fg = s.style(find(&s, "button-label")[0]).color;
+        let (a, b) = (lum(bg), lum(fg));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn the_primary_label_reads_on_its_button_in_every_look() {
+        let netflin_like = ":root { --nocturne-accent: #e50914; --nocturne-on-accent: #ffffff; }";
+        for (name, css, hero) in [
+            ("default", None, true),
+            ("default detail", None, false),
+            ("glass", Some(nocturne_style::STARTERS[1].1), true),
+            ("glass detail", Some(nocturne_style::STARTERS[1].1), false),
+            (
+                "spotlight detail",
+                Some(nocturne_style::STARTERS[0].1),
+                false,
+            ),
+            ("accent theme", Some(netflin_like), true),
+        ] {
+            let r = primary_contrast(css, hero);
+            assert!(r >= 4.5, "{name}: {r:.2}");
+        }
+    }
 }

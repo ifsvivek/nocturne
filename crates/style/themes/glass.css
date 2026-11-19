@@ -81,6 +81,7 @@ page[data-scrolled="true"] .header::before { opacity: 1; }
 .hero-actions .button:active { transform: scale(0.98); }
 .hero-actions .button.primary { padding: 0 28px; border-color: #f1f2f4; background: #f1f2f4; box-shadow: none; color: #05070a; }
 .hero-actions .button.primary:hover { background: #ffffff; border-color: #ffffff; }
+.hero-actions .button.primary .button-label, .hero-actions .button.primary .button-icon, .detail-actions .button.button-primary .button-label, .detail-actions .button.button-primary .button-icon { color: #05070a; }
 .hero-meta { order: 2; margin-top: 12px; max-width: 560px; color: rgba(255, 255, 255, 0.88); font-size: 15px; line-height: 1.45; }
 
 /* ---- sections: an accent rail before every title, squircle cards, titles below ---- */
@@ -160,14 +161,14 @@ page[data-scrolled="true"] .header::before { opacity: 1; }
 .section-skeleton { display: flex; }
 .skeleton-row { display: flex; flex-direction: row; gap: 12px; padding: 0 var(--nocturne-page-pad); }
 
-/* ---- hero carousel: arrows, dots, a progress hairline; a skeleton while it loads ---- */
-.hero-nav { display: flex; flex-direction: row; align-items: center; justify-content: space-between; position: absolute; top: 0; bottom: 0; left: 0; right: 0; padding: 0 24px; pointer-events: none; }
+/* ---- hero carousel: the spec draws no indicators, so arrows, dots and the hairline stay hidden (the timer and Left/Right still work; other themes can show them); a skeleton while it loads ---- */
+.hero-nav { display: none; flex-direction: row; align-items: center; justify-content: space-between; position: absolute; top: 0; bottom: 0; left: 0; right: 0; padding: 0 24px; pointer-events: none; }
 .hero-arrow { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid var(--glass-edge); border-radius: 50%; background: var(--glass-sheen), var(--glass-fill); box-shadow: var(--glass-shadow); color: #f1f2f4; font-size: 26px; pointer-events: auto; opacity: 0.7; transition: opacity 200ms ease, background 200ms ease; }
 .hero-arrow:hover { opacity: 1; background: linear-gradient(rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03)), var(--glass-fill); }
-.hero-dots { display: flex; flex-direction: row; align-items: center; gap: 8px; position: absolute; right: var(--nocturne-page-pad); bottom: 148px; }
+.hero-dots { display: none; flex-direction: row; align-items: center; gap: 8px; position: absolute; right: var(--nocturne-page-pad); bottom: 148px; }
 .hero-dot { width: 6px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.35); transition: background 200ms ease, width 200ms ease; }
 .hero-dot[data-active="true"] { width: 22px; background: #f1f2f4; }
-.hero-progress { display: block; position: absolute; left: var(--nocturne-page-pad); right: var(--nocturne-page-pad); bottom: 112px; height: 2px; background: rgba(255, 255, 255, 0.12); }
+.hero-progress { display: none; position: absolute; left: var(--nocturne-page-pad); right: var(--nocturne-page-pad); bottom: 112px; height: 2px; background: rgba(255, 255, 255, 0.12); }
 .hero-progress-fill { height: 2px; background: #dc2626; }
 .hero-skeleton { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
 .hero[data-region="loading"] .hero-skeleton { display: block; }
