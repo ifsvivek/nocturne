@@ -5,6 +5,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 ## [Unreleased]
 
 ### Added
+- Themes can now restyle layout with CSS on named parts: card shape and size, caption position, row carousels or grids, home section order, hero style, header position and items, typography and hover zoom, with two built-in presets, Marquee and Feed.
 - Themes: Settings > Themes opens a page to import a CSS theme (paste, a `.css` file, or one https address you type, fetched once and refreshed only when you ask) and apply it to the whole app, optionally with a different theme per server. NOCTURNE reads only what it can map to its own look (colours, corner radii, window background, a font family, backdrop opacity) and lists everything else with its line and column; nothing is executed or downloaded from inside the stylesheet. A preview lasts 15 seconds unless you keep it ([CUSTOMIZATION_PLAN.md](docs/dev/CUSTOMIZATION_PLAN.md)).
 - Trakt connects with one click: NOCTURNE ships a public client id (PKCE, no secret), so Settings > Trakt shows just "Connect Trakt". "Advanced: use your own Client ID" (or `NOCTURNE_TRAKT_CLIENT_ID`) still overrides it, and a build without a built-in id asks for one as before ([TRAKT.md](docs/TRAKT.md)).
 
