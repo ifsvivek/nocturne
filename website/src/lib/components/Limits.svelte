@@ -10,7 +10,7 @@
     "Live TV, DVR, DLNA, casting and gapless music, not planned",
   ];
   const rough = [
-    "HDR in the pop-out window needs an HDR display and mpv 0.42 or newer; it has been tried on one Linux HDR setup so far. In the window, HDR is tone-mapped to SDR.",
+    "HDR in the pop-out window needs an HDR display and mpv 0.42 or newer; it has been tried on a Linux, a Windows and a macOS HDR setup. In the window, HDR is tone-mapped to SDR.",
     "Windows (x64) and macOS (Apple Silicon) are previews on the GitHub release: built on GitHub's machines and tried by the maintainer on a real PC and Mac, but unsigned, so the system warns on first start. Video plays in mpv's own window there.",
     "Themes: letter spacing is read but not drawn, and the hover zoom has not been tried with a real pointer yet. A Jellyfin theme from the web has not been tried against the app.",
     "Server UI has not been tried with several servers at once or with a server's real branding CSS. Live TV and the audio and book continue rows are not shown.",
