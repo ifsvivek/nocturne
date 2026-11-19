@@ -4,7 +4,7 @@
 //! library deletes only NOCTURNE's own index and state, never a media file.
 use super::catalog::DEV;
 use super::message::{Message, SrcAct};
-use super::{AccountBack, App, Phase};
+use super::{AccountBack, App, Phase, UpdateStage};
 use crate::style::{self, border};
 use crate::theme as t;
 use crate::widget::{action_button, dot, icon, mono, rule, section, status_color};
@@ -673,6 +673,49 @@ impl App {
                     Message::UpdateCopy(cmd),
                 ),
             ),
+            Action::Install(art) => match &self.update_stage {
+                UpdateStage::Idle => (
+                    format!("NOCTURNE {version} is available."),
+                    action_button(
+                        "Download and install",
+                        true,
+                        false,
+                        false,
+                        false,
+                        Message::UpdateInstall(art.clone()),
+                    ),
+                ),
+                UpdateStage::Downloading { progress, size } => {
+                    let done = progress.load(std::sync::atomic::Ordering::Relaxed);
+                    let pct = (done * 100).checked_div(*size).unwrap_or(0).min(100);
+                    (
+                        format!("Downloading NOCTURNE {version}: {pct}%"),
+                        space().into(),
+                    )
+                }
+                UpdateStage::Ready(_) => (
+                    format!("NOCTURNE {version} is ready."),
+                    action_button(
+                        "Restart to update",
+                        true,
+                        false,
+                        false,
+                        false,
+                        Message::UpdateRestart,
+                    ),
+                ),
+                UpdateStage::Failed(e) => (
+                    format!("The update failed: {e}"),
+                    action_button(
+                        "Try again",
+                        true,
+                        false,
+                        false,
+                        false,
+                        Message::UpdateInstall(art.clone()),
+                    ),
+                ),
+            },
             Action::Download(url) => (
                 format!("NOCTURNE {version} is available."),
                 action_button(

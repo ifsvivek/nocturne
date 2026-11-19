@@ -2842,6 +2842,7 @@ dependencies = [
 name = "nocturne-core"
 version = "0.4.0"
 dependencies = [
+ "aws-lc-rs",
  "base64 0.23.1",
  "getrandom 0.3.4",
  "libc",
