@@ -66,7 +66,12 @@ const ALT = {
   "smart-menu-crop": "The Smart menu in the header: Unwatched 4K movies, Added this week, Unwatched shows, Continue watching, Top rated not watched, Manage smart collections",
   "downloads-crop": "The Downloads panel: Northbound Lights downloading, 50 MB of 417 MB, with Pause and Cancel",
   "hdr-crop": "The HDR question in the player: Play here in SDR, or Open in HDR pop-out window, with Remember my choice",
-  "trakt-crop": "The Trakt dialog with your own Client ID: what is sent, an empty Client ID field, Sign in with Trakt and Create a Trakt app",
+  "trakt-crop": "The Trakt dialog: what is sent to Trakt, then Connect Trakt and Advanced: use your own Client ID",
+  themes: "Settings, Themes: the examples Marquee and Feed, the saved themes with Marquee active, a theme per server, and the Marquee stylesheet in the editor",
+  marquee: "Home with the Marquee theme: a full-bleed billboard under a see-through header, a red accent and wide thumbnails without captions",
+  feed: "Home with the Feed theme: no billboard, Continue watching as a grid of thumbnails with the title and details below",
+  "server-ui": "Home in the server's layout with only Living room in the source filter: the billboard, then the server's My media row of its libraries",
+  "sections-crop": "Home of Living room: the server's home sections, each with On or Off and up and down arrows, view-only until server changes are on",
 };
 // Image props for one screenshot: src (largest), srcset, intrinsic size and alt, so layout never shifts.
 export function shot(key) {

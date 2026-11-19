@@ -59,7 +59,7 @@
 </script>
 
 <!-- Ten scenes. The first is the story (many sources, one library); the others are large stills from the app with
-     their copy set as a subtitle. 0.4 stills are 3840x2160 headless captures (see README). -->
+     their copy set as a subtitle. 0.4 and 0.5 stills are 3840x2160 headless captures (see README). -->
 <div id="tour">
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s0">
     <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 1</span><h2 id="s0" class="scene-title">One library</h2><Next class="mt-5 ml-0" /></header>
@@ -154,7 +154,7 @@
         <div class="rule pt-5"><dt class="role">{t}</dt><dd class="m-0 mt-3 text-ink-2">{d}{#if credit}<span class="mt-3 block text-sm text-ink-3">{credit}</span>{/if}</dd></div>
       {/each}
     </dl>
-    <figure class="reveal mx-auto mt-14 mb-0 w-[min(760px,100%-40px)]"><Shot name="trakt-crop" sizes={narrow} /><figcaption class="mt-4 text-center text-sm text-ink-2">Trakt's advanced option: your own Trakt app's Client ID, then a sign-in in your browser. By default the dialog shows one button, Connect Trakt.</figcaption></figure>
+    <figure class="reveal mx-auto mt-14 mb-0 w-[min(760px,100%-40px)]"><Shot name="trakt-crop" sizes={narrow} /><figcaption class="mt-4 text-center text-sm text-ink-2">Connect Trakt: one click, then a sign-in on trakt.tv in your browser. Your own Trakt app's Client ID stays an advanced option.</figcaption></figure>
   </section>
 
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s4">
@@ -177,12 +177,21 @@
 
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s9">
     <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 9</span><h2 id="s9" class="scene-title">Your look</h2><Next v="0.5.0" class="mt-5 ml-0" /></header>
+    <div class="reveal mx-auto w-[min(1320px,100%-40px)]"><Shot name="themes" sizes={framed} /></div>
     <p class="subtitle">Themes are CSS that NOCTURNE reads itself and draws natively, with no browser inside. They restyle NOCTURNE's own parts, in Settings, Themes.</p>
+    <div class="stagger mx-auto mt-[clamp(56px,7vw,96px)] grid w-[min(1520px,100%-40px)] gap-6 md:grid-cols-2">
+      <figure class="m-0"><Shot name="marquee" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Marquee: a billboard under a see-through header and wide carousels without captions.</figcaption></figure>
+      <figure class="m-0"><Shot name="feed" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Feed: no billboard, a grid of thumbnails with the title and details below.</figcaption></figure>
+    </div>
     <dl class="stagger mx-auto mt-14 grid w-[min(1000px,100%-40px)] gap-x-14 gap-y-10 md:grid-cols-2">
       {#each look as [t, d]}
         <div class="rule pt-5"><dt class="role">{t}</dt><dd class="m-0 mt-3 text-ink-2">{d}</dd></div>
       {/each}
     </dl>
+    <div class="stagger wrap mt-[clamp(56px,7vw,96px)] grid gap-x-8 gap-y-12 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] md:items-end">
+      <figure class="m-0"><Shot name="server-ui" sizes={left} /><figcaption class="mt-4 text-sm text-ink-2">Server UI: with Living room alone in the source filter, Home follows that server's layout.</figcaption></figure>
+      <figure class="m-0"><Shot name="sections-crop" sizes={right} /><figcaption class="mt-4 text-sm text-ink-2">Settings, Sources, Sections: the server's home sections for your account, editable once server changes are on.</figcaption></figure>
+    </div>
     <p class="mx-auto mt-10 mb-0 w-[min(1000px,100%-40px)] text-sm text-ink-3">Not arbitrary web CSS: each page keeps its structure, and a Jellyfin web theme applies only partly, mostly its colours, radii and font. Letter spacing is read but not drawn; density, type size and backdrop blur are applied approximately.</p>
   </section>
 
