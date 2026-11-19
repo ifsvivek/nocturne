@@ -1,6 +1,6 @@
 # Media sources: local library, several Jellyfin servers, one catalog
 
-Status: design accepted 2026-11-16; implemented in milestones (bottom). NOCTURNE must be useful with no server at all, with one or several Jellyfin servers, or with both. Server media is never copied, moved or modified; local files are never renamed, moved, modified or deleted.
+Status: design accepted 2026-11-16; implemented in milestones (bottom); Server UI (below) shipped in 0.5. NOCTURNE must be useful with no server at all, with one or several Jellyfin servers, or with both. Server media is never copied, moved or modified; local files are never renamed, moved, modified or deleted.
 
 ## Where we start
 

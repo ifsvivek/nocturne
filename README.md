@@ -4,20 +4,19 @@
 
 **YOUR MEDIA. YOUR NIGHT.**
 
-A native media center for Linux: local folders and Jellyfin servers in one cinematic library.
+A native media center for Linux (Windows and macOS previews too): local folders and Jellyfin servers in one cinematic library.
 
-Built with Rust, [Iced](https://iced.rs/), libmpv, Tokio and the Jellyfin REST API. Video plays inside the app window through libmpv with hardware decoding. Linux needs a Wayland session.
+Built with Rust, [Iced](https://iced.rs/), libmpv, Tokio and the Jellyfin REST API. Video plays inside the app window through libmpv with hardware decoding. Linux needs a Wayland session; X11 is not supported.
 
 [Website](https://nocturne.ifsvivek.in) · [Install](#install) · [Package repository](https://nocturne.ifsvivek.in/repo) · [Releases](https://github.com/ifsvivek/nocturne/releases/latest) · [Features](docs/FEATURES.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](CHANGELOG.md)
 
-Status: version 0.4, early software, Linux x86_64 (tested on Arch; .deb and .rpm install-tested on Debian, Ubuntu and Fedora). macOS and Windows builds are previews only ([docs/PLATFORMS.md](docs/PLATFORMS.md)). See
-[docs/ROADMAP.md](docs/ROADMAP.md) for what is coming and [docs/FEATURES.md](docs/FEATURES.md) for what is verified.
+Status: version 0.5.1 (2026-11-19), early software. Linux x86_64 is the supported platform: tested on Arch, with signed pacman, apt and dnf repositories and a tarball (.deb and .rpm are install-tested on Debian, Ubuntu and Fedora in clean containers). Windows (x64) and macOS (Apple Silicon) are unsigned previews on the GitHub release, not yet tried on a real PC or Mac ([docs/PLATFORMS.md](docs/PLATFORMS.md)). See [docs/ROADMAP.md](docs/ROADMAP.md) for what is coming and [docs/FEATURES.md](docs/FEATURES.md) for what is verified.
 
-New in 0.4: a secondary subtitle and per-show language memory, an HDR pop-out choice for HDR videos, online details and subtitle search for local media (your own keys), offline copies from a server, smart collections, one watched state across sources, Trakt, remote control from other Jellyfin apps, a couch mode with gamepad support, and .deb / .rpm packages.
+New in 0.5: Linux is Wayland-only; in-app updates (a daily check you can turn off, signed downloads for per-user installs); native CSS themes that can restyle layout (cards, Home rows, hero, header), with the Marquee and Feed examples and a theme per server; Server UI per server (that server's own home sections, branding and a home-sections editor); real text editing in every field; one-click Trakt connect; and apt and dnf repositories next to the pacman one. 0.5.1 adds a macOS update artifact and two small fixes ([CHANGELOG.md](CHANGELOG.md)).
 
 ## Screenshots
 
-Captured from 0.3.0 at 3840x2160 against a generated demo library (two demo servers and a demo folder), not personal media.
+Captured from 0.3.0 (the interface has changed since, mainly themes and Server UI) at 3840x2160 against a generated demo library (two demo servers and a demo folder), not personal media.
 
 |                                                           |                                                               |
 | --------------------------------------------------------- | ------------------------------------------------------------- |
@@ -46,9 +45,11 @@ The full checklist is [docs/FEATURES.md](docs/FEATURES.md); verification notes a
 - **Watch together**: SyncPlay groups on a server; play, pause, seek and skip stay in step for everyone (press `g`).
 - **Playlists and music**: create, edit, reorder and delete your playlists; a music queue with play next, shuffle and repeat.
 - **Admin** (administrator accounts): dashboard, users, libraries, providers, scheduled tasks, devices, activity, logs, API keys, branding, networking, transcoding, trickplay, backups and plugins, per server, each change behind a confirmation dialog.
+- **Your look**: import a CSS theme (paste, a file or one address you type) and apply it to the whole app or to one server; themes can restyle cards, Home rows, the hero and the header on named parts, with no browser engine and nothing executed. Per server you can switch on that server's own Home layout and branding (Settings > Sources > Layout) and, with server changes on, edit its home sections. Settings > Themes has two examples, Marquee and Feed.
+- **Updates**: NOCTURNE checks once a day (Settings > Updates turns it off). Per-user installs download, verify (size, sha256, ed25519 signature) and replace themselves, then ask you to restart; package-managed installs show the pacman, apt or dnf command instead.
 - **Comfort**: a reduce-motion setting that follows the desktop preference, keyboard-first navigation, key help (`?`).
 
-Not implemented: Live TV, DLNA, casting, gapless music, playable books and audiobooks, online metadata lookup for local files, and a few admin settings (HTTPS and proxy editing, access schedules). Windows and macOS are not supported yet.
+Not implemented: Live TV, DLNA, casting, gapless music, playable books and audiobooks, and a few admin settings (HTTPS and proxy editing, access schedules). Planned for 0.6 and later: Seerr requests, play and save links through yt-dlp, a native flex/grid layout engine for themes ([docs/ROADMAP.md](docs/ROADMAP.md)).
 
 ## Install
 
@@ -86,14 +87,14 @@ git clone https://github.com/ifsvivek/nocturne && cd nocturne/packaging && makep
 ### Other distributions: release tarball
 
 ```sh
-curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.4.0/nocturne-0.4.0-x86_64-linux.tar.gz
-curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.4.0/nocturne-0.4.0-x86_64-linux.tar.gz.sha256
-sha256sum -c nocturne-0.4.0-x86_64-linux.tar.gz.sha256
-tar xf nocturne-0.4.0-x86_64-linux.tar.gz && cd nocturne-0.4.0-x86_64-linux
-sudo ./install.sh              # installs to /usr/local; `sudo ./install.sh uninstall` removes it
+curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.5.1/nocturne-0.5.1-x86_64-linux.tar.gz
+curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.5.1/nocturne-0.5.1-x86_64-linux.tar.gz.sha256
+sha256sum -c nocturne-0.5.1-x86_64-linux.tar.gz.sha256
+tar xf nocturne-0.5.1-x86_64-linux.tar.gz && cd nocturne-0.5.1-x86_64-linux
+sudo ./install.sh              # installs to /usr/local (PREFIX changes it); `sudo ./install.sh uninstall` removes it
 ```
 
-The installer checks every runtime library and installs missing ones with your package manager (pacman, apt, dnf or zypper; it prints the command first, `--no-deps` skips this). The binary is built on current Arch and needs a recent glibc, so on older distributions it may refuse to start: use the .deb / .rpm below or build from source there.
+The installer checks every runtime library and installs missing ones with your package manager (pacman, apt, dnf or zypper; it prints the command first, `--no-deps` skips this). The binary is built on current Arch and needs a recent glibc, so on older distributions it may refuse to start: use the .deb / .rpm below or build from source there. A tarball install is not owned by a package manager, so it updates itself from inside the app when its directory is writable by you (otherwise Settings > Updates shows the download).
 
 ### Debian 13 / Ubuntu 24.04 and newer: apt repository
 
@@ -119,6 +120,18 @@ sudo dnf install nocturne
 
 `dnf` asks once to import the signing key (fingerprint `5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B`); answer `y` after comparing it. The `addrepo` form is dnf5 (Fedora 41 and newer); on dnf4 use `sudo dnf config-manager --add-repo https://nocturne.ifsvivek.in/repo/rpm/nocturne.repo` (package `dnf-plugins-core`) or save the file to `/etc/yum.repos.d/` yourself. To install a single file instead: download the `.rpm` from the releases page and `sudo dnf install ./nocturne-*.rpm`.
 
+### Windows and macOS: previews
+
+Attached to the [GitHub release](https://github.com/ifsvivek/nocturne/releases/latest). Both are built and smoke-tested on GitHub's machines but **not yet tried on a real PC or Mac**, and **unsigned**, so the system warns on first start. Video plays in mpv's own window there, not inside the app window.
+
+- **Windows (x64)**: run `nocturne-<version>-x86_64-setup.exe` (a per-user install, no administrator prompt) or unzip the portable `.zip`. SmartScreen will say the publisher is unknown: choose More info, then Run anyway.
+- **macOS (Apple Silicon)**: open the `.dmg` and drag NOCTURNE to Applications. Gatekeeper will refuse the first launch: right-click the app, choose Open, then Open again (or allow it in System Settings > Privacy & Security).
+- Both update themselves from inside the app; the macOS preview installs from the `.tar.gz` that sits next to the `.dmg` (new in 0.5.1, not yet run on a Mac).
+
+### AppImage (experimental)
+
+The release workflow also builds an AppImage on a best-effort basis; it is large, not recommended, and not supported ([docs/PACKAGING.md](docs/PACKAGING.md)). Prefer a repository, the tarball or the source build.
+
 ### From source
 
 No libmpv development files are needed: libmpv is loaded at run time.
@@ -137,14 +150,14 @@ cargo build --release --locked      # stable Rust 1.89+; a clean release build t
 - A **Wayland** session (GNOME, KDE Plasma, Sway, Hyprland, ...). X11 sessions are not supported.
 - A **Vulkan** driver (Mesa or NVIDIA) and **EGL**, as provided by your graphics stack.
 - A **Secret Service** provider (gnome-keyring, KWallet or KeePassXC) to remember sign-ins; without one you sign in each time. Tokens are never written to a file.
-- Packages are tested on Arch Linux only. Full dependency list: [docs/PACKAGING.md](docs/PACKAGING.md).
+- Full dependency list: [docs/PACKAGING.md](docs/PACKAGING.md).
 
 ## Supported environments
 
 | Area | Status |
 |---|---|
-| OS and architecture | Linux, x86_64. macOS and Windows are planned, not available yet ([docs/PLATFORMS.md](docs/PLATFORMS.md)). |
-| Packages | Tested on Arch Linux only (see [docs/PACKAGING.md](docs/PACKAGING.md)). Other distributions should build from source but are unverified. |
+| OS and architecture | Linux, x86_64. Windows (x64) and macOS (Apple Silicon) are unsigned previews, not yet tried on real hardware ([docs/PLATFORMS.md](docs/PLATFORMS.md)). |
+| Packages | Arch (pacman repository) is the daily-driver target; .deb and .rpm (apt and dnf repositories) are install-tested in clean Debian, Ubuntu and Fedora containers, not yet on a full desktop install ([docs/PACKAGING.md](docs/PACKAGING.md)). Other distributions: tarball or source, unverified. |
 | Wayland (required) | In-window video (libmpv in a subsurface, hardware decoding). Developed and tested here, on NVIDIA proprietary drivers; AMD and Intel GPUs are untested. |
 | X11 | Not supported: NOCTURNE prints a message and exits. |
 | Servers | Jellyfin 12.4 (a real server and a throwaway one); several servers at once. Other versions are untested; other media servers are not supported. |
@@ -161,6 +174,8 @@ cargo build --release --locked      # stable Rust 1.89+; a clean release build t
 - **"No system keyring found".** No Secret Service provider is running, so you will sign in again next time. Start gnome-keyring, KWallet or KeePassXC with the Secret Service integration enabled; NOCTURNE never writes tokens to a file.
 - **A source shows "Signed out".** That server revoked the login; use *Sign in again* in Settings > Sources. Other sources are not affected. A server that does not answer shows "Offline" and is retried with backoff.
 - **A local folder shows as unavailable.** Its drive is probably not mounted; items return when it is. Nothing is removed while a folder is away.
+- **The update banner says "Download" instead of installing.** Package-managed installs (pacman, apt, dnf) update through the package manager, and a per-user install whose directory you cannot write only offers the download. Settings > Updates turns the daily check off.
+- **Windows or macOS warns that the app is from an unknown publisher.** The previews are unsigned; see the install notes above.
 - **Progress, watched or favourite changes do nothing.** They are off by default: enable **Settings > Allow NOCTURNE to change data on the server** ([docs/WRITES.md](docs/WRITES.md)).
 - **Reporting a bug.** Use the issue template and remove access tokens, server addresses and usernames from any logs before posting.
 
@@ -172,7 +187,7 @@ cargo build --release --locked      # stable Rust 1.89+; a clean release build t
 
 ## Configuration and keyring
 
-- Settings: `$XDG_CONFIG_HOME/nocturne/settings.toml` (default `~/.config/nocturne/`). Preferences only.
+- Settings: `$XDG_CONFIG_HOME/nocturne/settings.toml` (default `~/.config/nocturne/`). Preferences only. Saved themes are in `themes.toml` next to it.
 - Sources: `$XDG_CONFIG_HOME/nocturne/sources.toml` lists your servers (URL, user name, label) and local folders, their order and whether each is enabled. No secrets. Upgrading from 0.2, your server login becomes a source automatically; the old `servers.toml` and `accounts.toml` are left in place.
 - Login tokens: your system keyring (Secret Service), one per server account, never a file.
 - Local library: the index, your manual matches and local watch state live under `$XDG_DATA_HOME/nocturne/local/` (default `~/.local/share/nocturne/local/`). Deleting that directory only forgets what NOCTURNE learned; your media files are untouched.

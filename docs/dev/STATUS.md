@@ -5,70 +5,41 @@ Maintainer working notes for the public tree. User-facing status is in
 
 ## Release state
 
-0.2.0 (GPUI interface, Jellyfin only) is published (tag v0.2.0 and a GitHub Release with the tarball, checksum and PKGBUILD). **0.3.0 is the current development state**: Iced interface (GPUI removed), local library, several servers and one unified library, libmpv loaded at run time. Release notes draft: [RELEASE_NOTES_0.3.0.md](RELEASE_NOTES_0.3.0.md). Release gate: `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo deny`, secret scan of the tree and history).
+**0.5.1 is the latest release (2026-11-19)**, after 0.5.0 the same day; 0.4.0 (2026-11-18) and 0.3.0 before it. Published: GitHub release (tarball, .deb, .rpm, Windows setup.exe and zip, macOS .dmg and, from 0.5.1, the macOS `.tar.gz`, best-effort AppImage), signed pacman, apt and dnf repositories at `https://nocturne.ifsvivek.in/repo`, the website, and the signed update manifest. Contents: [CHANGELOG.md](../../CHANGELOG.md) `[0.5.0]` and `[0.5.1]`; per-feature status in [FEATURES.md](../FEATURES.md); the 0.5 QA pass in [QA_REPORT.md](../QA_REPORT.md). Release flow: [PACKAGING.md](../PACKAGING.md#releasing) (CI builds and drafts, the maintainer signs repositories and update artifacts locally). Gate: `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo deny`, secret scan of the tree and history).
 
-0.3.0 release checklist (the maintainer tests an Arch build first; nothing is published before that):
-- [ ] `scripts/ci-checks.sh` green on the final tree.
-- [ ] Run on Wayland: sign in, local folder, play from each, versions and sources picker, quit while playing.
-- [ ] Clean-container install of the tarball and the PKGBUILD (`scripts/test-install.sh`); play a video after install.
-- [ ] Re-derive the runtime library list for the final binary (winit and wgpu dlopen libX11, libXcursor, libXrandr, libXi, libX11-xcb, libwayland-*, libxkbcommon) and keep `packaging/install.sh`, the PKGBUILD and
-      [PACKAGING.md](../PACKAGING.md) in step.
-- [ ] Put the real sha256 in `packaging/PKGBUILD`; regenerate `THIRD_PARTY_NOTICES.md` (`scripts/gen-notices.py`).
-- [ ] Footprint numbers for the release in [PERF.md](PERF.md) (`scripts/perf.sh`) against the 0.2.0 baseline.
-- [ ] Repeat the history secret and personal-data audit.
-- [ ] Recapture the screenshots from a generated demo library (`docs/screenshots/`, README, website) and set `VERSION` to 0.3.0 and flip `RELEASED` in `website/site.config.json`; redeploy the site.
-- [ ] Set the date in `CHANGELOG.md` (`[0.3.0] - UNRELEASED`), tag, and publish the GitHub release from
-      [RELEASE_NOTES_0.3.0.md](RELEASE_NOTES_0.3.0.md) with the checksum.
+What 0.5 added: native CSS themes with layout on named parts (`crates/core/src/customize/`, Themes page in `crates/app/src/app/themes.rs`, Marquee and Feed examples, a theme per server); Server UI per server (`core/server_ui.rs`, `app/server_ui.rs`; home-sections editor behind `allow_server_writes`); in-app updates (`core/update.rs`, `core/update_install.rs`, signed with a separate ed25519 key); Linux Wayland-only; apt and dnf repositories; Windows and macOS previews; real text editing in every field; built-in Trakt client id; headless test-session scripts. 0.5.1: the macOS update tarball, theme import creating a new theme (`customize::import_name`), a steadier `scripts/headless-input-check.sh`.
 
-## 0.5.1 (unreleased)
+## Still open after 0.5.1
 
-- macOS: `scripts/package-macos.sh` also writes `nocturne-<ver>-aarch64-macos.tar.gz` (+ `.sha256`) with `NOCTURNE.app` at the top level, uploaded by the `macos` job of `platforms.yml` and picked up by release.yml; the maintainer signs it and `scripts/make-update-manifest.sh` lists it as `macos-aarch64`. `update_install::extract_app` is covered by a Linux test of the tar layout and bundle swap, but the real macOS path is still unrun on a Mac.
-- Themes import (file or URL) detaches from the selected saved theme and adds a new one named after the file (`customize::import_name`).
-- `scripts/headless-input-check.sh`: clipboard round trips with retries instead of a fixed crop.
+- The updater end to end from a published release (tested with unit and integration tests and a local server); the macOS update path has never run on a Mac.
+- Windows and macOS previews on real hardware (build, keyring, mpv IPC, paths, SmartScreen / Gatekeeper behaviour); signing certificates.
+- Pointer-only theme actions (Keep, Reset, assigning a per-server theme by click), hover zoom with a real pointer; Server UI against a server with real branding CSS and with several servers; a theme from the Jellyfin web.
+- Carried from 0.4: HDR on an HDR display, couch mode with a real gamepad and on a TV, remote control from a phone app, the .deb and .rpm on full desktop installs; Flatpak is undecided.
+- Live Trakt scrobble and import were verified in 0.4 against a real account; one-click connect with the built-in id is verified.
 
-## 0.5 in progress: native CSS themes
+## Next: 0.6
 
-The engine (`crates/core/src/customize/`) and the Themes page (`crates/app/src/app/themes.rs`) are in; details and limits are in [CUSTOMIZATION_PLAN.md](CUSTOMIZATION_PLAN.md) section 13. Debug hooks for QA: `NOCTURNE_KEYS=open-themes@ms,theme-path@ms,theme-import@ms,theme-preview@ms,theme-apply@ms` with `NOCTURNE_THEME_FILE=/path/x.css`.
+Seerr requests, play and save links with yt-dlp, and the native flex/grid theme engine (stage 2, researched on the branch `theme-engine-spike`, not released). Brief: [V06_BRIEF.md](V06_BRIEF.md); order and scope are the maintainer's call, nothing starts without a go-ahead. Small compatibility fixes listed in [ROADMAP.md](../ROADMAP.md) can go first.
 
-## 0.5: Server UI mode (phase 0 and 1 done)
+## Debug hooks for QA
 
-Per-server switch, the server's home sections and My media row, branding as a theme layer, login disclaimer and a home-sections editor behind `allow_server_writes` are in; what is verified and what is not is in [SERVER_UI_PLAN.md](SERVER_UI_PLAN.md) section 7. Debug hooks for QA: `NOCTURNE_KEYS=cycle-filter@ms,layout-1@ms,sections-1@ms,sec-down-0@ms,sec-save@ms`.
-
-## 0.4 (local branch `v0.4-local`, never pushed)
-
-0.3.0 is released (tag, pacman repository live). 0.4 is feature-complete on the local branch and not published; no release until the maintainer has tested it. Contents: [CHANGELOG.md](../../CHANGELOG.md) `[0.4.0]`, honest per-feature status in
-[FEATURES.md](../FEATURES.md).
-
-Verified: offline copies (throwaway server), .deb / .rpm install in clean containers, online metadata (TMDB) and OpenSubtitles search live, Windows cross-compile of the whole app, unit tests for everything pure. Mock-tested only: Trakt (sign-in, scrobble, import), remote control, watched cascade on two real servers, MusicBrainz / TVmaze. Cannot be checked here: HDR output (no HDR display, mpv 0.41), gamepad / TV couch mode, anything on real Windows or macOS (macOS code was never built).
-
-0.4 release checklist:
-- [x] QA walkthrough of every 0.4 feature (2026-11-17, see [QA_REPORT.md](../QA_REPORT.md) "0.4.0 walkthrough"); open items listed there.
-- [x] Trakt one-click connect: built-in public client id with user override (env, then saved id); NOCTURNE's real id is built in since 20e253e; the placeholder path remains for source builds that blank it, and falls back to the old prompt.
-- [ ] Live Trakt test with the maintainer's own Trakt app: sign-in, scrobble, history import, disconnect.
-- [ ] HDR hardware test on an HDR display (pop-out colours, fullscreen, IPC control, return to the window).
-- [ ] Couch mode with a real gamepad and on a TV.
-- [ ] Real-machine tests on Windows and macOS (build, keyring, mpv IPC, paths); installers only after that.
-- [ ] Remote control checked from a real Jellyfin Web / mobile client; watched state checked across two real servers.
-- [ ] `scripts/ci-checks.sh` green; footprint numbers in [PERF.md](PERF.md) against 0.3.0; history secret audit; `THIRD_PARTY_NOTICES.md` regenerated (new deps: gilrs and others).
-- [ ] .deb / .rpm run on real Debian / Fedora machines; decide Flatpak (0.5).
-- [ ] Update the website (version, features, download) and the screenshots from a generated demo library; set `VERSION` and `RELEASED`.
-- [ ] Date the changelog section, tag, publish only when the maintainer asks.
+Themes: `NOCTURNE_KEYS=open-themes@ms,theme-path@ms,theme-import@ms,theme-preview@ms,theme-apply@ms` with `NOCTURNE_THEME_FILE=/path/x.css`. Server UI: `NOCTURNE_KEYS=cycle-filter@ms,layout-1@ms,sections-1@ms,sec-down-0@ms,sec-save@ms`. Real keyboard input: `scripts/headless-session.sh` and `scripts/headless-input-check.sh`.
 
 ## Decisions
 
-- Linux first (Arch is the only tested platform). macOS and Windows code is written behind the seams and compile-checked (`scripts/check-cross.sh`) but never run, so neither is claimed as supported; .deb/.rpm/AppImage are separate work ([PLATFORMS.md](../PLATFORMS.md)). Platform-specific code stays inside the seams listed there.
+- Linux first, Wayland only (Arch is the primary tested platform; .deb and .rpm are install-tested in containers). macOS and Windows are unsigned previews built and smoke-tested in CI but never run on real hardware, so neither is claimed as supported ([PLATFORMS.md](../PLATFORMS.md)). Platform-specific code stays inside the seams listed there.
 - Iced replaced GPUI; the reasons are in [DECISIONS.md](../DECISIONS.md). `vendor/xattr` and the `[patch]` that only GPUI needed are gone.
 - Sources are a two-variant enum (Jellyfin, Local) behind one catalog ([SOURCES.md](../SOURCES.md)); Jellyfin is the first media source, not the last; UI copy avoids hard-coding the product name where practical.
 - Out of scope: Live TV/DVR, DLNA, acting as a cast target, gapless music.
 - Read-only by default: every server change sits behind one master setting (`allow_server_writes`, default off), routed to the item's origin server. Local files are never modified. See [WRITES.md](../WRITES.md).
 - `crates/jellyfin` is GET-only (enforced by `crates/jellyfin/tests/readonly.rs`); admin writes live in `crates/jellyfin-admin` behind a `Confirmed` token; user-scope writes in `crates/jellyfin-user`.
 - Tests that write run only against a throwaway Jellyfin (`scripts/test-jellyfin.sh`) and must use isolated `XDG_CONFIG_HOME`/`XDG_DATA_HOME` (`scripts/run-isolated.sh` does this) and an explicit `NOCTURNE_JF_URL`. Never type real credentials into a test window.
-- Builds and package tests run locally, not on hosted CI. No history rewrite or force-push.
+- Package and install tests run locally in containers; release artifacts are built by `release.yml` on GitHub runners and the repositories and update artifacts are signed locally ([PACKAGING.md](../PACKAGING.md#releasing)). No history rewrite or force-push.
 
 ## Known follow-ups
 
 - Not verified live: several newer player features (resume prompt, A-B loop, audio device list, external subtitles, subtitle presets), 401 mid-session and offline banner on a real server, multi-season data.
-- Binaries built on Arch need a current glibc; the 0.4 .deb / .rpm must be built inside their distribution containers.
+- Linux packages are built from one binary compiled in a `debian:stable` container (glibc 2.41); older distributions may refuse to start it.
 - In-window video is SDR; the HDR pop-out window is in 0.4 but unverified on an HDR display ([HDR.md](../HDR.md)).
 - Screen-reader support is limited by Iced; re-evaluate when it improves.
 - 0.4 online details / subtitles: built and unit-tested against a loopback mock; needs a real TMDB key and OpenSubtitles key to verify live; the player loads `LocalBackend::subtitles_of` and offers the finder in its Subtitles menu (checked live with a mock-downloaded file).
