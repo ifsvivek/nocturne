@@ -1,7 +1,9 @@
 //! Themes page (Settings > Themes): the saved CSS themes, a multi-line editor with the warnings of
 //! the translation, import from a file or a typed https address (fetched once, remembered for a
-//! manual Refresh), a 15 second preview on the whole app, and the per-server override. Storage and
-//! rules live in `nocturne_core::customize`; the tokens are applied through `theme::set`.
+//! manual Refresh), a preview on the whole app that lasts until Keep or Revert (pasting or importing
+//! starts one), and the per-server override. Storage and rules live in `nocturne_core::customize`
+//! (`import` fetches `@import` sheets and fonts through the bridge); the tokens are applied through
+//! `theme::set` and the fonts are registered with Iced.
 use super::App;
 use super::message::Message;
 use crate::style::{self, border};
@@ -14,17 +16,20 @@ use iced::widget::{
     column, container, row, scrollable as scroll, space, text, text_editor, text_input,
 };
 use iced::{Alignment, Element, Length, Padding, Task};
+use nocturne_core::customize::import::{self, LoadedFont, Options, Resolved};
 use nocturne_core::customize::{self as cz, MAX_BYTES, Parsed};
 use nocturne_core::profile::ProfileKind;
 use nocturne_core::source::SourceId;
+use std::borrow::Cow;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 type El<'a> = Element<'a, Message>;
 
-/// How long a preview of the whole app lasts unless it is kept.
-const PREVIEW: Duration = Duration::from_secs(15);
+/// `State::applied` while the safe look is on.
+const SAFE: u64 = u64::MAX;
 /// Warnings shown in the list (the summary line counts all of them).
 const SHOWN: usize = 80;
 
@@ -36,10 +41,19 @@ pub enum Msg {
     Pick(Option<u32>),
     /// A built-in example (index into `customize::PRESETS`): its CSS goes into a new theme.
     Preset(usize),
+    /// A built-in theme (index into `import::BUILTIN`).
+    Builtin(usize),
     Name(String),
     Edit(text_editor::Action),
-    /// The translation of the editor text at that epoch.
-    Parsed(u64, Result<Arc<Parsed>, String>),
+    /// The translation of the editor text at that epoch, with what was fetched for it.
+    Parsed(u64, Result<(Arc<Parsed>, Option<Arc<Resolved>>), String>),
+    /// What was fetched for the stylesheet of the active theme (its original text).
+    Resolved(String, Arc<Resolved>),
+    /// Download everything remote again (imports and fonts), then re-apply.
+    Refresh,
+    /// The safe key or the button: the built-in look, whatever the themes say.
+    Safe,
+    LeaveSafe,
     Path(String),
     Choose,
     Picked(Option<PathBuf>),
@@ -73,9 +87,20 @@ pub struct State {
     note: Option<(String, bool)>,
     confirm_delete: bool,
     busy: bool,
-    preview: Option<Instant>,
+    /// The editor's theme is shown on the whole app until Keep or Revert.
+    pub preview: bool,
+    /// Start a preview when the next translation arrives (a paste or an import).
+    want_preview: bool,
+    /// Safe look: the built-in theme, whatever is saved (Ctrl+Shift+0, `NOCTURNE_SAFE_THEME=1`).
+    pub safe: bool,
     /// The theme id last handed to `theme::set` (`None` = not yet / must be redone).
     applied: Option<u64>,
+    /// What was fetched for the editor's text.
+    resolved: Option<Arc<Resolved>>,
+    /// Stylesheets being fetched for the active theme, so each is started once.
+    resolving: HashSet<String>,
+    /// Fonts already handed to Iced (address and weight).
+    fonts_loaded: HashSet<String>,
 }
 
 impl Default for State {
@@ -92,8 +117,13 @@ impl Default for State {
             note: None,
             confirm_delete: false,
             busy: false,
-            preview: None,
+            preview: false,
+            want_preview: false,
+            safe: std::env::var("NOCTURNE_SAFE_THEME").is_ok_and(|v| v == "1"),
             applied: None,
+            resolved: None,
+            resolving: HashSet::new(),
+            fonts_loaded: HashSet::new(),
         }
     }
 }
@@ -118,39 +148,191 @@ impl App {
         }
     }
 
-    /// Make the active theme match the selection; cheap when nothing changed. Called after every
-    /// message, never while drawing.
-    pub(super) fn sync_theme(&mut self) {
-        if self.th.preview.is_some() {
-            return;
+    /// The server whose UI is borrowed for what is on screen (`None`: NOCTURNE's).
+    fn theme_ui(&self) -> Option<SourceId> {
+        let item = match self.stack.last() {
+            Some(p) if p.view == super::View::Detail => p.media.as_ref().map(|m| m.origin),
+            _ => None,
+        };
+        self.ui_pick(item).branding_from()
+    }
+
+    /// The address a stylesheet came from, for its relative imports (saved themes only).
+    fn base_of(&self, src: Option<SourceId>, ui: Option<SourceId>) -> Option<String> {
+        let id = match src.and_then(|s| self.themes.override_of(s)) {
+            Some(i) => i,
+            None if ui.is_some_and(|u| self.themes.branding_of(u).is_some()) => return None,
+            None => self.themes.global?,
+        };
+        self.themes.get(id).and_then(|t| t.url.clone())
+    }
+
+    /// Fetch what `css` imports and its fonts, off the UI thread.
+    fn resolve_task(&self, css: String, base: Option<String>, refresh: bool) -> Task<Message> {
+        let remote = self.themes.remote();
+        let key = css.clone();
+        run(
+            async move { import::resolve(&css, base.as_deref(), &Options::new(remote, refresh)).await },
+            move |r| Message::Themes(Msg::Resolved(key, Arc::new(r))),
+        )
+    }
+
+    /// Hand fonts to Iced once each.
+    fn load_fonts(&mut self, fonts: &[LoadedFont]) -> Task<Message> {
+        if self.th.fonts_loaded.len() > 64 {
+            self.th.fonts_loaded.clear();
         }
-        let want = self.themes.active_key(self.theme_source());
+        let mut tasks = vec![];
+        for f in fonts {
+            if self
+                .th
+                .fonts_loaded
+                .insert(format!("{}#{}", f.url, f.weight))
+            {
+                tasks.push(iced::font::load(Cow::Owned(f.bytes.to_vec())).discard());
+            }
+        }
+        Task::batch(tasks)
+    }
+
+    /// Make the active theme match the selection; cheap when nothing changed. Called after every
+    /// message, never while drawing. Starts the fetch of a stylesheet's imports once.
+    pub(super) fn sync_theme(&mut self) -> Task<Message> {
+        if self.th.safe {
+            if self.th.applied != Some(SAFE) {
+                crate::theme::map_fonts(&[]);
+                crate::theme::set(&Default::default(), &Default::default());
+                self.th.applied = Some(SAFE);
+            }
+            return Task::none();
+        }
+        if self.th.preview {
+            return Task::none();
+        }
+        let (src, ui) = (self.theme_source(), self.theme_ui());
+        let mut task = Task::none();
+        if let Some(css) = self.themes.active_css(src, ui)
+            && self.themes.needs_resolve(css)
+            && !self.th.resolving.contains(css)
+        {
+            let css = css.to_string();
+            self.th.resolving.insert(css.clone());
+            task = self.resolve_task(css, self.base_of(src, ui), false);
+        }
+        let want = self.themes.active_key_with(src, ui);
         if self.th.applied != Some(want) {
-            let (th, lay) = self.themes.resolve_all(self.theme_source());
+            let (th, lay) = self.themes.resolve_all_with(src, ui);
+            let fonts = self
+                .themes
+                .active_css(src, ui)
+                .map_or(&[][..], |c| self.themes.fonts_for(c));
+            crate::theme::map_fonts(fonts);
             crate::theme::set(&th, &lay);
             self.th.applied = Some(want);
         }
+        task
     }
 
-    /// End an expired preview (root tick).
-    pub(super) fn theme_tick(&mut self, now: Instant) {
-        if self.th.preview.is_some_and(|d| now >= d) {
-            self.th.preview = None;
-            self.th.applied = None;
-        }
+    /// Apply again on the next message (the fetch setting changed).
+    pub(super) fn th_reapply(&mut self) {
+        self.th.applied = None;
+    }
+
+    /// Keep / Revert, floating over every screen while a theme is previewed.
+    pub(super) fn theme_preview_bar(&self) -> El<'_> {
+        container(
+            container(
+                row![
+                    text("Previewing a theme").size(t::BODY).font(t::semibold()),
+                    action_button(
+                        "Keep",
+                        true,
+                        false,
+                        false,
+                        false,
+                        Message::Themes(Msg::Apply)
+                    ),
+                    action_button(
+                        "Revert",
+                        false,
+                        false,
+                        false,
+                        false,
+                        Message::Themes(Msg::Revert)
+                    ),
+                ]
+                .spacing(t::S3)
+                .align_y(Alignment::Center),
+            )
+            .padding([t::S3, t::S4])
+            .style(style::raised_card),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(Alignment::Center)
+        .align_y(Alignment::End)
+        .padding(t::S6)
+        .into()
     }
 
     pub(super) fn is_previewing(&self) -> bool {
-        self.th.preview.is_some()
+        self.th.preview
+    }
+
+    /// The safe key (Ctrl+Shift+0).
+    pub(super) fn safe_theme(&mut self) -> Task<Message> {
+        self.themes_msg(Msg::Safe)
     }
 
     fn reparse(&mut self) -> Task<Message> {
+        self.reparse_with(false)
+    }
+
+    /// Translate the editor text, fetching its imports first (from the cache unless `refresh`).
+    fn reparse_with(&mut self, refresh: bool) -> Task<Message> {
         self.th.epoch += 1;
         let (epoch, text) = (self.th.epoch, self.th.content.text());
+        let remote = self.themes.remote();
+        let base = Some(self.th.url.trim().to_string()).filter(|u| !u.is_empty());
         run(
-            async move { cz::parse(&text).map(Arc::new).map_err(|e| e.to_string()) },
+            async move {
+                if remote && import::has_remote(&text) {
+                    let r = import::resolve(&text, base.as_deref(), &Options::new(remote, refresh))
+                        .await;
+                    import::parse_resolved(&r)
+                        .map(|p| (Arc::new(p), Some(Arc::new(r))))
+                        .map_err(|e| e.to_string())
+                } else {
+                    cz::parse(&text)
+                        .map(|p| (Arc::new(p), None))
+                        .map_err(|e| e.to_string())
+                }
+            },
             move |r| Message::Themes(Msg::Parsed(epoch, r)),
         )
+    }
+
+    /// Show the editor's theme on the whole app until Keep or Revert.
+    fn start_preview(&mut self) -> Task<Message> {
+        let Some(p) = self.th.parsed.clone() else {
+            return Task::none();
+        };
+        self.th.safe = false;
+        self.th.preview = true;
+        let fonts = self
+            .th
+            .resolved
+            .as_ref()
+            .map_or_else(Vec::new, |r| r.fonts.clone());
+        crate::theme::map_fonts(&fonts);
+        crate::theme::set(&p.theme, &p.layout);
+        self.load_fonts(&fonts)
+    }
+
+    fn end_preview(&mut self) {
+        self.th.preview = false;
+        self.th.want_preview = false;
+        self.th.applied = None;
     }
 
     fn set_text(&mut self, s: &str) -> Task<Message> {
@@ -198,13 +380,11 @@ impl App {
             }
             Msg::Close => {
                 self.th.open = false;
-                self.th.preview = None;
-                self.th.applied = None;
+                self.end_preview();
                 self.settings_open = true;
             }
             Msg::Pick(id) => {
-                self.th.preview = None;
-                self.th.applied = None;
+                self.end_preview();
                 self.th.confirm_delete = false;
                 self.th.note = None;
                 self.th.sel = id;
@@ -220,8 +400,7 @@ impl App {
                 let Some((name, css)) = cz::PRESETS.get(i) else {
                     return Task::none();
                 };
-                self.th.preview = None;
-                self.th.applied = None;
+                self.end_preview();
                 self.th.confirm_delete = false;
                 self.th.sel = None;
                 self.th.url.clear();
@@ -232,24 +411,86 @@ impl App {
                 );
                 return self.set_text(css);
             }
+            Msg::Builtin(i) => {
+                let Some(b) = import::BUILTIN.get(i) else {
+                    return Task::none();
+                };
+                if b.id == "nocturne" {
+                    return self.themes_msg(Msg::Reset);
+                }
+                if b.css.is_empty() {
+                    self.note(format!("{} is not available yet.", b.name), false);
+                    return Task::none();
+                }
+                self.end_preview();
+                self.th.confirm_delete = false;
+                self.th.sel = None;
+                self.th.url.clear();
+                self.th.name = b.name.to_string();
+                self.th.want_preview = true;
+                return self.set_text(b.css);
+            }
             Msg::Name(s) => self.th.name = s.chars().take(48).collect(),
             Msg::Edit(a) => {
                 let edit = a.is_edit();
+                // A paste is a theme someone wants to try: show it everywhere until Keep or Revert.
+                if matches!(a, text_editor::Action::Edit(text_editor::Edit::Paste(_))) {
+                    self.th.want_preview = true;
+                }
                 self.th.content.perform(a);
                 if edit {
                     return self.reparse();
                 }
             }
             Msg::Parsed(e, r) if e == self.th.epoch => match r {
-                Ok(p) => {
+                Ok((p, res)) => {
                     self.th.parsed = Some(p);
+                    self.th.resolved = res;
                     self.th.note = None;
+                    if self.th.want_preview || self.th.preview {
+                        self.th.want_preview = false;
+                        return self.start_preview();
+                    }
                 }
                 Err(e) => {
                     self.th.parsed = None;
+                    self.th.resolved = None;
+                    self.th.want_preview = false;
                     self.note(e, true);
                 }
             },
+            Msg::Resolved(css, r) => {
+                self.th.resolving.remove(&css);
+                let r = Arc::try_unwrap(r).unwrap_or_else(|a| (*a).clone());
+                let fonts = r.fonts.clone();
+                self.themes.set_resolved(&css, r);
+                self.th.applied = None;
+                return self.load_fonts(&fonts);
+            }
+            Msg::Refresh => {
+                self.themes.clear_resolved();
+                let mut tasks = vec![self.reparse_with(true)];
+                let (src, ui) = (self.theme_source(), self.theme_ui());
+                if let Some(css) = self.themes.active_css(src, ui).map(str::to_string)
+                    && import::has_remote(&css)
+                    && self.themes.remote()
+                    && self.th.resolving.insert(css.clone())
+                {
+                    tasks.push(self.resolve_task(css, self.base_of(src, ui), true));
+                }
+                self.th.applied = None;
+                return Task::batch(tasks);
+            }
+            Msg::Safe => {
+                self.end_preview();
+                self.th.safe = true;
+                self.th.applied = None;
+                self.toast("Safe look: the built-in theme. Settings > Themes to choose one again.");
+            }
+            Msg::LeaveSafe => {
+                self.th.safe = false;
+                self.th.applied = None;
+            }
             Msg::Parsed(..) => {}
             Msg::Path(s) => self.th.path = s,
             Msg::Choose => {
@@ -280,6 +521,7 @@ impl App {
                     .map(|s| s.to_string_lossy().into_owned())
                     .unwrap_or_default();
                 self.detach_import(&file);
+                self.th.want_preview = true;
                 self.th.url.clear();
                 self.note(
                     "Imported. Check the result below, then Preview or Save.",
@@ -305,6 +547,7 @@ impl App {
                 match r {
                     Ok(s) => {
                         self.detach_import(&file_name_of(&self.th.url));
+                        self.th.want_preview = true;
                         self.note(
                             "Downloaded once. Nothing updates on its own; use Refresh to fetch again.",
                             false,
@@ -314,34 +557,26 @@ impl App {
                     Err(e) => self.note(e, true),
                 }
             }
-            Msg::Preview => {
-                if let Some(p) = &self.th.parsed {
-                    crate::theme::set(&p.theme, &p.layout);
-                    self.th.preview = Some(Instant::now() + PREVIEW);
-                }
-            }
-            Msg::Revert => {
-                self.th.preview = None;
-                self.th.applied = None;
-            }
+            Msg::Preview => return self.start_preview(),
+            Msg::Revert => self.end_preview(),
             Msg::Save => {
                 self.save_theme();
-                self.th.preview = None;
+                self.end_preview();
                 self.note("Saved.", false);
             }
             Msg::Apply => {
                 let id = self.save_theme();
                 self.themes.set_global(Some(id));
                 self.themes.save();
-                self.th.preview = None;
-                self.th.applied = None;
+                self.th.safe = false;
+                self.end_preview();
                 self.note("Applied to the whole app.", false);
             }
             Msg::Reset => {
                 self.themes.set_global(None);
                 self.themes.save();
-                self.th.preview = None;
-                self.th.applied = None;
+                self.th.safe = false;
+                self.end_preview();
                 self.note("Using the built-in look.", false);
             }
             Msg::Delete => self.th.confirm_delete = self.th.sel.is_some(),
@@ -373,7 +608,7 @@ impl App {
     pub(super) fn themes_page(&self) -> El<'_> {
         let head = section(
             "Themes",
-            "Colours, corner radii and a font from a CSS file. Only what NOCTURNE understands is used; everything else is listed below. Nothing is downloaded except the one address you type.",
+            "Colours, corner radii, fonts and layout from a CSS file. Only what NOCTURNE understands is used; everything else is listed below. A theme's @import stylesheets and fonts are fetched over https when Settings > Themes > Fetch theme imports is on. Pasting or importing a theme previews it everywhere until you press Keep or Revert. If a theme makes the app hard to use, press Ctrl+Shift+0 or start with NOCTURNE_SAFE_THEME=1 to get the built-in look back.",
             "Esc to go back".into(),
         );
         let body = row![self.theme_list(), self.theme_editor()]
@@ -438,6 +673,22 @@ impl App {
                 Msg::Pick(Some(s.id)),
             ));
         }
+        let mut builtin = column![].spacing(2);
+        for (i, b) in import::BUILTIN.iter().enumerate() {
+            let on = b.id == "nocturne" && global.is_none();
+            builtin = builtin.push(entry(
+                b.name.to_string(),
+                on,
+                if on {
+                    "ACTIVE"
+                } else if b.css.is_empty() && b.id != "nocturne" {
+                    "SOON"
+                } else {
+                    "BUILT-IN"
+                },
+                Msg::Builtin(i),
+            ));
+        }
         let mut presets = column![].spacing(2);
         for (i, (name, _)) in cz::PRESETS.iter().enumerate() {
             presets = presets.push(entry(
@@ -448,6 +699,12 @@ impl App {
             ));
         }
         let mut col = column![
+            text(tracked("Built-in"))
+                .shaping(text::Shaping::Advanced)
+                .size(t::CONTROL_TEXT)
+                .font(t::bold())
+                .color(t::text_secondary()),
+            builtin,
             text(tracked("Examples"))
                 .shaping(text::Shaping::Advanced)
                 .size(t::CONTROL_TEXT)
@@ -527,12 +784,12 @@ impl App {
                     .color(t::text_secondary()),
             );
             col = col.push(
-                text("The look the server's administrator set, used for that server alone while its own layout is on. A theme you pick for the server above wins over it.")
+                text("The look a server's administrator set, used while that server's UI is chosen in Settings > Sources. A theme you pick for the server above wins over it.")
                     .size(t::CAPTION)
                     .color(t::text_tertiary()),
             );
             for (s, css) in branded {
-                let line = match cz::parse(css) {
+                let line = match self.themes.parse_text(css) {
                     Ok(p) => format!(
                         "{}: {} applied, {} not understood",
                         s.profile.label,
@@ -542,7 +799,7 @@ impl App {
                     Err(e) => format!("{}: {e}", s.profile.label),
                 };
                 col = col.push(text(line).size(t::CAPTION).color(t::text_secondary()));
-                if let Ok(p) = cz::parse(css) {
+                if let Ok(p) = self.themes.parse_text(css) {
                     for w in p.warnings.iter().take(5) {
                         col = col.push(
                             text(w.to_string())
@@ -627,6 +884,14 @@ impl App {
                     th.busy || th.url.trim().is_empty(),
                     msg(Msg::Download)
                 ),
+                action_button(
+                    "Refresh imports",
+                    false,
+                    false,
+                    false,
+                    !self.themes.remote(),
+                    msg(Msg::Refresh)
+                ),
             ]
             .spacing(t::S2)
             .align_y(Alignment::Center),
@@ -634,33 +899,15 @@ impl App {
         .spacing(t::S2);
 
         let acts = {
-            let previewing = th.preview.is_some();
+            let previewing = th.preview;
             let can = th.parsed.is_some();
             let mut r = row![].spacing(t::S2).align_y(Alignment::Center);
-            if let Some(d) = th.preview {
-                let left = d.saturating_duration_since(self.now).as_secs() + 1;
-                r = r
-                    .push(action_button(
-                        "Keep",
-                        true,
-                        false,
-                        false,
-                        false,
-                        msg(Msg::Apply),
-                    ))
-                    .push(action_button(
-                        "Revert",
-                        false,
-                        false,
-                        false,
-                        false,
-                        msg(Msg::Revert),
-                    ))
-                    .push(
-                        text(format!("Previewing the whole app, reverting in {left} s"))
-                            .size(t::CAPTION)
-                            .color(t::text_secondary()),
-                    );
+            if previewing {
+                r = r.push(
+                    text("Previewing on the whole app. Keep or Revert is at the bottom of the window.")
+                        .size(t::CAPTION)
+                        .color(t::text_secondary()),
+                );
             } else {
                 r = r
                     .push(action_button(
@@ -695,6 +942,16 @@ impl App {
                         false,
                         msg(Msg::Reset),
                     ));
+                if th.safe {
+                    r = r.push(action_button(
+                        "Leave safe look",
+                        false,
+                        false,
+                        false,
+                        false,
+                        msg(Msg::LeaveSafe),
+                    ));
+                }
             }
             let del = if th.confirm_delete {
                 action_button(
@@ -759,7 +1016,49 @@ impl App {
         for a in crate::theme::advisories(&crate::theme::Tokens::resolve(&p.theme)) {
             lines.push(text(a).size(t::CAPTION).color(t::warn()).into());
         }
-        for w in p.warnings.iter().take(SHOWN) {
+        if let Some(r) = &self.th.resolved {
+            lines.push(
+                text(fetch_summary(r))
+                    .size(t::CAPTION)
+                    .color(t::text_secondary())
+                    .into(),
+            );
+            for f in r.fonts.iter().take(6) {
+                lines.push(
+                    text(format!(
+                        "Font {} {}, loaded{}",
+                        f.family,
+                        f.weight,
+                        Options::new(true, false)
+                            .fetched_at(&f.url)
+                            .map_or(String::new(), |at| format!(", fetched {}", ago(at)))
+                    ))
+                    .size(t::CAPTION)
+                    .color(t::text_secondary())
+                    .into(),
+                );
+            }
+        } else if !self.themes.remote() && import::has_remote(&self.th.content.text()) {
+            lines.push(
+                text("Imports and fonts are not fetched: Settings > Themes > Fetch theme imports is off.")
+                    .size(t::CAPTION)
+                    .color(t::text_secondary())
+                    .into(),
+            );
+        }
+        let loaded = |m: &str| {
+            self.th.resolved.as_ref().is_some_and(|r| {
+                r.fonts
+                    .iter()
+                    .any(|f| m.contains(&format!("`{}`", f.family)))
+            })
+        };
+        for w in p
+            .warnings
+            .iter()
+            .filter(|w| !(w.kind == cz::WarningKind::FontNotDownloaded && loaded(&w.message)))
+            .take(SHOWN)
+        {
             let c = if w.kind.informational() {
                 t::text_tertiary()
             } else {
@@ -798,4 +1097,30 @@ async fn read_css(p: PathBuf) -> Result<String, String> {
         return Err(format!("That file is larger than {} KB", MAX_BYTES / 1024));
     }
     String::from_utf8(buf).map_err(|_| "That file is not UTF-8 text".into())
+}
+
+/// "3 files downloaded, 2 from the cache" for the report line.
+fn fetch_summary(r: &Resolved) -> String {
+    format!(
+        "Fetched {} {}, {} from the cache; {} {} loaded.",
+        r.downloaded,
+        if r.downloaded == 1 { "file" } else { "files" },
+        r.from_cache,
+        r.fonts.len(),
+        if r.fonts.len() == 1 { "font" } else { "fonts" },
+    )
+}
+
+/// "5 min ago" for a Unix time.
+fn ago(at: u64) -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let d = now.saturating_sub(at);
+    match d {
+        0..=59 => "just now".into(),
+        60..=3599 => format!("{} min ago", d / 60),
+        3600..=86399 => format!("{} h ago", d / 3600),
+        _ => format!("{} days ago", d / 86400),
+    }
 }

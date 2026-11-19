@@ -199,6 +199,11 @@ pub struct App {
     hdr: Option<sources::HeaderDlg>,
     /// Server UI: each server's layout as last read, and the open home-sections dialog.
     server_ui: HashMap<SourceId, nocturne_core::server_ui::ServerUi>,
+    /// Servers whose UI is being read (`true`) or could not be read (`false`).
+    ui_state: HashMap<SourceId, bool>,
+    /// Bumped when a loaded UI changes, so Home takes the new one.
+    ui_gen: u64,
+    ui_applied: Option<(nocturne_core::server_ui::Pick, u64)>,
     sec: Option<server_ui::SecDlg>,
     folders: Option<folders::Folders>,
     online: online::State,
@@ -293,6 +298,7 @@ impl App {
                 .reduced(crate::platform::system_reduces_motion()),
         );
         crate::couch::set(settings.couch == nocturne_core::settings::CouchMode::On);
+        let remote_css = settings.remote_css;
         // Opening the image cache scans its directory; that happens after the first frame.
         let cache_max = u64::from(settings.image_cache_mb) * 1024 * 1024;
         let open_disk = run(
@@ -324,11 +330,18 @@ impl App {
             rescan: HashSet::new(),
             launch_scan: false,
             src_open: false,
-            themes: nocturne_core::customize::Store::load(),
+            themes: {
+                let mut s = nocturne_core::customize::Store::load();
+                s.set_remote(remote_css);
+                s
+            },
             th: Default::default(),
             confirm: None,
             hdr: None,
             server_ui: HashMap::new(),
+            ui_state: HashMap::new(),
+            ui_gen: 0,
+            ui_applied: None,
             sec: None,
             folders: None,
             online: Default::default(),
@@ -508,8 +521,9 @@ impl App {
 
     pub fn update(&mut self, msg: Message) -> Task<Message> {
         let task = self.update_inner(msg);
-        self.sync_theme();
-        task
+        let ui = self.sync_ui();
+        let theme = self.sync_theme();
+        Task::batch([task, ui, theme])
     }
 
     fn update_inner(&mut self, msg: Message) -> Task<Message> {
@@ -517,7 +531,6 @@ impl App {
             Message::Key(k) => self.on_key(k),
             Message::Tick(now) => {
                 self.now = now;
-                self.theme_tick(now);
                 self.sync_detail();
                 self.sync_ob();
                 Task::batch([
@@ -1612,6 +1625,10 @@ impl App {
     // ---- keyboard ----
 
     fn on_key(&mut self, mut k: Key) -> Task<Message> {
+        // The safe look works on every screen, over a player and over every dialog.
+        if k.ctrl && k.shift && matches!(k.name.as_str(), "0" | ")") {
+            return self.safe_theme();
+        }
         // The remote's Menu key outside the player opens the account menu.
         if k.name == "menu" && self.player.is_none() {
             k.name = "a".into();
@@ -2067,6 +2084,9 @@ impl App {
         }
         if self.smart.is_open() {
             layers.push(self.smart_dialog());
+        }
+        if self.is_previewing() {
+            layers.push(self.theme_preview_bar());
         }
         if let Some((n, _)) = &self.note {
             layers.push(
