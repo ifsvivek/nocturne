@@ -1,4 +1,6 @@
 //! Headless smoke test: plays a generated 2s WAV with vo=null/ao=null. No window, no network.
+// Unix only: the tests kill the child with `kill -9` and read its command line with `ps`; Windows is covered by the CI smoke test of the installed app.
+#![cfg(unix)]
 
 use nocturne_player::{Event, Options, Player};
 use std::time::{Duration, Instant};
