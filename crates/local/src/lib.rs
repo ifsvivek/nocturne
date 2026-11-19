@@ -117,6 +117,9 @@ pub struct Meta {
 pub struct Art {
     pub poster: Option<PathBuf>,
     pub backdrop: Option<PathBuf>,
+    /// Transparent title art (`logo.png` / `clearlogo.png`), read only.
+    #[serde(default)]
+    pub logo: Option<PathBuf>,
 }
 
 /// One indexed file (the on-disk record).
@@ -536,6 +539,17 @@ impl Library {
                 .map(|(a, b)| online::album_key(a, b)),
             Kind::Unmatched => None,
         };
+        if v.kind == Kind::Episode
+            && v.art.logo.is_none()
+            && let Some(d) = naming::show_dir(&it.path)
+        {
+            v.art.logo = self
+                .index
+                .shows
+                .iter()
+                .find(|s| s.dir == d)
+                .and_then(|s| s.art.logo.clone());
+        }
         if let Some(m) = okey.and_then(|k| self.online_meta(&k)) {
             if let (Some(t), Kind::Movie | Kind::Episode) = (&m.title, v.kind) {
                 v.title = t.clone();
@@ -590,6 +604,7 @@ impl Library {
         Art {
             poster: m.poster.as_deref().map(|n| self.online_art_path(n)),
             backdrop: m.backdrop.as_deref().map(|n| self.online_art_path(n)),
+            logo: None,
         }
     }
 

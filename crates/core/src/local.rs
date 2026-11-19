@@ -327,6 +327,10 @@ fn blank(origin: SourceId, id: String, title: String, kind: Kind) -> Media {
 fn art_tags(m: &mut Media, art: &nl::Art) {
     m.poster_tag = art.poster.as_ref().map(|_| "local".into());
     m.backdrop_tag = art.backdrop.as_ref().map(|_| "local".into());
+    m.logo = art
+        .logo
+        .as_ref()
+        .map(|_| (m.id.clone(), "local".to_string()));
 }
 
 fn view_media(lib: &Library, origin: SourceId, v: &nl::View) -> Media {
@@ -503,6 +507,10 @@ fn season_media(lib: &Library, origin: SourceId, series: &Media, n: u32) -> Medi
     m.child_count = Some(eps.len() as u32);
     m.unplayed = Some(eps.iter().filter(|v| !lib.state(v.id).played).count() as u32);
     m.poster_tag = lib.season_poster(show, n).map(|_| "local".into());
+    m.logo = series
+        .logo
+        .as_ref()
+        .map(|_| (m.id.clone(), "local".to_string()));
     m.ids = series.ids.clone();
     m
 }
@@ -730,7 +738,8 @@ fn art_path(lib: &Library, id: &str, kind: Kind, art: Art) -> Option<PathBuf> {
         Art::Poster => a.poster.clone(),
         Art::Backdrop => a.backdrop.clone(),
         Art::Landscape => a.backdrop.clone().or(a.poster.clone()),
-        Art::Logo | Art::Chapter => None,
+        Art::Logo => a.logo.clone(),
+        Art::Chapter => None,
     };
     if let Some(show) = show_of(id) {
         let key = nl::fold(show);
@@ -944,6 +953,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn logo_sidecars_for_movies_and_shows() {
+        let (t, b) = build(
+            O,
+            &[
+                "Films/Heat (1995)/Heat (1995).mkv",
+                "Shows/Show/Season 01/Show - S01E01 - Pilot.mkv",
+            ],
+        );
+        let png = [0x89, b'P', b'N', b'G'];
+        std::fs::write(t.path().join("media/Films/Heat (1995)/clearlogo.png"), png).unwrap();
+        std::fs::write(t.path().join("media/Shows/Show/logo.png"), png).unwrap();
+        b.with_mut(|l| {
+            l.scan(
+                &[t.path().join("media/Films"), t.path().join("media/Shows")],
+                &std::sync::atomic::AtomicBool::new(false),
+                |_| {},
+            )
+        })
+        .unwrap();
+        let libs = b.libraries().await.unwrap();
+        let heat = m_by(&b, &libs[0], "Heat").await;
+        assert!(heat.logo.is_some());
+        assert_eq!(b.image(&heat, Art::Logo).await, Some(png.to_vec()));
+        let show = m_by(&b, &libs[1], "Show").await;
+        assert!(show.logo.is_some());
+        let season = b.seasons(&show.id).await.unwrap().remove(0);
+        assert!(season.logo.is_some());
+        assert_eq!(b.image(&season, Art::Logo).await, Some(png.to_vec()));
+        let ep = b.episodes(&show.id, &season.id).await.unwrap().remove(0);
+        assert!(ep.logo.is_some(), "episodes borrow the show's logo");
+        assert_eq!(b.image(&ep, Art::Logo).await, Some(png.to_vec()));
+    }
+
+    #[tokio::test]
     async fn art_comes_from_the_sidecar_and_missing_art_is_none() {
         let (t, b) = build(
             O,
@@ -973,6 +1016,7 @@ mod tests {
             Some(vec![0xFF, 0xD8, 0xFF, 0xE0])
         );
         assert_eq!(b.image(&heat, Art::Logo).await, None);
+        assert!(heat.logo.is_none());
         let alien = m_by(&b, &films, "Alien").await;
         assert_eq!(b.image(&alien, Art::Poster).await, None);
     }

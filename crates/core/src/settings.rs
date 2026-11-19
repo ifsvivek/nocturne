@@ -173,6 +173,10 @@ pub struct Settings {
     /// Disk image cache cap in MB.
     pub image_cache_mb: u32,
     pub reduce_motion: ReduceMotion,
+    /// The home hero banner rotates by itself (a theme that shows one); off = manual only.
+    pub hero_autoplay: bool,
+    /// Seconds a banner slide stays (one of `HERO_S`).
+    pub hero_interval_secs: u32,
     pub couch: CouchMode,
     /// Sort, view and flag filters remembered per library (key = library id).
     pub libs: BTreeMap<String, LibPrefs>,
@@ -209,6 +213,8 @@ impl Default for Settings {
             density: Density::Comfortable,
             image_cache_mb: 512,
             reduce_motion: ReduceMotion::System,
+            hero_autoplay: true,
+            hero_interval_secs: 10,
             couch: CouchMode::Off,
             libs: BTreeMap::new(),
             recent_searches: vec![],
@@ -262,7 +268,7 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 26;
+pub const ROWS: usize = 28;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
 pub const PROFILE_ROW: usize = 22;
@@ -275,6 +281,12 @@ pub const UPDATES_ROW: usize = 24;
 
 /// The "Themes may load from the web" row.
 pub const REMOTE_CSS_ROW: usize = 25;
+
+/// The "Rotate the home banner" row.
+pub const HERO_AUTOPLAY_ROW: usize = 26;
+
+/// The "Banner interval" row.
+pub const HERO_INTERVAL_ROW: usize = 27;
 
 /// The "Trakt account" row: not a toggle, it opens the connect dialog.
 pub const TRAKT_ROW: usize = 19;
@@ -293,6 +305,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         23 => Some("Living room"),
         24 => Some("Updates"),
         25 => Some("Themes"),
+        26 => Some("Home banner"),
         _ => None,
     }
 }
@@ -324,6 +337,8 @@ pub fn nav_row(sel: usize, key: &str) -> Option<usize> {
 pub const WRITES_NOTE: &str = "When this is on, NOCTURNE can mark items watched, set favourites, report what you watch (if sync is on) and, for administrators, change server settings, always asking before anything destructive. When it is off, NOCTURNE only reads from your server and never changes anything on it.";
 
 const CACHE_MB: [u32; 5] = [128, 256, 512, 1024, 2048];
+/// Choices for the banner interval, seconds.
+pub const HERO_S: [u32; 5] = [5, 8, 10, 15, 30];
 const AHEAD_S: [u32; 6] = [60, 120, 180, 300, 600, 900];
 const REFILL_S: [u32; 5] = [30, 60, 120, 180, 300];
 const BUF_MB: [u32; 7] = [256, 512, 1024, 1536, 2048, 3072, 4096];
@@ -507,6 +522,16 @@ impl Settings {
                 "A theme or a server's own style can link to other stylesheets and fonts. When on, NOCTURNE downloads them once (https only, no cookies or sign-in, size and time limits, kept on disk) and again only when you press Refresh or the text changes. Off: nothing is downloaded and those parts are ignored.",
                 onoff(self.remote_css),
             ),
+            r(
+                "Rotate the home banner",
+                "The large banner at the top of Home moves to the next title by itself. It always stops while you hover or focus it, while a video plays, and when reduce motion is on.",
+                onoff(self.hero_autoplay),
+            ),
+            r(
+                "Banner interval",
+                "How long each banner title stays before the next one.",
+                fmt_secs(self.hero_interval_secs),
+            ),
         ]
     }
 
@@ -553,6 +578,7 @@ impl Settings {
                 MOTION.iter().map(|(_, n)| n.to_string()).collect(),
                 MOTION.iter().position(|(m, _)| *m == self.reduce_motion)?,
             ),
+            HERO_INTERVAL_ROW => nums(&HERO_S, self.hero_interval_secs, fmt_secs),
             COUCH_ROW => (
                 COUCH.iter().map(|(_, n)| n.to_string()).collect(),
                 COUCH.iter().position(|(m, _)| *m == self.couch)?,
@@ -585,6 +611,10 @@ impl Settings {
             14 => self.density = DENSITIES.get(idx).copied().unwrap_or(self.density),
             15 => self.image_cache_mb = CACHE_MB.get(idx).copied().unwrap_or(self.image_cache_mb),
             16 => self.reduce_motion = MOTION.get(idx).map_or(self.reduce_motion, |(m, _)| *m),
+            HERO_INTERVAL_ROW => {
+                self.hero_interval_secs =
+                    HERO_S.get(idx).copied().unwrap_or(self.hero_interval_secs)
+            }
             COUCH_ROW => self.couch = COUCH.get(idx).map_or(self.couch, |(m, _)| *m),
             _ => {}
         }
@@ -641,6 +671,10 @@ impl Settings {
             21 => self.trakt_history ^= true,
             UPDATES_ROW => self.check_updates ^= true,
             REMOTE_CSS_ROW => self.remote_css ^= true,
+            HERO_AUTOPLAY_ROW => self.hero_autoplay ^= true,
+            HERO_INTERVAL_ROW => {
+                self.hero_interval_secs = step(&HERO_S, self.hero_interval_secs, 2, d)
+            }
             COUCH_ROW => {
                 let i = COUCH.iter().position(|(m, _)| *m == self.couch);
                 let i = (i.unwrap_or(0) as i32 + d).rem_euclid(COUCH.len() as i32) as usize;
@@ -1000,6 +1034,27 @@ mod tests {
     }
 
     #[test]
+    fn hero_rows_default_cycle_and_persist() {
+        let mut s = Settings::default();
+        assert!(s.hero_autoplay && s.hero_interval_secs == 10);
+        assert_eq!(s.rows().len(), ROWS);
+        assert_eq!(head(HERO_AUTOPLAY_ROW), Some("Home banner"));
+        assert_eq!(s.rows()[HERO_INTERVAL_ROW].value, "10 s");
+        s.cycle(HERO_INTERVAL_ROW, 1);
+        assert_eq!(s.hero_interval_secs, 15);
+        s.choose(HERO_INTERVAL_ROW, 0);
+        assert_eq!(s.hero_interval_secs, 5);
+        s.cycle(HERO_INTERVAL_ROW, -1);
+        assert_eq!(s.hero_interval_secs, 30, "wraps");
+        s.cycle(HERO_AUTOPLAY_ROW, 1);
+        assert!(!s.hero_autoplay);
+        let back: Settings = toml::from_str(&toml::to_string(&s).unwrap()).unwrap();
+        assert!(!back.hero_autoplay && back.hero_interval_secs == 30);
+        let old: Settings = toml::from_str("version = 2\n").unwrap();
+        assert!(old.hero_autoplay && old.hero_interval_secs == 10);
+    }
+
+    #[test]
     fn remote_css_row_is_on_by_default_and_persists() {
         let mut s = Settings::default();
         assert!(s.remote_css);
@@ -1043,12 +1098,12 @@ mod tests {
 
     #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24 and 25.
+        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24, 25 and 26.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
         assert_eq!(scroll_child(11), 15);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 11);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 12);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));
         assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));
