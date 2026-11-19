@@ -694,9 +694,18 @@ fn stale_online_entries_never_attach_to_new_files() {
         assert!(lib.online_entry(&online::item_key(id)).is_none());
         assert_eq!(lib.view(id).unwrap().details_from, None);
     }
+    let keep = id_of(&lib, "Keep");
+    for t in ["Ronin", "Fargo"] {
+        assert_ne!(
+            id_of(&lib, t),
+            keep,
+            "a new file never takes an existing item's id"
+        );
+    }
+    // Keep was never looked up either, so three items wait for a lookup on every platform.
     assert_eq!(
         lib.online_targets(0).len(),
-        2,
+        3,
         "new files get a real lookup"
     );
 }

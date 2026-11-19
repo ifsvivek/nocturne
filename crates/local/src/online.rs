@@ -185,14 +185,14 @@ impl Library {
         Ok(())
     }
 
-    /// Ids must never be reused: lift the counter above every id the online store has seen.
+    /// Ids must never be reused: lift the counter above every id the online store has seen and every item in the index (a scan killed before its index save can leave a stale counter next to newer ids).
     pub(crate) fn bump_next_id(&mut self) {
-        let max = self
+        let online = self
             .online
             .entries
             .keys()
-            .filter_map(|k| k.strip_prefix('i')?.parse::<u64>().ok())
-            .max();
+            .filter_map(|k| k.strip_prefix('i')?.parse::<u64>().ok());
+        let max = online.chain(self.index.items.iter().map(|i| i.id.0)).max();
         if let Some(m) = max {
             self.index.next_id = self.index.next_id.max(m + 1);
         }
