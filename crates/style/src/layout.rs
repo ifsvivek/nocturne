@@ -1,58 +1,68 @@
-//! Taffy layout of the styled tree. The tree is rebuilt on a state change and recomputed (not rebuilt) on a resize; nothing
-//! here runs per frame. Text leaves are measured through a caller-supplied function, so the app can use the real text shaper.
-use crate::cascade::{self, Report, Sheet};
+//! A laid-out screen: the styled tree, the Taffy layout, text blocks, scroll state and animations. Built on a state change and
+//! relaid out (not rebuilt) on a resize; nothing here runs per frame except [`Scene::tick`].
+use crate::anim::{Anims, Eff};
+use crate::cascade::{Budget, Cx, Failure, Interaction, Styler, flags};
 use crate::doc::{Doc, Id};
-use crate::props::{Computed, Ctx, Transform};
+use crate::fonts::Fonts;
+use crate::props::{Computed, Transform};
+use crate::sheet::Sheet;
+use crate::text::{self, Block, Measure, TextStyle};
+use crate::virt::{self, Builders};
+use crate::warn::{Kind, Report};
+use nocturne_core::customize::value::Color;
 use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 use taffy::geometry::Size;
 use taffy::prelude::TaffyMaxContent;
-use taffy::style::{AvailableSpace, Dimension, Display};
+use taffy::style::{AvailableSpace, Dimension, Display, LengthPercentageAuto, Position, Style};
 use taffy::{NodeId, TaffyTree};
 
+pub use crate::text::approx;
+
+/// Smallest an essential control can be made by a theme.
+pub const FLOOR_MIN_PX: f32 = 24.0;
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Timing {
+    pub cascade: Duration,
+    pub layout: Duration,
+}
+
+/// What a Taffy node stands for (the measure function needs to know).
 #[derive(Clone, Copy, Debug)]
-pub struct TextStyle {
-    pub size: f32,
-    pub weight: u16,
-    pub line_height: f32,
-    pub lines: Option<u16>,
+pub enum Leaf {
+    Node(Id),
+    /// The in-flow spacer that gives a virtual container its full height.
+    Spacer(Id),
 }
 
-/// `(text, style, max width)`: `None` is "as wide as it wants", `Some(0.0)` is min-content. Returns the size in px.
-pub type Measure<'a> = dyn FnMut(&str, &TextStyle, Option<f32>) -> (f32, f32) + 'a;
-
-/// A cheap stand-in for a text shaper: used by tests and benchmarks.
-pub fn approx(text: &str, st: &TextStyle, max: Option<f32>) -> (f32, f32) {
-    let cw = st.size * if st.weight >= 600 { 0.56 } else { 0.5 };
-    let (mut widest, mut line, mut lines) = (0.0f32, 0.0f32, 1u32);
-    for w in text.split_whitespace() {
-        let ww = w.chars().count() as f32 * cw;
-        let sp = if line > 0.0 { cw } else { 0.0 };
-        if let Some(m) = max
-            && line > 0.0
-            && line + sp + ww > m
-        {
-            widest = widest.max(line);
-            line = ww;
-            lines += 1;
-        } else {
-            line += sp + ww;
-        }
-    }
-    widest = widest.max(line);
-    if let Some(l) = st.lines {
-        lines = lines.min(l as u32);
-    }
-    (widest, lines as f32 * st.size * st.line_height)
+#[derive(Clone, Debug, Default)]
+pub struct Scroll {
+    pub page_y: f32,
+    pub offsets: HashMap<Id, [f32; 2]>,
 }
 
-/// The page is a document: as wide as the window, at least as tall, as tall as its content otherwise (the widget scrolls it).
-fn root_size(st: &mut taffy::Style, vp: (f32, f32)) {
-    st.size = Size {
-        width: Dimension::length(vp.0),
-        height: Dimension::auto(),
-    };
-    st.min_size.height = taffy::style::LengthPercentageAuto::length(vp.1);
+/// The data a measure callback needs (borrowed from the scene while its Taffy tree is borrowed mutably).
+pub struct Env<'a> {
+    pub doc: &'a Doc,
+    pub styles: &'a [Rc<Computed>],
+    pub fonts: &'a Fonts,
+    pub virt: &'a virt::State,
+}
+
+pub fn text_style(c: &Computed, fonts: &Fonts) -> TextStyle {
+    TextStyle {
+        size: c.font_size,
+        weight: c.weight,
+        italic: c.italic,
+        font: fonts.resolve(&c.family),
+        line_height: c.line_height_ratio(),
+        lines: c.lines,
+        letter_spacing: c.letter_spacing,
+        ellipsis: c.ellipsis,
+    }
 }
 
 pub fn shown<'a>(text: &'a str, c: &Computed) -> Cow<'a, str> {
@@ -63,24 +73,80 @@ pub fn shown<'a>(text: &'a str, c: &Computed) -> Cow<'a, str> {
     }
 }
 
-pub fn text_style(c: &Computed) -> TextStyle {
-    TextStyle {
-        size: c.font_size,
-        weight: c.weight,
-        line_height: c.line_height,
-        lines: c.lines,
+fn node_measure(
+    env: &Env,
+    i: Id,
+    known: Size<Option<f32>>,
+    avail: Size<AvailableSpace>,
+    measure: &mut Measure,
+) -> Size<f32> {
+    let node = &env.doc.nodes[i];
+    if let Some(img) = node.image {
+        let (iw, ih) = (img.w.max(1) as f32, img.h.max(1) as f32);
+        return match (known.width, known.height) {
+            (Some(w), Some(h)) => Size { width: w, height: h },
+            (Some(w), None) => Size { width: w, height: w * ih / iw },
+            (None, Some(h)) => Size { width: h * iw / ih, height: h },
+            _ => Size { width: iw, height: ih },
+        };
+    }
+    let Some(t) = &node.text else {
+        return Size::ZERO;
+    };
+    let c = &env.styles[i];
+    // `avail` is already the content box, so wrap to that.
+    let w = match avail.width {
+        AvailableSpace::Definite(w) => Some(w),
+        AvailableSpace::MinContent => Some(0.0),
+        AvailableSpace::MaxContent => None,
+    };
+    let ts = text_style(c, env.fonts);
+    let t = shown(t, c);
+    let (tw, th) = if ts.needs_block() {
+        let b = text::block(&t, &ts, w, measure);
+        (b.width, b.height)
+    } else {
+        measure(&t, &ts, w)
+    };
+    Size {
+        width: tw.ceil(),
+        height: th.ceil(),
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Timing {
-    pub cascade: Duration,
-    pub layout: Duration,
+pub fn run(tree: &mut TaffyTree<Leaf>, root: NodeId, env: &Env, measure: &mut Measure) {
+    let _ = tree.compute_layout_with_measure(root, Size::MAX_CONTENT, |inputs, _, ctx, style| {
+        taffy::compute_leaf_layout(
+            inputs,
+            style,
+            |_, _| 0.0,
+            |known, avail| match ctx {
+                Some(&mut Leaf::Node(i)) => node_measure(env, i, known, avail, measure),
+                Some(&mut Leaf::Spacer(c)) => {
+                    let w = match avail.width {
+                        AvailableSpace::Definite(w) => w,
+                        _ => known.width.unwrap_or(0.0),
+                    };
+                    Size {
+                        width: w,
+                        height: virt::total_height(env, c, w, measure),
+                    }
+                }
+                None => Size::ZERO,
+            },
+        )
+    });
 }
 
 pub struct Scene {
-    pub styles: Vec<Computed>,
-    /// Border box in the page's coordinates, before any scrolling: x, y, width, height.
+    pub doc: Doc,
+    pub sheet: Rc<Sheet>,
+    pub(crate) st: Styler,
+    pub fonts: Rc<Fonts>,
+    fonts_gen: u32,
+    pub viewport: (f32, f32),
+    pub interaction: Interaction,
+    /// Border box in the page's coordinates, before any scrolling: x, y, width, height. Fixed elements are in window coordinates.
     pub rects: Vec<[f32; 4]>,
     /// Scrollable content size (for `overflow: scroll`).
     pub content: Vec<[f32; 2]>,
@@ -88,164 +154,372 @@ pub struct Scene {
     pub insets: Vec<[f32; 4]>,
     /// Border widths per side (left, top, right, bottom).
     pub borders: Vec<[f32; 4]>,
-    /// Children in visual order (`order`, then source order): painting, hit testing and focus all use this.
+    /// Children in visual order (`order`, then source order), generated leaves at the ends: painting, hit testing and focus use this.
     pub kids: Vec<Vec<Id>>,
     /// The same children in paint order (`z-index`, stable).
     pub paint: Vec<Vec<Id>>,
+    blocks: HashMap<Id, Rc<Block>>,
+    pub scroll: Scroll,
+    pub anims: Anims,
+    /// Notes from the scene itself (essential floor, limits); [`Scene::warnings`] adds the sheet's and the cascade's.
     pub report: Report,
     pub timing: Timing,
-    tree: TaffyTree<Id>,
+    tree: TaffyTree<Leaf>,
     nodes: Vec<NodeId>,
-    root: NodeId,
+    vp_node: NodeId,
+    pub(crate) vwrap: HashMap<Id, (NodeId, NodeId)>,
+    /// Origin (page coordinates) of each virtual container's item area.
+    pub(crate) vorigin: HashMap<Id, (f32, f32)>,
+    pub(crate) tree_dirty: bool,
+    touched: Vec<Id>,
+    budget: Option<Duration>,
+    floor_min: HashSet<Id>,
+    floor_reported: HashSet<Id>,
+    pub(crate) virt: virt::State,
+    /// Nodes `0..base_len` are the app's tree plus generated leaves; the rest are virtual items.
+    pub(crate) base_len: usize,
+    /// Nodes `0..real_len` are the app's own tree.
+    real_len: usize,
 }
 
-fn run(
-    tree: &mut TaffyTree<Id>,
-    root: NodeId,
-    doc: &Doc,
-    styles: &[Computed],
-    measure: &mut Measure,
-) {
-    let _ = tree.compute_layout_with_measure(root, Size::MAX_CONTENT, |inputs, _, ctx, style| {
-        taffy::compute_leaf_layout(
-            inputs,
-            style,
-            |_, _| 0.0,
-            |known, avail| {
-                let Some(&mut i) = ctx else {
-                    return Size::ZERO;
-                };
-                let (Some(t), c) = (&doc.nodes[i].text, &styles[i]) else {
-                    return Size::ZERO;
-                };
-                // `known` is the border box (Taffy applies it itself); `avail` is already the content box, so wrap to that.
-                let _ = known;
-                let w = match avail.width {
-                    AvailableSpace::Definite(w) => Some(w),
-                    AvailableSpace::MinContent => Some(0.0),
-                    AvailableSpace::MaxContent => None,
-                };
-                let (tw, th) = measure(&shown(t, c), &text_style(c), w);
-                Size {
-                    width: tw.ceil(),
-                    height: th.ceil(),
-                }
-            },
-        )
-    });
+/// What changed in an update.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Update {
+    pub restyled: usize,
+    pub relaid: bool,
+}
+
+fn px(v: f32) -> Dimension {
+    Dimension::length(v)
 }
 
 impl Scene {
+    /// Style and lay out a tree. Fails (without touching anything else) when the time budget runs out.
     pub fn build(
-        doc: &Doc,
-        sheet: &Sheet,
-        flags: &[u8],
+        mut doc: Doc,
+        sheet: Rc<Sheet>,
+        fonts: Rc<Fonts>,
         viewport: (f32, f32),
+        it: Interaction,
+        budget: Option<Duration>,
+        builders: &Builders,
         measure: &mut Measure,
-    ) -> Scene {
+    ) -> Result<Scene, Failure> {
         let t0 = Instant::now();
-        let cx = Ctx {
-            vw: viewport.0,
-            vh: viewport.1,
+        let deadline = budget.map(|b| t0 + b);
+        let mut st = Styler::new();
+        let real_len = doc.len();
+        let f = flags(&doc, &it);
+        {
+            let mut cx = Cx {
+                sheet: &sheet,
+                vp: viewport,
+                budget: Budget::new(deadline),
+            };
+            st.style_range(&mut doc, &mut cx, &f, 0)?;
+        }
+        let cascade = t0.elapsed();
+        let n = doc.len();
+        let mut tree = TaffyTree::new();
+        let dummy = tree.new_leaf(Style::default()).expect("taffy node");
+        let mut s = Scene {
+            virt: virt::State::new(&doc, builders),
+            base_len: n,
+            real_len,
+            fonts_gen: fonts.generation(),
+            doc,
+            sheet,
+            st,
+            fonts,
+            viewport,
+            interaction: it,
+            rects: vec![[0.0; 4]; n],
+            content: vec![[0.0; 2]; n],
+            insets: vec![[0.0; 4]; n],
+            borders: vec![[0.0; 4]; n],
+            kids: vec![],
+            paint: vec![],
+            blocks: HashMap::new(),
+            scroll: Scroll::default(),
+            anims: Anims::default(),
+            report: Report::default(),
+            timing: Timing::default(),
+            tree,
+            nodes: vec![],
+            vp_node: dummy,
+            vwrap: HashMap::new(),
+            vorigin: HashMap::new(),
+            tree_dirty: true,
+            touched: vec![],
+            budget,
+            floor_min: HashSet::new(),
+            floor_reported: HashSet::new(),
         };
-        let mut report = Report::default();
-        let styles = cascade::style_tree(doc, sheet, flags, cx, &Computed::root(), &mut report);
-        let cascade_t = t0.elapsed();
-
         let t1 = Instant::now();
-        let mut tree: TaffyTree<Id> = TaffyTree::with_capacity(doc.len());
-        let nodes: Vec<NodeId> = (0..doc.len())
+        s.layout_all(measure);
+        s.timing = Timing {
+            cascade,
+            layout: t1.elapsed(),
+        };
+        Ok(s)
+    }
+
+    pub fn style(&self, i: Id) -> &Rc<Computed> {
+        &self.st.styles[i]
+    }
+
+    pub fn text_style(&self, i: Id) -> TextStyle {
+        text_style(&self.st.styles[i], &self.fonts)
+    }
+
+    /// Lines of text that is placed by the engine (clamp, ellipsis, letter-spacing); `None` for text the renderer wraps.
+    pub fn block(&self, i: Id) -> Option<&Rc<Block>> {
+        self.blocks.get(&i)
+    }
+
+    /// Animated overrides for painting node `i` (empty when nothing animates).
+    pub fn eff(&self, i: Id) -> Eff {
+        if self.anims.active() {
+            self.anims.eff(i)
+        } else {
+            Eff::default()
+        }
+    }
+
+    /// Everything noteworthy about the stylesheet and the last styling and layout, grouped by kind.
+    pub fn warnings(&self) -> Report {
+        let mut r = self.sheet.report.clone();
+        r.merge(&self.st.report);
+        r.merge(&self.report);
+        r
+    }
+
+    pub fn is_hidden(&self, i: Id) -> bool {
+        self.st.styles[i].layout.display == Display::None
+    }
+
+    pub fn page_height(&self) -> f32 {
+        self.rects[0][3]
+    }
+
+    /// Colour of the surface behind `i`: the nearest ancestor with an opaque solid background, else the page's, else black
+    /// (what `mask-image` scrims fade to).
+    pub fn scrim_color(&self, i: Id) -> Color {
+        let mut up = self.doc.nodes[i].parent;
+        while let Some(p) = up {
+            for f in self.st.styles[p].bg.iter() {
+                if let crate::paint::Fill::Solid(c) = f
+                    && c.a == 255
+                {
+                    return *c;
+                }
+            }
+            up = self.doc.nodes[p].parent;
+        }
+        Color::rgba(0, 0, 0, 255)
+    }
+
+    // ---- tree and layout ----
+
+    fn style_for(&self, i: Id) -> Style {
+        let c = &self.st.styles[i];
+        let node = &self.doc.nodes[i];
+        let mut st = c.layout.clone();
+        if i == 0 {
+            st.size = Size {
+                width: px(self.viewport.0),
+                height: Dimension::auto(),
+            };
+            st.min_size.height = LengthPercentageAuto::length(self.viewport.1);
+        }
+        if node.virtual_proto {
+            st.display = Display::None;
+        }
+        if node.virt.is_some() {
+            st.display = Display::Block;
+        }
+        if self.floor_min.contains(&i) {
+            st.min_size = Size {
+                width: LengthPercentageAuto::length(FLOOR_MIN_PX),
+                height: LengthPercentageAuto::length(FLOOR_MIN_PX),
+            };
+        }
+        if node.virtual_item {
+            virt::item_style(self, i, &mut st);
+        }
+        st
+    }
+
+    fn build_kids(&mut self) {
+        let n = self.doc.len();
+        self.kids = (0..n)
             .map(|i| {
-                let mut st = styles[i].layout.clone();
-                if i == 0 {
-                    root_size(&mut st, viewport);
+                let node = &self.doc.nodes[i];
+                let mut k: Vec<Id> = node
+                    .children
+                    .iter()
+                    .copied()
+                    .filter(|&c| !self.doc.nodes[c].virtual_proto)
+                    .collect();
+                k.sort_by_key(|&c| self.st.styles[c].order);
+                if let Some(b) = node.before {
+                    k.insert(0, b);
                 }
-                if doc.nodes[i].text.is_some() {
-                    tree.new_leaf_with_context(st, i)
-                } else {
-                    tree.new_leaf(st)
+                if let Some(a) = node.after {
+                    k.push(a);
                 }
-                .expect("taffy node")
-            })
-            .collect();
-        let kids: Vec<Vec<Id>> = doc
-            .nodes
-            .iter()
-            .map(|n| {
-                let mut k = n.children.clone();
-                k.sort_by_key(|&c| styles[c].order);
                 k
             })
             .collect();
-        for (i, k) in kids.iter().enumerate() {
-            if !k.is_empty() {
-                let ids: Vec<NodeId> = k.iter().map(|&c| nodes[c]).collect();
-                tree.set_children(nodes[i], &ids).expect("children");
-            }
-        }
-        let paint = kids
+        self.paint = self
+            .kids
             .iter()
             .map(|k| {
                 let mut p = k.clone();
-                p.sort_by_key(|&c| styles[c].z);
+                p.sort_by_key(|&c| self.st.styles[c].z);
                 p
             })
             .collect();
-        let mut s = Scene {
-            paint,
-            rects: vec![[0.0; 4]; doc.len()],
-            content: vec![[0.0; 2]; doc.len()],
-            insets: vec![[0.0; 4]; doc.len()],
-            borders: vec![[0.0; 4]; doc.len()],
-            kids,
-            report,
-            timing: Timing::default(),
-            root: nodes[0],
-            nodes,
-            tree,
-            styles,
-        };
-        run(&mut s.tree, s.root, doc, &s.styles, measure);
-        s.collect(doc);
-        s.timing = Timing {
-            cascade: cascade_t,
-            layout: t1.elapsed(),
-        };
-        s
     }
 
-    /// New window size: only layout runs again (cascade results do not depend on the viewport except for `vh`/`vw` lengths,
-    /// so a theme that uses them rebuilds through `build`).
-    pub fn resize(&mut self, doc: &Doc, viewport: (f32, f32), measure: &mut Measure) -> Duration {
-        let t = Instant::now();
-        let mut st = self.tree.style(self.root).expect("root").clone();
-        root_size(&mut st, viewport);
-        self.tree.set_style(self.root, st).expect("set_style");
-        // Text wraps to the new widths, so every measured leaf is dirty.
-        for (i, n) in doc.nodes.iter().enumerate() {
-            if n.text.is_some() {
-                let _ = self.tree.mark_dirty(self.nodes[i]);
+    fn build_tree(&mut self) {
+        self.build_kids();
+        let n = self.doc.len();
+        let mut tree: TaffyTree<Leaf> = TaffyTree::with_capacity(n + 8);
+        let nodes: Vec<NodeId> = (0..n)
+            .map(|i| {
+                tree.new_leaf_with_context(self.style_for(i), Leaf::Node(i))
+                    .expect("taffy node")
+            })
+            .collect();
+        let layer = tree
+            .new_leaf(Style {
+                position: Position::Absolute,
+                inset: taffy::geometry::Rect {
+                    top: LengthPercentageAuto::length(0.0),
+                    left: LengthPercentageAuto::length(0.0),
+                    right: LengthPercentageAuto::length(0.0),
+                    bottom: LengthPercentageAuto::length(0.0),
+                },
+                ..Style::default()
+            })
+            .expect("taffy node");
+        let mut fixed: Vec<NodeId> = vec![];
+        let mut vwrap = HashMap::new();
+        for i in 0..n {
+            let mut ch: Vec<NodeId> = vec![];
+            let mut items: Vec<NodeId> = vec![];
+            for &k in &self.kids[i] {
+                let kn = &self.doc.nodes[k];
+                if self.st.styles[k].fixed && self.st.styles[k].layout.position == Position::Absolute {
+                    fixed.push(nodes[k]);
+                } else if kn.virtual_item {
+                    items.push(nodes[k]);
+                } else {
+                    ch.push(nodes[k]);
+                }
+            }
+            if self.doc.nodes[i].virt.is_some() {
+                let wrapper = tree
+                    .new_leaf(Style {
+                        position: Position::Relative,
+                        size: Size {
+                            width: Dimension::percent(1.0),
+                            height: Dimension::auto(),
+                        },
+                        ..Style::default()
+                    })
+                    .expect("taffy node");
+                let spacer = tree
+                    .new_leaf_with_context(
+                        Style {
+                            size: Size {
+                                width: Dimension::percent(1.0),
+                                height: Dimension::auto(),
+                            },
+                            ..Style::default()
+                        },
+                        Leaf::Spacer(i),
+                    )
+                    .expect("taffy node");
+                let mut all = vec![spacer];
+                all.extend(items);
+                tree.set_children(wrapper, &all).expect("children");
+                ch.push(wrapper);
+                vwrap.insert(i, (wrapper, spacer));
+            }
+            if !ch.is_empty() {
+                tree.set_children(nodes[i], &ch).expect("children");
             }
         }
-        run(&mut self.tree, self.root, doc, &self.styles, measure);
-        self.collect(doc);
-        t.elapsed()
+        tree.set_children(layer, &fixed).expect("children");
+        let vp = tree
+            .new_leaf(Style {
+                size: Size {
+                    width: px(self.viewport.0),
+                    height: px(self.viewport.1),
+                },
+                ..Style::default()
+            })
+            .expect("taffy node");
+        tree.set_children(vp, &[nodes[0], layer]).expect("children");
+        self.tree = tree;
+        self.nodes = nodes;
+        self.vp_node = vp;
+        self.vwrap = vwrap;
+        self.tree_dirty = false;
     }
 
-    fn collect(&mut self, doc: &Doc) {
+    fn run_layout(&mut self, measure: &mut Measure) {
+        let env = Env {
+            doc: &self.doc,
+            styles: &self.st.styles,
+            fonts: &self.fonts,
+            virt: &self.virt,
+        };
+        run(&mut self.tree, self.vp_node, &env, measure);
+    }
+
+    /// Lay out and collect rectangles; applies the essential floor (a second pass when a size had to be forced).
+    pub(crate) fn layout_all(&mut self, measure: &mut Measure) {
+        for _ in 0..4 {
+            if self.tree_dirty || self.nodes.len() != self.doc.len() {
+                self.build_tree();
+            }
+            self.run_layout(measure);
+            self.collect(measure);
+            let mut again = self.enforce_floor_sizes();
+            if self.sync_virtual(measure) {
+                again = true;
+            }
+            if !again {
+                break;
+            }
+            self.tree_dirty = true;
+        }
+        self.nudge_essentials();
+        self.clamp_scroll();
+    }
+
+    fn collect(&mut self, measure: &mut Measure) {
+        let n = self.doc.len();
+        self.rects.resize(n, [0.0; 4]);
+        self.content.resize(n, [0.0; 2]);
+        self.insets.resize(n, [0.0; 4]);
+        self.borders.resize(n, [0.0; 4]);
+        self.blocks.clear();
+        self.vorigin.clear();
         // Parents are stored before children, so one forward pass turns local locations into page coordinates.
-        for i in 0..self.nodes.len() {
-            let l = self.tree.layout(self.nodes[i]).expect("layout");
-            let (px, py) = match doc.nodes[i].parent {
+        for i in 0..n {
+            let l = *self.tree.layout(self.nodes[i]).expect("layout");
+            let node = &self.doc.nodes[i];
+            let (ox, oy) = match node.parent {
+                _ if self.st.styles[i].fixed && self.st.styles[i].layout.position == Position::Absolute => (0.0, 0.0),
+                Some(p) if node.virtual_item => self.vorigin.get(&p).copied().unwrap_or((0.0, 0.0)),
                 Some(p) => (self.rects[p][0], self.rects[p][1]),
                 None => (0.0, 0.0),
             };
-            self.rects[i] = [
-                px + l.location.x,
-                py + l.location.y,
-                l.size.width,
-                l.size.height,
-            ];
+            self.rects[i] = [ox + l.location.x, oy + l.location.y, l.size.width, l.size.height];
             self.content[i] = [l.scroll_width(), l.scroll_height()];
             self.borders[i] = [l.border.left, l.border.top, l.border.right, l.border.bottom];
             self.insets[i] = [
@@ -254,10 +528,250 @@ impl Scene {
                 l.border.right + l.padding.right,
                 l.border.bottom + l.padding.bottom,
             ];
+            if let Some((w, _)) = self.vwrap.get(&i) {
+                let wl = self.tree.layout(*w).expect("layout").location;
+                self.vorigin
+                    .insert(i, (self.rects[i][0] + wl.x, self.rects[i][1] + wl.y));
+            }
+        }
+        // Text the engine breaks into lines itself.
+        for i in 0..n {
+            let c = &self.st.styles[i];
+            if c.layout.display == Display::None {
+                continue;
+            }
+            let Some(t) = &self.doc.nodes[i].text else {
+                continue;
+            };
+            let ts = text_style(c, &self.fonts);
+            if ts.needs_block() {
+                let [_, _, w, _] = self.rects[i];
+                let ins = self.insets[i];
+                let b = text::block(&shown(t, c), &ts, Some((w - ins[0] - ins[2]).max(0.0)), measure);
+                self.blocks.insert(i, Rc::new(b));
+            }
         }
     }
 
-    pub fn is_hidden(&self, i: Id) -> bool {
-        self.styles[i].layout.display == Display::None
+    /// Essential controls smaller than the floor get a minimum size (the caller lays out again).
+    fn enforce_floor_sizes(&mut self) -> bool {
+        let mut again = false;
+        for i in 0..self.doc.len() {
+            if !self.doc.nodes[i].essential || self.is_hidden(i) {
+                continue;
+            }
+            let [_, _, w, h] = self.rects[i];
+            if (w < FLOOR_MIN_PX || h < FLOOR_MIN_PX) && self.floor_min.insert(i) {
+                self.floor_note(i, "made it smaller than 24 px; it was given a 24 px minimum");
+                again = true;
+            }
+        }
+        again
     }
+
+    fn floor_note(&mut self, i: Id, what: &str) {
+        if self.floor_reported.insert(i) || what.contains("moved") {
+            let d = self.doc.describe(i);
+            self.report
+                .add(Kind::Floor, format!("a rule {what} on `{d}`, an essential control"));
+        }
+    }
+
+    /// Essential controls that ended up (mostly) outside the window are moved to the nearest place where they are visible.
+    fn nudge_essentials(&mut self) {
+        let (vw, vh) = self.viewport;
+        let page_h = self.rects[0][3].max(vh);
+        for i in 0..self.doc.len() {
+            if !self.doc.nodes[i].essential || self.is_hidden(i) {
+                continue;
+            }
+            // Inside a clipping ancestor the position is the container's business.
+            let mut clipped = false;
+            let mut fixed = false;
+            let mut up = Some(i);
+            while let Some(a) = up {
+                let c = &self.st.styles[a];
+                if a != 0 && a != i && (c.layout.overflow.x != taffy::style::Overflow::Visible
+                    || c.layout.overflow.y != taffy::style::Overflow::Visible)
+                {
+                    clipped = true;
+                }
+                fixed |= c.fixed;
+                up = self.doc.nodes[a].parent;
+            }
+            if clipped {
+                continue;
+            }
+            let [x, y, w, h] = self.rects[i];
+            let (ymax, yh) = if fixed { (vh, vh) } else { (page_h, page_h) };
+            let _ = yh;
+            let vis = |a: f32, len: f32, max: f32| -> f32 {
+                if len <= 0.0 {
+                    return 1.0;
+                }
+                ((a + len).min(max) - a.max(0.0)).max(0.0) / len
+            };
+            if vis(x, w, vw) * vis(y, h, ymax) >= 0.5 {
+                continue;
+            }
+            let fit = |a: f32, len: f32, max: f32| -> f32 { a.clamp(0.0, (max - len).max(0.0)) - a };
+            let (dx, dy) = (fit(x, w, vw), fit(y, h, ymax));
+            self.shift_subtree(i, dx, dy);
+            self.floor_note(i, "moved it off screen; it was moved back into view");
+        }
+    }
+
+    fn shift_subtree(&mut self, i: Id, dx: f32, dy: f32) {
+        let mut stack = vec![i];
+        while let Some(n) = stack.pop() {
+            self.rects[n][0] += dx;
+            self.rects[n][1] += dy;
+            stack.extend(self.kids[n].iter().copied());
+        }
+    }
+
+    // ---- updates ----
+
+    /// New window size: layout again; the cascade too when the sheet depends on the window.
+    pub fn resize(&mut self, viewport: (f32, f32), measure: &mut Measure) -> Duration {
+        let t = Instant::now();
+        if viewport == self.viewport {
+            return t.elapsed();
+        }
+        self.viewport = viewport;
+        if self.sheet.uses_viewport {
+            let f = flags(&self.doc, &self.interaction);
+            if self.restyle_with(&f, Instant::now(), measure).is_err() {
+                self.report
+                    .add(Kind::Limit, "restyle after a resize ran over its time budget");
+            }
+        } else {
+            self.tree_dirty = true;
+            self.layout_all(measure);
+        }
+        t.elapsed()
+    }
+
+    /// The pointer or focus moved: restyle what can have changed, relayout only if a layout property did.
+    pub fn update(
+        &mut self,
+        it: Interaction,
+        now: Instant,
+        measure: &mut Measure,
+    ) -> Result<Update, Failure> {
+        self.interaction = it;
+        let f = flags(&self.doc, &it);
+        self.restyle_with(&f, now, measure)
+    }
+
+    /// Call after editing classes or attributes through [`Scene::touch`].
+    pub fn refresh(&mut self, now: Instant, measure: &mut Measure) -> Result<Update, Failure> {
+        let f = flags(&self.doc, &self.interaction);
+        self.restyle_with(&f, now, measure)
+    }
+
+    /// Mark nodes whose classes, attributes or text the app changed.
+    pub fn touch(&mut self, ids: &[Id]) {
+        self.touched.extend_from_slice(ids);
+        for &i in ids {
+            if self.doc.nodes[i].text.is_some() {
+                self.tree_dirty = true;
+            }
+        }
+    }
+
+    /// A new font set (a family arrived, or the installed list changed): text is measured again.
+    pub fn set_fonts(&mut self, fonts: Rc<Fonts>, measure: &mut Measure) {
+        self.fonts = fonts;
+        self.fonts_gen = self.fonts.generation();
+        self.tree_dirty = true;
+        self.layout_all(measure);
+    }
+
+    fn restyle_with(
+        &mut self,
+        f: &[u8],
+        now: Instant,
+        measure: &mut Measure,
+    ) -> Result<Update, Failure> {
+        let t = Instant::now();
+        let touched = std::mem::take(&mut self.touched);
+        let mut cx = Cx {
+            sheet: &self.sheet,
+            vp: self.viewport,
+            budget: Budget::new(self.budget.map(|b| t + b)),
+        };
+        let r = self.st.restyle(&self.doc, &mut cx, f, &touched)?;
+        let mut up = Update {
+            restyled: r.changed.len(),
+            relaid: false,
+        };
+        if r.structural {
+            self.rebuild_styles(f, measure)?;
+            up.relaid = true;
+            return Ok(up);
+        }
+        let mut lists = false;
+        for (id, old) in &r.changed {
+            let new = self.st.styles[*id].clone();
+            self.anims.changed(*id, old, &new, now);
+            if layout_affecting(old, &new) {
+                self.tree_dirty = true;
+            }
+            lists |= old.order != new.order || old.z != new.z || old.fixed != new.fixed;
+        }
+        if lists {
+            self.tree_dirty = true;
+        }
+        if self.tree_dirty || self.fonts_gen != self.fonts.generation() {
+            self.fonts_gen = self.fonts.generation();
+            self.layout_all(measure);
+            up.relaid = true;
+        }
+        Ok(up)
+    }
+
+    /// A generated leaf appeared or vanished: restyle from scratch (virtual items are rebuilt by the layout).
+    fn rebuild_styles(&mut self, f: &[u8], measure: &mut Measure) -> Result<(), Failure> {
+        let keep = self.real_len;
+        self.doc.truncate(keep);
+        self.virt.reset();
+        let mut cx = Cx {
+            sheet: &self.sheet,
+            vp: self.viewport,
+            budget: Budget::new(self.budget.map(|b| Instant::now() + b)),
+        };
+        let flags_now = flags(&self.doc, &self.interaction);
+        let _ = f;
+        self.st.style_range(&mut self.doc, &mut cx, &flags_now, 0)?;
+        self.base_len = self.doc.len();
+        self.anims.clear();
+        self.tree_dirty = true;
+        self.layout_all(measure);
+        Ok(())
+    }
+
+    /// Advance animations to `now`; true while any is still running (keep requesting frames).
+    pub fn tick(&mut self, now: Instant) -> bool {
+        self.anims.tick(now)
+    }
+
+    pub fn animating(&self) -> bool {
+        self.anims.active()
+    }
+}
+
+fn layout_affecting(a: &Computed, b: &Computed) -> bool {
+    a.layout != b.layout
+        || a.order != b.order
+        || a.fixed != b.fixed
+        || a.font_size != b.font_size
+        || a.weight != b.weight
+        || a.italic != b.italic
+        || a.family != b.family
+        || a.line_height != b.line_height
+        || a.letter_spacing != b.letter_spacing
+        || a.lines != b.lines
+        || a.ellipsis != b.ellipsis
+        || a.text_transform != b.text_transform
 }
