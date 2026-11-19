@@ -114,6 +114,10 @@ impl<'a, M: 'a> Widget<M, iced::Theme, iced::Renderer> for Zoom<'a, M> {
         let dur = self.dur();
         let state = tree.state.downcast_mut::<State>();
         let over = cursor.is_over(layout.bounds());
+        if over != state.over {
+            state.over = over;
+            shell.request_redraw();
+        }
         if let Event::Window(window::Event::RedrawRequested(now)) = event {
             if state.hot.value() != state.over {
                 // Re-read the motion preference so a Settings change applies to live cards.
@@ -123,9 +127,6 @@ impl<'a, M: 'a> Widget<M, iced::Theme, iced::Renderer> for Zoom<'a, M> {
             if state.hot.is_animating(*now) {
                 shell.request_redraw();
             }
-        } else if over != state.over {
-            state.over = over;
-            shell.request_redraw();
         }
     }
 
