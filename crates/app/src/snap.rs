@@ -40,6 +40,32 @@ pub fn on_boot() -> Task<Message> {
                     nocturne_core::source::SourceId(i),
                 ))
             }),
+            // Server UI QA: `cycle-filter`, `layout-1` (the per-server switch of source 1),
+            // `sections-1` (its editor), `sec-toggle-2`, `sec-up-2`, `sec-down-2`, `sec-save`.
+            "cycle-filter" => Some(Message::CycleFilter),
+            n if n.starts_with("layout-") => n[7..].parse().ok().map(|i| {
+                Message::Src(crate::app::message::SrcAct::Layout(
+                    nocturne_core::source::SourceId(i),
+                ))
+            }),
+            n if n.starts_with("sections-") => n[9..].parse().ok().map(|i| {
+                Message::Src(crate::app::message::SrcAct::Sections(
+                    nocturne_core::source::SourceId(i),
+                ))
+            }),
+            n if n.starts_with("sec-toggle-") => n[11..]
+                .parse()
+                .ok()
+                .map(|i| Message::Src(crate::app::message::SrcAct::SecToggle(i))),
+            n if n.starts_with("sec-up-") => n[7..]
+                .parse()
+                .ok()
+                .map(|i| Message::Src(crate::app::message::SrcAct::SecShift(i, -1))),
+            n if n.starts_with("sec-down-") => n[9..]
+                .parse()
+                .ok()
+                .map(|i| Message::Src(crate::app::message::SrcAct::SecShift(i, 1))),
+            "sec-save" => Some(Message::Src(crate::app::message::SrcAct::SecSave)),
             "open-trakt" => Some(Message::Trakt(crate::app::trakt::Msg::Open)),
             // `open-global-0`: the header's n-th merged link (Movies, Shows, ...).
             "open-movies" => Some(Message::OpenKind(nocturne_core::unified::UKind::Movies)),

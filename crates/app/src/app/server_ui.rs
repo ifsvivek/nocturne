@@ -175,7 +175,7 @@ impl App {
             let name = if s.native() {
                 s.label().to_string()
             } else {
-                format!("{} (not shown in NOCTURNE yet)", s.label())
+                format!("{} (not shown yet)", s.label())
             };
             let ink = if *on { t::text() } else { t::text_secondary() };
             let off = !can || d.busy;

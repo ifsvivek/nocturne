@@ -64,6 +64,19 @@ pub fn poll_of(r: Result<bool, Error>) -> Poll {
     }
 }
 
+/// The server's `LoginDisclaimer` (public, no sign-in needed), cut to a sane length; shown as text
+/// and never interpreted.
+async fn disclaimer(url: &str) -> Option<String> {
+    let c = nocturne_jellyfin::Client::new(nocturne_jellyfin::Config {
+        base_url: url.into(),
+        token: String::new(),
+    })
+    .ok()?;
+    let t = c.branding().await.ok()?.login_disclaimer?;
+    let t: String = t.trim().chars().take(1500).collect();
+    (!t.is_empty()).then_some(t)
+}
+
 /// Is `url` a server, what is it called, and does the keyring hold a session that still works?
 pub async fn probe(url: String, restore: bool) -> Result<(Probe, Option<Session>), ConnectFail> {
     let c = UserClient::anonymous(&url).map_err(|e| classify(&e))?;
@@ -74,6 +87,7 @@ pub async fn probe(url: String, restore: bool) -> Result<(Probe, Option<Session>
     let mut p = Probe {
         name: info.server_name,
         quick_connect: c.quick_connect_enabled().await.unwrap_or(false),
+        disclaimer: disclaimer(&url).await,
         ..Default::default()
     };
     let u = url.clone();

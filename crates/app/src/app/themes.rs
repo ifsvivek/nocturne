@@ -471,6 +471,49 @@ impl App {
                 );
             }
         }
+        // Branding CSS of servers in Server UI mode: applied automatically, listed here with what
+        // could not be mapped. ponytail: parsed while drawing (milliseconds, this page only).
+        let branded: Vec<_> = self
+            .catalog
+            .slots
+            .iter()
+            .filter_map(|s| Some((s, self.themes.branding_of(s.id)?)))
+            .collect();
+        if !branded.is_empty() {
+            col = col.push(rule()).push(
+                text(tracked("Server branding"))
+                    .shaping(text::Shaping::Advanced)
+                    .size(t::CONTROL_TEXT)
+                    .font(t::bold())
+                    .color(t::text_secondary()),
+            );
+            col = col.push(
+                text("The look the server's administrator set, used for that server alone while its own layout is on. A theme you pick for the server above wins over it.")
+                    .size(t::CAPTION)
+                    .color(t::text_tertiary()),
+            );
+            for (s, css) in branded {
+                let line = match cz::parse(css) {
+                    Ok(p) => format!(
+                        "{}: {} applied, {} not understood",
+                        s.profile.label,
+                        p.theme.count(),
+                        p.warnings.len() + p.dropped_warnings
+                    ),
+                    Err(e) => format!("{}: {e}", s.profile.label),
+                };
+                col = col.push(text(line).size(t::CAPTION).color(t::text_secondary()));
+                if let Ok(p) = cz::parse(css) {
+                    for w in p.warnings.iter().take(5) {
+                        col = col.push(
+                            text(w.to_string())
+                                .size(t::CAPTION)
+                                .color(t::text_tertiary()),
+                        );
+                    }
+                }
+            }
+        }
         scroll(col)
             .style(style::scroll)
             .width(300)

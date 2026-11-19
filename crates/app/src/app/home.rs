@@ -525,7 +525,7 @@ impl App {
                 HRow::Tiles => (
                     "My media".to_string(),
                     "Your libraries.".to_string(),
-                    format!("{n} libraries"),
+                    format!("{n} {}", if n == 1 { "library" } else { "libraries" }),
                     wide,
                     Art::Landscape,
                     false,
