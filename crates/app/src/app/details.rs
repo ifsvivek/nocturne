@@ -140,7 +140,7 @@ impl App {
             self.marks(),
         );
         #[cfg(feature = "theme-engine")]
-        let css = self.engine_sheet_text();
+        let css = self.engine_css();
         if let Some(d) = self.stack.last_mut().and_then(|p| p.det.as_deref_mut()) {
             d.set_win(win);
             d.set_writes(writes);
@@ -153,7 +153,7 @@ impl App {
     /// The player's bar follows the theme's engine rules too.
     #[cfg(feature = "theme-engine")]
     pub(super) fn sync_player_css(&mut self) {
-        let css = self.engine_sheet_text();
+        let css = self.engine_css();
         if let Some(p) = self.player.as_mut() {
             p.set_user_css(css);
         }

@@ -24,7 +24,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 type El<'a> = Element<'a, Message>;
 
@@ -99,6 +99,8 @@ pub struct State {
     applied: Option<u64>,
     /// What was fetched for the editor's text.
     resolved: Option<Arc<Resolved>>,
+    /// The editor's imports are being downloaded (the report says so).
+    fetching: bool,
     /// Stylesheets being fetched for the active theme, so each is started once.
     resolving: HashSet<String>,
     /// Fonts already handed to Iced (address and weight).
@@ -124,6 +126,7 @@ impl Default for State {
             safe: std::env::var("NOCTURNE_SAFE_THEME").is_ok_and(|v| v == "1"),
             applied: None,
             resolved: None,
+            fetching: false,
             resolving: HashSet::new(),
             fonts_loaded: HashSet::new(),
         }
@@ -221,18 +224,27 @@ impl App {
             }
             return Task::none();
         }
-        if self.th.preview {
-            return Task::none();
-        }
         let (src, ui) = (self.theme_source(), self.theme_ui());
         let mut task = Task::none();
-        if let Some(css) = self.themes.active_css(src, ui)
-            && self.themes.needs_resolve(css)
-            && !self.th.resolving.contains(css)
+        // The editor's text (a preview) is resolved by `reparse_with`, which also stores it; the
+        // Studio's working copy and the active theme are resolved here, once per distinct text.
+        let mut todo: Vec<(String, Option<String>)> = vec![];
+        if !self.th.preview
+            && let Some(css) = self.themes.active_css(src, ui)
         {
-            let css = css.to_string();
-            self.th.resolving.insert(css.clone());
-            task = self.resolve_task(css, self.base_of(src, ui), false);
+            todo.push((css.to_string(), self.base_of(src, ui)));
+        }
+        #[cfg(feature = "theme-engine")]
+        if self.studio.open {
+            todo.push((self.studio.css.clone(), None));
+        }
+        for (css, base) in todo {
+            if self.themes.needs_resolve(&css) && self.th.resolving.insert(css.clone()) {
+                task = Task::batch([task, self.resolve_task(css, base, false)]);
+            }
+        }
+        if self.th.preview {
+            return task;
         }
         let want = self.themes.active_key_with(src, ui);
         if self.th.applied != Some(want) {
@@ -250,7 +262,8 @@ impl App {
 
     /// Counts for the theme conformance harness: tokens applied, warnings by kind, what was fetched, fonts loaded.
     fn report_json(&self, src: Option<SourceId>, ui: Option<SourceId>) -> String {
-        let Some(css) = self.themes.active_css(src, ui) else {
+        let text = self.th.preview.then(|| self.th.content.text());
+        let Some(css) = text.as_deref().or_else(|| self.themes.active_css(src, ui)) else {
             return serde_json::json!({ "active": false }).to_string();
         };
         let r = self.themes.resolved_for(css);
@@ -261,6 +274,8 @@ impl App {
         }
         serde_json::json!({
             "active": true,
+            "previewing": self.th.preview,
+            "fetching": self.th.fetching,
             "applied": p.as_ref().map_or(0, |p| p.theme.count()),
             "not_applied": p.as_ref().map_or(0, |p| p.warnings.len() + p.dropped_warnings),
             "not_applied_by_kind": kinds,
@@ -330,17 +345,76 @@ impl App {
         self.reparse_with(false)
     }
 
+    /// The stylesheet the CSS engine layers over its default: what is previewed, else the active
+    /// theme, with imports inlined and `@font-face` removed once fetched (the raw text until then).
+    #[cfg(feature = "theme-engine")]
+    pub(super) fn engine_css(&self) -> Option<String> {
+        let raw = if self.th.preview {
+            self.th.content.text()
+        } else {
+            self.themes
+                .active_css(self.theme_source(), self.theme_ui())?
+                .to_string()
+        };
+        let css = self
+            .themes
+            .resolved_for(&raw)
+            .map_or(raw, |r| r.css.clone());
+        nocturne_style::is_engine_sheet(&css).then_some(css)
+    }
+
+    /// The families of the fetched fonts that the engine's active sheet may name.
+    #[cfg(feature = "theme-engine")]
+    pub(super) fn engine_fonts(&self) -> Vec<String> {
+        let raw = if self.th.preview {
+            Some(self.th.content.text())
+        } else {
+            self.themes
+                .active_css(self.theme_source(), self.theme_ui())
+                .map(str::to_string)
+        };
+        #[cfg(feature = "theme-engine")]
+        let raw = if self.studio.open {
+            Some(self.studio.css.clone())
+        } else {
+            raw
+        };
+        raw.map_or_else(Vec::new, |r| {
+            self.themes
+                .fonts_for(&r)
+                .iter()
+                .map(|f| f.family.clone())
+                .collect()
+        })
+    }
+
     /// Translate the editor text, fetching its imports first (from the cache unless `refresh`).
+    /// Typing waits a moment so that half-typed addresses are not fetched; an answer for text
+    /// that has changed since is dropped by its epoch.
     fn reparse_with(&mut self, refresh: bool) -> Task<Message> {
         self.th.epoch += 1;
         let (epoch, text) = (self.th.epoch, self.th.content.text());
         let remote = self.themes.remote();
         let base = Some(self.th.url.trim().to_string()).filter(|u| !u.is_empty());
+        let known = if refresh {
+            None
+        } else {
+            self.themes.resolved_for(&text).cloned()
+        };
+        self.th.fetching = remote && known.is_none() && import::has_remote(&text);
         run(
             async move {
                 if remote && import::has_remote(&text) {
-                    let r = import::resolve(&text, base.as_deref(), &Options::new(remote, refresh))
-                        .await;
+                    let r = match known {
+                        Some(r) => r,
+                        None => {
+                            if !refresh {
+                                tokio::time::sleep(Duration::from_millis(400)).await;
+                            }
+                            import::resolve(&text, base.as_deref(), &Options::new(remote, refresh))
+                                .await
+                        }
+                    };
                     import::parse_resolved(&r)
                         .map(|p| (Arc::new(p), Some(Arc::new(r))))
                         .map_err(|e| e.to_string())
@@ -490,7 +564,13 @@ impl App {
             }
             Msg::Parsed(e, r) if e == self.th.epoch => match r {
                 Ok((p, res)) => {
+                    self.th.fetching = false;
                     self.th.parsed = Some(p);
+                    if let Some(r) = &res {
+                        // Share it: the engine and the active theme find it by the same text.
+                        self.themes
+                            .set_resolved(&self.th.content.text(), (**r).clone());
+                    }
                     self.th.resolved = res;
                     self.th.note = None;
                     if self.th.want_preview || self.th.preview {
@@ -499,6 +579,7 @@ impl App {
                     }
                 }
                 Err(e) => {
+                    self.th.fetching = false;
                     self.th.parsed = None;
                     self.th.resolved = None;
                     self.th.want_preview = false;
@@ -1061,10 +1142,21 @@ impl App {
 
     /// "N settings applied", the counts per kind, the contrast notes and the list with positions.
     fn theme_report(&self) -> El<'_> {
+        let fetching: El<'_> = text("Fetching imports and fonts...")
+            .size(t::CAPTION)
+            .color(t::text_secondary())
+            .into();
         let Some(p) = &self.th.parsed else {
-            return space().into();
+            return if self.th.fetching {
+                fetching
+            } else {
+                space().into()
+            };
         };
         let mut lines: Vec<El<'_>> = vec![];
+        if self.th.fetching {
+            lines.push(fetching);
+        }
         let mut head = format!("{} settings applied.", p.theme.count() + p.layout.count());
         let mut kinds: Vec<(cz::WarningKind, usize)> = vec![];
         for w in &p.warnings {
