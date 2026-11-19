@@ -38,6 +38,7 @@ impl Expr {
             Expr::Atom(l) => match l {
                 Len::Px(p) => *p,
                 Len::Em(e) => e * font,
+                Len::Rem(r) => r * cx.rem,
                 Len::Vw(v) => v * cx.vw / 100.0,
                 Len::Vh(v) => v * cx.vh / 100.0,
                 Len::Vmin(v) => v * cx.vw.min(cx.vh) / 100.0,

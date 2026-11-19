@@ -599,7 +599,14 @@ impl Build<'_> {
 
     fn media_id(&mut self, parent: u32, prelude: &str) -> u32 {
         let mut unknown = vec![];
-        let alts = media_alts(prelude, &mut unknown);
+        // Minified conditions glue `and` to the parentheses (`(min-width:80em)and(hover:hover)`); the device features are the window's here.
+        let prelude = prelude
+            .replace(")and(", ") and (")
+            .replace(")and ", ") and ")
+            .replace(" and(", " and (")
+            .replace("device-width", "width")
+            .replace("device-height", "height");
+        let alts = media_alts(&prelude, &mut unknown);
         for u in unknown {
             self.sheet.report.add(
                 Kind::UnsupportedAtRule,
