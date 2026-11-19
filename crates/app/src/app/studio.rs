@@ -1189,7 +1189,7 @@ impl App {
     }
 }
 
-/// The starting points: Spotlight, then the stage-1 examples (Marquee, Feed, Classic).
+/// The starting points: Spotlight and Glass, then the stage-1 examples (Marquee, Feed, Classic).
 pub fn starters() -> Vec<(&'static str, &'static str)> {
     let mut v: Vec<(&str, &str)> = nocturne_style::STARTERS.to_vec();
     v.extend(nocturne_core::customize::PRESETS.iter().copied());
@@ -1479,7 +1479,7 @@ mod tests {
     #[test]
     fn starters_include_the_four_looks() {
         let names: Vec<_> = starters().iter().map(|s| s.0).collect();
-        for n in ["Spotlight", "Marquee", "Feed", "Classic"] {
+        for n in ["Spotlight", "Glass", "Marquee", "Feed", "Classic"] {
             assert!(names.contains(&n), "{n}");
         }
     }

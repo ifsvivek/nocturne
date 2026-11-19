@@ -1028,11 +1028,11 @@ pub const BUILTIN: &[BuiltinTheme] = &[
         homepage: "",
         remote: false,
     },
-    // Placeholder: the stylesheet arrives with the Glass preset.
+    // NOCTURNE's own stylesheet; it lives with the engine's other bundled sheets.
     BuiltinTheme {
         id: "glass",
         name: "Glass",
-        css: "",
+        css: include_str!("../../../style/themes/glass.css"),
         credit: "",
         homepage: "",
         remote: false,

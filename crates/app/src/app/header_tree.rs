@@ -66,7 +66,16 @@ pub struct Tree {
     pub builders: nocturne_style::Builders,
     /// The library grid: its container and the card data its builder reads.
     pub grid: Option<super::browse_tree::GridRef>,
+    /// The hero carousel's nodes the app edits in place (the fading-out layer, the progress fill).
+    pub hero_fx: HeroFx,
     next_image: u32,
+}
+
+/// Nodes of Home's hero that change while the scene stays (so their transitions run).
+#[derive(Clone, Copy, Default)]
+pub struct HeroFx {
+    pub fade: Option<Id>,
+    pub progress: Option<Id>,
 }
 
 /// One picture node waiting for (or showing) pixels: the cache key of the real image and of its blurhash stand-in.
@@ -107,6 +116,7 @@ impl Tree {
             done: Default::default(),
             builders: nocturne_style::Builders::new(),
             grid: None,
+            hero_fx: HeroFx::default(),
             next_image: 1,
         }
     }

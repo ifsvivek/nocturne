@@ -22,5 +22,6 @@ pub use source::{dot, source_mark, status_color};
 pub use text::{label, mono, tracked, wordmark};
 pub mod buffering;
 pub mod hole;
+pub mod probe;
 pub mod track;
 pub mod zoom;

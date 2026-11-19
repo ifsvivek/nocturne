@@ -8,6 +8,8 @@ use crate::theme as t;
 use crate::widget::cell::Pic;
 use crate::widget::text::tracked;
 use nocturne_core::customize::{self as cz, Page, TitlePosition};
+use nocturne_core::expand;
+use nocturne_core::region::{self, Region};
 use nocturne_core::source::{Art, Kind, Media};
 use nocturne_style::{Doc, Id};
 
@@ -105,13 +107,28 @@ impl App {
                     tree.doc.nodes[hero].classes.push("hero-banner".into());
                 }
                 match h.hero() {
-                    Some(m) => self.hero_nodes(&mut tree, hero, m, hgt, hero_focus),
+                    Some(m) => self.hero_nodes(&mut tree, hero, h, m, hgt, hero_focus),
                     None => {
                         let hgt = 420f32.min(hgt);
                         tree.doc.inline(
                             hero,
                             &format!("height: {}; padding-top: {}", px(hgt), px(hh)),
                         );
+                        tree.doc.attr(
+                            hero,
+                            "data-region",
+                            region_name(Region::of(h.loading(), false, 0)),
+                        );
+                        // The placeholder of a theme that draws one (hidden by the default sheet).
+                        let sk = tree.doc.add(hero, "div.hero-skeleton");
+                        for c in [
+                            "hero-sk-title",
+                            "hero-sk-line",
+                            "hero-sk-line short",
+                            "hero-sk-button",
+                        ] {
+                            tree.doc.add(sk, &format!("div.{}", c.replace(' ', ".")));
+                        }
                         let n = tree.doc.add(hero, "div.row-note");
                         tree.doc.text(
                             n,
@@ -192,7 +209,16 @@ impl App {
         n
     }
 
-    fn hero_nodes(&self, tree: &mut Tree, hero: Id, m: &Media, hgt: f32, focus: Option<usize>) {
+    #[allow(clippy::too_many_arguments)]
+    fn hero_nodes(
+        &self,
+        tree: &mut Tree,
+        hero: Id,
+        h: &Home,
+        m: &Media,
+        hgt: f32,
+        focus: Option<usize>,
+    ) {
         let w = self.win.width;
         let art = if m.backdrop_tag.is_none() && m.kind == Kind::Episode {
             Art::Landscape
@@ -202,6 +228,7 @@ impl App {
         let hp = t::parts(Some(Page::Home), None);
         tree.doc.inline(hero, &format!("height: {}", px(hgt)));
         tree.doc.attr(hero, "data-kind", kind_attr(m.kind));
+        tree.doc.attr(hero, "data-region", "ready");
         let a = tree.doc.add(hero, "div.hero-art");
         tree.doc.add(a, "div.hero-fill");
         Self::pic_node(
@@ -211,6 +238,25 @@ impl App {
             &self.pic(m, art, w as u32),
             self.pic_keys(m, art, w as u32),
         );
+        // The slide that is leaving, over the new picture: built opaque, faded out by an in-place edit (`hero_settle`).
+        if let Some(prev) = Self::hero_fading(h).filter(|p| (p.origin, &p.id) != (m.origin, &m.id))
+        {
+            let prev_art = if prev.backdrop_tag.is_none() && prev.kind == Kind::Episode {
+                Art::Landscape
+            } else {
+                Art::Backdrop
+            };
+            let f = tree.doc.add(hero, "div.hero-fade");
+            tree.doc.attr(f, "data-phase", "a");
+            Self::pic_node(
+                tree,
+                f,
+                "img.hero-img",
+                &self.pic(prev, prev_art, w as u32),
+                self.pic_keys(prev, prev_art, w as u32),
+            );
+            tree.hero_fx.fade = Some(f);
+        }
         tree.doc.add(hero, "div.hero-scrim-side");
         let foot = tree.doc.add(hero, "div.hero-scrim-foot");
         if let Some(f) = &hp.hero.overlay {
@@ -223,26 +269,38 @@ impl App {
         let tag = d.add(col, "div.hero-tag");
         d.text(tag, &format!("0x00 \u{b7} {}", m.kind_label()));
         let chips = d.add(col, "div.hero-chips");
-        let chip = |d: &mut Doc, s: &str, accent: bool| {
+        // Each chip carries its text twice: tracked capitals (the default look) and plain (for themes that set the facts as a line of text).
+        let chip = |d: &mut Doc, s: &str, kind: &str, accent: bool| {
             let c = d.add(
                 chips,
-                if accent {
-                    "div.chip.accent"
-                } else {
-                    "div.chip"
-                },
+                &format!(
+                    "div.chip.chip-{kind}{}",
+                    if accent { ".accent" } else { "" }
+                ),
             );
-            d.text(c, &tracked(s));
+            let t = d.add(c, "span.chip-text");
+            d.text(t, &tracked(s));
+            let p = d.add(c, "span.chip-plain");
+            let mut cs = s.chars();
+            let plain: String = cs
+                .next()
+                .map(|f| f.to_uppercase().chain(cs).collect())
+                .unwrap_or_default();
+            d.text(p, &plain);
         };
-        chip(d, &m.kind_label(), true);
-        if let Some(y) = m.year {
-            chip(d, &y.to_string(), false);
+        // Facts in reading order (rating, year, kind, runtime, genres); the default sheet puts the kind chip first.
+        if let Some(r) = m.rating.filter(|r| *r > 0.0) {
+            chip(d, &format!("{r:.1}"), "rating", false);
         }
+        if let Some(y) = m.year {
+            chip(d, &y.to_string(), "year", false);
+        }
+        chip(d, &m.kind_label(), "kind", true);
         if let Some(r) = m.runtime_min {
-            chip(d, &nocturne_core::source::fmt_runtime(r), false);
+            chip(d, &nocturne_core::source::fmt_runtime(r), "runtime", false);
         }
         for g in m.genres.iter().take(3) {
-            chip(d, g, false);
+            chip(d, g, "genre", false);
         }
         let size = (w / 26.0).clamp(40.0, 72.0);
         let title_ty = t::typo(&hp.hero_title, size, iced::font::Weight::Bold).with_line(1.08);
@@ -266,17 +324,33 @@ impl App {
             let n = d.add(col, "div.hero-season");
             d.text(n, &m.title);
         }
+        let mut meta_node = None;
         if !sub_ty.hidden {
+            let text = m.overview.clone().unwrap_or_else(|| m.meta_line());
+            let key = super::hero_ui::hero_key(m);
+            let open = h.expanded.is_open(&key);
+            // Three lines, then an ellipsis; a click opens the rest.
+            let cols = ((560f32.min(w) / (sub_ty.size() * 0.5)).floor().max(10.0)) as usize;
+            let (clamped, cut) = expand::clamp(&text, cols, 3);
             let n = d.add(col, "div.hero-meta");
-            d.text(n, &m.overview.clone().unwrap_or_else(|| m.meta_line()));
+            d.text(n, if cut && !open { &clamped } else { &text });
+            d.attr(n, "data-expanded", if open { "true" } else { "false" });
             d.inline(
                 n,
-                &format!(
-                    "{}; max-height: {}",
-                    sub_ty.css(),
-                    px(sub_ty.size() * 1.6 * 3.0)
-                ),
+                &if open {
+                    sub_ty.css()
+                } else {
+                    format!(
+                        "{}; max-height: {}",
+                        sub_ty.css(),
+                        px(sub_ty.size() * 1.6 * 3.0)
+                    )
+                },
             );
+            if cut {
+                d.attr(n, "title", "Click to expand");
+                meta_node = Some(n);
+            }
         }
         let acts = d.add(col, "div.hero-actions");
         if !matches!(
@@ -304,6 +378,59 @@ impl App {
         d.text(l, "More info");
         tree.act(b, Message::Cell(At::Hero, CellAct::Open));
         tree.cell(b, (1, 1));
+        // The description opens on a click, and on Enter when a theme makes it a keyboard stop (the default look keeps its two buttons).
+        if let Some(n) = meta_node {
+            tree.act(n, Message::HeroToggle);
+            if self.hero_themed() {
+                tree.cell(n, (1, 2));
+            }
+        }
+        // Arrows, dots and a progress hairline for the carousel (hidden by the default sheet); only while the hero shows a slide, not a focused card.
+        let slides = h.slides.len();
+        let on_slide = h
+            .slides
+            .get(h.carousel.index())
+            .is_some_and(|x| (x.origin, &x.id) == (m.origin, &m.id));
+        if slides > 1 && on_slide {
+            let d = &mut tree.doc;
+            let nav = d.add(hero, "div.hero-nav");
+            let mut arrows = vec![];
+            for (glyph, dir) in [("\u{2039}", -1isize), ("\u{203A}", 1)] {
+                let a = d.add(nav, "a.hero-arrow");
+                d.attr(a, "data-dir", if dir < 0 { "prev" } else { "next" });
+                let gl = d.add(a, "span.hero-arrow-glyph");
+                d.text(gl, glyph);
+                arrows.push((a, dir));
+            }
+            let dots = d.add(hero, "div.hero-dots");
+            let mut ds = vec![];
+            for i in 0..slides {
+                let a = d.add(dots, "a.hero-dot");
+                d.attr(
+                    a,
+                    "data-active",
+                    if i == h.carousel.index() {
+                        "true"
+                    } else {
+                        "false"
+                    },
+                );
+                ds.push((a, i));
+            }
+            let pg = d.add(hero, "div.hero-progress");
+            let fill = d.add(pg, "div.hero-progress-fill");
+            d.inline(
+                fill,
+                &format!("width: {:.1}%", h.carousel.progress() * 100.0),
+            );
+            tree.hero_fx.progress = Some(fill);
+            for (a, dir) in arrows {
+                tree.act(a, Message::HeroStep(dir));
+            }
+            for (a, i) in ds {
+                tree.act(a, Message::HeroGoto(i));
+            }
+        }
         let _ = focus;
     }
 
@@ -358,6 +485,11 @@ impl App {
         let row = d.add(band, &format!("section.row.{}", section_class(k)));
         d.inline(row, &format!("padding: {} 0", px(band_pad())));
         tree.bands.insert(ri, row);
+        tree.doc.attr(
+            row,
+            "data-region",
+            region_name(Region::of(loading, false, n)),
+        );
         if !g.title_t.hidden {
             Self::head_nodes(tree, row, ri, g, &title, &text_, &meta);
         }
@@ -399,7 +531,15 @@ impl App {
         let writes = self.hooks.can_write();
         let ((cw, ch), art) = (g.dims, g.art);
         if items.is_empty() {
-            for i in 0..if g.grid { g.cols.min(8) } else { 8 } {
+            // Placeholders: as many as fit the width while the strip loads, the usual eight otherwise.
+            let fit = region::skeleton_cells(self.win.width - 2.0 * g.inset, g.cell_w(), 0.0, 8);
+            for i in 0..if g.grid {
+                g.cols.min(8)
+            } else if loading {
+                fit
+            } else {
+                8
+            } {
                 let pic = if loading { Pic::Loading } else { Pic::Missing };
                 Self::card_nodes(
                     tree,
@@ -490,7 +630,8 @@ impl App {
         );
         let titles = d.add(head, "div.row-titles");
         let ttl = d.add(titles, "div.row-title");
-        d.text(ttl, title);
+        let tt = d.add(ttl, "span.row-title-text");
+        d.text(tt, title);
         d.inline(ttl, &g.title_t_css());
         if g.details {
             let b = d.add(titles, "div.row-text");
@@ -807,6 +948,15 @@ pub(super) fn card_doc(d: &mut Doc, parent: Id, g: &Geo, c: &CardIn) -> CardNode
     }
 }
 
+fn region_name(r: Region) -> &'static str {
+    match r {
+        Region::Loading => "loading",
+        Region::Ready => "ready",
+        Region::Empty => "empty",
+        Region::Error => "error",
+    }
+}
+
 pub(crate) struct CardIn {
     pub pic: Pic,
     /// The picture node's id in the widget's image table, and the cache keys it waits for.
@@ -931,5 +1081,107 @@ mod tests {
         assert_eq!(b[3], band_h(g.dims.1) - 1.0);
         let head = s.rects[find(&s, "row-head")[0]];
         assert_eq!(head[3], g.head_title_h());
+    }
+
+    #[test]
+    fn the_primary_label_keeps_its_contrast_colour_under_a_theme_colour_on_the_button() {
+        let mut tree = Tree::new();
+        let b = tree.doc.add(0, "a.button.primary");
+        let l = tree.doc.add(b, "span.button-label");
+        tree.doc.text(l, "Play");
+        let mut engine = Engine::new(&sheet_css());
+        engine.set_user_css(Some(".button, .button.primary { color: rgb(255, 0, 0); }"));
+        let s = engine.build(
+            &tree.doc,
+            (800.0, 600.0),
+            Interaction::default(),
+            &Builders::new(),
+            &mut approx,
+        );
+        let label = find(&s, "button-label")[0];
+        let want = t::active().on_accent;
+        let got = s.style(label).color;
+        assert_eq!(
+            (got.r, got.g, got.b),
+            (
+                (want.r * 255.0).round() as u8,
+                (want.g * 255.0).round() as u8,
+                (want.b * 255.0).round() as u8
+            )
+        );
+    }
+
+    /// WCAG contrast of the primary label against the solid colour of its button under `user` CSS.
+    fn primary_contrast(user: Option<&str>, hero: bool) -> f32 {
+        let mut tree = Tree::new();
+        let parent = if hero {
+            let h = tree.doc.add(0, "section.hero");
+            tree.doc.add(h, "div.hero-actions")
+        } else {
+            tree.doc.add(0, "div.detail-actions")
+        };
+        let b = tree.doc.add(
+            parent,
+            if hero {
+                "a.button.primary"
+            } else {
+                "a.button.button-primary"
+            },
+        );
+        let l = tree.doc.add(b, "span.button-label");
+        tree.doc.text(l, "Play");
+        let mut engine = Engine::new(&sheet_css());
+        engine.set_user_css(user);
+        let s = engine.build(
+            &tree.doc,
+            (800.0, 600.0),
+            Interaction::default(),
+            &Builders::new(),
+            &mut approx,
+        );
+        let lum = |c: nocturne_core::customize::value::Color| {
+            let f = |v: u8| {
+                let v = v as f32 / 255.0;
+                if v <= 0.03928 {
+                    v / 12.92
+                } else {
+                    ((v + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b)
+        };
+        let bg = s
+            .style(find(&s, "button")[0])
+            .bg
+            .iter()
+            .rev()
+            .find_map(|f| match f {
+                nocturne_style::paint::Fill::Solid(c) => Some(*c),
+                _ => None,
+            })
+            .expect("a solid button fill");
+        let fg = s.style(find(&s, "button-label")[0]).color;
+        let (a, b) = (lum(bg), lum(fg));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn the_primary_label_reads_on_its_button_in_every_look() {
+        let netflin_like = ":root { --nocturne-accent: #e50914; --nocturne-on-accent: #ffffff; }";
+        for (name, css, hero) in [
+            ("default", None, true),
+            ("default detail", None, false),
+            ("glass", Some(nocturne_style::STARTERS[1].1), true),
+            ("glass detail", Some(nocturne_style::STARTERS[1].1), false),
+            (
+                "spotlight detail",
+                Some(nocturne_style::STARTERS[0].1),
+                false,
+            ),
+            ("accent theme", Some(netflin_like), true),
+        ] {
+            let r = primary_contrast(css, hero);
+            assert!(r >= 4.5, "{name}: {r:.2}");
+        }
     }
 }

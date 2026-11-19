@@ -140,7 +140,7 @@ impl App {
             self.marks(),
         );
         #[cfg(feature = "theme-engine")]
-        let css = self.engine_sheet_text();
+        let css = self.engine_css();
         // Jellyfin layout mode for the item's own server.
         #[cfg(feature = "theme-engine")]
         let jf = self.jf_base().map(|b| (b, self.jf_user_text()));
@@ -159,7 +159,7 @@ impl App {
     /// The player's bar follows the theme's engine rules too.
     #[cfg(feature = "theme-engine")]
     pub(super) fn sync_player_css(&mut self) {
-        let css = self.engine_sheet_text();
+        let css = self.engine_css();
         if let Some(p) = self.player.as_mut() {
             p.set_user_css(css);
         }

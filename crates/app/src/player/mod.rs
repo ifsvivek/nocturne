@@ -142,6 +142,8 @@ pub enum Msg {
     Size(Size),
     Handles(crate::platform::Handles),
     Hole(Rectangle),
+    /// A panel drawn over the picture laid out at these bounds (slot, see [`Player::open_panels`]).
+    Cover(usize, Rectangle),
     Tick(Instant),
     Frame(Instant),
     Mouse(Point),
@@ -162,6 +164,9 @@ pub enum Msg {
     /// Provider ids of the playing episode's series (for the language memory key).
     Series(u64, Option<(SourceId, String, ProviderIds)>),
 }
+
+/// Panels that can sit over the picture: popover, queue, context menu, OSD, stats, help, note, next-episode card, skip chip, scrub tip.
+pub const COVERS: usize = 10;
 
 pub struct Player {
     #[cfg(feature = "theme-engine")]
@@ -185,6 +190,8 @@ pub struct Player {
     pub win: Size,
     scale: f32,
     pub hole: Rectangle,
+    /// Bounds of each open panel (Windows: holes cut in the video window), `None` while closed or not yet laid out.
+    covers: [Option<Rectangle>; COVERS],
     pub now: Instant,
     pub epoch: u64,
     pub hide: AutoHide,
@@ -329,6 +336,7 @@ impl Player {
             win: Size::new(1280.0, 800.0),
             scale: 1.0,
             hole: Rectangle::new(Point::ORIGIN, Size::new(1.0, 1.0)),
+            covers: [None; COVERS],
             now,
             epoch: 0,
             hide: AutoHide::new(now),
@@ -486,6 +494,12 @@ impl Player {
                 }
             }
             Msg::Handles(h) => self.make_backend(h),
+            Msg::Cover(i, r) => {
+                if let Some(c) = self.covers.get_mut(i) {
+                    *c = Some(r);
+                }
+                self.sync_surface();
+            }
             Msg::Hole(r) => {
                 self.hole = r;
                 self.push_bounds();
@@ -661,7 +675,25 @@ impl Player {
         .map_err(|e| e.to_string())
     }
 
-    /// Windows: places the child window; hidden while the UI needs those pixels.
+    /// Which of the [`COVERS`] panels the view draws right now.
+    fn open_panels(&self) -> [bool; COVERS] {
+        let bar = self.controls_visible();
+        [
+            bar && self.pop.is_some(),
+            self.queue_open,
+            self.ctx_menu.is_some(),
+            self.osd.is_some(),
+            self.stats,
+            self.help,
+            self.note.is_some(),
+            self.next_card().is_some(),
+            self.active_seg().is_some(),
+            bar && self.hover_frac.is_some() && self.dur().is_some(),
+        ]
+    }
+
+    /// Windows: places the child window and cuts holes in it where panels are drawn; hidden
+    /// while a full-screen overlay needs the pixels.
     fn sync_surface(&mut self) {
         if self.surface.is_none() {
             return;
@@ -670,18 +702,28 @@ impl Player {
             || self.popout
             || self.light
             || self.problem.is_some()
-            || self.pop.is_some()
-            || self.queue_open
-            || self.ctx_menu.is_some()
             || self.resume_prompt.is_some()
-            || self.hdr_prompt.is_some()
-            || self.stats
-            || self.help;
+            || self.hdr_prompt.is_some();
+        let open = self.open_panels();
+        for (c, o) in self.covers.iter_mut().zip(open) {
+            if !o {
+                *c = None;
+            }
+        }
+        let cuts: Vec<_> = self
+            .covers
+            .iter()
+            .flatten()
+            .map(|r| (r.x, r.y, r.width, r.height))
+            .collect();
         let r = logic::video_rect(self.hole, BAR_H, self.controls_visible(), covered);
         let scale = self.scale;
         if let Some(s) = self.surface.as_mut() {
             match r {
-                Some(r) => s.set_bounds(r.x, r.y, r.width, r.height, scale),
+                Some(r) => {
+                    s.set_cutouts(&cuts, scale);
+                    s.set_bounds(r.x, r.y, r.width, r.height, scale);
+                }
                 None => s.set_visible(false),
             }
         }

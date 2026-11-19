@@ -14,6 +14,9 @@ use nocturne_core::customize::{self as cz, Page};
 use nocturne_style::{Dir, Engine, Id, Interaction, MeasureCache, Scene};
 use std::time::Instant;
 
+/// Page scroll (px) past which `data-scrolled` is set on Home's root.
+const SCROLLED: f32 = 20.0;
+
 const DEFAULT_CSS: &str = include_str!("../../../style/themes/default.css");
 
 /// One scene with the tree it was built from and its interaction state.
@@ -101,6 +104,8 @@ pub struct EngineUi {
     pub enabled: bool,
     engine: Engine,
     css: String,
+    /// Families of fetched theme fonts registered with the engine.
+    fetched_fams: Vec<String>,
     user: Option<String>,
     cache: MeasureCache,
     pub home: Option<Hosted>,
@@ -149,6 +154,7 @@ impl Default for EngineUi {
             enabled: std::env::var("NOCTURNE_ENGINE_UI").map_or(true, |v| v != "0"),
             engine: Engine::new(DEFAULT_CSS),
             css: String::new(),
+            fetched_fams: vec![],
             user: None,
             cache: MeasureCache::new(),
             home: None,
@@ -317,6 +323,7 @@ impl App {
             self.eng.engine.set_compat(jf.is_none());
             self.eng.user = None;
             self.eng.jf_key = None;
+            self.eng.fetched_fams.clear();
             self.eng.css = css;
             self.eng.sheet_gen += 1;
         }
@@ -339,8 +346,25 @@ impl App {
         let studio_css = self.studio.open.then(|| self.studio.css.clone());
         #[cfg(not(feature = "theme-engine"))]
         let studio_css: Option<String> = None;
-        // Imports inlined: the fetched text, not the raw `@import` line.
-        let user = studio_css.or_else(|| self.engine_sheet_text());
+        let user = match studio_css {
+            Some(raw) => Some(
+                self.themes
+                    .resolved_for(&raw)
+                    .map_or(raw, |r| r.css.clone()),
+            ),
+            None => self.engine_css(),
+        };
+        let fams = self.engine_fonts();
+        if fams != self.eng.fetched_fams {
+            for f in &self.eng.fetched_fams {
+                self.eng.engine.fonts_mut().unregister(f);
+            }
+            for f in &fams {
+                self.eng.engine.fonts_mut().register(f);
+            }
+            self.eng.fetched_fams = fams;
+            self.eng.sheet_gen += 1;
+        }
         if let Some(b) = &jf {
             let key = (std::sync::Arc::as_ptr(b) as usize, self.jf_user_text());
             if self.eng.jf_key.as_ref() != Some(&key) {
@@ -407,13 +431,32 @@ impl App {
         task
     }
 
+    /// Edit the Home scene in place: `edit` changes nodes of the document and returns which, then the scene restyles from the new state, so a transition on them runs (a rebuild would not).
+    pub(super) fn eng_home_edit(
+        &mut self,
+        edit: impl FnOnce(&mut nocturne_style::Doc, &Tree) -> Vec<nocturne_style::Id>,
+    ) {
+        let cache = &mut self.eng.cache;
+        let Some(h) = self.eng.home.as_mut() else {
+            return;
+        };
+        let ids = edit(&mut h.scene.doc, &h.tree);
+        if ids.is_empty() {
+            return;
+        }
+        h.scene.touch(&ids);
+        let _ = h.scene.refresh(Instant::now(), &mut |t, st, m| {
+            cache.measure(t, st, m, &mut shape)
+        });
+    }
+
     fn eng_build_home(&mut self) {
         let tree = if self.jf_base().is_some() {
             self.jf_home_tree()
         } else {
             self.home_tree(true)
         };
-        let Some(tree) = tree else {
+        let Some(mut tree) = tree else {
             self.eng.home = None;
             return;
         };
@@ -439,6 +482,16 @@ impl App {
             .take()
             .map(|h| h.scene.scroll)
             .or_else(|| self.eng.saved.take());
+        // A theme can draw a scrim behind the header once the page has scrolled (`page[data-scrolled="true"]`).
+        tree.doc.attr(
+            0,
+            "data-scrolled",
+            if keep.as_ref().is_some_and(|k| k.page_y > SCROLLED) {
+                "true"
+            } else {
+                "false"
+            },
+        );
         let mut s = self.eng_scene(&tree, it, (self.eng_width(), self.win.height));
         if let Some(scroll) = keep {
             s.scroll = scroll;
@@ -447,6 +500,8 @@ impl App {
         let mut h = Hosted::new(s, tree, it, self.eng.sheet_gen);
         h.hero = hero;
         self.eng.home = Some(h);
+        // A slide that is leaving fades out from here on.
+        self.hero_settle();
     }
 
     fn eng_build_header(&mut self) {
@@ -911,6 +966,23 @@ impl App {
             .as_ref()
             .map_or(0.0, |h| h.scene.scroll.page_y);
         let vh = self.win.height;
+        let scrolled = off > SCROLLED;
+        self.eng_home_edit(|doc, _| {
+            let now = doc.nodes[0]
+                .attrs
+                .iter()
+                .any(|(k, v)| k == "data-scrolled" && v == "true");
+            if now == scrolled {
+                return vec![];
+            }
+            super::hero_ui::set_attr(
+                doc,
+                0,
+                "data-scrolled",
+                if scrolled { "true" } else { "false" },
+            );
+            vec![0]
+        });
         if let Some(h) = self.stack.first_mut().and_then(|p| p.home.as_deref_mut()) {
             (h.off, h.vh) = (off, vh);
             // Horizontal offsets of the strips.
@@ -992,7 +1064,8 @@ impl App {
                     .and_then(|n| h.tree.cells.get(&n).copied());
             return Some(match next {
                 Some((r, c)) => self.eng_move(r, c),
-                None => Task::none(),
+                // Past the hero's last button: the carousel's previous or next slide.
+                None => self.hero_edge(d),
             });
         }
         if key == "enter" {
@@ -1179,6 +1252,8 @@ impl App {
         !matches!(
             m,
             Message::Tick(_)
+                | Message::WinFocus(_)
+                | Message::Pointer(_)
                 | Message::Frame(_)
                 | Message::Eng(..)
                 | Message::Noop

@@ -270,6 +270,12 @@ pub struct Home {
     /// Server UI mode, one server selected: that server's own layout. `None` is the NOCTURNE
     /// layout (also while the server's answer is still on its way).
     pub server: Option<ServerUi>,
+    /// The hero carousel (engine Home): its slides (empty until the engine computes them, so the hand-written page keeps its single hero), the timer, whether the user has moved the focus yet (an untouched Home keeps rotating under the initial focus), the descriptions the user opened and the slide that is fading out.
+    pub slides: Vec<Media>,
+    pub carousel: nocturne_core::hero::Hero,
+    pub touched: bool,
+    pub expanded: nocturne_core::expand::Expanded,
+    pub fade: Option<(Media, std::time::Instant)>,
 }
 
 impl Home {
@@ -288,6 +294,11 @@ impl Home {
             vh: 0.0,
             strips: HashMap::new(),
             server: None,
+            slides: vec![],
+            carousel: nocturne_core::hero::Hero::new(0, 10, true),
+            touched: false,
+            expanded: Default::default(),
+            fade: None,
         }
     }
 
@@ -384,7 +395,7 @@ impl Home {
         }
     }
 
-    /// The hero: the focused poster, else the newest item of the first row that has one.
+    /// The hero: the focused poster, else the carousel's slide, else the newest item of the first row that has one.
     pub fn hero(&self) -> Option<&Media> {
         let lay = self.layout();
         let focused = match lay.get(self.row) {
@@ -393,7 +404,55 @@ impl Home {
             }
             _ => None,
         };
-        focused.or_else(|| self.latest.iter().find_map(|r| r.items.items().first()))
+        focused
+            .or_else(|| self.slides.get(self.carousel.index()))
+            .or_else(|| self.newest())
+    }
+
+    /// The first item of the first Latest row: today's hero when nothing is focused.
+    fn newest(&self) -> Option<&Media> {
+        self.latest.iter().find_map(|r| r.items.items().first())
+    }
+
+    /// The carousel's slides: continue watching, next up, the newest movies and shows, in `order`, deduplicated by show and capped (`hero::collect`). Only items with a backdrop count. With `today_first` (no theme: the default look) the item the hero shows today comes first, so the first slide stays what it was.
+    pub fn compute_slides(
+        &self,
+        order: &[nocturne_core::hero::HeroSource],
+        today_first: bool,
+    ) -> Vec<Media> {
+        use nocturne_core::hero::{self as hero, HeroSource as S};
+        let art = |m: &&Media| m.backdrop_tag.is_some() || m.backdrop_id.is_some();
+        let own = |e: &[Entry]| -> Vec<Media> {
+            e.iter().map(|e| &e.primary).filter(art).cloned().collect()
+        };
+        let latest = |coll: &str| -> Vec<Media> {
+            self.latest
+                .iter()
+                .filter(|r| r.lib.collection.as_deref() == Some(coll))
+                .flat_map(|r| {
+                    r.items
+                        .items()
+                        .iter()
+                        .filter(art)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        };
+        let lists = vec![
+            (S::ContinueWatching, own(&self.resume_e)),
+            (S::NextUp, own(&self.nextup_e)),
+            (S::LatestMovies, latest("movies")),
+            (S::LatestShows, latest("tvshows")),
+        ];
+        let mut v = hero::collect(order, &lists, hero::PER_SOURCE, hero::TOTAL_CAP);
+        if today_first && let Some(m) = self.newest().filter(art) {
+            let key = (m.origin, m.id.clone());
+            v.retain(|x| (x.origin, x.id.clone()) != key);
+            v.insert(0, m.clone());
+            v.truncate(hero::TOTAL_CAP);
+        }
+        v
     }
 
     pub fn loading(&self) -> bool {
@@ -1181,6 +1240,7 @@ impl App {
         match self.stack.last_mut().and_then(|p| p.home.as_deref_mut()) {
             Some(h) if (h.row, h.col) != (row, col) => {
                 (h.row, h.col) = (row, col);
+                h.touched = true;
                 self.home_wants()
             }
             _ => Task::none(),
@@ -1511,5 +1571,30 @@ mod tests {
     fn hero_height_is_bounded() {
         assert_eq!(hero_h(1280.0, 800.0), 500.0);
         assert!(hero_h(2560.0, 1440.0) > 800.0 && hero_h(2560.0, 1440.0) <= 893.0);
+    }
+
+    #[test]
+    fn slides_keep_todays_hero_first_without_a_theme_and_follow_the_order_with_one() {
+        let art = |id: &str| Media {
+            backdrop_tag: Some("t".into()),
+            ..media(id)
+        };
+        let mut h = Home::new((true, true, true), Fanout::default(), Fanout::default());
+        h.resume_e = vec![Entry {
+            primary: art("r"),
+            alternates: vec![],
+        }];
+        let mut lib = media("lib");
+        lib.kind = Kind::Library;
+        lib.collection = Some("movies".into());
+        h.latest = vec![LatestRow {
+            origin: SourceId::default(),
+            lib,
+            items: Load::Ready(vec![art("m")]),
+        }];
+        let ids = |v: Vec<Media>| v.into_iter().map(|m| m.id).collect::<Vec<_>>();
+        let order = &nocturne_core::hero::DEFAULT_ORDER;
+        assert_eq!(ids(h.compute_slides(order, false)), ["r", "m"]);
+        assert_eq!(ids(h.compute_slides(order, true)), ["m", "r"]);
     }
 }
