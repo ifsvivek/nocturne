@@ -167,13 +167,14 @@ impl<'a, M: Clone + 'a> Widget<M, iced::Theme, iced::Renderer> for Press<'a, M> 
         operation: &mut dyn Operation,
     ) {
         operation.container(None, layout.bounds());
+        // A control the page clipped away (a hosted slot with no room) has no laid-out content.
+        let Some(inner) = layout.children().next() else {
+            return;
+        };
         operation.traverse(&mut |op| {
-            self.content.as_widget_mut().operate(
-                &mut tree.children[0],
-                layout.children().next().unwrap(),
-                renderer,
-                op,
-            );
+            self.content
+                .as_widget_mut()
+                .operate(&mut tree.children[0], inner, renderer, op);
         });
     }
 
@@ -188,10 +189,13 @@ impl<'a, M: Clone + 'a> Widget<M, iced::Theme, iced::Renderer> for Press<'a, M> 
         shell: &mut Shell<'_, M>,
         viewport: &Rectangle,
     ) {
+        let Some(inner) = layout.children().next() else {
+            return;
+        };
         self.content.as_widget_mut().update(
             &mut tree.children[0],
             event,
-            layout.children().next().unwrap(),
+            inner,
             cursor,
             renderer,
             clipboard,
@@ -287,17 +291,19 @@ impl<'a, M: Clone + 'a> Widget<M, iced::Theme, iced::Renderer> for Press<'a, M> 
                         .unwrap_or(Background::Color(Color::TRANSPARENT)),
                 );
             }
-            self.content.as_widget().draw(
-                &tree.children[0],
-                r,
-                theme,
-                &renderer::Style {
-                    text_color: look.text_color,
-                },
-                layout.children().next().unwrap(),
-                cursor,
-                viewport,
-            )
+            if let Some(inner) = layout.children().next() {
+                self.content.as_widget().draw(
+                    &tree.children[0],
+                    r,
+                    theme,
+                    &renderer::Style {
+                        text_color: look.text_color,
+                    },
+                    inner,
+                    cursor,
+                    viewport,
+                )
+            }
         };
         let k = match t::button().1 {
             Some(s) if s > 1.0 => state.hot.interpolate(1.0, s, Instant::now()),
@@ -339,7 +345,7 @@ impl<'a, M: Clone + 'a> Widget<M, iced::Theme, iced::Renderer> for Press<'a, M> 
     ) -> Option<overlay::Element<'b, M, iced::Theme, iced::Renderer>> {
         self.content.as_widget_mut().overlay(
             &mut tree.children[0],
-            layout.children().next().unwrap(),
+            layout.children().next()?,
             renderer,
             viewport,
             translation,

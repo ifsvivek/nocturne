@@ -16,6 +16,16 @@ mod selectors;
 mod spec;
 mod virt;
 
+#[test]
+fn only_engine_sheets_are_layered_over_the_default_sheet() {
+    for (name, css) in nocturne_core::customize::PRESETS {
+        assert!(!is_engine_sheet(css), "{name} is a stage-1 theme");
+    }
+    for (name, css) in STARTERS {
+        assert!(is_engine_sheet(css), "{name} uses the engine vocabulary");
+    }
+}
+
 pub(crate) fn scene_with(doc: &Doc, sheet: Sheet, vp: (f32, f32), it: Interaction) -> Scene {
     Scene::build(
         doc.clone(),

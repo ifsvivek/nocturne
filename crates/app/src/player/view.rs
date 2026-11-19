@@ -2,7 +2,9 @@
 //! overlay, floating panels and the controls bar. The window is transparent: nothing opaque is
 //! drawn over the hole except the loading overlay (by design) and, before the first frame or with
 //! the external mpv, a solid black fill.
-use super::controls::{bar, chip_button};
+#[cfg(not(feature = "theme-engine"))]
+use super::controls::bar;
+use super::controls::chip_button;
 use super::popovers::{
     ctx_panel, floaters, hdr_prompt, overlays, popover, problem, queue_panel, resume_prompt,
     scrub_tip,
@@ -55,8 +57,12 @@ impl Player {
             layers.push(q);
         }
         if shown {
+            #[cfg(feature = "theme-engine")]
+            let controls = self.bar_view();
+            #[cfg(not(feature = "theme-engine"))]
+            let controls = bar(self);
             layers.push(
-                container(bar(self))
+                container(controls)
                     .width(Length::Fill)
                     .height(Length::Fill)
                     .align_bottom(Length::Fill)

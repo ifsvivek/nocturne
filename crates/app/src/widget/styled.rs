@@ -63,13 +63,15 @@ pub enum Nav {
 }
 
 pub struct Styled<'a, M> {
-    scene: &'a Scene,
+    scene: SceneRef<'a>,
     slots: Vec<Element<'a, M>>,
     /// Scene node of each slot, aligned with `slots`.
     slot_nodes: Vec<Option<Id>>,
     by_node: HashMap<Id, usize>,
     images: Option<&'a HashMap<u32, Handle>>,
     on_event: Box<dyn Fn(StyledEvent) -> M + 'a>,
+    /// Tab, arrows, Enter, Space and the safe-look chord are this widget's (default); off, the keyboard belongs to the page around it.
+    keys: bool,
 }
 
 #[derive(Default)]
@@ -79,8 +81,33 @@ struct State {
     size: Size,
 }
 
+/// The scene a widget draws: borrowed from the app's state, or shared when the page builds it while it builds its view.
+enum SceneRef<'a> {
+    Borrowed(&'a Scene),
+    Shared(std::rc::Rc<Scene>),
+}
+
+impl std::ops::Deref for SceneRef<'_> {
+    type Target = Scene;
+    fn deref(&self) -> &Scene {
+        match self {
+            SceneRef::Borrowed(s) => s,
+            SceneRef::Shared(s) => s,
+        }
+    }
+}
+
 impl<'a, M: 'a> Styled<'a, M> {
     pub fn new(scene: &'a Scene, on_event: impl Fn(StyledEvent) -> M + 'a) -> Self {
+        Self::of(SceneRef::Borrowed(scene), on_event)
+    }
+
+    /// Like [`Styled::new`] for a scene built during `view` (the widget keeps it alive).
+    pub fn shared(scene: std::rc::Rc<Scene>, on_event: impl Fn(StyledEvent) -> M + 'a) -> Self {
+        Self::of(SceneRef::Shared(scene), on_event)
+    }
+
+    fn of(scene: SceneRef<'a>, on_event: impl Fn(StyledEvent) -> M + 'a) -> Self {
         Self {
             scene,
             slots: vec![],
@@ -88,6 +115,7 @@ impl<'a, M: 'a> Styled<'a, M> {
             by_node: HashMap::new(),
             images: None,
             on_event: Box::new(on_event),
+            keys: true,
         }
     }
 
@@ -99,6 +127,12 @@ impl<'a, M: 'a> Styled<'a, M> {
         }
         self.slots.push(element.into());
         self.slot_nodes.push(node);
+        self
+    }
+
+    /// Whether the widget takes the keyboard (Tab, arrows, Enter, Space, the safe-look chord). The player's controls leave it to the page.
+    pub fn keys(mut self, on: bool) -> Self {
+        self.keys = on;
         self
     }
 
@@ -220,7 +254,7 @@ struct Pass<'a> {
 }
 
 fn image_order<M>(w: &Styled<'_, M>) -> (Vec<u32>, Vec<u32>, usize) {
-    let s = w.scene;
+    let s: &Scene = &w.scene;
     let n = s.doc.len();
     let mut ord = vec![0u32; n];
     let mut end = vec![0u32; n];
@@ -268,7 +302,7 @@ impl<M> Styled<'_, M> {
         clip: Rectangle,
         ps: &Pass,
     ) {
-        let s = self.scene;
+        let s: &Scene = &self.scene;
         let c = s.style(n);
         if c.layout.display == Display::None || s.doc.nodes[n].virtual_proto {
             return;
@@ -394,7 +428,7 @@ impl<M> Styled<'_, M> {
         eff: &nocturne_style::Eff,
         clip: Rectangle,
     ) {
-        let s = self.scene;
+        let s: &Scene = &self.scene;
         let c = s.style(n);
         let rad = c.radius;
         let [bl, bt, br, bb] = s.borders[n];
@@ -571,7 +605,7 @@ impl<M> Styled<'_, M> {
         clip: Rectangle,
         image_pass: bool,
     ) {
-        let s = self.scene;
+        let s: &Scene = &self.scene;
         let c = s.style(n);
         let node = &s.doc.nodes[n];
         if image_pass {
@@ -708,18 +742,28 @@ impl<M> Styled<'_, M> {
                 Alignment::Right => (area.x + area.width, Alignment::Right),
                 _ => (area.x, Alignment::Left),
             };
+            // A box one line high never wraps: the shaper's width and the renderer's can differ by a hair, which would break the last letter onto a second line.
+            let one_line = area.height < line_h * 1.5;
             let draw_wrapped = |r: &mut iced::Renderer, d: Vector, color: Color| {
                 r.fill_text(
                     Text {
                         content: shown.clone(),
-                        bounds: area.size(),
+                        bounds: if one_line {
+                            Size::new(area.width + 2.0, area.height)
+                        } else {
+                            area.size()
+                        },
                         size: Pixels(c.font_size),
                         line_height: LineHeight::Relative(ts.line_height),
                         font,
                         align_x: al,
                         align_y: alignment::Vertical::Top,
                         shaping: Shaping::Advanced,
-                        wrapping: Wrapping::Word,
+                        wrapping: if one_line {
+                            Wrapping::None
+                        } else {
+                            Wrapping::Word
+                        },
                     },
                     Point::new(anchor + d.x, area.y + d.y),
                     color,
@@ -752,7 +796,7 @@ impl<M> Styled<'_, M> {
         opacity: f32,
         _eff: &nocturne_style::Eff,
     ) {
-        let s = self.scene;
+        let s: &Scene = &self.scene;
         let c = s.style(n);
         if let Some(Fill::Linear { angle, stops }) = &c.mask {
             // `mask-image` fades the element to the surface behind it: draw that surface colour with the inverse alpha.
@@ -825,7 +869,7 @@ fn stats_on() -> bool {
 impl<M> Styled<'_, M> {
     /// The page's scrollbar: a quiet thumb at the right edge like the hand-written pages' (10 px wide, hairline colour), below a window-top fixed bar (a header) as that one lay over the scrollbar too. Nothing when the page fits.
     fn paint_scrollbar(&self, r: &mut iced::Renderer, b: Rectangle, vis: Rectangle) {
-        let s = self.scene;
+        let s: &Scene = &self.scene;
         let (page, view) = (s.page_height(), s.viewport.1);
         if page <= view + 0.5 {
             return;
@@ -890,7 +934,7 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
         limits: &layout::Limits,
     ) -> layout::Node {
         let size = limits.max();
-        let scene = self.scene;
+        let scene: &Scene = &self.scene;
         let nodes = self
             .slots
             .iter_mut()
@@ -948,6 +992,7 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
         let b = layout.bounds();
         // The safe-mode chord comes before everything, slots included.
         if let Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event
+            && self.keys
             && modifiers.control()
             && modifiers.shift()
             && matches!(key.as_ref(), Key::Character("0" | ")"))
@@ -1010,7 +1055,9 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
                 }));
                 shell.capture_event();
             }
-            Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) if !captured => {
+            Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. })
+                if !captured && self.keys =>
+            {
                 let nav = match key.as_ref() {
                     Key::Named(Named::Tab) => Some(if modifiers.shift() {
                         Nav::Prev

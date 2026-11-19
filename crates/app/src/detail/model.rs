@@ -5,7 +5,7 @@ use nocturne_core::detail::Full;
 use nocturne_core::nav::{self, Dir, Move};
 use nocturne_core::source::{Kind, Media};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Sec {
     Next,
     Cast,
@@ -70,7 +70,7 @@ impl Sec {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum DRow {
     Actions,
     Chips,

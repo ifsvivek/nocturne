@@ -139,10 +139,31 @@ impl App {
             self.settings.allow_server_writes && !self.dev,
             self.marks(),
         );
+        #[cfg(feature = "theme-engine")]
+        let css = self
+            .themes
+            .active_css(self.theme_source(), self.theme_ui())
+            .filter(|c| nocturne_style::is_engine_sheet(c))
+            .map(str::to_string);
         if let Some(d) = self.stack.last_mut().and_then(|p| p.det.as_deref_mut()) {
             d.set_win(win);
             d.set_writes(writes);
             d.set_marks(marks);
+            #[cfg(feature = "theme-engine")]
+            d.set_user_css(css);
+        }
+    }
+
+    /// The player's bar follows the theme's engine rules too.
+    #[cfg(feature = "theme-engine")]
+    pub(super) fn sync_player_css(&mut self) {
+        let css = self
+            .themes
+            .active_css(self.theme_source(), self.theme_ui())
+            .filter(|c| nocturne_style::is_engine_sheet(c))
+            .map(str::to_string);
+        if let Some(p) = self.player.as_mut() {
+            p.set_user_css(css);
         }
     }
 
@@ -205,6 +226,8 @@ impl App {
                 }
                 Task::none()
             }
+            #[cfg(feature = "theme-engine")]
+            Outcome::SafeLook => self.safe_theme(),
             Outcome::Back => {
                 self.back();
                 self.page_wants()
