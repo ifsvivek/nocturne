@@ -66,7 +66,7 @@ const ALT = {
   "smart-menu-crop": "The Smart menu in the header: Unwatched 4K movies, Added this week, Unwatched shows, Continue watching, Top rated not watched, Manage smart collections",
   "downloads-crop": "The Downloads panel: Northbound Lights downloading, 50 MB of 417 MB, with Pause and Cancel",
   "hdr-crop": "The HDR question in the player: Play here in SDR, or Open in HDR pop-out window, with Remember my choice",
-  "trakt-crop": "The Trakt dialog, not signed in: what is sent, an empty Client ID field, Sign in with Trakt and Create a Trakt app",
+  "trakt-crop": "The Trakt dialog with your own Client ID: what is sent, an empty Client ID field, Sign in with Trakt and Create a Trakt app",
 };
 // Image props for one screenshot: src (largest), srcset, intrinsic size and alt, so layout never shifts.
 export function shot(key) {

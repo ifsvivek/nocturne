@@ -34,10 +34,19 @@
   ];
   // Each one is off until you turn it on.
   const services = [
-    ["Trakt", "Scrobble what you watch and import your watched history, through a Trakt app you create and a browser sign-in. Only titles with IMDb, TMDB or TVDB ids are sent.",
+    ["Trakt", "Scrobble what you watch and import your watched history. Connect Trakt signs in through your browser with one click; your own Trakt app stays an advanced option. Only titles with IMDb, TMDB or TVDB ids are sent.",
       "Trakt is a trademark of Trakt, Inc. NOCTURNE uses the Trakt API but is not affiliated with or endorsed by Trakt."],
     ["Remote control", "Other Jellyfin apps see this computer as a device and can play, pause, seek, skip, stop, and change the volume and tracks. Needs server changes on. Tried through the server, not yet from a phone app.", ""],
     ["One watched state", "Mark a title watched and its copies on your other sources follow, matched by IMDb, TMDB or TVDB id, never by title. Server copies change only with server changes on, each on its own server.", ""],
+  ];
+  // Themes and Server UI, new in 0.5: [title, text].
+  const look = [
+    ["Themes", "Colours, corner radii, the window background and a font. Cards: shape, size, caption, shadow and a hover zoom. Home rows as a carousel or a grid, the hero as a billboard, a banner or none, the header's height and items, and the order of Home's sections."],
+    ["Marquee and Feed", "Two built-in examples to start from: Marquee, a billboard and wide carousels without captions; Feed, a grid of thumbnails with the title and details below."],
+    ["Import", "Paste a stylesheet, open a .css file or type one https address, fetched once and refreshed only when you ask. A preview lasts 15 seconds unless you keep it. Nothing in a stylesheet runs or loads, and every line NOCTURNE cannot use is listed with its line and column."],
+    ["Per server", "One theme for the whole app, and optionally a different one for each server."],
+    ["Server UI", "Optional per server, off for new ones. With that server alone in the source filter, Home follows the server's own layout: its home sections in its order and its libraries in your order. The server's branding CSS becomes its theme, and its sign-in page shows the server's login disclaimer."],
+    ["Home sections", "Settings, Sources, Sections reorders and switches the server's home sections for your account. That is a change on the server, so it needs server changes on."],
   ];
   const tick = (p) => (Array.isArray(p) ? p : [p, ""]);
   // Slot widths for the browser's srcset choice: full-bleed (max 1680), the 3:2 split in the 1200 wrap, two-up at 1520, one framed 1320.
@@ -49,7 +58,7 @@
   const narrow = "(min-width: 800px) 760px, calc(100vw - 40px)";
 </script>
 
-<!-- Nine scenes. The first is the story (many sources, one library); the others are large stills from the app with
+<!-- Ten scenes. The first is the story (many sources, one library); the others are large stills from the app with
      their copy set as a subtitle. 0.4 stills are 3840x2160 headless captures (see README). -->
 <div id="tour">
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s0">
@@ -145,7 +154,7 @@
         <div class="rule pt-5"><dt class="role">{t}</dt><dd class="m-0 mt-3 text-ink-2">{d}{#if credit}<span class="mt-3 block text-sm text-ink-3">{credit}</span>{/if}</dd></div>
       {/each}
     </dl>
-    <figure class="reveal mx-auto mt-14 mb-0 w-[min(760px,100%-40px)]"><Shot name="trakt-crop" sizes={narrow} /><figcaption class="mt-4 text-center text-sm text-ink-2">Trakt, before you connect it: your own Trakt app and a sign-in in your browser. NOCTURNE ships no Trakt credentials.</figcaption></figure>
+    <figure class="reveal mx-auto mt-14 mb-0 w-[min(760px,100%-40px)]"><Shot name="trakt-crop" sizes={narrow} /><figcaption class="mt-4 text-center text-sm text-ink-2">Trakt's advanced option: your own Trakt app's Client ID, then a sign-in in your browser. By default the dialog shows one button, Connect Trakt.</figcaption></figure>
   </section>
 
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s4">
@@ -163,11 +172,22 @@
       <Shot name="settings" sizes={two} />
       <Shot name="settings-dropdown" sizes={two} />
     </div>
-    <p class="subtitle">Options with several choices are drop-downs: click the value, pick one, and Esc closes it unchanged. On and Off settings are switches. A Default profile drop-down sets who opens at launch, and a Sources section adds, orders and signs in to your folders and servers. <Next /> A server behind a gateway or reverse proxy can get an extra header, kept in the keyring. <Next v="0.4.0" /> Changes apply immediately and are saved on this device.</p>
+    <p class="subtitle">Options with several choices are drop-downs: click the value, pick one, and Esc closes it unchanged. On and Off settings are switches. A Default profile drop-down sets who opens at launch, and a Sources section adds, orders and signs in to your folders and servers. <Next /> A server behind a gateway or reverse proxy can get an extra header, kept in the keyring. <Next v="0.4.0" /> Every text field edits like any other: select with the mouse or Shift and the arrows, double-click a word, copy, cut and paste. <Next v="0.5.0" /> Changes apply immediately and are saved on this device.</p>
+  </section>
+
+  <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s9">
+    <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 9</span><h2 id="s9" class="scene-title">Your look</h2><Next v="0.5.0" class="mt-5 ml-0" /></header>
+    <p class="subtitle">Themes are CSS that NOCTURNE reads itself and draws natively, with no browser inside. They restyle NOCTURNE's own parts, in Settings, Themes.</p>
+    <dl class="stagger mx-auto mt-14 grid w-[min(1000px,100%-40px)] gap-x-14 gap-y-10 md:grid-cols-2">
+      {#each look as [t, d]}
+        <div class="rule pt-5"><dt class="role">{t}</dt><dd class="m-0 mt-3 text-ink-2">{d}</dd></div>
+      {/each}
+    </dl>
+    <p class="mx-auto mt-10 mb-0 w-[min(1000px,100%-40px)] text-sm text-ink-3">Not arbitrary web CSS: each page keeps its structure, and a Jellyfin web theme applies only partly, mostly its colours, radii and font. Letter spacing is read but not drawn; density, type size and backdrop blur are applied approximately.</p>
   </section>
 
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s6">
-    <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 9</span><h2 id="s6" class="scene-title">Admin</h2></header>
+    <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 10</span><h2 id="s6" class="scene-title">Admin</h2></header>
     <div class="reveal mx-auto w-[min(1320px,100%-40px)]"><Shot name="admin-dashboard" sizes={framed} /></div>
     <p class="subtitle">Administrators get each server's dashboard in the same app: activity, sessions, devices, tasks, libraries, users, plugins, API keys and logs. It stays view-only until changes are allowed, and every change asks first.</p>
   </section>

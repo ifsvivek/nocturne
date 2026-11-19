@@ -4,13 +4,15 @@
   // [title, text, version that ships it (marked until VERSION reaches it)]
   const facts = [
     ["Your files", "Indexed where they are. NOCTURNE never renames, moves, modifies or deletes a local file; its index, resume points and your edits live in its own data folder.", "0.3.0"],
-    ["Server writes", "One setting, off by default, gates every change: playback progress, watched and favourite flags, your own password and all admin actions."],
+    ["Server writes", "One setting, off by default, gates every change: playback progress, watched and favourite flags, your own password, your home sections on a server and all admin actions."],
     ["Several servers", "Each server keeps its own sign-in, and a change goes only to the server the item came from.", "0.3.0"],
     ["Admin actions", "Also need an administrator account and a confirmation dialog."],
     ["Sign-in", "Every server token lives in the system keyring (Secret Service), never in a file."],
     ["Online services", "Online details, subtitle search, Trakt and remote control are each off until you turn them on. For details only the title, year and ids are sent, never file names or paths; your keys stay in the keyring.", "0.4.0"],
     ["Downloads", "An offline copy is fetched with plain reads from its server, resumes after an interruption and never overwrites a file.", "0.4.0"],
-    ["Telemetry", "None. No analytics, no crash reports. The app talks only to the servers you add and the services you turn on."],
+    ["Themes", "A stylesheet is only read: nothing in it runs or loads. A theme from an https address is fetched once, and again only when you ask.", "0.5.0"],
+    ["Updates", "A per-user install replaces itself only after the download matches its announced size, sha256 and ed25519 signature; if any step fails, the current version stays. Package installs never update themselves.", "0.5.0"],
+    ["Telemetry", "None. No analytics, no crash reports. Besides the servers you add and the services you turn on, the app asks this site once a day whether a newer version exists, sending only its version; Settings, Updates turns that off."],
   ];
 </script>
 
