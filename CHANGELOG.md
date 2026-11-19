@@ -4,6 +4,13 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Added
+- macOS packaging also produces `nocturne-<version>-aarch64-macos.tar.gz` (the `NOCTURNE.app` bundle) with its sha256, the artifact the in-app updater installs; until now macOS only had the `.dmg` and showed Download.
+
+### Fixed
+- Themes: importing a CSS file or address while a saved theme is selected no longer overwrites that theme; it fills the editor as a new theme named after the file, and Save adds it.
+- `scripts/headless-input-check.sh` no longer fails intermittently: the paste check reads the field through the clipboard instead of a fixed screen crop, and chords that go missing are retried.
+
 ## [0.5.0] - 2026-11-19
 
 ### Added

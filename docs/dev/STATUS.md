@@ -20,6 +20,12 @@ Maintainer working notes for the public tree. User-facing status is in
 - [ ] Set the date in `CHANGELOG.md` (`[0.3.0] - UNRELEASED`), tag, and publish the GitHub release from
       [RELEASE_NOTES_0.3.0.md](RELEASE_NOTES_0.3.0.md) with the checksum.
 
+## 0.5.1 (unreleased)
+
+- macOS: `scripts/package-macos.sh` also writes `nocturne-<ver>-aarch64-macos.tar.gz` (+ `.sha256`) with `NOCTURNE.app` at the top level, uploaded by the `macos` job of `platforms.yml` and picked up by release.yml; the maintainer signs it and `scripts/make-update-manifest.sh` lists it as `macos-aarch64`. `update_install::extract_app` is covered by a Linux test of the tar layout and bundle swap, but the real macOS path is still unrun on a Mac.
+- Themes import (file or URL) detaches from the selected saved theme and adds a new one named after the file (`customize::import_name`).
+- `scripts/headless-input-check.sh`: clipboard round trips with retries instead of a fixed crop.
+
 ## 0.5 in progress: native CSS themes
 
 The engine (`crates/core/src/customize/`) and the Themes page (`crates/app/src/app/themes.rs`) are in; details and limits are in [CUSTOMIZATION_PLAN.md](CUSTOMIZATION_PLAN.md) section 13. Debug hooks for QA: `NOCTURNE_KEYS=open-themes@ms,theme-path@ms,theme-import@ms,theme-preview@ms,theme-apply@ms` with `NOCTURNE_THEME_FILE=/path/x.css`.

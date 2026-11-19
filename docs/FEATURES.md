@@ -70,7 +70,7 @@ What NOCTURNE does: 0.3.0 is released; entries marked **(0.4)** are on the unrel
 ## Updates
 
 - At most one check a day (setting `check_updates`, on by default) tells you when a newer version exists. Package-managed installs show the command (`sudo pacman -Syu`, `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade`) and never touch themselves.
-- Per-user installs (tarball under `~/.local`, Windows installer, macOS app in a folder you can write) update in the app: Download and install, then Restart to update. The download is checked against the announced size, its sha256 and an ed25519 signature made with the NOCTURNE update key before anything is replaced; if any step fails the current version stays as it was.
+- Per-user installs (tarball under `~/.local`, Windows installer, macOS app in a folder you can write) update in the app: Download and install, then Restart to update (macOS installs from a `.tar.gz` of the app bundle that ships next to the `.dmg`). The download is checked against the announced size, its sha256 and an ed25519 signature made with the NOCTURNE update key before anything is replaced; if any step fails the current version stays as it was.
 
 ## Settings
 - [x] Settings screen: server-changes master switch, progress sync, buffering, grid density, home sections, language preferences, reduce motion (follows the desktop by default)
