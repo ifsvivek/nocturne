@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. NOCTURNE is an unofficial desktop client for Jellyfin and local media (Linux first); read
+Thanks for helping. NOCTURNE is an unofficial desktop client for Jellyfin and local media (Linux, Wayland only; Windows and macOS are previews); read
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/WRITES.md](docs/WRITES.md) first.
 
 ## Ground rules
@@ -8,7 +8,7 @@ Thanks for helping. NOCTURNE is an unofficial desktop client for Jellyfin and lo
 - **Never test against a server that holds data you care about.** Anything that writes (progress, played, favourites, admin actions, passwords) must be tested only on a throwaway server (below).
 - `crates/jellyfin` stays GET-only. A test (`crates/jellyfin/tests/readonly.rs`) fails if a write verb appears. Writes belong in `crates/jellyfin-user` or `crates/jellyfin-admin` and must respect the `allow_server_writes` switch; destructive admin calls need the `Confirmed` token minted by the confirmation dialog.
 - No secrets, tokens, server addresses, media titles or personal paths in code, tests, logs or issues.
-- Linux first. macOS and Windows are planned ([docs/PLATFORMS.md](docs/PLATFORMS.md)): keep OS-specific code inside the platform seams listed there and do not add macOS/Windows implementations before that phase starts.
+- Linux first, Wayland only (X11 is not supported). Windows and macOS are unsigned previews ([docs/PLATFORMS.md](docs/PLATFORMS.md)): keep OS-specific code inside the platform seams listed there and do not extend the macOS/Windows implementations before that phase starts.
 - Keep changes small and focused; one concern per pull request.
 
 ## Setup
@@ -37,6 +37,14 @@ scripts/test-jellyfin.sh stop     # or `reset` to delete everything
 The admin and user crates' live tests refuse to run unless the URL is the loopback throwaway server (`guard::TestServerGuard`). When running the app against it, use `scripts/run-isolated.sh target/debug/nocturne` (add `NOCTURNE_JF_URL=http://127.0.0.1:8097`): it runs from a directory outside the repository (debug builds read `.env` from the current directory or any ancestor) with throwaway `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `NOCTURNE_KEYRING_SERVICE`, so nothing touches your real settings, local index or keyring entries.
 
 Debug builds have two hooks for checking the UI: `NOCTURNE_SNAP=/tmp/x.png` (and `NOCTURNE_SNAP_AFTER_MS=1500,4000` for several) saves the app window's own pixels, and `NOCTURNE_PREVIEW=<screen>` opens a screen with canned or throwaway-server data. Capture only the app window, never the whole screen, and never commit captures of a personal library.
+
+## Headless input tests
+
+`scripts/headless-session.sh {start|run <cmd>|stop|status}` starts an invisible sway with its own Wayland socket (`HS_NAME=<name>` gives each agent its own session), so synthetic keys (`wtype`), clipboard (`wl-copy`, `wl-paste`) and captures (`grim`) never reach your desktop; `run` refuses to target a display that is not that headless sway. `scripts/headless-input-check.sh [path/to/nocturne]` uses it to check the connect form with real input: typing, select all, copy, cut, paste and Tab / Shift+Tab. It builds nothing, needs `sway`, `wtype`, `wl-clipboard` and `grim`, and exits 1 when a check fails. The sign-in form needs a reachable server and is not covered.
+
+## Releases
+
+Maintainers only: a `vX.Y.Z` tag builds every format in CI and drafts a release; repositories and update artifacts are signed locally and nothing is published automatically. The steps are in [docs/PACKAGING.md](docs/PACKAGING.md#releasing). Never put a signing key in CI, the repository or an issue.
 
 ## Code style
 
