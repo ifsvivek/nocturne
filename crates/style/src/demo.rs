@@ -79,8 +79,10 @@ pub fn home() -> Doc {
     }
     let s = d.add(header, "div.search");
     d.text(s, "Search titles, people, genres");
+    // Text sits in its own leaf element (an "anonymous box" in CSS terms), so flex can centre it inside the avatar.
     let av = d.add(header, "div.avatar");
-    d.text(av, "A");
+    let al = d.add(av, "span.label");
+    d.text(al, "A");
 
     let side = d.add(root, "aside.sidebar");
     let h = d.add(side, "div.side-title");

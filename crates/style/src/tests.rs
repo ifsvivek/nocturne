@@ -150,6 +150,34 @@ fn unsupported_things_are_reported_not_fatal() {
 }
 
 #[test]
+fn text_wraps_to_the_width_a_column_flex_item_is_stretched_to() {
+    let mut d = Doc::new("page");
+    let a = d.add(0, "div.a");
+    let t = d.add(a, "div.t");
+    d.text(t, "one two three four five six seven eight nine ten");
+    let s = scene(
+        &d,
+        "page { display: flex; flex-direction: column; width: 100px } .a { display: flex; flex-direction: column; width: 100px } .t { padding: 10px }",
+        (100.0, 600.0),
+    );
+    // approx(): 8 px per glyph at 16 px, so the sentence needs several lines inside 80 px.
+    assert!(
+        s.rects[t][3] > 20.0 + 4.0 * 16.0 * 1.3,
+        "height {}",
+        s.rects[t][3]
+    );
+}
+
+#[test]
+fn rail_search_wraps() {
+    let d = demo::home();
+    let css = THEMES.iter().find(|t| t.0 == "rail").unwrap().1;
+    let s = scene(&d, css, (1920.0, 1080.0));
+    let n = find(&d, "search")[0];
+    assert!(s.rects[n][3] > 50.0, "{:?}", s.rects[n]);
+}
+
+#[test]
 fn the_page_is_as_tall_as_its_content() {
     let (d, ..) = small();
     let s = scene(&d, ".a { height: 2000px }", (800.0, 600.0));

@@ -7,6 +7,8 @@ pub mod layout;
 pub mod props;
 pub mod select;
 
+pub use taffy;
+
 pub use cascade::{Sheet, flags};
 pub use doc::{Doc, Id};
 pub use layout::{Scene, TextStyle, approx};

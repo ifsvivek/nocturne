@@ -2856,6 +2856,7 @@ dependencies = [
  "nocturne-local",
  "nocturne-player",
  "nocturne-session",
+ "nocturne-style",
  "png 0.18.1",
  "rfd",
  "serde_json",

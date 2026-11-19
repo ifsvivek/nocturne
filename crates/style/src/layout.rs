@@ -84,6 +84,10 @@ pub struct Scene {
     pub rects: Vec<[f32; 4]>,
     /// Scrollable content size (for `overflow: scroll`).
     pub content: Vec<[f32; 2]>,
+    /// Border plus padding per side (left, top, right, bottom): where the content box starts.
+    pub insets: Vec<[f32; 4]>,
+    /// Border widths per side (left, top, right, bottom).
+    pub borders: Vec<[f32; 4]>,
     /// Children in visual order (`order`, then source order): painting, hit testing and focus all use this.
     pub kids: Vec<Vec<Id>>,
     /// The same children in paint order (`z-index`, stable).
@@ -114,15 +118,17 @@ fn run(
                 let (Some(t), c) = (&doc.nodes[i].text, &styles[i]) else {
                     return Size::ZERO;
                 };
-                let w = known.width.or(match avail.width {
+                // `known` is the border box (Taffy applies it itself); `avail` is already the content box, so wrap to that.
+                let _ = known;
+                let w = match avail.width {
                     AvailableSpace::Definite(w) => Some(w),
                     AvailableSpace::MinContent => Some(0.0),
                     AvailableSpace::MaxContent => None,
-                });
+                };
                 let (tw, th) = measure(&shown(t, c), &text_style(c), w);
                 Size {
-                    width: known.width.unwrap_or(tw.ceil()),
-                    height: known.height.unwrap_or(th.ceil()),
+                    width: tw.ceil(),
+                    height: th.ceil(),
                 }
             },
         )
@@ -189,6 +195,8 @@ impl Scene {
             paint,
             rects: vec![[0.0; 4]; doc.len()],
             content: vec![[0.0; 2]; doc.len()],
+            insets: vec![[0.0; 4]; doc.len()],
+            borders: vec![[0.0; 4]; doc.len()],
             kids,
             report,
             timing: Timing::default(),
@@ -239,6 +247,13 @@ impl Scene {
                 l.size.height,
             ];
             self.content[i] = [l.scroll_width(), l.scroll_height()];
+            self.borders[i] = [l.border.left, l.border.top, l.border.right, l.border.bottom];
+            self.insets[i] = [
+                l.border.left + l.padding.left,
+                l.border.top + l.padding.top,
+                l.border.right + l.padding.right,
+                l.border.bottom + l.padding.bottom,
+            ];
         }
     }
 
