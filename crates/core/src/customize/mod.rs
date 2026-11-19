@@ -11,7 +11,7 @@ pub use layout::{
     Aspect, Card, CardImage, Controls, Header, HeaderPosition, Hero, HeroStyle, Layout, Page,
     Parts, Row, RowLayout, Scope, Section, Shadow, Text, TextTransform, TitlePosition, Visibility,
 };
-pub use store::{Saved, Store, content_type_ok, fetch, validate_url};
+pub use store::{Saved, Store, content_type_ok, fetch, import_name, validate_url};
 pub use value::{Color, Fill};
 
 use serde::{Deserialize, Serialize};

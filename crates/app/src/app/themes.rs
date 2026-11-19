@@ -162,6 +162,13 @@ impl App {
         self.th.note = Some((s.into(), err));
     }
 
+    /// An import fills the editor but never overwrites the selected saved theme: Save adds a new one.
+    fn detach_import(&mut self, file: &str) {
+        self.th.name = cz::import_name(self.th.sel.is_some(), &self.th.name, file);
+        self.th.sel = None;
+        self.th.confirm_delete = false;
+    }
+
     /// Store the editor's theme (new or existing); returns its id.
     fn save_theme(&mut self) -> u32 {
         let css = self.th.content.text();
@@ -265,15 +272,15 @@ impl App {
             Msg::Picked(None) => {}
             Msg::Import => {
                 let p = PathBuf::from(self.th.path.trim());
-                if self.th.name.trim().is_empty() {
-                    self.th.name = p
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().into_owned())
-                        .unwrap_or_default();
-                }
                 return run(read_css(p), |r| Message::Themes(Msg::Loaded(r)));
             }
             Msg::Loaded(Ok(s)) => {
+                let file = PathBuf::from(self.th.path.trim())
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                self.detach_import(&file);
+                self.th.url.clear();
                 self.note(
                     "Imported. Check the result below, then Preview or Save.",
                     false,
@@ -297,9 +304,7 @@ impl App {
                 self.th.busy = false;
                 match r {
                     Ok(s) => {
-                        if self.th.name.trim().is_empty() {
-                            self.th.name = file_name_of(&self.th.url);
-                        }
+                        self.detach_import(&file_name_of(&self.th.url));
                         self.note(
                             "Downloaded once. Nothing updates on its own; use Refresh to fetch again.",
                             false,
