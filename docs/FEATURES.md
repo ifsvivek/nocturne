@@ -69,7 +69,7 @@ What NOCTURNE does as of 0.5.1 (2026-11-19); entries tagged (0.4) or (0.5) say w
 
 ## Updates
 
-- At most one check a day (setting `check_updates`, on by default) tells you when a newer version exists. Package-managed installs show the command (`sudo pacman -Syu`, `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade`) and never touch themselves.
+- At most one check a day (setting `check_updates`, on by default) tells you when a newer version exists. Package-managed installs show the command (`sudo pacman -Syu`, `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade`) and never touch themselves; where PackageKit is running (most desktops) the banner also has Update now, which asks PackageKit to update only the `nocturne` package (the desktop's own password prompt appears; NOCTURNE never runs sudo or sees a password), then offers Restart. If it is refused or fails the message says why and the command stays.
 - Per-user installs (the tarball installed with `PREFIX=~/.local` or into any directory you can write, the Windows installer, macOS app in a folder you can write) update in the app: Download and install, then Restart to update (macOS installs from a `.tar.gz` of the app bundle that ships next to the `.dmg`). The download is checked against the announced size, its sha256 and an ed25519 signature made with the NOCTURNE update key before anything is replaced; if any step fails the current version stays as it was. Verified by unit and integration tests and against a local server; not yet exercised end to end from a published release (the macOS `.tar.gz` path is untested on a Mac).
 
 ## Settings

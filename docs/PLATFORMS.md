@@ -14,6 +14,7 @@ Implemented state (0.5.1): Linux is built, run and tested. Windows and macOS hav
 | external `mpv` binary | `PATH` | next to the app, `PATH`, Homebrew prefixes | `mpv.exe` next to the app, then `PATH` (no console window) |
 | Credentials | Secret Service (`keyring`) | Keychain (`keyring` apple-native) | Credential Manager (`keyring` windows-native) |
 | Media keys / now playing | MPRIS + idle inhibit (zbus, `core/player_mpris/dbus.rs`) | none yet (no-op; MPNowPlayingInfoCenter later) | none yet (no-op; SMTC later) |
+| System package update | PackageKit over the system D-Bus (zbus, `core/update_pk.rs`) | none (per-user app update) | none (per-user update) |
 | Signals / quit | SIGTERM/SIGINT | same | console ctrl handler (never fires in the GUI-subsystem build) |
 | Single instance | `flock` + unix socket in `$XDG_RUNTIME_DIR` | same, socket in `$TMPDIR` | named mutex + named pipe |
 | Paths | XDG | `~/Library/Application Support`, `~/Library/Caches` | `%APPDATA%` (config), `%LOCALAPPDATA%` (data, cache) |

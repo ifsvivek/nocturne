@@ -700,19 +700,62 @@ impl App {
             return None;
         }
         let (msg, act): (String, El) = match action {
-            Action::Command(cmd) => (
-                format!("NOCTURNE {version} is available. Update with: {cmd}"),
-                action_button(
-                    "Copy command",
-                    true,
-                    false,
-                    false,
-                    false,
-                    Message::UpdateCopy(cmd),
-                ),
-            ),
+            Action::Command(cmd) => {
+                let copy = || {
+                    action_button(
+                        "Copy command",
+                        !self.pk_available,
+                        false,
+                        false,
+                        false,
+                        Message::UpdateCopy(cmd),
+                    )
+                };
+                let now = |label| {
+                    action_button(
+                        label,
+                        true,
+                        false,
+                        false,
+                        false,
+                        Message::UpdatePk(version.clone()),
+                    )
+                };
+                let with_now = |msg: String, label| -> (String, El) {
+                    (msg, row![now(label), copy()].spacing(t::S2).into())
+                };
+                match (&self.update_stage, self.pk_available) {
+                    (UpdateStage::Packaging(p), _) => {
+                        let pct = p.load(std::sync::atomic::Ordering::Relaxed).min(100);
+                        let msg = if pct == 0 {
+                            format!(
+                                "Updating NOCTURNE to {version}: waiting for the package manager"
+                            )
+                        } else {
+                            format!("Updating NOCTURNE to {version}: {pct}%")
+                        };
+                        (msg, space().into())
+                    }
+                    (UpdateStage::Ready(_), _) => (
+                        format!("Updated to {version}."),
+                        action_button("Restart", true, false, false, false, Message::UpdateRestart),
+                    ),
+                    (UpdateStage::Failed(e), true) => {
+                        with_now(format!("{e} Or update with: {cmd}"), "Try again")
+                    }
+                    (UpdateStage::Failed(e), false) => (format!("{e} Update with: {cmd}"), copy()),
+                    (_, true) => with_now(
+                        format!("NOCTURNE {version} is available. Update with: {cmd}"),
+                        "Update now",
+                    ),
+                    _ => (
+                        format!("NOCTURNE {version} is available. Update with: {cmd}"),
+                        copy(),
+                    ),
+                }
+            }
             Action::Install(art) => match &self.update_stage {
-                UpdateStage::Idle => (
+                UpdateStage::Idle | UpdateStage::Packaging(_) => (
                     format!("NOCTURNE {version} is available."),
                     action_button(
                         "Download and install",

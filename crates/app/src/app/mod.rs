@@ -137,6 +137,19 @@ pub const GLOBALS: [(&str, &str); 3] = [
     ("favourites", "Favourites"),
 ];
 
+/// Debug builds only: `NOCTURNE_FAKE_UPDATE=<version>` (with `NOCTURNE_FAKE_UPDATE_CLICK=1` to press the button) shows the system-package banner for layout work and headless captures (pair with `NOCTURNE_PK_MOCK`).
+fn fake_update() -> Option<nocturne_core::update::UpdateState> {
+    if !cfg!(debug_assertions) {
+        return None;
+    }
+    let version = std::env::var("NOCTURNE_FAKE_UPDATE").ok()?;
+    Some(nocturne_core::update::UpdateState::Available {
+        notes_url: "https://example.invalid/".into(),
+        version,
+        action: nocturne_core::update::Action::Command("sudo pacman -Syu"),
+    })
+}
+
 /// The in-app update, after the banner's Install was pressed.
 enum UpdateStage {
     Idle,
@@ -144,6 +157,8 @@ enum UpdateStage {
         progress: std::sync::Arc<std::sync::atomic::AtomicU64>,
         size: u64,
     },
+    /// PackageKit is updating the package (percentage 0..=100, set by the transaction).
+    Packaging(std::sync::Arc<std::sync::atomic::AtomicU64>),
     /// Swapped in; waiting for the user to restart.
     Ready(std::path::PathBuf),
     Failed(String),
@@ -241,6 +256,8 @@ pub struct App {
     update: Option<nocturne_core::update::UpdateState>,
     /// Where the in-app update of that version stands.
     update_stage: UpdateStage,
+    /// PackageKit answers on the system bus (checked once); the Update now button needs it.
+    pk_available: bool,
     /// Developer-token mode (`NOCTURNE_JF_TOKEN`): no login, read-only.
     dev: bool,
     /// The token / account has admin rights (an `Admin` entry follows the libraries).
@@ -372,6 +389,7 @@ impl App {
             note: None,
             update: None,
             update_stage: UpdateStage::Idle,
+            pk_available: false,
             admin: false,
             admin_open: false,
             adm: None,
@@ -417,7 +435,19 @@ impl App {
         {
             nocturne_core::update_install::cleanup(&exe);
         }
-        let check = if me.settings.check_updates {
+        let check = if let Some(u) = fake_update() {
+            // `NOCTURNE_FAKE_UPDATE_CLICK=1` presses Update now by itself (headless captures cannot click).
+            let click = std::env::var_os("NOCTURNE_FAKE_UPDATE_CLICK").map(|_| {
+                let nocturne_core::update::UpdateState::Available { version, .. } = &u else {
+                    unreachable!()
+                };
+                Task::done(Message::UpdatePk(version.clone()))
+            });
+            Task::batch([
+                Task::done(Message::Update(Some(u))),
+                click.unwrap_or_else(Task::none),
+            ])
+        } else if me.settings.check_updates {
             run(nocturne_core::update::check(), Message::Update)
         } else {
             Task::none()
@@ -611,7 +641,48 @@ impl App {
             }
             Message::Retry => self.connect(),
             Message::Update(u) => {
+                // A system-package install is offered Update now only if PackageKit is there.
+                let system = matches!(
+                    u,
+                    Some(nocturne_core::update::UpdateState::Available {
+                        action: nocturne_core::update::Action::Command(_),
+                        ..
+                    })
+                );
                 self.update = u;
+                if system {
+                    return run(
+                        nocturne_core::update_pk::available(),
+                        Message::UpdatePkAvailable,
+                    );
+                }
+                Task::none()
+            }
+            Message::UpdatePkAvailable(yes) => {
+                self.pk_available = yes;
+                Task::none()
+            }
+            Message::UpdatePk(version) => {
+                if matches!(self.update_stage, UpdateStage::Packaging(_)) {
+                    return Task::none();
+                }
+                let progress = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+                self.update_stage = UpdateStage::Packaging(progress.clone());
+                run(
+                    nocturne_core::update_pk::update(version, progress),
+                    Message::UpdatePkDone,
+                )
+            }
+            Message::UpdatePkDone(r) => {
+                self.update_stage = match (r, std::env::current_exe()) {
+                    (Ok(()), Ok(exe)) => {
+                        UpdateStage::Ready(nocturne_core::update_pk::restart_path(&exe))
+                    }
+                    (Ok(()), Err(_)) => UpdateStage::Failed(
+                        "Updated, but the program cannot find itself: restart it by hand.".into(),
+                    ),
+                    (Err(e), _) => UpdateStage::Failed(e),
+                };
                 Task::none()
             }
             Message::UpdateCopy(cmd) => iced::clipboard::write(cmd.to_string()),
