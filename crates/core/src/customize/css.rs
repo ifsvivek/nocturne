@@ -7,6 +7,8 @@ pub struct Decl {
     pub name: String,
     pub value: String,
     pub pos: usize,
+    /// `!important` was written (the single-layer translators ignore it; the element-tree cascade honours it).
+    pub important: bool,
 }
 
 pub struct Rule {
@@ -155,9 +157,11 @@ fn decl(c: &[char], a: usize, b: usize, w: &mut Warnings) -> Option<Decl> {
         return None;
     }
     let mut value = text(c, colon + 1, b).trim().to_string();
+    let mut important = false;
     if let Some(p) = value.rfind('!')
         && value[p + 1..].trim().eq_ignore_ascii_case("important")
     {
+        important = true;
         value.truncate(p);
         value = value.trim_end().to_string();
     }
@@ -169,7 +173,12 @@ fn decl(c: &[char], a: usize, b: usize, w: &mut Warnings) -> Option<Decl> {
         );
         return None;
     }
-    Some(Decl { name, value, pos })
+    Some(Decl {
+        name,
+        value,
+        pos,
+        important,
+    })
 }
 
 pub fn clip(s: &str) -> String {

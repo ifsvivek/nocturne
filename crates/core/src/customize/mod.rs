@@ -5,7 +5,7 @@
 mod css;
 mod layout;
 mod store;
-mod value;
+pub mod value;
 
 pub use layout::{
     Aspect, Card, CardImage, Controls, Header, HeaderPosition, Hero, HeroStyle, Layout, Page,
@@ -277,6 +277,37 @@ pub fn parse_bytes(bytes: &[u8]) -> Result<Parsed, Error> {
         return Err(Error::TooLarge { bytes: bytes.len() });
     }
     parse(std::str::from_utf8(bytes).map_err(|_| Error::NotUtf8)?)
+}
+
+/// One rule as the element-tree engine (`nocturne-style`) wants it: the same comment, at-rule and size handling as [`parse`], no translation into tokens.
+pub struct RawRule {
+    pub selectors: Vec<String>,
+    /// `(name, value, important)`; custom properties keep their case.
+    pub decls: Vec<(String, String, bool)>,
+}
+
+/// Read a stylesheet into raw rules plus the number of problems skipped (the messages stay with [`parse`]).
+pub fn read_rules(source: &str) -> Result<(Vec<RawRule>, usize), Error> {
+    if source.len() > MAX_BYTES {
+        return Err(Error::TooLarge {
+            bytes: source.len(),
+        });
+    }
+    let mut chars: Vec<char> = source.chars().collect();
+    let mut w = Warnings::new(&chars);
+    css::blank_comments(&mut chars, &mut w);
+    let rules = css::parse(&chars, &mut w)
+        .into_iter()
+        .map(|r| RawRule {
+            selectors: r.sels.into_iter().map(|(s, _)| s).collect(),
+            decls: r
+                .decls
+                .into_iter()
+                .map(|d| (d.name, d.value, d.important))
+                .collect(),
+        })
+        .collect();
+    Ok((rules, w.list.len() + w.dropped))
 }
 
 pub fn parse(source: &str) -> Result<Parsed, Error> {
