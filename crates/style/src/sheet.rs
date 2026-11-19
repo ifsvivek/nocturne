@@ -9,8 +9,8 @@ use nocturne_core::customize::{MAX_BYTES, read_rules};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub const MAX_RULES: usize = 5_000;
-pub const MAX_DECLS: usize = 50_000;
+pub const MAX_RULES: usize = 20_000;
+pub const MAX_DECLS: usize = 150_000;
 const MAX_BLOCK_DEPTH: u8 = 4;
 
 /// Origins order the cascade: the app's own default sheet loses to the user's.

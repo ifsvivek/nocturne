@@ -593,6 +593,7 @@ mod tests {
             hide_played_in_latest: true,
             css: Some("a{}".into()),
             disclaimer: Some("d".into()),
+            web_css: None,
         };
         let loaded = HashMap::from([(a, ui.clone())]);
         let libs = || ["x", "y", "z"].map(String::from).to_vec();

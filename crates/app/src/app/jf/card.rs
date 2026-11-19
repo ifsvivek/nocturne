@@ -6,7 +6,7 @@ use crate::widget::cell::Pic;
 use nocturne_style::Id;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Shape {
+pub(crate) enum Shape {
     Backdrop,
     Portrait,
     Square,
@@ -24,7 +24,7 @@ impl Shape {
 
 /// How a card sits: in a horizontal scroller (`overflow*Card`) or in a wrapping grid (`*Card`).
 #[derive(Clone, Copy)]
-pub(super) struct Look {
+pub(crate) struct Look {
     pub shape: Shape,
     pub overflow: bool,
     /// Two caption lines (title, then the second line) or only the title (My Media tiles).
@@ -35,7 +35,7 @@ pub(super) struct Look {
     pub person: bool,
 }
 
-pub(super) struct Built {
+pub(crate) struct Built {
     pub card: Id,
     pub play: Id,
     pub fav: Id,
@@ -43,7 +43,7 @@ pub(super) struct Built {
 }
 
 /// A card into `tree`: its picture is registered for a later arrival, its clicks and focus cell bound.
-pub(super) fn card(
+pub(crate) fn card(
     tree: &mut Tree,
     parent: Id,
     mut c: CardIn,
@@ -64,7 +64,7 @@ pub(super) fn card(
 }
 
 /// The nodes of one card under `parent` (a `Doc` only: the library grid's virtual items are built this way). The picture node uses `c.pic_id`.
-pub(super) fn card_doc(
+pub(crate) fn card_doc(
     d: &mut nocturne_style::Doc,
     parent: Id,
     c: &CardIn,
@@ -190,4 +190,59 @@ fn type_of(kind: &str) -> String {
         _ => "Item",
     }
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_card_has_jellyfin_webs_structure() {
+        let c = CardIn {
+            pic: Pic::Missing,
+            pic_id: 0,
+            key: None,
+            title: "T".into(),
+            meta: String::new(),
+            index: 0,
+            progress: Some(0.5),
+            badge: Some("3".into()),
+            subtitle: false,
+            mark: None,
+            fav: false,
+            played: false,
+            writes: false,
+            at: None,
+            play: false,
+            kind: "movie",
+            source: 0,
+        };
+        let mut d = nocturne_style::Doc::new("html");
+        let look = Look {
+            shape: Shape::Portrait,
+            overflow: true,
+            second: true,
+            folder: false,
+            person: false,
+        };
+        let b = card_doc(&mut d, 0, &c, look, "2020");
+        let has = |d: &nocturne_style::Doc, n: Id, class: &str| {
+            d.nodes[n].classes.iter().any(|c| c == class)
+        };
+        assert!(has(&d, b.card, "overflowPortraitCard") && has(&d, b.card, "card"));
+        let bx = d.nodes[b.card].children[0];
+        assert!(has(&d, bx, "cardBox"));
+        let scal = d.nodes[bx].children[0];
+        assert!(has(&d, scal, "cardScalable"));
+        let kids: Vec<_> = d.nodes[scal].children.clone();
+        assert!(has(&d, kids[0], "cardPadder-overflowPortrait"));
+        assert!(has(&d, kids[1], "cardImageContainer"));
+        assert!(has(&d, *kids.last().unwrap(), "cardOverlayContainer"));
+        // The captions follow the scalable box inside the card box.
+        assert!(has(&d, d.nodes[bx].children[1], "cardText-first"));
+        assert!(has(&d, d.nodes[bx].children[2], "cardText-secondary"));
+        let all: Vec<String> = d.nodes.iter().flat_map(|n| n.classes.clone()).collect();
+        assert!(all.contains(&"countIndicator".to_string()));
+        assert!(all.contains(&"itemProgressBarForeground".to_string()));
+    }
 }

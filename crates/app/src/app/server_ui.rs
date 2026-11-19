@@ -76,7 +76,17 @@ impl App {
                 .get(i)
                 .map_or("A server".into(), |p| p.label.clone())
         };
-        p.note.map(|n| n.message(&label))
+        p.note.map(|n| n.message(&label)).or_else(|| {
+            // Jellyfin layout mode needs the server's own web client for its stylesheets.
+            p.from
+                .filter(|i| self.server_ui.get(i).is_some_and(|u| u.web_css.is_none()))
+                .map(|i| {
+                    format!(
+                        "{} runs without its web client: NOCTURNE's layout is used with the server's sections and branding.",
+                        label(i)
+                    )
+                })
+        })
     }
 
     /// Load every wanted server's UI that is online and not yet loaded (three small GETs each), and

@@ -23,7 +23,9 @@ mod home;
 mod home_tree;
 mod images;
 #[cfg(feature = "theme-engine")]
-mod jf;
+pub(crate) mod jf;
+#[cfg(feature = "theme-engine")]
+pub(crate) use home_tree::CardIn;
 pub mod message;
 mod onboard;
 mod online;
@@ -2175,6 +2177,7 @@ impl App {
             }
             if !self.admin_open
                 && !self.settings_open
+                && !plain
                 && let Some(c) = self.crumbs()
             {
                 layers.push(c);

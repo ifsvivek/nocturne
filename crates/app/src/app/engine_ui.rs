@@ -301,6 +301,7 @@ impl App {
         let t0 = Instant::now();
         // Jellyfin layout mode: the engine's base layer is the browser's defaults, the server's stylesheets go in the user layer.
         let jf = self.jf_base();
+        crate::detail::JF_MODE.store(jf.is_some(), std::sync::atomic::Ordering::Relaxed);
         let css = if jf.is_some() {
             super::jf::UA.to_string()
         } else {

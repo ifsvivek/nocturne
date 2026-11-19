@@ -1,11 +1,11 @@
 //! Jellyfin layout mode (`docs/dev/V052_PLAN.md` item 10): when the source in view uses a server's UI, Home, the header, the library grid and the detail page are built with jellyfin-web's own page structure (the same element kinds, class names, ids, data attributes and nesting for the parts NOCTURNE shows), as engine element trees. The base stylesheet is the server's own jellyfin-web CSS fetched at run time (`nocturne_core::webcss`), then the server's branding CSS, then the user's theme, in the web client's order, in one sheet layer; the Jellyfin selector translator is off because the classes are native. `jf_ua.css` is the little a browser would add under those sheets (default display and margins) plus the pieces jellyfin-web draws with MUI's run-time styles, written here by their stable `Mui*` class names. Interactive leaves stay slots; focus and keys come from the scene as before.
-mod card;
+pub(crate) mod card;
 mod header;
 mod home;
 mod library;
 
 use super::App;
-pub(in crate::app) use home::second_line;
+pub(crate) use home::second_line;
 use std::sync::Arc;
 
 /// What a browser adds under the web client's own sheets, and the MUI pieces.

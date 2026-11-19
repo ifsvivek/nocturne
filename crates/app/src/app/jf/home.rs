@@ -181,7 +181,7 @@ impl App {
 }
 
 /// The second caption line of a card: the year (movies, series), the artist (albums), the kind otherwise.
-pub(in crate::app) fn second_line(m: &Media) -> String {
+pub(crate) fn second_line(m: &Media) -> String {
     match m.kind {
         Kind::Movie | Kind::Series => m.year.map(|y| y.to_string()).unwrap_or_default(),
         Kind::MusicAlbum | Kind::Audio => m.sub.clone().unwrap_or_default(),

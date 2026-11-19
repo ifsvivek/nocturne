@@ -424,12 +424,25 @@ impl Scene {
                 k
             })
             .collect();
+        // `z-index` takes part in the nearest stacking context, not only among siblings: a box without one is painted at the highest `z-index` found below it (a poster with `z-index: 3` inside an unstyled wrapper still lands above the sibling ribbon with 2).
+        let mut eff: Vec<i32> = (0..n).map(|i| self.st.styles[i].z).collect();
+        for i in (0..n).rev() {
+            if self.st.styles[i].z == 0 {
+                let below = self.doc.nodes[i]
+                    .children
+                    .iter()
+                    .map(|&c| eff[c])
+                    .max()
+                    .unwrap_or(0);
+                eff[i] = below.max(0);
+            }
+        }
         self.paint = self
             .kids
             .iter()
             .map(|k| {
                 let mut p = k.clone();
-                p.sort_by_key(|&c| self.st.styles[c].z);
+                p.sort_by_key(|&c| eff[c]);
                 p
             })
             .collect();
@@ -464,6 +477,7 @@ impl Scene {
         // An absolutely positioned box is placed against its nearest positioned ancestor, not its parent (Taffy's rule): hang it from that ancestor when both axes are pinned by insets (a box with an auto axis keeps its static position under its parent).
         self.cb.clear();
         let mut moved: HashMap<Id, Vec<NodeId>> = HashMap::new();
+        #[allow(clippy::needless_range_loop)]
         for k in 1..n {
             let c = &self.st.styles[k];
             if c.fixed || c.layout.position != Position::Absolute || self.doc.nodes[k].virtual_item

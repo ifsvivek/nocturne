@@ -277,6 +277,9 @@ pub enum Op {
     Position(Position, bool, bool),
     /// `inherit` of one of the inherited properties: the parent's value (named by the property).
     Inherit(&'static str),
+    /// `float` and `clear`: Taffy's block layout floats boxes against the line boxes of their siblings (there is no inline text to wrap, so the boxes after a float flow beside it only as blocks do).
+    Float(taffy::style::Float),
+    Clear(taffy::style::Clear),
     Inset(Sides),
     Margin(Sides),
     Padding(Sides),
@@ -1026,8 +1029,6 @@ const PLANNED: &[&str] = &[
     "grid-template",
     "text-wrap",
     "vertical-align",
-    "float",
-    "clear",
     "columns",
     "column-count",
 ];
@@ -1119,6 +1120,8 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
             "inline-grid" => Display::Grid,
             _ => p(v)?,
         })),
+        "float" => one(Op::Float(p(v)?)),
+        "clear" => one(Op::Clear(p(v)?)),
         "position" => one(Op::Position(
             match v {
                 "fixed" | "sticky" => Position::Absolute,
@@ -1853,6 +1856,8 @@ impl Op {
         let st = &mut c.layout;
         match self {
             Op::Display(d) => st.display = *d,
+            Op::Float(f) => st.float = *f,
+            Op::Clear(k) => st.clear = *k,
             Op::Inherit(k) => match *k {
                 "color" => c.color = base.color,
                 "font-size" => c.font_size = base.font_size,

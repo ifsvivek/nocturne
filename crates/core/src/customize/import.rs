@@ -29,6 +29,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// All imported stylesheets of one theme.
 pub const MAX_TOTAL: usize = 1024 * 1024;
+/// One downloaded stylesheet (a theme's `@import`): the limit before the theme layer got room for a server's own base CSS.
+const MAX_IMPORT_FILE: usize = 256 * 1024;
 pub const MAX_DEPTH: usize = 3;
 pub const MAX_IMPORTS: usize = 16;
 const MAX_URL: usize = 2048;
@@ -590,7 +592,7 @@ impl Net {
             .filter(|d| !d.is_zero())
             .ok_or("the time allowed for downloads ran out")?;
         let max = if kind == Kind::Css {
-            MAX_BYTES
+            MAX_IMPORT_FILE
         } else {
             fonts::MAX_FILE
         };
@@ -658,7 +660,7 @@ impl Net {
             return r.clone();
         }
         let max = if kind == Kind::Css {
-            MAX_BYTES
+            MAX_IMPORT_FILE
         } else {
             fonts::MAX_FILE
         };

@@ -13,6 +13,8 @@ What 0.5 added: native CSS themes with layout on named parts (`crates/core/src/c
 
 On the branch `theme-engine` (cargo feature `theme-engine`, off in every normal build): the engine (`crates/style`, step B) and Home plus the shared header as element trees (`app/home_tree.rs`, `app/header_tree.rs`, `app/engine_ui.rs`, `crates/style/themes/default.css`, step D) with pixel parity to the hand-written pages, numbers and what differs in [THEME_ENGINE_PLAN.md](THEME_ENGINE_PLAN.md) section 10. Step E adds the library grid (virtual container, targeted picture updates, 5,000 items) and the search overlay (`app/browse_tree.rs`, `app/search_tree.rs`; section 11), plus Page Up/Down/Home/End on grids. `scripts/headless-parity.sh` repeats the comparison. Step F2 adds the Detail page and the player's controls bar as trees (`detail/detail_tree.rs`, `detail/engine.rs`, `player/bar_tree.rs`) and the Spotlight starter (`crates/style/themes/spotlight.css`): section 12. Step F3 is the Theme Studio (`app/studio.rs`, `app/studio_view.rs`, `crates/style/src/{inspect,css_edit}.rs`): pick mode over the live engine screens, an edit panel with grouped controls, "this element only" or "all like this", undo/redo, a raw CSS tab in sync both ways, starters, save/apply/export; [CUSTOMIZATION_PLAN.md](CUSTOMIZATION_PLAN.md) section 17.
 
+Jellyfin layout mode is built (THEME_ENGINE_PLAN section 14; `app/jf`, `detail/jf_detail.rs`, `core/webcss.rs`); `scripts/theme-conformance.sh --default` renders every listed theme side by side with jellyfin-web.
+
 ## Still open after 0.5.1
 
 - The updater end to end from a published release (tested with unit and integration tests and a local server); the macOS update path has never run on a Mac.

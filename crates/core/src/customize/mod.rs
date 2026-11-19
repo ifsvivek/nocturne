@@ -22,9 +22,9 @@ use std::collections::HashMap;
 use std::fmt;
 
 /// Larger stylesheets are rejected before any parsing.
-pub const MAX_BYTES: usize = 256 * 1024;
-pub(crate) const MAX_RULES: usize = 5_000;
-pub(crate) const MAX_DECLS: usize = 50_000;
+pub const MAX_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_RULES: usize = 20_000;
+pub(crate) const MAX_DECLS: usize = 150_000;
 const MAX_WARNINGS: usize = 500;
 /// Longest value after `var()` substitution; also bounds exponential `var()` fan-out.
 const MAX_VALUE: usize = 4_096;
