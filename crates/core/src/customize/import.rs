@@ -89,7 +89,7 @@ pub struct Note {
     pub info: bool,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Resolved {
     /// The text with imports inlined and `@font-face` blocks removed (their fonts are in
     /// `fonts`). Comments are blanked and line numbers of the original text are kept.
