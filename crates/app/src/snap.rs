@@ -43,11 +43,13 @@ pub fn on_boot() -> Task<Message> {
             // Server UI QA: `cycle-filter`, `layout-1` (the per-server switch of source 1),
             // `sections-1` (its editor), `sec-toggle-2`, `sec-up-2`, `sec-down-2`, `sec-save`.
             "cycle-filter" => Some(Message::CycleFilter),
+            "layout-all" => Some(Message::Src(crate::app::message::SrcAct::Layout(None))),
             n if n.starts_with("layout-") => n[7..].parse().ok().map(|i| {
-                Message::Src(crate::app::message::SrcAct::Layout(
+                Message::Src(crate::app::message::SrcAct::Layout(Some(
                     nocturne_core::source::SourceId(i),
-                ))
+                )))
             }),
+            "theme-safe" => Some(Message::Themes(crate::app::themes::Msg::Safe)),
             n if n.starts_with("sections-") => n[9..].parse().ok().map(|i| {
                 Message::Src(crate::app::message::SrcAct::Sections(
                     nocturne_core::source::SourceId(i),

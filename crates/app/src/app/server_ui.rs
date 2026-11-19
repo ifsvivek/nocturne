@@ -1,8 +1,7 @@
-//! Server UI mode glue: the per-server switch (Settings > Sources), the read of a server's own
-//! layout and branding, and the home-sections editor. The rules are in `nocturne_core::server_ui`;
+//! Server UI glue: the "Use the UI of" choice (Settings > Sources), the read of the servers' layouts
+//! and branding, and the home-sections editor. The rules are in `nocturne_core::server_ui`;
 //! the layout itself is `Home::layout` in `home.rs`. The editor writes through `nocturne-jellyfin-user`
 //! and only with `allow_server_writes` on and never with a developer token.
-use super::catalog::DEV;
 use super::message::{Message, SrcAct};
 use super::{App, run};
 use crate::style;
@@ -11,8 +10,9 @@ use crate::widget::{action_button, mono};
 use iced::widget::{column, container, opaque, row, space, text};
 use iced::{Alignment, Element, Length, Task};
 use nocturne_core::backend::Backend;
-use nocturne_core::profile::ProfileKind;
-use nocturne_core::server_ui::{Editor, ServerUi};
+use nocturne_core::catalog::Status;
+use nocturne_core::profile::UiFrom;
+use nocturne_core::server_ui::{Avail, Editor, Pick, ServerUi, effective, pick, wanted};
 use nocturne_core::source::SourceId;
 use nocturne_core::sources::SourceFilter;
 
@@ -28,79 +28,156 @@ pub(super) struct SecDlg {
 }
 
 impl App {
-    /// Server UI is on for this source (and possible: it is a signed-in server, not the developer
-    /// token, which has no user).
-    pub(super) fn wants_server_ui(&self, id: SourceId) -> bool {
-        id != DEV
-            && !self.dev
-            && self.sources.get(id).is_some_and(|p| {
-                p.server_ui && p.enabled && matches!(p.kind, ProfileKind::Jellyfin { .. })
-            })
-    }
-
-    /// The cached layout of the server that alone is selected, if its mode is on.
-    pub(super) fn server_ui_now(&self) -> Option<ServerUi> {
-        match self.filter {
-            SourceFilter::One(id) if self.wants_server_ui(id) => self.server_ui.get(&id).cloned(),
-            _ => None,
+    /// What the app knows about a server whose UI might be used (feeds `server_ui::pick`).
+    fn ui_avail(&self, id: SourceId) -> Avail {
+        match self.catalog.slot(id).map(|s| &s.status) {
+            Some(Status::SignedOut) => Avail::SignedOut,
+            Some(Status::Offline { .. }) => Avail::Unreachable,
+            _ if self.server_ui.contains_key(&id) => Avail::Ready,
+            _ => match self.ui_state.get(&id) {
+                Some(false) => Avail::Unreachable,
+                _ => Avail::Loading,
+            },
         }
     }
 
-    /// Read the server's layout and branding (three small GETs).
-    pub(super) fn fetch_server_ui(&self, id: SourceId) -> Task<Message> {
-        if !self.wants_server_ui(id) {
-            return Task::none();
-        }
-        let Some(b @ Backend::Jellyfin(_)) = self.catalog.backend(id).cloned() else {
-            return Task::none();
+    /// Whose UI applies, for the source in view (or "All") and, for "All" with each item's own UI,
+    /// the server of the item at hand. The developer token has no user, so no server UI.
+    pub(super) fn ui_pick(&self, item_server: Option<SourceId>) -> Pick {
+        let ctx = match self.filter {
+            SourceFilter::One(id) => Some(id),
+            SourceFilter::All => None,
         };
-        run(async move { b.server_ui().await.ok() }, move |r| {
-            Message::ServerUi(id, r)
-        })
+        self.ui_pick_in(ctx, item_server)
     }
 
-    /// An answer: cached per source, its branding becomes that server's theme layer, and Home
-    /// takes the layout when that server is the one in view. Dropped if the mode was switched off
-    /// while the request was out.
+    fn ui_pick_in(&self, ctx: Option<SourceId>, item_server: Option<SourceId>) -> Pick {
+        if self.dev {
+            return Pick::default();
+        }
+        pick(&self.sources, ctx, item_server, &|i| self.ui_avail(i))
+    }
+
+    /// May the home-sections of `id` be edited (from Settings > Sources): browsed with its own UI.
+    pub(super) fn sections_editable(&self, id: SourceId) -> bool {
+        self.ui_pick_in(Some(id), None).editable() == Some(id)
+    }
+
+    /// The layout to use on Home (the item-less case: "All" with each item's own UI shows NOCTURNE's).
+    pub(super) fn server_ui_now(&self) -> Option<ServerUi> {
+        effective(&self.ui_pick(None), &self.server_ui)
+    }
+
+    /// Why the NOCTURNE layout shows although another UI was chosen for `ctx`, as one line.
+    pub(super) fn ui_note(&self, ctx: Option<SourceId>) -> Option<String> {
+        let p = self.ui_pick_in(ctx, None);
+        let label = |i: SourceId| {
+            self.sources
+                .get(i)
+                .map_or("A server".into(), |p| p.label.clone())
+        };
+        p.note.map(|n| n.message(&label))
+    }
+
+    /// Load every wanted server's UI that is online and not yet loaded (three small GETs each), and
+    /// apply what changed to Home. Cheap when nothing changed; called after every message.
+    pub(super) fn sync_ui(&mut self) -> Task<Message> {
+        let mut tasks = vec![];
+        if !self.dev {
+            for id in wanted(&self.sources) {
+                let online = self
+                    .catalog
+                    .slot(id)
+                    .is_some_and(|s| s.status == Status::Online);
+                if !online || self.server_ui.contains_key(&id) || self.ui_state.contains_key(&id) {
+                    continue;
+                }
+                let Some(b @ Backend::Jellyfin(_)) = self.catalog.backend(id).cloned() else {
+                    continue;
+                };
+                self.ui_state.insert(id, true);
+                tasks.push(run(async move { b.server_ui().await.ok() }, move |r| {
+                    Message::ServerUi(id, r)
+                }));
+            }
+        }
+        let key = (self.ui_pick(None), self.ui_gen);
+        if self.ui_applied != Some(key) {
+            self.ui_applied = Some(key);
+            let ui = self.server_ui_now();
+            for h in self.stack.iter_mut().filter_map(|p| p.home.as_deref_mut()) {
+                h.server = ui.clone();
+                h.row = h.row.min(h.layout().len() - 1);
+            }
+        }
+        Task::batch(tasks)
+    }
+
+    /// A connect or reconnect forgets an earlier failure, so the next sync loads again.
+    pub(super) fn retry_server_ui(&mut self, id: SourceId) {
+        if self.ui_state.get(&id) == Some(&false) {
+            self.ui_state.remove(&id);
+        }
+    }
+
+    /// An answer: cached per source, its branding becomes that server's theme layer. Whether it is
+    /// used is `ui_pick`'s call, so a choice that changed meanwhile needs no special case.
     pub(super) fn server_ui_answer(&mut self, id: SourceId, r: Option<ServerUi>) {
-        let Some(ui) = r.filter(|_| self.wants_server_ui(id)) else {
+        let Some(ui) = r else {
+            self.ui_state.insert(id, false);
             return;
         };
+        self.ui_state.remove(&id);
         self.themes.set_branding(id, ui.css.clone());
-        if self.filter == SourceFilter::One(id) {
-            for h in self.stack.iter_mut().filter_map(|p| p.home.as_deref_mut()) {
-                h.server = Some(ui.clone());
-                h.row = h.row.min(h.layout().len() - 1);
-            }
-        }
         self.server_ui.insert(id, ui);
+        self.ui_gen += 1;
     }
 
-    /// Settings > Sources "Layout": NOCTURNE (default) or the server's own.
-    pub(super) fn toggle_server_ui(&mut self, id: SourceId) -> Task<Message> {
-        let Some(on) = self.sources.get(id).map(|p| !p.server_ui) else {
-            return Task::none();
-        };
-        self.sources.set_server_ui(id, on);
-        if let Some(s) = self.catalog.slot_mut(id) {
-            s.profile.server_ui = on;
-        }
-        self.save_sources();
-        if on {
-            return self.fetch_server_ui(id);
-        }
-        self.server_ui.remove(&id);
-        self.themes.set_branding(id, None);
-        if self.filter == SourceFilter::One(id) {
-            for h in self.stack.iter_mut().filter_map(|p| p.home.as_deref_mut()) {
-                h.server = None;
-                h.row = h.row.min(h.layout().len() - 1);
+    /// Settings > Sources "Use the UI of": the next choice in `ui_choices`, saved with the sources.
+    pub(super) fn cycle_ui(&mut self, ctx: Option<SourceId>) {
+        let choices = self.sources.ui_choices(ctx);
+        let at = choices
+            .iter()
+            .position(|c| *c == self.sources.ui_of(ctx))
+            .unwrap_or(0);
+        let next = choices[(at + 1) % choices.len()];
+        if self.sources.set_ui_from(ctx, next) {
+            if let Some(id) = ctx {
+                let on = self.sources.get(id).is_some_and(|p| p.server_ui);
+                if let Some(s) = self.catalog.slot_mut(id) {
+                    s.profile.server_ui = on;
+                }
             }
+            self.save_sources();
         }
-        Task::none()
+    }
+
+    /// A source was removed: forget its UI (the choices that pointed at it were reset by
+    /// `Sources::remove`, so the next `ui_pick` is the NOCTURNE layout).
+    pub(super) fn forget_server_ui(&mut self, id: SourceId) {
+        self.server_ui.remove(&id);
+        self.ui_state.remove(&id);
+        self.themes.set_branding(id, None);
+        self.ui_gen += 1;
+    }
+
+    /// The label of one choice, for the button.
+    pub(super) fn ui_choice_label(&self, ctx: Option<SourceId>, c: UiFrom) -> String {
+        match c {
+            UiFrom::Nocturne => "NOCTURNE".into(),
+            UiFrom::SelfServer if ctx.is_none() => "Each item's server".into(),
+            UiFrom::SelfServer => "This server".into(),
+            UiFrom::Source(i) => self
+                .sources
+                .get(i)
+                .map_or("Removed".into(), |p| p.label.clone()),
+        }
     }
 
     pub(super) fn open_sections(&mut self, id: SourceId) {
+        if !self.sections_editable(id) {
+            return;
+        }
         let Some(ui) = self.server_ui.get(&id) else {
             self.toast("The server's layout is not loaded yet.");
             return;
@@ -115,8 +192,14 @@ impl App {
         });
     }
 
+    /// Only the server being browsed with its own UI is ever edited, and only with server changes on.
     fn can_edit_server(&self) -> bool {
-        self.settings.allow_server_writes && !self.dev
+        self.settings.allow_server_writes
+            && !self.dev
+            && self
+                .sec
+                .as_ref()
+                .is_some_and(|d| self.sections_editable(d.id))
     }
 
     /// Dialog buttons. Editing is gated again here, not only by the disabled buttons.
@@ -163,7 +246,10 @@ impl App {
         }
         self.sec = None;
         self.toast("Saved on the server.");
-        self.fetch_server_ui(id)
+        self.server_ui.remove(&id);
+        self.ui_state.remove(&id);
+        self.ui_gen += 1;
+        Task::none()
     }
 
     pub(super) fn sections_dialog(&self) -> El<'_> {
