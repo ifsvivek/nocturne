@@ -1,7 +1,7 @@
 //! The detail page body: hero, facts, chips, about, the episode / track list, strips, media info.
 //! Every band has the height `geom` says, so focus can scroll rows into view without measuring.
 use super::cells::{self, Cell, g};
-use super::geom::{self, TOP};
+use super::geom::{self, top};
 use super::model::{self, Chip, DAct, DRow, Sec};
 use super::{Detail, Load, Msg};
 use crate::style::{self, border};
@@ -61,7 +61,7 @@ impl Detail {
         let cur = shape.current(&self.focus);
         let at = |r: DRow| (cur == r).then_some(self.focus.col);
         let mut page = column![
-            space().height(TOP),
+            space().height(top()),
             self.hero(at(DRow::Actions)),
             rule(),
             band(self.facts(full)),
@@ -100,7 +100,7 @@ impl Detail {
         }
         if !full.info.is_empty() {
             page = page.push(band(
-                container(info_table(full)).padding([t::S8, t::PAGE_PAD]),
+                container(info_table(full)).padding([t::S8, t::page_pad()]),
             ));
         }
         page = page.push(space().height(t::S8 * 2.0));
@@ -120,7 +120,14 @@ impl Detail {
         let h = geom::hero_h(self.win);
         let w = self.win.width;
         let art = geom::hero_art(m);
-        let backdrop: El = match (self.img(m, art, 1920), self.blur(m, art)) {
+        // Iced cannot blur an image: a theme's backdrop blur shows the item's blurhash stand-in.
+        let (sharp, soft) = (self.img(m, art, 1920), self.blur(m, art));
+        let sharp = if t::backdrop_blur() > 0.0 && soft.is_some() {
+            None
+        } else {
+            sharp
+        };
+        let backdrop: El = match (sharp, soft) {
             (Some(i), _) | (None, Some(i)) => image(i.clone())
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -237,7 +244,7 @@ impl Detail {
                 .height(Length::Fill)
                 .align_y(Alignment::End)
                 .padding(Padding {
-                    left: t::PAGE_PAD,
+                    left: t::page_pad(),
                     bottom: t::S8,
                     ..Padding::ZERO
                 })
@@ -249,11 +256,10 @@ impl Detail {
     }
 
     fn title_text(&self, size: f32) -> El<'_> {
-        g(self.media.title.clone())
-            .size(size)
-            .line_height(1.08)
-            .font(t::bold())
-            .color(t::text())
+        let p = t::parts(Some(nocturne_core::customize::Page::Detail), None);
+        t::typo(&p.detail_title, size, iced::font::Weight::Bold)
+            .with_line(1.08)
+            .text(&self.media.title, t::text())
             .into()
     }
 
@@ -356,7 +362,7 @@ impl Detail {
             line = line.push(mono(format!("{n} items")));
         }
         container(line)
-            .padding([0.0, t::PAGE_PAD])
+            .padding([0.0, t::page_pad()])
             .height(geom::FACTS_H)
             .center_y(geom::FACTS_H)
             .into()
@@ -405,8 +411,8 @@ impl Detail {
         }
         container(row(r).spacing(t::S2).wrap().vertical_spacing(t::S2))
             .padding(Padding {
-                left: t::PAGE_PAD,
-                right: t::PAGE_PAD,
+                left: t::page_pad(),
+                right: t::page_pad(),
                 bottom: t::S4,
                 top: t::S3,
             })
@@ -431,10 +437,13 @@ impl Detail {
             .unwrap_or_else(|| "No description available.".into());
         left = left.push(
             container(
-                g(overview)
-                    .size(t::BODY_LG)
-                    .line_height(1.6)
-                    .color(t::text_secondary()),
+                t::typo(
+                    &t::parts(Some(nocturne_core::customize::Page::Detail), None).detail_text,
+                    t::BODY_LG,
+                    iced::font::Weight::Normal,
+                )
+                .with_line(1.6)
+                .text(&overview, t::text_secondary()),
             )
             .max_width(760),
         );
@@ -466,7 +475,7 @@ impl Detail {
         }
         let h = geom::about_h(m, f, self.win.width);
         container(r.push(left).push(right))
-            .padding([t::S6, t::PAGE_PAD])
+            .padding([t::S6, t::page_pad()])
             .height(h)
             .clip(true)
             .into()
@@ -521,7 +530,7 @@ impl Detail {
                 }));
             }
             head = head.push(column![
-                container(tabs).padding([0.0, t::PAGE_PAD]).height(36),
+                container(tabs).padding([0.0, t::page_pad()]).height(36),
                 rule()
             ]);
         }
@@ -574,7 +583,7 @@ impl Detail {
                     }
                     page = page.push(
                         container(line)
-                            .padding([0.0, t::PAGE_PAD])
+                            .padding([0.0, t::page_pad()])
                             .height(geom::card_h(w)),
                     );
                 }
@@ -621,7 +630,7 @@ impl Detail {
         }
         // The first cell's picture lines up with the page margin (cells carry their own padding).
         let strip = scrollable(container(cells_row).padding(Padding {
-            left: t::PAGE_PAD - t::S3,
+            left: t::page_pad() - t::S3,
             ..Padding::ZERO
         }))
         .id(strip_id(s))

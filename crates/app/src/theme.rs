@@ -5,7 +5,7 @@ use iced::font::{Family, Weight};
 use iced::gradient::{self, Gradient};
 use iced::{Background, Color, Degrees};
 use nocturne_core::customize::{self as cz, Fill};
-use std::sync::{OnceLock, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 use std::time::Duration;
 
 // ponytail: system fonts; bundle faces when branding needs it
@@ -358,9 +358,18 @@ pub fn advisories(k: &Tokens) -> Vec<String> {
 
 static ACTIVE: RwLock<Tokens> = RwLock::new(Tokens::DEFAULT);
 
+/// What the active theme says about layout, resolved once per change. `None` is the built-in look.
+struct Look {
+    layout: cz::Layout,
+    density: f32,
+    font_scale: f32,
+}
+
+static LOOK: RwLock<Option<Arc<Look>>> = RwLock::new(None);
+
 /// Make `th` the look of the whole app (call when the theme changes, not per frame). The font
 /// family is read only on the first call, i.e. at launch.
-pub fn set(th: &cz::Theme) {
+pub fn set(th: &cz::Theme, layout: &cz::Layout) {
     // ponytail: the name is leaked once per launch, bounded by the engine's 64 character cap.
     let name: &'static str = match th.font_family.as_deref() {
         Some(n) if FAMILY.get().is_none() => Box::leak(n.to_owned().into_boxed_str()),
@@ -368,6 +377,205 @@ pub fn set(th: &cz::Theme) {
     };
     let _ = FAMILY.set(name);
     *ACTIVE.write().unwrap_or_else(|e| e.into_inner()) = Tokens::resolve(th);
+    let look = (layout.count() > 0 || th.density.is_some() || th.font_size.is_some()).then(|| {
+        Arc::new(Look {
+            layout: layout.clone(),
+            density: th.density.unwrap_or(1.0),
+            font_scale: th.font_size.map_or(1.0, |px| px / BODY),
+        })
+    });
+    *LOOK.write().unwrap_or_else(|e| e.into_inner()) = look;
+}
+
+fn look() -> Option<Arc<Look>> {
+    LOOK.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// Layout settings for a view: base, then the page's, then the section's (all unset by default).
+pub fn parts(page: Option<cz::Page>, section: Option<cz::Section>) -> cz::Parts {
+    look().map_or_else(Default::default, |l| l.layout.parts(page, section))
+}
+
+/// Home sections in display order.
+pub fn section_order() -> [cz::Section; 3] {
+    look().map_or(cz::Section::ALL, |l| l.layout.section_order())
+}
+
+/// `--nocturne-density`: scales the page spacing (padding, header height, section bands).
+pub fn density() -> f32 {
+    look().map_or(1.0, |l| l.density)
+}
+
+/// Hover transition of buttons: `.button` `transition-duration` over the built-in 140 ms, and the
+/// hover scale (`.button:hover { transform: scale() }`, none by default).
+pub fn button() -> (Duration, Option<f32>) {
+    look().map_or((HOVER, None), |l| {
+        let b = &l.layout.base.button;
+        (
+            b.transition_ms
+                .map_or(HOVER, |ms| Duration::from_millis(ms as u64)),
+            b.hover_scale,
+        )
+    })
+}
+
+/// `font-size` on `:root` relative to the built-in 15 px body. Iced has no per-text scale, so the
+/// whole UI is zoomed by this factor (like couch mode) rather than only the type.
+pub fn font_scale() -> f32 {
+    look().map_or(1.0, |l| l.font_scale)
+}
+
+pub fn page_pad() -> f32 {
+    PAGE_PAD * density()
+}
+
+/// Header height (explicit `height` wins over the density-scaled default).
+pub fn header_h() -> f32 {
+    look()
+        .and_then(|l| l.layout.base.header.height)
+        .unwrap_or(HEADER_H * density())
+}
+
+/// The header takes its own row and pushes the content down (`position: static`); otherwise it
+/// overlays the content, so a billboard can run under it.
+pub fn header_pushes() -> bool {
+    look().is_some_and(|l| l.layout.base.header.position == Some(cz::HeaderPosition::Static))
+}
+
+/// One of the four header items, shown unless the stylesheet hid it.
+pub fn header_item(item: HeaderItem) -> bool {
+    look().is_none_or(|l| {
+        let b = &l.layout.base;
+        let v = match item {
+            HeaderItem::Nav => &b.header_nav,
+            HeaderItem::Search => &b.header_search,
+            HeaderItem::History => &b.header_history,
+            HeaderItem::Account => &b.header_account,
+        };
+        v.hidden != Some(true)
+    })
+}
+
+#[derive(Clone, Copy)]
+pub enum HeaderItem {
+    Nav,
+    Search,
+    History,
+    Account,
+}
+
+/// Fill of a layout property (gradient or solid) as an Iced background.
+pub fn background(f: &Fill) -> Background {
+    let c = |c: cz::Color| {
+        let [r, g, b, a] = c.to_f32();
+        Color { r, g, b, a }
+    };
+    match f {
+        Fill::Solid(v) => Background::Color(c(*v)),
+        Fill::Linear { angle, stops } => {
+            let mut g = gradient::Linear::new(Degrees(*angle));
+            for (col, at) in stops {
+                g = g.add_stop(*at, c(*col));
+            }
+            Background::Gradient(Gradient::Linear(g))
+        }
+    }
+}
+
+/// Typography of a text part: what the stylesheet set over the built-in size and weight.
+/// ponytail: `letter-spacing` is read but Iced 0.14 text has no tracking; it is ignored.
+#[derive(Clone, Debug)]
+pub struct Typo {
+    pub hidden: bool,
+    size: f32,
+    font: Font,
+    color: Option<Color>,
+    line: Option<f32>,
+    transform: cz::TextTransform,
+}
+
+pub fn typo(tx: &cz::Text, size: f32, weight: Weight) -> Typo {
+    let w = match tx.font_weight {
+        None => weight,
+        Some(n) => match n {
+            0..=149 => Weight::Thin,
+            150..=249 => Weight::ExtraLight,
+            250..=349 => Weight::Light,
+            350..=449 => Weight::Normal,
+            450..=549 => Weight::Medium,
+            550..=649 => Weight::Semibold,
+            650..=749 => Weight::Bold,
+            750..=849 => Weight::ExtraBold,
+            _ => Weight::Black,
+        },
+    };
+    Typo {
+        hidden: tx.hidden == Some(true),
+        size: tx.font_size.unwrap_or(size),
+        font: font(w),
+        color: tx.color.map(|c| {
+            let [r, g, b, a] = c.to_f32();
+            Color { r, g, b, a }
+        }),
+        line: tx.line_height,
+        transform: tx.text_transform.unwrap_or(cz::TextTransform::None),
+    }
+}
+
+impl Typo {
+    /// Line height to use unless the stylesheet set one.
+    pub fn with_line(mut self, l: f32) -> Self {
+        self.line.get_or_insert(l);
+        self
+    }
+
+    pub fn size(&self) -> f32 {
+        self.size
+    }
+
+    /// Like [`Typo::text`] but the colour is only set when the stylesheet set one, so the text
+    /// keeps the colour its container gives it (buttons that change ink on hover).
+    pub fn text_inherit<'a>(&self, s: impl AsRef<str>) -> iced::widget::Text<'a> {
+        let t = self.text(s, Color::WHITE);
+        match self.color {
+            Some(_) => t,
+            None => t.color_maybe(None::<Color>),
+        }
+    }
+
+    /// `s` as a text widget with size, weight, line height and colour (`default_color` unless the
+    /// stylesheet set one).
+    pub fn text<'a>(&self, s: impl AsRef<str>, default_color: Color) -> iced::widget::Text<'a> {
+        let s = match self.transform {
+            cz::TextTransform::None => s.as_ref().to_owned(),
+            cz::TextTransform::Uppercase => s.as_ref().to_uppercase(),
+            cz::TextTransform::Lowercase => s.as_ref().to_lowercase(),
+            cz::TextTransform::Capitalize => capitalize(s.as_ref()),
+        };
+        let mut w = iced::widget::text(s)
+            .size(self.size)
+            .font(self.font)
+            .color(self.color.unwrap_or(default_color));
+        if let Some(l) = self.line {
+            w = w.line_height(l);
+        }
+        w
+    }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut up = true;
+    s.chars()
+        .map(|c| {
+            let o = if up {
+                c.to_uppercase().next().unwrap_or(c)
+            } else {
+                c
+            };
+            up = c.is_whitespace();
+            o
+        })
+        .collect()
 }
 
 pub fn active() -> Tokens {

@@ -416,11 +416,11 @@ impl App {
             .padding(Padding {
                 top: t::S6,
                 bottom: t::S4,
-                left: t::PAGE_PAD,
-                right: t::PAGE_PAD,
+                left: t::page_pad(),
+                right: t::page_pad(),
             }),
         );
-        page = page.push(container(rule()).padding([0.0, t::PAGE_PAD]));
+        page = page.push(container(rule()).padding([0.0, t::page_pad()]));
         if self.catalog.slots.is_empty() {
             page = page.push(
                 container(
@@ -428,15 +428,15 @@ impl App {
                         .size(t::BODY)
                         .color(t::text_secondary()),
                 )
-                .padding([t::S6, t::PAGE_PAD]),
+                .padding([t::S6, t::page_pad()]),
             );
         }
         for s in &self.catalog.slots {
             page = page
-                .push(container(column![self.source_row(s), rule()]).padding([0.0, t::PAGE_PAD]));
+                .push(container(column![self.source_row(s), rule()]).padding([0.0, t::page_pad()]));
         }
         scroll(page.padding(Padding {
-            top: t::HEADER_H + t::S8,
+            top: t::header_h() + t::S8,
             bottom: t::S8,
             ..Padding::ZERO
         }))
@@ -641,7 +641,7 @@ impl App {
             .height(Length::Fill)
             .align_x(Alignment::Center)
             .padding(Padding {
-                top: t::HEADER_H + t::S2,
+                top: t::header_h() + t::S2,
                 ..Padding::ZERO
             })
             .into(),
@@ -707,7 +707,7 @@ impl App {
             .height(Length::Fill)
             .align_x(Alignment::Center)
             .padding(Padding {
-                top: t::HEADER_H + t::S2,
+                top: t::header_h() + t::S2,
                 ..Padding::ZERO
             })
             .into(),

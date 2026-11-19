@@ -34,6 +34,8 @@ pub enum Msg {
     Close,
     /// A saved theme, or `None` for a new one.
     Pick(Option<u32>),
+    /// A built-in example (index into `customize::PRESETS`): its CSS goes into a new theme.
+    Preset(usize),
     Name(String),
     Edit(text_editor::Action),
     /// The translation of the editor text at that epoch.
@@ -124,7 +126,8 @@ impl App {
         }
         let want = self.themes.active_key(self.theme_source());
         if self.th.applied != Some(want) {
-            crate::theme::set(&self.themes.resolve(self.theme_source()));
+            let (th, lay) = self.themes.resolve_all(self.theme_source());
+            crate::theme::set(&th, &lay);
             self.th.applied = Some(want);
         }
     }
@@ -205,6 +208,22 @@ impl App {
                     .and_then(|s| s.url.clone())
                     .unwrap_or_default();
                 return self.set_text(&saved.map(|s| s.css).unwrap_or_default());
+            }
+            Msg::Preset(i) => {
+                let Some((name, css)) = cz::PRESETS.get(i) else {
+                    return Task::none();
+                };
+                self.th.preview = None;
+                self.th.applied = None;
+                self.th.confirm_delete = false;
+                self.th.sel = None;
+                self.th.url.clear();
+                self.th.name = format!("{name} copy");
+                self.note(
+                    "A copy of the built-in example. Edit it, then Preview or Save.",
+                    false,
+                );
+                return self.set_text(css);
             }
             Msg::Name(s) => self.th.name = s.chars().take(48).collect(),
             Msg::Edit(a) => {
@@ -292,7 +311,7 @@ impl App {
             }
             Msg::Preview => {
                 if let Some(p) = &self.th.parsed {
-                    crate::theme::set(&p.theme);
+                    crate::theme::set(&p.theme, &p.layout);
                     self.th.preview = Some(Instant::now() + PREVIEW);
                 }
             }
@@ -357,15 +376,15 @@ impl App {
             .height(Length::Fill);
         column![
             container(head).padding(Padding {
-                top: t::HEADER_H + t::S6,
+                top: t::header_h() + t::S6,
                 ..Padding::ZERO
             }),
             container(body)
                 .padding(Padding {
                     top: t::S4,
                     bottom: t::S6,
-                    left: t::PAGE_PAD,
-                    right: t::PAGE_PAD,
+                    left: t::page_pad(),
+                    right: t::page_pad(),
                 })
                 .height(Length::Fill),
         ]
@@ -414,7 +433,22 @@ impl App {
                 Msg::Pick(Some(s.id)),
             ));
         }
+        let mut presets = column![].spacing(2);
+        for (i, (name, _)) in cz::PRESETS.iter().enumerate() {
+            presets = presets.push(entry(
+                format!("{name}  \u{b7}  use as starting point"),
+                false,
+                "EXAMPLE",
+                Msg::Preset(i),
+            ));
+        }
         let mut col = column![
+            text(tracked("Examples"))
+                .shaping(text::Shaping::Advanced)
+                .size(t::CONTROL_TEXT)
+                .font(t::bold())
+                .color(t::text_secondary()),
+            presets,
             text(tracked("Saved themes"))
                 .shaping(text::Shaping::Advanced)
                 .size(t::CONTROL_TEXT)
@@ -497,7 +531,7 @@ impl App {
                     Ok(p) => format!(
                         "{}: {} applied, {} not understood",
                         s.profile.label,
-                        p.theme.count(),
+                        p.theme.count() + p.layout.count(),
                         p.warnings.len() + p.dropped_warnings
                     ),
                     Err(e) => format!("{}: {e}", s.profile.label),
@@ -702,7 +736,7 @@ impl App {
             return space().into();
         };
         let mut lines: Vec<El<'_>> = vec![];
-        let mut head = format!("{} settings applied.", p.theme.count());
+        let mut head = format!("{} settings applied.", p.theme.count() + p.layout.count());
         let mut kinds: Vec<(cz::WarningKind, usize)> = vec![];
         for w in &p.warnings {
             match kinds.iter_mut().find(|(k, _)| *k == w.kind) {

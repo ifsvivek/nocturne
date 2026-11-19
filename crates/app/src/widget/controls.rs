@@ -390,10 +390,15 @@ pub fn nav_link<'a, M: Clone + 'a>(
     focused: bool,
     on_press: M,
 ) -> Element<'a, M> {
-    let base = container(text(label.to_string()).size(t::BODY).font(t::medium()))
-        .height(t::HEADER_H)
+    let ty = t::typo(
+        &t::parts(None, None).header_link,
+        t::BODY,
+        iced::font::Weight::Medium,
+    );
+    let base = container(ty.text_inherit(label))
+        .height(t::header_h())
         .padding([0.0, t::S3])
-        .center_y(t::HEADER_H);
+        .center_y(t::header_h());
     let dot: Element<'a, M> = if active || focused {
         container(
             container(space().width(4).height(4)).style(|_| iced::widget::container::Style {

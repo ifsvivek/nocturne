@@ -396,7 +396,7 @@ pub(super) fn list_row<'a>(
     let r = Press::new(line)
         .width(Length::Fill)
         .height(super::geom::ROW_H)
-        .padding([t::S3, t::PAGE_PAD])
+        .padding([t::S3, t::page_pad()])
         .on_press(Msg::ListOpen(idx))
         .style(move |s| {
             let bg = if on {

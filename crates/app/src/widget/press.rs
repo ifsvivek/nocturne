@@ -34,7 +34,7 @@ impl Default for State {
             pressed: false,
             hot: Animation::new(false)
                 .easing(Easing::EaseOut)
-                .duration(crate::motion::dur(t::HOVER)),
+                .duration(crate::motion::dur(t::button().0)),
         }
     }
 }
@@ -238,7 +238,10 @@ impl<'a, M: Clone + 'a> Widget<M, iced::Theme, iced::Renderer> for Press<'a, M> 
             let hot = matches!(now_status, Status::Hovered | Status::Pressed);
             if state.hot.value() != hot {
                 // Re-read the motion preference so a Settings change applies to live buttons.
-                state.hot = state.hot.clone().duration(crate::motion::dur(t::HOVER));
+                state.hot = state
+                    .hot
+                    .clone()
+                    .duration(crate::motion::dur(t::button().0));
                 state.hot.go_mut(hot, *now);
             }
             if state.hot.is_animating(*now) {
@@ -271,29 +274,44 @@ impl<'a, M: Clone + 'a> Widget<M, iced::Theme, iced::Renderer> for Press<'a, M> 
             ),
         };
         let bounds = layout.bounds();
-        if look.background.is_some() || look.border.width > 0.0 || look.shadow.color.a > 0.0 {
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds,
-                    border: look.border,
-                    shadow: look.shadow,
-                    snap: look.snap,
+        let draw = |r: &mut iced::Renderer| {
+            if look.background.is_some() || look.border.width > 0.0 || look.shadow.color.a > 0.0 {
+                r.fill_quad(
+                    renderer::Quad {
+                        bounds,
+                        border: look.border,
+                        shadow: look.shadow,
+                        snap: look.snap,
+                    },
+                    look.background
+                        .unwrap_or(Background::Color(Color::TRANSPARENT)),
+                );
+            }
+            self.content.as_widget().draw(
+                &tree.children[0],
+                r,
+                theme,
+                &renderer::Style {
+                    text_color: look.text_color,
                 },
-                look.background
-                    .unwrap_or(Background::Color(Color::TRANSPARENT)),
-            );
+                layout.children().next().unwrap(),
+                cursor,
+                viewport,
+            )
+        };
+        let k = match t::button().1 {
+            Some(s) if s > 1.0 => state.hot.interpolate(1.0, s, Instant::now()),
+            _ => 1.0,
+        };
+        if k > 1.001 {
+            let c = bounds.center();
+            let tr = iced::Transformation::translate(c.x, c.y)
+                * iced::Transformation::scale(k)
+                * iced::Transformation::translate(-c.x, -c.y);
+            renderer.with_transformation(tr, draw);
+        } else {
+            draw(renderer);
         }
-        self.content.as_widget().draw(
-            &tree.children[0],
-            renderer,
-            theme,
-            &renderer::Style {
-                text_color: look.text_color,
-            },
-            layout.children().next().unwrap(),
-            cursor,
-            viewport,
-        );
     }
 
     fn mouse_interaction(

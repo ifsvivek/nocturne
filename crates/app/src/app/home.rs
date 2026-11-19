@@ -9,13 +9,15 @@ use crate::style::{self, gradient};
 use crate::task::run;
 use crate::theme as t;
 use crate::virt;
-use crate::widget::cell::{Cell, Pic, cell_h, poster_cell, tile};
-use crate::widget::{band, chip, mono, pill_button, section};
+use crate::widget::cell::{Cell, Look, Pic, poster_cell, tile};
+use crate::widget::layout::section_with;
+use crate::widget::{band, chip, mono, pill_button};
 use iced::widget::Id;
 use iced::widget::operation;
 use iced::widget::scrollable::{self, AbsoluteOffset};
 use iced::widget::{Stack, column, container, image, row, space, text};
 use iced::{Alignment, Color, ContentFit, Element, Length, Padding, Task};
+use nocturne_core::customize::{self as cz, Page, Parts, RowLayout};
 use nocturne_core::merge::Entry;
 use nocturne_core::nav::{self, Dir};
 use nocturne_core::server_ui::{Section, ServerUi};
@@ -43,6 +45,158 @@ impl HRow {
     /// Landscape cards (16:9) instead of posters.
     pub fn wide(self) -> bool {
         matches!(self, Self::Resume | Self::NextUp | Self::Tiles)
+    }
+}
+
+/// The stylesheet section a row belongs to (`.section-resume` ...).
+pub fn section_of(k: HRow) -> Option<cz::Section> {
+    match k {
+        HRow::Resume => Some(cz::Section::Resume),
+        HRow::NextUp => Some(cz::Section::NextUp),
+        HRow::Latest(_) => Some(cz::Section::Latest),
+        _ => None,
+    }
+}
+
+/// Order the strips by `order` (stable: ties keep the built-in order) and drop hidden ones; Nav
+/// and Hero stay in front. `reorder` is off for a server's own layout, which has its own order.
+fn arrange(
+    v: &mut Vec<HRow>,
+    order: [cz::Section; 3],
+    hidden: impl Fn(HRow) -> bool,
+    reorder: bool,
+) {
+    v.retain(|k| !hidden(*k));
+    if reorder {
+        let rank = |k: &HRow| match section_of(*k) {
+            Some(sec) => 1 + order.iter().position(|o| *o == sec).unwrap_or(0),
+            None => 0,
+        };
+        v.sort_by_key(rank);
+    }
+}
+
+/// The hero band for these Home settings: its height and whether it is a banner below the header
+/// (`None`: no hero). Billboard is the built-in look.
+pub fn hero_cfg(p: &Parts, win_w: f32, win_h: f32) -> Option<(f32, bool)> {
+    if p.hero.hidden == Some(true) {
+        return None;
+    }
+    let banner = p.hero.style == Some(cz::HeroStyle::Banner);
+    let h = p
+        .hero
+        .height
+        .unwrap_or(if banner { 320.0 } else { hero_h(win_w, win_h) });
+    Some((h, banner))
+}
+
+/// Vertical space the hero (and the header, when it pushes) takes above the first strip.
+pub fn hero_extent(cfg: Option<(f32, bool)>) -> f32 {
+    match cfg {
+        None => t::header_h(),
+        Some((h, banner)) if banner || t::header_pushes() => t::header_h() + h,
+        Some((h, _)) => h,
+    }
+}
+
+/// Resolved geometry of one kind of strip for a window.
+#[derive(Clone, Debug)]
+pub struct Geo {
+    pub look: Look,
+    pub dims: (f32, f32),
+    pub art: Art,
+    pub grid: bool,
+    pub cols: usize,
+    /// Horizontal inset of the strip (the page padding unless `.row padding` says otherwise).
+    pub inset: f32,
+    pub hidden: bool,
+    pub title_t: t::Typo,
+}
+
+impl Geo {
+    pub fn cell_w(&self) -> f32 {
+        self.dims.0 + 2.0 * self.look.pad + 1.0
+    }
+
+    fn head_h(&self) -> f32 {
+        if self.title_t.hidden {
+            0.0
+        } else {
+            SECTION_H + t::S6
+        }
+    }
+
+    /// Rows of cards for `n` items (always one for a carousel).
+    pub fn rows(&self, n: usize) -> usize {
+        if self.grid {
+            n.div_ceil(self.cols).max(1)
+        } else {
+            1
+        }
+    }
+
+    /// Height of one band holding `n` items.
+    pub fn band(&self, n: usize) -> f32 {
+        2.0 * band_pad() + self.head_h() + self.rows(n) as f32 * self.look.cell_h(self.dims.1) + 2.0
+    }
+}
+
+fn band_pad() -> f32 {
+    t::S8 * 1.5 * t::density()
+}
+
+/// Geometry of a strip kind from its resolved settings (`card` is the card-size setting in px).
+pub fn geo_for(win_w: f32, card: f32, k: HRow, p: &Parts) -> Geo {
+    let look = Look::of(p);
+    let kk = card / 176.0;
+    let (def_w, def_r, def_art) = if k.wide() {
+        (300.0 * kk, 9.0 / 16.0, Art::Landscape)
+    } else {
+        (190.0 * kk, 1.5, Art::Poster)
+    };
+    let (target, ratio, art) = if look.aspect.is_some() {
+        let r = look.ratio(def_r);
+        (
+            look.width
+                .unwrap_or(if r < 1.0 { 300.0 * kk } else { 190.0 * kk }),
+            r,
+            look.art(def_art),
+        )
+    } else {
+        (look.width.unwrap_or(def_w), def_r, def_art)
+    };
+    let inset = p.row.padding.unwrap_or(t::page_pad());
+    let grid = p.row.layout == Some(RowLayout::Grid);
+    let avail = win_w - 2.0 * inset - 1.0;
+    let cols = match (grid, p.row.columns) {
+        (true, Some(n)) => n as usize,
+        _ => nav::columns(avail, target + 2.0 * look.pad, 0.0),
+    };
+    let w = ((avail / cols as f32).floor() - 2.0 * look.pad).max(40.0);
+    Geo {
+        dims: (w, (w * ratio).round()),
+        art,
+        grid,
+        cols,
+        inset,
+        hidden: p.row.hidden == Some(true) || p.card.hidden == Some(true),
+        title_t: t::typo(&p.row_title, 28.0, iced::font::Weight::Bold),
+        look,
+    }
+}
+
+/// The geometry of each kind of strip: Continue watching, Next up, Latest (every library) and the
+/// server's library tiles.
+pub struct Geos([Geo; 4]);
+
+impl Geos {
+    pub fn of(&self, k: HRow) -> &Geo {
+        &self.0[match k {
+            HRow::Resume => 0,
+            HRow::NextUp => 1,
+            HRow::Tiles => 3,
+            _ => 2,
+        }]
     }
 }
 
@@ -144,7 +298,21 @@ impl Home {
         }
     }
 
+    /// The rows as the theme shows them: hero removed, strips ordered and hidden ones dropped.
     pub fn layout(&self) -> Vec<HRow> {
+        let hidden = |k: HRow| {
+            let p = t::parts(Some(Page::Home), section_of(k));
+            p.row.hidden == Some(true) || p.card.hidden == Some(true)
+        };
+        let mut v = self.layout_plain();
+        if t::parts(Some(Page::Home), None).hero.hidden == Some(true) {
+            v.retain(|k| *k != HRow::Hero);
+        }
+        arrange(&mut v, t::section_order(), hidden, self.server.is_none());
+        v
+    }
+
+    fn layout_plain(&self) -> Vec<HRow> {
         let mut v = vec![HRow::Nav, HRow::Hero];
         if let Some(ui) = &self.server {
             self.server_layout(ui, &mut v);
@@ -221,18 +389,40 @@ pub fn hero_h(win_w: f32, win_h: f32) -> f32 {
 
 const SECTION_H: f32 = 72.0;
 
-/// Height of one strip band for cards whose image is `ch` tall.
+/// Height of one built-in strip band for cards whose image is `ch` tall.
 pub fn band_h(ch: f32) -> f32 {
-    2.0 * t::S8 * 1.5 + SECTION_H + t::S6 + cell_h(ch) + 2.0
+    geo_for(1280.0, 176.0, HRow::Latest(0), &Parts::default()).band_for_height(ch)
+}
+
+impl Geo {
+    fn band_for_height(&self, ch: f32) -> f32 {
+        2.0 * band_pad() + self.head_h() + self.look.cell_h(ch) + 2.0
+    }
 }
 
 impl App {
-    pub(super) fn dims(&self) -> ((f32, f32), (f32, f32)) {
-        let k = self.settings.density.card() / 176.0;
-        (
-            row_dims(self.win.width, 190.0 * k, 1.5),
-            row_dims(self.win.width, 300.0 * k, 9.0 / 16.0),
-        )
+    pub(super) fn geos(&self) -> Geos {
+        let card = self.settings.density.card();
+        let one = |k| {
+            geo_for(
+                self.win.width,
+                card,
+                k,
+                &t::parts(Some(Page::Home), section_of(k)),
+            )
+        };
+        Geos([
+            one(HRow::Resume),
+            one(HRow::NextUp),
+            one(HRow::Latest(0)),
+            one(HRow::Tiles),
+        ])
+    }
+
+    /// Where the first strip starts: below the hero (and the header).
+    fn extent(&self) -> f32 {
+        let p = t::parts(Some(Page::Home), None);
+        hero_extent(hero_cfg(&p, self.win.width, self.win.height))
     }
 
     /// Fetch Home: libraries (header links, Latest rows), continue watching and next up, each from
@@ -423,32 +613,33 @@ impl App {
         }
         let mut w: Vec<Want> = vec![];
         let lay = h.layout();
-        if let Some(m) = h.hero() {
+        if lay.contains(&HRow::Hero)
+            && let Some(m) = h.hero()
+        {
             w.extend(self.hero_wants(m));
         }
-        let (size, wide) = self.dims();
-        let hh = hero_h(self.win.width, self.win.height);
+        let gs = self.geos();
         let vh = if h.vh > 0.0 { h.vh } else { self.win.height };
-        let mut top = hh;
-        for (ri, k) in lay.iter().enumerate().skip(2) {
-            let (dims, art) = if k.wide() {
-                (wide, Art::Landscape)
-            } else {
-                (size, Art::Poster)
-            };
-            let bh = band_h(dims.1);
+        let mut top = self.extent();
+        for (ri, k) in lay.iter().enumerate().filter(|(_, k)| strip(**k)) {
+            let g = gs.of(*k);
+            let items = h.items(*k);
+            let bh = g.band(items.len());
             let near = top + bh > h.off - vh * 0.5 && top < h.off + vh * 1.5;
             top += bh;
             if !near {
                 continue;
             }
-            let cell_w = dims.0 + 2.0 * t::S3 + 1.0;
-            let avail = self.win.width - 2.0 * t::PAGE_PAD;
+            let avail = self.win.width - 2.0 * g.inset;
             let x = h.strips.get(&ri).copied().unwrap_or(0.0);
-            let first = (x / cell_w).floor() as usize;
-            let n = (avail / cell_w).ceil() as usize + 2;
-            for (m, _) in h.items(*k).into_iter().skip(first).take(n) {
-                w.push((m.clone(), art, dims.0 as u32));
+            let first = (x / g.cell_w()).floor() as usize;
+            let n = if g.grid {
+                usize::MAX
+            } else {
+                (avail / g.cell_w()).ceil() as usize + 2
+            };
+            for (m, _) in items.into_iter().skip(first).take(n) {
+                w.push((m.clone(), g.art, g.dims.0 as u32));
             }
         }
         w
@@ -480,36 +671,50 @@ impl App {
             return space().into();
         };
         let lay = h.layout();
-        let (size, wide) = self.dims();
-        let hh = hero_h(self.win.width, self.win.height);
+        let gs = self.geos();
         let hero_focus = (lay.get(h.row) == Some(&HRow::Hero)).then_some(h.col);
-        let hero: El = match h.hero() {
-            Some(m) => self.hero_band(m, hh, hero_focus),
-            None => container(note(if h.loading() {
-                "Loading your library"
-            } else {
-                "Nothing to show yet."
-            }))
-            .height(420)
-            .padding(Padding {
-                top: t::HEADER_H,
-                ..Padding::ZERO
-            })
-            .into(),
+        let hp = t::parts(Some(Page::Home), None);
+        let hero: El = match hero_cfg(&hp, self.win.width, self.win.height) {
+            Some((hh, banner)) => {
+                let inner: El = match h.hero() {
+                    Some(m) => self.hero_band(m, hh, hero_focus),
+                    None => container(note(if h.loading() {
+                        "Loading your library"
+                    } else {
+                        "Nothing to show yet."
+                    }))
+                    .height(420.min(hh as u32) as f32)
+                    .padding(Padding {
+                        top: t::header_h(),
+                        ..Padding::ZERO
+                    })
+                    .into(),
+                };
+                if banner || t::header_pushes() {
+                    column![space().height(t::header_h()), inner].into()
+                } else {
+                    inner
+                }
+            }
+            None => space().height(t::header_h()).into(),
         };
         let mut page = column![band(hero)];
+        if !lay.iter().any(|k| strip(*k)) && !lay.contains(&HRow::Hero) && h.loading() {
+            page = page.push(note("Loading your library"));
+        }
         let several = self.several_sources();
-        for (ri, k) in lay.iter().enumerate().skip(2) {
+        for (ri, k) in lay.iter().enumerate().filter(|(_, k)| strip(**k)) {
             let focus = (h.row == ri).then_some(h.col);
+            let g = gs.of(*k);
             let items = h.items(*k);
             let n = items.len();
-            let (title, text_, meta, dims, art, play, loading) = match k {
+            let (title, text_, meta, _dims, _art, play, loading) = match k {
                 HRow::Resume => (
                     "Continue watching".to_string(),
                     "Pick up where you left off.".to_string(),
                     format!("{n} in progress"),
-                    wide,
-                    Art::Landscape,
+                    g.dims,
+                    g.art,
                     true,
                     false,
                 ),
@@ -517,8 +722,8 @@ impl App {
                     "Next up".to_string(),
                     "The next episode of what you're following.".to_string(),
                     format!("{n} up next"),
-                    wide,
-                    Art::Landscape,
+                    g.dims,
+                    g.art,
                     true,
                     false,
                 ),
@@ -526,8 +731,8 @@ impl App {
                     "My media".to_string(),
                     "Your libraries.".to_string(),
                     format!("{n} {}", if n == 1 { "library" } else { "libraries" }),
-                    wide,
-                    Art::Landscape,
+                    g.dims,
+                    g.art,
                     false,
                     false,
                 ),
@@ -546,16 +751,16 @@ impl App {
                             }
                             _ => r.lib.kind_label(),
                         },
-                        size,
-                        Art::Poster,
+                        g.dims,
+                        g.art,
                         false,
                         matches!(r.items, Load::Loading),
                     )
                 }
                 _ => continue,
             };
-            let strip = self.strip(ri, &items, dims, art, focus, play, loading);
-            page = page.push(strip_band(&title, &text_, meta, strip));
+            let strip = self.strip(ri, &items, g, focus, play, loading);
+            page = page.push(strip_band(&title, &text_, meta, strip, g));
         }
         // Sources that did not answer add nothing but a quiet line.
         let down: Vec<String> = self
@@ -574,7 +779,7 @@ impl App {
         if !down.is_empty() {
             page = page.push(
                 container(mono(format!("Not showing {}", down.join("  \u{b7}  "))))
-                    .padding([t::S4, t::PAGE_PAD]),
+                    .padding([t::S4, t::page_pad()]),
             );
         }
         let page = page.push(space().height(t::S8 * 2.0));
@@ -597,17 +802,17 @@ impl App {
         &self,
         ri: usize,
         items: &[(&Media, usize)],
-        (cw, ch): (f32, f32),
-        art: Art,
+        g: &Geo,
         focus: Option<usize>,
         play: bool,
         loading: bool,
     ) -> El<'_> {
         let writes = self.hooks.can_write();
         let several = self.several_sources();
+        let ((cw, ch), art) = (g.dims, g.art);
         let mut cells: Vec<El> = vec![];
         if items.is_empty() {
-            for i in 0..8 {
+            for i in 0..if g.grid { g.cols.min(8) } else { 8 } {
                 cells.push(poster_cell(Cell {
                     pic: if loading { Pic::Loading } else { Pic::Missing },
                     title: String::new(),
@@ -624,6 +829,7 @@ impl App {
                     on_hover: Message::Noop,
                     on_fav: Message::Noop,
                     on_played: Message::Noop,
+                    look: g.look.clone(),
                 }));
             }
         }
@@ -658,7 +864,16 @@ impl App {
                 on_hover: Message::Cell(at, CellAct::Hover),
                 on_fav: Message::Cell(at, CellAct::Fav),
                 on_played: Message::Cell(at, CellAct::Played),
+                look: g.look.clone(),
             }));
+        }
+        if g.grid {
+            let mut rows: Vec<El> = vec![];
+            while !cells.is_empty() {
+                let rest = cells.split_off(g.cols.min(cells.len()));
+                rows.push(row(std::mem::replace(&mut cells, rest)).into());
+            }
+            return column(rows).width(Length::Fill).into();
         }
         let strip = scrollable::Scrollable::with_direction(
             row(cells),
@@ -695,7 +910,10 @@ impl App {
         for g in m.genres.iter().take(3) {
             chips = chips.push(chip(g, false));
         }
+        let hp = t::parts(Some(Page::Home), None);
         let size = (w / 26.0).clamp(40.0, 72.0);
+        let title_ty = t::typo(&hp.hero_title, size, iced::font::Weight::Bold).with_line(1.08);
+        let sub_ty = t::typo(&hp.hero_meta, t::BODY_LG, iced::font::Weight::Normal).with_line(1.6);
         let logo = if m.logo.is_some() {
             Some(self.pic(m, Art::Logo, 460))
         } else {
@@ -709,12 +927,8 @@ impl App {
                     .into()
             }
             Some(_) => space().height(110).into(),
-            None => text(m.title.clone())
-                .size(size)
-                .line_height(1.08)
-                .font(t::bold())
-                .color(t::text())
-                .into(),
+            None if title_ty.hidden => space().into(),
+            None => title_ty.text(&m.title, t::text()).into(),
         };
         let season_line = (m.logo.is_some() && matches!(m.kind, Kind::Season | Kind::Episode))
             .then(|| text(m.title.clone()).size(t::HEADING).font(t::semibold()));
@@ -754,14 +968,13 @@ impl App {
         }
         col = col
             .push(
-                container(
-                    text(sub)
-                        .size(t::BODY_LG)
-                        .line_height(1.6)
-                        .color(t::text_secondary()),
-                )
+                container(if sub_ty.hidden {
+                    text("")
+                } else {
+                    sub_ty.text(&sub, t::text_secondary())
+                })
                 .max_width(560)
-                .max_height(t::BODY_LG * 1.6 * 3.0)
+                .max_height(sub_ty.size() * 1.6 * 3.0)
                 .clip(true),
             )
             .push(buttons);
@@ -791,13 +1004,16 @@ impl App {
                     (0.65, clear),
                 ],
             )),
-            scrim(gradient(180.0, &[(0.45, clear), (1.0, solid)])),
+            scrim(match &hp.hero.overlay {
+                Some(f) => t::background(f),
+                None => gradient(180.0, &[(0.45, clear), (1.0, solid)]),
+            }),
             container(container(col).max_width(680))
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .align_y(Alignment::End)
                 .padding(Padding {
-                    left: t::PAGE_PAD,
+                    left: t::page_pad(),
                     bottom: t::S8,
                     ..Padding::ZERO
                 })
@@ -815,8 +1031,9 @@ impl App {
         let links = self.nav_links();
         let nav_w = self.nav_widths();
         let (nav_off, nav_vw, _) = self.nav_geom();
-        let (size, wide) = self.dims();
-        let (win_w, win_h) = (self.win.width, self.win.height);
+        let gs = self.geos();
+        let ext = self.extent();
+        let (self_w, win_h) = (self.win.width, self.win.height);
         let Some(h) = self.stack.last_mut().and_then(|p| p.home.as_deref_mut()) else {
             return Task::none();
         };
@@ -844,20 +1061,18 @@ impl App {
             }
             let k = lay[h.row];
             h.col = h.col.min(len(h, k).saturating_sub(1));
-            let hh = hero_h(win_w, win_h);
             // Page: bring the focused band into view.
-            let mut top = hh;
+            let mut top = ext;
             let mut want_y = 0.0;
-            for (ri, k) in lay.iter().enumerate().skip(2) {
-                let dims = if k.wide() { wide } else { size };
+            for (ri, k) in lay.iter().enumerate().filter(|(_, k)| strip(**k)) {
                 if ri == h.row {
                     want_y = top;
                 }
-                top += band_h(dims.1);
+                top += gs.of(*k).band(h.items(*k).len());
             }
-            if h.row >= 2 {
+            if strip(k) {
                 let vh = if h.vh > 0.0 { h.vh } else { win_h };
-                let bh = band_h(if k.wide() { wide.1 } else { size.1 });
+                let bh = gs.of(k).band(h.items(k).len());
                 let target = if want_y < h.off {
                     want_y
                 } else if want_y + bh > h.off + vh {
@@ -878,12 +1093,11 @@ impl App {
                     AbsoluteOffset { x: 0.0, y: 0.0 },
                 ));
             }
-            // Strip: bring the focused card into view.
-            if h.row >= 2 {
-                let dims = if k.wide() { wide } else { size };
-                let cell_w = dims.0 + 2.0 * t::S3 + 1.0;
+            // Strip: bring the focused card into view (a grid has no sideways scroll).
+            if strip(k) && !gs.of(k).grid {
+                let g = gs.of(k);
                 let cur = h.strips.get(&h.row).copied().unwrap_or(0.0);
-                let x = virt::into_view(cur, win_w - 2.0 * t::PAGE_PAD, cell_w, h.col);
+                let x = virt::into_view(cur, self_w - 2.0 * g.inset, g.cell_w(), h.col);
                 if (x - cur).abs() > 0.5 {
                     h.strips.insert(h.row, x);
                     tasks.push(operation::scroll_to(
@@ -939,12 +1153,16 @@ pub fn strip_id(ri: usize) -> Id {
 
 fn note<'a>(s: &str) -> El<'a> {
     container(text(s.to_string()).size(t::BODY).color(t::text_secondary()))
-        .padding([t::S6, t::PAGE_PAD])
+        .padding([t::S6, t::page_pad()])
         .into()
 }
 
+fn strip(k: HRow) -> bool {
+    !matches!(k, HRow::Nav | HRow::Hero)
+}
+
 /// A titled band holding one strip in a hairline panel, fading out at the right edge.
-fn strip_band<'a>(title: &str, text_: &str, meta: String, strip: El<'a>) -> El<'a> {
+fn strip_band<'a>(title: &str, text_: &str, meta: String, strip: El<'a>, g: &Geo) -> El<'a> {
     let fade = container(space())
         .width(48)
         .height(Length::Fill)
@@ -958,30 +1176,33 @@ fn strip_band<'a>(title: &str, text_: &str, meta: String, strip: El<'a>) -> El<'
             )),
             ..Default::default()
         });
-    let panel = container(Stack::with_children(vec![
-        strip,
-        container(fade)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_x(Alignment::End)
-            .into(),
-    ]))
-    .clip(true)
-    .style(|_| container::Style {
+    let body: El<'a> = if g.grid {
+        strip
+    } else {
+        Stack::with_children(vec![
+            strip,
+            container(fade)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Alignment::End)
+                .into(),
+        ])
+        .into()
+    };
+    let panel = container(body).clip(true).style(|_| container::Style {
         border: style::border(t::hairline(), 1.0, t::r_panel()),
         ..Default::default()
     });
+    let mut col = column![].spacing(t::S6);
+    if !g.title_t.hidden {
+        col = col.push(
+            container(section_with(title, text_, meta, &g.title_t, g.inset)).height(SECTION_H),
+        );
+    }
     band(
-        container(
-            column![
-                container(section(title, text_, meta)).height(SECTION_H),
-                container(panel).padding([0.0, t::PAGE_PAD]),
-            ]
-            .spacing(t::S6),
-        )
-        .padding(Padding {
-            top: t::S8 * 1.5,
-            bottom: t::S8 * 1.5,
+        container(col.push(container(panel).padding([0.0, g.inset]))).padding(Padding {
+            top: band_pad(),
+            bottom: band_pad(),
             ..Padding::ZERO
         }),
     )
@@ -994,7 +1215,7 @@ mod tests {
     #[test]
     fn cards_fill_the_row_exactly() {
         let (w, h) = row_dims(1280.0, 190.0, 1.5);
-        let avail = 1280.0 - 2.0 * t::PAGE_PAD - 1.0;
+        let avail = 1280.0 - 2.0 * t::page_pad() - 1.0;
         let cols = ((w + 2.0 * t::S3) * 0.0 + avail / (w + 2.0 * t::S3)).floor();
         assert!(cols >= 5.0 && (w + 2.0 * t::S3) * cols <= avail + 1.0);
         assert_eq!(h, (w * 1.5).round());
@@ -1097,6 +1318,102 @@ mod tests {
             h.layout(),
             [HRow::Nav, HRow::Hero],
             "unsupported kinds are skipped"
+        );
+    }
+
+    fn parts(css: &str, sec: Option<cz::Section>) -> Parts {
+        cz::parse(css).unwrap().layout.parts(Some(Page::Home), sec)
+    }
+
+    #[test]
+    fn the_empty_layout_reproduces_todays_geometry() {
+        let p = Parts::default();
+        let poster = geo_for(1280.0, 176.0, HRow::Latest(0), &p);
+        let wide = geo_for(1280.0, 176.0, HRow::Resume, &p);
+        assert_eq!(poster.dims, row_dims(1280.0, 190.0, 1.5));
+        assert_eq!(wide.dims, row_dims(1280.0, 300.0, 9.0 / 16.0));
+        assert_eq!((poster.art, wide.art), (Art::Poster, Art::Landscape));
+        // The built-in constants: cell, caption, band, header and page padding.
+        assert_eq!(
+            crate::widget::cell::cell_h(300.0),
+            300.0 + 24.0 + 50.0 + 1.0
+        );
+        assert_eq!(
+            poster.band(10),
+            2.0 * 48.0 + 72.0 + 24.0 + poster.look.cell_h(poster.dims.1) + 2.0
+        );
+        assert_eq!(band_h(300.0), 2.0 * 48.0 + 72.0 + 24.0 + 375.0 + 2.0);
+        assert_eq!((t::header_h(), t::page_pad()), (56.0, 48.0));
+        assert_eq!(poster.look.pad, t::S3);
+        assert_eq!(poster.inset, t::PAGE_PAD);
+        assert!(!poster.grid && !poster.hidden);
+        assert_eq!(hero_cfg(&p, 1280.0, 800.0), Some((500.0, false)));
+    }
+
+    #[test]
+    fn card_row_and_hero_settings_change_the_geometry() {
+        let css = ".card{aspect-ratio:16/9;width:300px;--title-position:none} .row{display:grid;gap:8px;--row-columns:4;padding:24px} .hero{height:640px;--hero-style:banner}";
+        let g = geo_for(
+            1280.0,
+            176.0,
+            HRow::Latest(0),
+            &parts(css, Some(cz::Section::Latest)),
+        );
+        assert_eq!(
+            (g.art, g.grid, g.cols, g.inset, g.look.pad),
+            (Art::Landscape, true, 4, 24.0, 4.0)
+        );
+        assert_eq!(g.look.caption_h(), 0.0);
+        assert_eq!(g.dims.1, (g.dims.0 * 9.0 / 16.0).round());
+        assert_eq!(g.rows(9), 3);
+        // No caption: the cell is the image plus its padding.
+        assert_eq!(g.look.cell_h(g.dims.1), g.dims.1 + 8.0 + 1.0);
+        assert_eq!(
+            hero_cfg(&parts(css, None), 1280.0, 800.0),
+            Some((640.0, true))
+        );
+        let none = parts(".hero{display:none}", None);
+        assert_eq!(hero_cfg(&none, 1280.0, 800.0), None);
+        let hidden = geo_for(
+            1280.0,
+            176.0,
+            HRow::Resume,
+            &parts(".section-resume{display:none}", Some(cz::Section::Resume)),
+        );
+        assert!(hidden.hidden);
+    }
+
+    #[test]
+    fn sections_follow_order_and_hidden_ones_drop() {
+        let order = cz::parse(".section-latest{order:-1} .section-next-up{order:5}")
+            .unwrap()
+            .layout
+            .section_order();
+        let mut v = vec![
+            HRow::Nav,
+            HRow::Hero,
+            HRow::Resume,
+            HRow::NextUp,
+            HRow::Latest(0),
+            HRow::Latest(1),
+        ];
+        arrange(&mut v, order, |k| k == HRow::Latest(1), true);
+        assert_eq!(
+            v,
+            [
+                HRow::Nav,
+                HRow::Hero,
+                HRow::Latest(0),
+                HRow::Resume,
+                HRow::NextUp
+            ]
+        );
+        let mut v = vec![HRow::Nav, HRow::Resume, HRow::Latest(0)];
+        arrange(&mut v, order, |_| false, false);
+        assert_eq!(
+            v,
+            [HRow::Nav, HRow::Resume, HRow::Latest(0)],
+            "a server's own order stays"
         );
     }
 

@@ -975,7 +975,7 @@ impl App {
             );
         }
         container(column![rule(), container(c).padding([t::S6, 0.0]), credits].spacing(t::S2))
-            .padding([0.0, t::PAGE_PAD])
+            .padding([0.0, t::page_pad()])
             .into()
     }
 

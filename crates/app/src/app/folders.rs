@@ -394,10 +394,10 @@ impl App {
         page = page.push(container(add).padding(Padding {
             top: t::S6,
             bottom: t::S4,
-            left: t::PAGE_PAD,
-            right: t::PAGE_PAD,
+            left: t::page_pad(),
+            right: t::page_pad(),
         }));
-        page = page.push(container(rule()).padding([0.0, t::PAGE_PAD]));
+        page = page.push(container(rule()).padding([0.0, t::page_pad()]));
 
         // folders
         let roots: Vec<PathBuf> = match self.sources.get(f.id).map(|p| &p.kind) {
@@ -411,7 +411,7 @@ impl App {
                         .size(t::BODY)
                         .color(t::text_secondary()),
                 )
-                .padding([t::S6, t::PAGE_PAD]),
+                .padding([t::S6, t::page_pad()]),
             );
         }
         for r in &roots {
@@ -458,7 +458,7 @@ impl App {
             .spacing(t::S4)
             .align_y(Alignment::Center)
             .padding([t::S3, t::S6]);
-            page = page.push(container(column![line, rule()]).padding([0.0, t::PAGE_PAD]));
+            page = page.push(container(column![line, rule()]).padding([0.0, t::page_pad()]));
         }
 
         // indexing + counts
@@ -536,14 +536,14 @@ impl App {
             ]
             .spacing(t::S4),
         );
-        page = page.push(container(idx).padding([t::S6, t::PAGE_PAD]));
+        page = page.push(container(idx).padding([t::S6, t::page_pad()]));
         if !f.setup {
             page = page.push(self.online_section(f.id, &f.overview.pending));
         }
 
         // unmatched
         if c.unmatched > 0 {
-            page = page.push(container(rule()).padding([0.0, t::PAGE_PAD]));
+            page = page.push(container(rule()).padding([0.0, t::page_pad()]));
             page = page.push(
                 container(
                     column![
@@ -554,7 +554,7 @@ impl App {
                     ]
                     .spacing(2),
                 )
-                .padding([t::S6, t::PAGE_PAD]),
+                .padding([t::S6, t::page_pad()]),
             );
             for u in &f.overview.unmatched {
                 let open = f.edit.as_ref().is_some_and(|e| e.id == u.id);
@@ -588,7 +588,7 @@ impl App {
                 if open && let Some(e) = &f.edit {
                     cell = cell.push(edit_form(e));
                 }
-                page = page.push(container(column![cell, rule()]).padding([0.0, t::PAGE_PAD]));
+                page = page.push(container(column![cell, rule()]).padding([0.0, t::page_pad()]));
             }
             if c.unmatched > UNMATCHED_SHOWN {
                 page = page.push(
@@ -600,7 +600,7 @@ impl App {
                         .size(t::CONTROL_TEXT)
                         .color(t::text_tertiary()),
                     )
-                    .padding([t::S4, t::PAGE_PAD]),
+                    .padding([t::S4, t::page_pad()]),
                 );
             }
         }
@@ -637,7 +637,7 @@ impl App {
                 ))
                 .width(180),
             );
-            page = page.push(container(foot).padding([t::S6, t::PAGE_PAD]));
+            page = page.push(container(foot).padding([t::S6, t::page_pad()]));
         } else {
             page = page.push(
                 container(action_button(
@@ -648,11 +648,15 @@ impl App {
                     false,
                     Message::Folder(Msg::Close),
                 ))
-                .padding([t::S4, t::PAGE_PAD]),
+                .padding([t::S4, t::page_pad()]),
             );
         }
         scroll(page.padding(Padding {
-            top: if f.setup { t::S8 } else { t::HEADER_H + t::S8 },
+            top: if f.setup {
+                t::S8
+            } else {
+                t::header_h() + t::S8
+            },
             bottom: t::S8,
             ..Padding::ZERO
         }))

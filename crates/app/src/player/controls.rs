@@ -378,11 +378,17 @@ pub fn bar(p: &Player) -> Element<'_, Msg> {
         a: if p.video { 0.77 } else { 0.96 },
         ..t::frame()
     };
+    // `.player-controls { background }` replaces the fixed scrim.
+    let look_bg = t::parts(None, None)
+        .player_controls
+        .background
+        .as_ref()
+        .map(t::background);
     let bar = container(body)
         .width(Length::Fill)
         .height(BAR_H)
         .style(move |_| container::Style {
-            background: Some(Background::Color(fill)),
+            background: Some(look_bg.unwrap_or(Background::Color(fill))),
             border: iced::Border {
                 color: t::hairline_strong(),
                 width: 1.0,

@@ -11,7 +11,7 @@ use crate::style::{self, border};
 use crate::task::run;
 use crate::theme as t;
 use crate::virt;
-use crate::widget::cell::{Cell, Pic, cell_h, poster_cell, tile};
+use crate::widget::cell::{Cell, Look, Pic, poster_cell, tile};
 use crate::widget::popover::Popover;
 use crate::widget::press::Press;
 use crate::widget::{action_button, label, menu_row, mono, rule, section, tab};
@@ -203,28 +203,49 @@ pub struct Metrics {
     pub cell_w: f32,
 }
 
+/// The library grid's card look (`.card` etc. under `.page-library`).
+pub fn grid_look() -> Look {
+    Look::of(&t::parts(
+        Some(nocturne_core::customize::Page::Library),
+        None,
+    ))
+}
+
 pub fn metrics(win_w: f32, card: f32, view: ViewKind, names: bool) -> Metrics {
-    let avail = win_w - 2.0 * t::PAGE_PAD - 1.0;
+    let look = grid_look();
+    let avail = win_w - 2.0 * t::page_pad() - 1.0;
     let k = card / 176.0;
     let (cardw, ratio) = match view {
         ViewKind::Poster => (card, 1.5),
         ViewKind::Landscape => (300.0 * k, 9.0 / 16.0),
         ViewKind::List => (avail, 0.0),
     };
+    // A card aspect from the theme replaces the view's, with that aspect's usual width.
+    let (cardw, ratio) = if view != ViewKind::List && look.aspect.is_some() {
+        let r = look.ratio(ratio);
+        (
+            look.width.unwrap_or(if r < 1.0 { 300.0 * k } else { card }),
+            r,
+        )
+    } else if view != ViewKind::List {
+        (look.width.unwrap_or(cardw), ratio)
+    } else {
+        (cardw, ratio)
+    };
     let cols = match (view, names) {
         (_, true) => nav::columns(avail, 260.0, 0.0),
         (ViewKind::List, _) => 1,
-        _ => nav::columns(avail, cardw + 2.0 * t::S3, 0.0),
+        _ => nav::columns(avail, cardw + 2.0 * look.pad, 0.0),
     };
     let cell_w = (avail / cols as f32).floor();
-    let w = cell_w - 2.0 * t::S3 - 1.0;
+    let w = cell_w - 2.0 * look.pad - 1.0;
     let h = (w * ratio).round();
     let row_h = if names {
         NAME_ROW_H
     } else if view == ViewKind::List {
         LIST_ROW_H
     } else {
-        cell_h(h)
+        look.cell_h(h)
     };
     Metrics {
         cols,
@@ -576,10 +597,10 @@ impl App {
         } else {
             lv::missing_pages(&br.slots, &br.pending, range.clone())
         };
-        let art = match br.prefs.view {
+        let art = grid_look().art(match br.prefs.view {
             ViewKind::Landscape => Art::Landscape,
             _ => Art::Poster,
-        };
+        });
         let draw_w = if br.prefs.view == ViewKind::List {
             34
         } else {
@@ -919,7 +940,7 @@ impl App {
         let body: El = if br.failed {
             self.failed_view("This couldn't be loaded.")
         } else if loading {
-            row((0..m.cols.min(8)).map(|i| skeleton(i, &m))).into()
+            row((0..m.cols.min(8)).map(|i| skeleton(i, &m, grid_look()))).into()
         } else if n == 0 {
             note(if names_tab && br.options.is_none() {
                 "Loading"
@@ -973,7 +994,7 @@ impl App {
                     Message::Browse(pid, BMsg::Tab(*tb)),
                 ));
             }
-            column![container(r).padding([0.0, t::PAGE_PAD]), rule()]
+            column![container(r).padding([0.0, t::page_pad()]), rule()]
         });
         let mut page = column![
             container(section(&br.scope.title, &br.scope.subtitle, String::new())),
@@ -995,8 +1016,8 @@ impl App {
                     }),
             )
             .padding(Padding {
-                left: t::PAGE_PAD,
-                right: t::PAGE_PAD,
+                left: t::page_pad(),
+                right: t::page_pad(),
                 bottom: t::S6,
                 ..Padding::ZERO
             })
@@ -1006,7 +1027,7 @@ impl App {
             .width(Length::Fill)
             .height(Length::Fill)
             .padding(Padding {
-                top: t::HEADER_H + t::S8,
+                top: t::header_h() + t::S8,
                 ..Padding::ZERO
             })
             .into()
@@ -1212,7 +1233,7 @@ impl App {
             col = col.push(az);
         }
         container(col)
-            .padding([t::S3, t::PAGE_PAD])
+            .padding([t::S3, t::page_pad()])
             .width(Length::Fill)
             .into()
     }
@@ -1223,21 +1244,22 @@ impl App {
         let several = self.several_sources();
         let end = ((r + 1) * m.cols).min(br.len());
         let mut cells: Vec<El> = vec![];
+        let look = grid_look();
         for idx in r * m.cols..end {
             let at = At::Grid(idx);
             let Some((md, copies)) = br.item(idx) else {
-                cells.push(skeleton(idx, m));
+                cells.push(skeleton(idx, m, look.clone()));
                 continue;
             };
             if view == ViewKind::List {
                 cells.push(self.list_row(md, copies, idx, idx == sel));
                 continue;
             }
-            let art = if view == ViewKind::Landscape {
+            let art = look.art(if view == ViewKind::Landscape {
                 Art::Landscape
             } else {
                 Art::Poster
-            };
+            });
             cells.push(poster_cell(Cell {
                 pic: self.pic(md, art, m.w as u32),
                 title: md.title.clone(),
@@ -1256,6 +1278,7 @@ impl App {
                 on_hover: Message::Cell(at, CellAct::Hover),
                 on_fav: Message::Cell(at, CellAct::Fav),
                 on_played: Message::Cell(at, CellAct::Played),
+                look: look.clone(),
             }));
         }
         row(cells).height(m.row_h).into()
@@ -1388,7 +1411,7 @@ impl App {
     }
 }
 
-fn skeleton<'a>(i: usize, m: &Metrics) -> El<'a> {
+fn skeleton<'a>(i: usize, m: &Metrics, look: Look) -> El<'a> {
     poster_cell(Cell {
         pic: Pic::Loading,
         title: String::new(),
@@ -1405,6 +1428,7 @@ fn skeleton<'a>(i: usize, m: &Metrics) -> El<'a> {
         on_hover: Message::Noop,
         on_fav: Message::Noop,
         on_played: Message::Noop,
+        look,
     })
 }
 
@@ -1448,9 +1472,9 @@ mod tests {
     fn a_poster_grid_has_whole_columns_and_a_fixed_row_height() {
         let m = metrics(1280.0, 176.0, ViewKind::Poster, false);
         assert!(m.cols >= 5);
-        assert_eq!(m.row_h, cell_h(m.h));
+        assert_eq!(m.row_h, crate::widget::cell::cell_h(m.h));
         // The cells exactly fill the panel: cols x cell_w never exceeds the available width.
-        assert!(m.cols as f32 * m.cell_w <= 1280.0 - 2.0 * t::PAGE_PAD);
+        assert!(m.cols as f32 * m.cell_w <= 1280.0 - 2.0 * t::page_pad());
         assert_eq!(metrics(1280.0, 176.0, ViewKind::List, false).cols, 1);
         assert_eq!(
             metrics(1280.0, 176.0, ViewKind::List, false).row_h,
