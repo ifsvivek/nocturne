@@ -96,7 +96,10 @@ fn card_family_collapses() {
         ":is(.card-progress, .card-bar) .card-progress-fill"
     );
     assert_eq!(sel(".countIndicator"), ".card-badge");
-    assert_eq!(sel(".cardOverlayContainer"), ".card-ring");
+    assert_eq!(
+        sel(".cardOverlayContainer"),
+        ":is(.card, .poster):hover .card-ring"
+    );
     // Shapes are data on the card.
     assert_eq!(
         sel(".overflowBackdropCard"),

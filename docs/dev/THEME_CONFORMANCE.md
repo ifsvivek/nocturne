@@ -32,33 +32,33 @@ Debug builds write the active theme's report as JSON to `NOCTURNE_THEME_REPORT=<
 ## Results
 
 <!-- BEGIN GENERATED -->
-Run: 2026-11-19 18:54, NOCTURNE commit `f0d6543`, jellyfin server 12.4.0, 1920x1080.
+Run: 2026-11-19 22:38, NOCTURNE commit `5d1aaf3`, jellyfin server 12.4.0, 1920x1080.
 
 | Theme | Home | Movies | Movie | Series | Mean | Applied / not applied | Import used | Main differences |
 |---|---|---|---|---|---|---|---|---|
-| Abyss | 42 | 43 | 44 | 47 | 44 | n/a (not re-run) | `cdn.jsdelivr.net/gh/AumGupta/abyss-jellyfin@main/abyss.css` | Frosted-glass surfaces, rounded centred header, blur; palette, header, cards (gaps 1,2,4,8) |
-| Better Jellyfin UI | 49 | 44 | 45 | 46 | 46 | n/a (not re-run) | `cdn.jsdelivr.net/gh/tromoSM/better-jellyfin-ui@main/theme.css` | Floating header, iOS-style rounded cards, animations (gaps 1,2,4) |
-| Catppuccin | 15 | 13 | 49 | 52 | 32 | 0 / 174 (168 selectors not supported, 5 unknown variables, 1 properties not supported); 0 fonts | `jellyfin.catppuccin.com/theme.css` | Latte flavour is a LIGHT theme: white canvas vs NOCTURNE dark, lowest Home/Movies scores (gap 1) |
-| ElegantFin | 42 | 41 | 42 | 44 | 42 | n/a (not re-run) | not re-run: the baseline used the jf12 fork `mihaif7/elegantfin-jf12`; the next run uses the official import `cdn.jsdelivr.net/gh/lscambo13/ElegantFin@main/Theme/ElegantFin-jellyfin-theme-build-latest-minified.css` | Rounded cards and buttons, translucent header pill, wide title block on detail (gaps 1,2,4,6) |
-| Evergarden | 34 | 28 | 36 | 39 | 34 | n/a (not re-run) | `evergardentheme.github.io/jellyfin/evergarden-winter.css` | Muted green-grey palette on a dark teal canvas (gap 1) |
-| ijelly | 54 | 54 | 58 | 61 | 57 | n/a (not re-run) | `cdn.jsdelivr.net/gh/safiyu/ijelly@latest/ijelly.css` | Apple TV style: large rounded cards, blurred header (gaps 1,2,4,8) |
-| infinitv | 40 | 41 | 50 | 52 | 46 | n/a (not re-run) | `buesche87.github.io/infinitv/infinitv-dev-v12.css` | Dark card grid, Netflix-like header, hover scale (gaps 1,2,4) |
-| Jellyfish | 43 | 38 | 40 | 38 | 40 | n/a (not re-run) | `cdn.jsdelivr.net/gh/n00bcodr/jellyfish@main/theme.css` | Teal glass floating header, jellyfish artwork background, Quicksand font (gaps 1,2,7,8) |
-| JellyThemes | 49 | 45 | 52 | 54 | 50 | n/a (not re-run) | `cdn.jsdelivr.net/gh/kingchenc/JellyThemes@master/Themes/Solaris/Solaris.css` | Solaris variant: near-black with gold accent, floating glass top bar (gaps 1,2,8) |
-| Nebula | 43 | 41 | 45 | 49 | 44 | n/a (not re-run) | `cdn.jsdelivr.net/gh/nemesbak/jellyfin-nebula@main/nebula.css` | Violet to cyan gradient accent, glass menus, Inter font, logo on movie pages (gaps 1,2,6,7,8) |
-| Netflin | 59 | 59 | 49 | 57 | 56 | 5 / 1226 (468 selectors not supported, 28 at-rules not supported, 2 fonts only if installed); 6 fonts | `cdn.jsdelivr.net/gh/ahza-code/Netflin@latest/Theme/Netflin.min.css` | Netflix red on black, title-art hero, wordmark logo in the header (gaps 1,2,3,6) |
-| NeutralFin | 42 | 39 | 51 | 48 | 45 | n/a (not re-run) | `cdn.jsdelivr.net/gh/KartoffelChipss/NeutralFin@latest/theme/neutralfin-minified.css` | ElegantFin derivative in black and grey (gaps 1,2,4,6) |
-| Scyfin | 42 | 39 | 36 | 38 | 39 | n/a (not re-run) | `cdn.jsdelivr.net/gh/loof2736/scyfin@latest/CSS/scyfin-theme.css` | Backdrop-led pages, vertical drawer instead of tabs (gaps 1,2,6,8) |
+| Abyss | 44 | 43 | 46 | 48 | 45 | 0 / 1 (1 links not fetched); 0 fonts | `cdn.jsdelivr.net/gh/AumGupta/abyss-jellyfin@main/abyss.css` | Frosted-glass surfaces, rounded centred header, blur; palette, header, cards (gaps 1,2,4,8) |
+| Better Jellyfin UI | 41 | 28 | 43 | 43 | 39 | 4 / 534 (455 selectors not supported, 36 at-rules not supported, 8 properties not supported); 1 fonts | `cdn.jsdelivr.net/gh/tromoSM/better-jellyfin-ui@main/theme.css` | Floating header, iOS-style rounded cards, animations (gaps 1,2,4) |
+| Catppuccin | - | - | - | - | 0 | n/a | `jellyfin.catppuccin.com/theme.css` | Latte flavour is a LIGHT theme: white canvas vs NOCTURNE dark, lowest Home/Movies scores (gap 1) |
+| ElegantFin | 38 | 60 | 57 | 65 | 55 | 0 / 1 (1 links not fetched); 0 fonts | `cdn.jsdelivr.net/gh/lscambo13/ElegantFin@main/Theme/ElegantFin-jellyfin-theme-build-latest-minified.css` (official import; a jf12 fork (mihaif7/elegantfin-jf12) exists, not used) | Rounded cards and buttons, translucent header pill, wide title block on detail (gaps 1,2,4,6) |
+| Evergarden | 58 | 60 | 61 | 61 | 60 | 4 / 169 (168 selectors not supported, 1 properties not supported); 0 fonts | `evergardentheme.github.io/jellyfin/evergarden-winter.css` | Muted green-grey palette on a dark teal canvas (gap 1) |
+| ijelly | 47 | 45 | 62 | 62 | 54 | 10 / 819 (434 selectors not supported, 42 properties not supported, 18 at-rules not supported); 0 fonts | `cdn.jsdelivr.net/gh/safiyu/ijelly@latest/ijelly.css` | Apple TV style: large rounded cards, blurred header (gaps 1,2,4,8) |
+| infinitv | 42 | 32 | 49 | 50 | 43 | 6 / 1158 (484 selectors not supported, 16 at-rules not supported); 5 fonts | `buesche87.github.io/infinitv/infinitv-dev-v12.css` | Dark card grid, Netflix-like header, hover scale (gaps 1,2,4) |
+| Jellyfish | 34 | 35 | 41 | 34 | 36 | 6 / 1203 (447 selectors not supported, 49 at-rules not supported, 3 properties not supported); 2 fonts | `cdn.jsdelivr.net/gh/n00bcodr/jellyfish@main/theme.css` | Teal glass floating header, jellyfish artwork background, Quicksand font (gaps 1,2,7,8) |
+| JellyThemes | 57 | 55 | 58 | 61 | 58 | 6 / 728 (474 selectors not supported, 15 at-rules not supported, 10 properties not supported); 0 fonts | `cdn.jsdelivr.net/gh/kingchenc/JellyThemes@master/Themes/Solaris/Solaris.css` | Solaris variant: near-black with gold accent, floating glass top bar (gaps 1,2,8) |
+| Nebula | 50 | 48 | 46 | 50 | 48 | 9 / 878 (463 selectors not supported, 19 at-rules not supported, 16 properties not supported); 4 fonts | `cdn.jsdelivr.net/gh/nemesbak/jellyfin-nebula@main/nebula.css` | Violet to cyan gradient accent, glass menus, Inter font, logo on movie pages (gaps 1,2,6,7,8) |
+| Netflin | 16 | 14 | 64 | 66 | 40 | 5 / 1226 (468 selectors not supported, 28 at-rules not supported, 2 fonts only if installed); 6 fonts | `cdn.jsdelivr.net/gh/ahza-code/Netflin@latest/Theme/Netflin.min.css` | Netflix red on black, title-art hero, wordmark logo in the header (gaps 1,2,3,6) |
+| NeutralFin | 60 | 61 | 56 | 64 | 60 | 14 / 858 (443 selectors not supported, 32 at-rules not supported, 18 properties not supported); 12 fonts | `cdn.jsdelivr.net/gh/KartoffelChipss/NeutralFin@latest/theme/neutralfin-minified.css` | ElegantFin derivative in black and grey (gaps 1,2,4,6) |
+| Scyfin | 54 | 62 | 59 | 41 | 54 | 4 / 286 (274 selectors not supported, 12 at-rules not supported); 0 fonts | `cdn.jsdelivr.net/gh/loof2736/scyfin@latest/CSS/scyfin-theme.css` | Backdrop-led pages, vertical drawer instead of tabs (gaps 1,2,6,8) |
 | SleekFin | - | - | - | - | - | n/a | - | no documented @import line (JS builder or other install method) |
 | Ultrachromic | 44 | 39 | 46 | 42 | 43 | 4 / 333 (292 selectors not supported, 33 at-rules not supported, 3 properties not supported); 5 fonts | `cdn.jsdelivr.net/gh/CTalvio/Ultrachromic/presets/monochromic_preset.css` | Monochromic preset: sectioned rows with bullet-marked titles, big continue-watching cards (gaps 1,3,4,7) |
-| Zombie | 35 | 36 | 31 | 31 | 33 | n/a (not re-run) | `cdn.jsdelivr.net/gh/MakD/zombie-release@latest/zombie_revived.css` | AMOLED black, small header nav, square-ish cards, wide detail hero with round action buttons (gaps 1,2,4,6) |
+| Zombie | 40 | 50 | 63 | 65 | 54 | 5 / 1231 (448 selectors not supported, 45 at-rules not supported, 3 properties not supported); 8 fonts | `cdn.jsdelivr.net/gh/MakD/zombie-release@latest/zombie_revived.css` | AMOLED black, small header nav, square-ish cards, wide detail hero with round action buttons (gaps 1,2,4,6) |
 | Finimalism | - | - | - | - | - | n/a | - | not run (hidden pending v12) |
 | Finity | - | - | - | - | - | n/a | - | not run (hidden pending v12) |
 | Flow | - | - | - | - | - | n/a | - | not run (hidden pending v12) |
 | Jamfin | - | - | - | - | - | n/a | - | not run (hidden pending v12) |
 | NetFin | - | - | - | - | - | n/a | - | not run (hidden pending v12) |
 | Zesty | - | - | - | - | - | n/a | - | not run (hidden pending v12) |
-| **mean of run themes** | 42 | 40 | 45 | 47 | | | | |
+| **mean of run themes** | 45 | 45 | 54 | 54 | | | | |
 <!-- END GENERATED -->
 
 ## Engine gaps seen in the baseline

@@ -149,7 +149,10 @@ pub static CLASSES: &[(&str, To)] = &[
     ("timerIndicator", N("no recording badges")),
     ("itemProgressBar", S(":is(.card-progress, .card-bar)")),
     ("itemProgressBarForeground", S(".card-progress-fill")),
-    ("cardOverlayContainer", S(".card-ring")),
+    (
+        "cardOverlayContainer",
+        S(":is(.card, .poster):hover .card-ring"),
+    ),
     ("cardOverlayButton", S(".card-play")),
     ("cardOverlayButton-hover", S(".card-play")),
     ("cardOverlayButton-br", S(".card-play")),
