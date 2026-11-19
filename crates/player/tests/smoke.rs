@@ -152,8 +152,18 @@ fn auth_header_not_on_child_command_line() {
     wait("failure", || {
         p.events().try_iter().any(|e| matches!(e, Event::Failed(_)))
     });
-    let cmdline = std::fs::read(format!("/proc/{}/cmdline", p.child_pid().unwrap())).unwrap();
-    let s = String::from_utf8_lossy(&cmdline);
+    // `ps` instead of /proc: macOS has no /proc, and the check must hold there too.
+    let out = std::process::Command::new("ps")
+        .args([
+            "-ww",
+            "-o",
+            "args=",
+            "-p",
+            &p.child_pid().unwrap().to_string(),
+        ])
+        .output()
+        .unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
     assert!(!s.contains("SECRET-TOKEN") && !s.contains("Authorization"));
     assert!(s.contains("--input-ipc-server="));
 }
