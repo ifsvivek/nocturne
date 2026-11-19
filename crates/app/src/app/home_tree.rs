@@ -57,7 +57,8 @@ impl App {
     /// Whether the active theme only uses things the tree builders reproduce; otherwise Home stays hand-written (so no theme can look different on the engine). The library tiles' centred label (server UI mode) is drawn over the image by the hand-written cell.
     pub(super) fn engine_supports_home(&self, lay: &[HRow]) -> bool {
         !lay.contains(&HRow::Tiles)
-            || t::parts(Some(Page::Home), None).card.tile_label != Some(cz::TileLabel::OverlayCenter)
+            || t::parts(Some(Page::Home), None).card.tile_label
+                != Some(cz::TileLabel::OverlayCenter)
     }
 
     /// The whole Home page (hero, strips, notes) and, when `with_header`, the header as one tree. `None` when Home shows its failure panel or the theme needs the hand-written page.
@@ -158,12 +159,11 @@ impl App {
         let end = tree.doc.add(0, "div.page-end");
         tree.doc
             .inline(end, &format!("height: {}", px(t::S8 * 2.0)));
-        tree.doc.attr(0, "class-scope", "page-home");
         tree.doc.nodes[0].classes.push("page-home".into());
         Some(tree)
     }
 
-    fn pic_node(&self, tree: &mut Tree, parent: Id, class: &str, pic: &Pic) -> Option<Id> {
+    fn pic_node(tree: &mut Tree, parent: Id, class: &str, pic: &Pic) -> Option<Id> {
         let handle = match pic {
             Pic::Ready(h) | Pic::Blur(h) => h.clone(),
             _ => return None,
@@ -187,7 +187,7 @@ impl App {
         tree.doc.attr(hero, "data-kind", kind_attr(m.kind));
         let a = tree.doc.add(hero, "div.hero-art");
         tree.doc.add(a, "div.hero-fill");
-        self.pic_node(tree, a, "img.hero-img", &self.pic(m, art, w as u32));
+        Self::pic_node(tree, a, "img.hero-img", &self.pic(m, art, w as u32));
         tree.doc.add(hero, "div.hero-scrim-side");
         let foot = tree.doc.add(hero, "div.hero-scrim-foot");
         if let Some(f) = &hp.hero.overlay {
@@ -226,7 +226,7 @@ impl App {
         let sub_ty = t::typo(&hp.hero_meta, t::BODY_LG, iced::font::Weight::Normal).with_line(1.6);
         if m.logo.is_some() {
             let pic = self.pic(m, Art::Logo, 460);
-            if self.pic_node(tree, col, "img.hero-logo", &pic).is_none() {
+            if Self::pic_node(tree, col, "img.hero-logo", &pic).is_none() {
                 tree.doc.add(col, "div.hero-logo-gap");
             }
         } else if !title_ty.hidden {
@@ -332,7 +332,7 @@ impl App {
         d.inline(row, &format!("padding: {} 0", px(band_pad())));
         tree.bands.insert(ri, row);
         if !g.title_t.hidden {
-            self.head_nodes(tree, row, ri, g, &title, &text_, &meta);
+            Self::head_nodes(tree, row, ri, g, &title, &text_, &meta);
         }
         let d = &mut tree.doc;
         let body = d.add(row, "div.row-body");
@@ -370,7 +370,7 @@ impl App {
         if items.is_empty() {
             for i in 0..if g.grid { g.cols.min(8) } else { 8 } {
                 let pic = if loading { Pic::Loading } else { Pic::Missing };
-                self.card_nodes(
+                Self::card_nodes(
                     tree,
                     cells,
                     g,
@@ -404,7 +404,7 @@ impl App {
             } else {
                 (m.title.clone(), super::cells::caption(m))
             };
-            self.card_nodes(
+            Self::card_nodes(
                 tree,
                 cells,
                 g,
@@ -434,7 +434,6 @@ impl App {
 
     #[allow(clippy::too_many_arguments)]
     fn head_nodes(
-        &self,
         tree: &mut Tree,
         row: Id,
         ri: usize,
@@ -490,7 +489,7 @@ impl App {
         }
     }
 
-    fn card_nodes(&self, tree: &mut Tree, parent: Id, g: &Geo, c: CardIn) {
+    fn card_nodes(tree: &mut Tree, parent: Id, g: &Geo, c: CardIn) {
         let look = &g.look;
         let (cw, ch) = g.dims;
         let radius = look.radius.unwrap_or_else(t::r_card);
@@ -540,7 +539,7 @@ impl App {
         );
         match &c.pic {
             Pic::Ready(_) | Pic::Blur(_) => {
-                self.pic_node(tree, img, "img.card-img", &c.pic);
+                Self::pic_node(tree, img, "img.card-img", &c.pic);
             }
             Pic::Missing => {
                 let i = crate::widget::text::initial(&c.title);
@@ -759,5 +758,103 @@ struct CardIn {
 impl Geo {
     pub(super) fn title_t_css(&self) -> String {
         self.title_t.css()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! The existing geometry (`cell_h`, `band_h`, row dims) holds through the engine: the default sheet and the inline sizes of the tree builders lay out to the numbers the hand-written Home computes.
+    use super::*;
+    use crate::app::engine_ui::sheet_css;
+    use crate::app::home::{band_h, geo_for, row_dims};
+    use nocturne_core::customize::Parts;
+    use nocturne_style::{Builders, Engine, Interaction, Scene, approx};
+
+    fn scene(tree: &Tree, w: f32) -> Scene {
+        Engine::new(&sheet_css()).build(
+            &tree.doc,
+            (w, 900.0),
+            Interaction::default(),
+            &Builders::new(),
+            &mut approx,
+        )
+    }
+
+    fn find(s: &Scene, class: &str) -> Vec<Id> {
+        (0..s.doc.len())
+            .filter(|&i| s.doc.nodes[i].classes.iter().any(|c| c == class))
+            .collect()
+    }
+
+    fn card(i: usize) -> CardIn {
+        CardIn {
+            pic: Pic::Loading,
+            title: "A title".into(),
+            meta: "movie".into(),
+            index: i,
+            progress: None,
+            badge: None,
+            subtitle: false,
+            mark: None,
+            fav: false,
+            played: false,
+            writes: false,
+            at: None,
+            play: false,
+            kind: "movie",
+            source: 0,
+        }
+    }
+
+    #[test]
+    fn a_card_is_as_big_as_the_hand_written_cell() {
+        for k in [HRow::Latest(0), HRow::Resume] {
+            let g = geo_for(1280.0, 176.0, k, &Parts::default());
+            let mut tree = Tree::new();
+            let strip = tree.doc.add(0, "div.row-cards");
+            App::card_nodes(&mut tree, strip, &g, card(0));
+            let s = scene(&tree, 1280.0);
+            let c = s.rects[find(&s, "card")[0]];
+            let img = s.rects[find(&s, "card-image")[0]];
+            assert_eq!((c[2], c[3]), (g.cell_w(), g.look.cell_h(g.dims.1)), "{k:?}");
+            assert_eq!((img[2], img[3]), g.dims, "{k:?}");
+            assert_eq!(
+                img[0] - c[0],
+                g.look.pad,
+                "the image starts after the padding"
+            );
+        }
+        // Same numbers as the oracle the hand-written tests use.
+        assert_eq!(
+            geo_for(1280.0, 176.0, HRow::Latest(0), &Parts::default()).dims,
+            row_dims(1280.0, 190.0, 1.5)
+        );
+    }
+
+    #[test]
+    fn a_band_is_as_tall_as_the_hand_written_band() {
+        let g = geo_for(1280.0, 176.0, HRow::Latest(0), &Parts::default());
+        let mut tree = Tree::new();
+        let band = tree.doc.add(0, "div.band");
+        let row = tree.doc.add(band, "section.row.section-latest");
+        tree.doc
+            .inline(row, &format!("padding: {} 0", px(band_pad())));
+        App::head_nodes(&mut tree, row, 2, &g, "Latest", "Recently added.", "movies");
+        let body = tree.doc.add(row, "div.row-body");
+        tree.doc
+            .inline(body, &format!("padding: 0 {}", px(g.inset)));
+        let panel = tree.doc.add(body, "div.row-panel");
+        let cells = tree.doc.add(panel, "div.row-cards");
+        for i in 0..6 {
+            App::card_nodes(&mut tree, cells, &g, card(i));
+        }
+        tree.doc.add(band, "div.band-rule");
+        let s = scene(&tree, 1280.0);
+        let b = s.rects[find(&s, "band")[0]];
+        // `Geo::band` counts 2 px for the frame and the rule; the frame takes no room in either page (headless captures put the rules of the two pages at the same distance), so the real band is 1 px shorter than the estimate the hand-written page scrolls by.
+        assert_eq!(b[3], g.band(6) - 1.0);
+        assert_eq!(b[3], band_h(g.dims.1) - 1.0);
+        let head = s.rects[find(&s, "row-head")[0]];
+        assert_eq!(head[3], g.head_title_h());
     }
 }

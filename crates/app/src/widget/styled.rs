@@ -816,6 +816,52 @@ fn underline(r: &mut iced::Renderer, at: Point, w: f32, size: f32, line_h: f32, 
     );
 }
 
+/// `NOCTURNE_ENGINE_STATS=1`: print what a frame costs (the CPU side of recording the draw calls).
+fn stats_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("NOCTURNE_ENGINE_STATS").is_some())
+}
+
+impl<M> Styled<'_, M> {
+    /// The page's scrollbar: a quiet thumb at the right edge like the hand-written pages' (10 px wide, hairline colour), below a window-top fixed bar (a header) as that one lay over the scrollbar too. Nothing when the page fits.
+    fn paint_scrollbar(&self, r: &mut iced::Renderer, b: Rectangle, vis: Rectangle) {
+        let s = self.scene;
+        let (page, view) = (s.page_height(), s.viewport.1);
+        if page <= view + 0.5 {
+            return;
+        }
+        let len = (view * view / page).clamp(24.0, view);
+        let max = page - view;
+        let top = s.scroll.page_y.clamp(0.0, max) / max * (view - len);
+        // The fixed layer at the top (a header) covers the first pixels of the track.
+        let cover = s.doc.nodes[0]
+            .children
+            .iter()
+            .filter(|&&c| s.style(c).fixed && s.rects[c][1] <= 0.5)
+            .map(|&c| s.rects[c][1] + s.rects[c][3])
+            .fold(0.0f32, f32::max);
+        let y = (b.y + top).max(b.y + cover);
+        let bottom = b.y + top + len;
+        if bottom <= y {
+            return;
+        }
+        r.with_layer(vis, |r| {
+            r.fill_quad(
+                Quad {
+                    bounds: Rectangle::new(
+                        Point::new(b.x + b.width - 10.0, y),
+                        Size::new(10.0, bottom - y),
+                    ),
+                    border: border::rounded(3.0),
+                    shadow: Shadow::default(),
+                    snap: false,
+                },
+                theme::hairline_strong(),
+            );
+        });
+    }
+}
+
 impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
     fn tag(&self) -> tree::Tag {
         tree::Tag::of::<State>()
@@ -1043,6 +1089,7 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
         let Some(vis) = inter(b, *viewport) else {
             return;
         };
+        let t0 = std::time::Instant::now();
         let (ord, end, images) = image_order(self);
         for k in 0..=2 * images {
             let ps = Pass {
@@ -1066,6 +1113,15 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
                     &ps,
                 );
             });
+        }
+        self.paint_scrollbar(r, b, vis);
+        if stats_on() {
+            eprintln!(
+                "engine: draw {} us ({} images, {} passes)",
+                t0.elapsed().as_micros(),
+                images,
+                2 * images + 1
+            );
         }
     }
 

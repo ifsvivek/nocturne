@@ -31,6 +31,8 @@ pub struct EngineUi {
     cache: MeasureCache,
     pub home: Option<Hosted>,
     pub hdr: Option<Hosted>,
+    /// Home's scroll while another page is in view.
+    saved: Option<nocturne_style::layout::Scroll>,
     pub dirty: bool,
     pub stats: bool,
     warmed: bool,
@@ -45,6 +47,7 @@ impl Default for EngineUi {
             cache: MeasureCache::new(),
             home: None,
             hdr: None,
+            saved: None,
             dirty: true,
             stats: std::env::var("NOCTURNE_ENGINE_STATS").is_ok(),
             warmed: false,
@@ -53,7 +56,7 @@ impl Default for EngineUi {
 }
 
 /// The `:root` tokens of the active theme, and the translator's rules (hover scale and transitions of the strips and buttons) as CSS, in front of the default sheet.
-fn sheet_css() -> String {
+pub(super) fn sheet_css() -> String {
     let k = t::active();
     let c = t::css_color;
     let mut s = String::from(":root {");
@@ -184,8 +187,9 @@ impl App {
             self.stack.len() == 1 && self.stack.last().is_some_and(|p| p.view == View::Home);
         if at_home && self.eng_overlay_free() {
             self.eng_build_home();
-        } else {
-            self.eng.home = None;
+        } else if let Some(h) = self.eng.home.take() {
+            // Another page is in view: Home comes back where it was left.
+            self.eng.saved = Some(h.scene.scroll);
         }
         if self.eng_overlay_free() && !(at_home && self.eng.home.is_some()) {
             self.eng_build_header();
@@ -215,12 +219,16 @@ impl App {
             focus_visible: false,
             ..Interaction::default()
         };
-        let keep = self.eng.home.take().map(|h| (h.scene.scroll.clone(), h.it));
+        let keep = self
+            .eng
+            .home
+            .take()
+            .map(|h| h.scene.scroll)
+            .or_else(|| self.eng.saved.take());
         let mut s = self.eng_scene(&tree, it, (self.win.width, self.win.height));
-        if let Some((scroll, old)) = keep {
+        if let Some(scroll) = keep {
             s.scroll = scroll;
             s.clamp_scroll();
-            let _ = old;
         }
         self.eng.home = Some(Hosted {
             scene: s,

@@ -15,8 +15,14 @@ use std::collections::HashMap;
 pub enum Slot {
     Back,
     Forward,
-    Libraries { active: bool, focused: bool },
-    Smart { active: bool, focused: bool },
+    Libraries {
+        active: bool,
+        focused: bool,
+    },
+    Smart {
+        active: bool,
+        focused: bool,
+    },
     People,
     Filter,
     Avatar,
@@ -158,7 +164,7 @@ impl App {
             );
             let n = d.add(brand, "div.header-name");
             d.text(n, &self.brand_text(b));
-            d.inline(n, &format!("font-size: {}", px(ty.size())));
+            d.inline(n, &ty.css());
         } else {
             let n = d.add(brand, "div.header-wordmark");
             d.text(n, &tracked("Nocturne"));
@@ -210,7 +216,11 @@ impl App {
                 // The menus keep their pop-over: the whole link is a slot.
                 let which = link;
                 let ty = t::typo(&hp.header_link, t::BODY, iced::font::Weight::Medium);
-                let w = text_w(&self.nav_label(&which), ty.size(), 500) + 2.0 * t::S3;
+                let w = text_w(
+                    &self.nav_label(&which),
+                    ty.size(),
+                    hp.header_link.font_weight.unwrap_or(500),
+                ) + 2.0 * t::S3;
                 d.inline(
                     a,
                     &format!("height: {}; width: {}; padding: 0", px(hh), px(w)),
@@ -249,7 +259,7 @@ impl App {
             }
             let l = d.add(a, "span.header-label");
             d.text(l, &label);
-            d.inline(l, &format!("font-size: {}", px(ty.size())));
+            d.inline(l, &ty.css());
             d.add(a, "i.header-dot");
             if let Some(m) = msg {
                 tree.act(a, m);

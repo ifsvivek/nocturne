@@ -1,6 +1,6 @@
 # Theme engine plan (stage 2): every screen a styled element tree
 
-Status: research and spike done; **phase 1 (step B of `V052_PLAN.md`) built** on the branch `theme-engine`: the production-grade engine in `crates/style` and the paint widget with slots in `crates/app/src/widget/styled.rs`, both behind the cargo feature `theme-engine` (off in every normal build) until step D moves Home onto them (section 9 says exactly what shipped, what differs from this plan and what step D must watch). Recommendation: **go, with limits** (section 7). Context: `CUSTOMIZATION_PLAN.md` section 14 (stage 1, shipped in 0.5) and `V06_BRIEF.md` ("Native layout engine for themes"). No WebView, browser engine, HTML renderer or JS, ever.
+Status: research and spike done; **phase 1 (step B of `V052_PLAN.md`) and phase 2 (step D, section 10: Home and the shared header) built** on the branch `theme-engine`: the production-grade engine in `crates/style` and the paint widget with slots in `crates/app/src/widget/styled.rs`, both behind the cargo feature `theme-engine` (off in every normal build) until step D moves Home onto them (section 9 says exactly what shipped, what differs from this plan and what step D must watch). Recommendation: **go, with limits** (section 7). Context: `CUSTOMIZATION_PLAN.md` section 14 (stage 1, shipped in 0.5) and `V06_BRIEF.md` ("Native layout engine for themes"). No WebView, browser engine, HTML renderer or JS, ever.
 
 ## 1. The model
 
@@ -144,3 +144,63 @@ Approximate text measure (so these are the engine, not the shaper); the four bun
 
 - Code: `crates/style` (doc, selectors, props, cascade, layout, demo tree, four themes in `crates/style/themes/`), `crates/app/src/spike.rs` (widget and preview, replaced by `widget/styled.rs` and `widget/styled_preview.rs`), small core change: `customize::read_rules`, `customize::value` public, `Decl.important`.
 - Spike gaps that phase 1 closed: `transform`/`transition`/`::before`, ellipsis for clamped text, per-side border colours, per-corner radii, hover restyling the whole tree, slots, the window preview being keyboard navigable. Still open from the spike: `url()` assets (section 8, question 1), `@keyframes`, the Jellyfin class aliases (phase 5).
+
+## 10. Phase 2 as shipped (step D): Home and the shared header on the engine
+
+Behind the cargo feature `theme-engine` (still off in every normal and published build). With the feature compiled in, the engine page is used by default; `NOCTURNE_ENGINE_UI=0` shows the hand-written Home and header, which stay in the tree for one release as the fallback.
+
+### What moved to the engine
+
+- `app/home_tree.rs` builds Home (hero, Continue watching, Next up, one Latest strip per library, the "Not showing" note) as a `Doc`; `app/header_tree.rs` builds the header, in the same scene on Home (a `position: fixed` header over the hero, or in flow when the theme says `position: static`) and as a scene of its own on every other page. Classes are the stage-1 vocabulary: `.header`, `.header-brand`, `.header-nav`, `.header-link`, `.header-icons`, `.header-search`, `.hero`, `.hero-title`, `.hero-meta`, `.row`, `.row-title`, `.row-arrows`, `.card`, `.card-image`, `.card-title`, `.card-meta`, `.card-subtitle`, `.card-badge`, `.card-progress`, `.button`, with the scopes `.page-home` and `.section-resume|next-up|latest|tiles` and the data attributes `data-kind`, `data-watched`, `data-source`. Class lists are plain strings, so the Jellyfin aliases of step F are one more `.alias` away.
+- `crates/style/themes/default.css` is the default user-agent sheet: today's look from the `--nocturne-*` tokens. `app/engine_ui.rs::sheet_css()` puts the active theme's tokens (colours, radii, page padding) in a `:root` rule in front of it and appends the translator's rules (hover scale and transition of the cards and buttons, focus glow). A user sheet layers over this one as before.
+- The stage-1 translator is the tree builders themselves: the resolved `Geo` and `Look` of each strip (the numbers `cell_h`, `band_h`, `hero_h`, the row dims and every part Marquee, Feed and Classic set) become inline styles on the nodes, so every existing theme keeps its geometry and look unchanged. Supported: title position (below, overlay, none), grid and carousel with columns and gap, aspect, width, radius and shadow, caption alignment, episode subtitles, badge and progress parts, row details off, row arrows, no frame, hero billboard, banner and overlay, header position, height, alignment, brand and link icons. Not on the engine, so the hand-written page is used: the library tiles' centred label (server UI mode with `--tile-label: overlay-center`).
+- Interactive leaves are slots: history buttons (tooltips), the Libraries and Smart menus (pop-overs), the avatar, the people icon, the source filter and link icons. Buttons and cards are tree elements with click targets. The Hole and the video are untouched (Home has none).
+- Keyboard and couch navigation come from the scene: arrows use `Scene::spatial` (visual order, then a 45 degree cone), Tab uses `focus_next`, Enter does what a click does, the page scrolls to the focused band and the strip to the focused card. The hand-written `(row, col)` stays as the focus model of the rest of the app (`focus_media`, the hero follows the focused poster) and is kept in step by the scene's focus.
+- Images are nodes (`img.card-img`, `img.hero-img`, `img.hero-logo`) with the decoded `Handle` of the app's image cache; while loading, the card's gradient background is the placeholder (as the hand-written cell).
+- Safe mode is one chord, **Ctrl+Shift+0**, plus `NOCTURNE_SAFE_THEME=1`: the paint widget reports the chord and the app runs the same action as its Themes page; Ctrl+Alt+T is gone.
+- The shaper is warmed before the first scene; transitions are driven by the paint widget's redraw requests while `Scene::animating()` (equivalent to `window::frames()` only while animating: nothing is requested while idle).
+
+### Engine and widget changes it needed
+
+- **Layout is fractional**: Taffy rounding is off and measured text keeps its exact size (the node measure no longer rounds up), because Iced lays text out at fractional sizes and a page that replaces its widgets has to put the same text at the same pixel. The layout goldens still pass.
+- **The paint widget draws in passes.** Iced draws a layer's quads, then its images, then its text, and a later layer is above an earlier one, so a scrim over a backdrop or a badge over a poster disappeared under the image. The widget now paints one layer per image boundary (pass `2k` for what lies between images, `2k + 1` for image `k`), skipping subtrees that have nothing in a pass. A scrollbar thumb like the hand-written pages' is drawn for a page taller than the window.
+- A card's focus ring and the engine's mandatory 2 px focus ring would double up: Home's interaction state sets `focus_visible: false` and the default sheet draws its own `.card:focus` and `.button:focus` styles (a user sheet that removes them is still covered by the engine's ring once it is set for keyboard focus).
+
+### Parity (the gate)
+
+Headless captures of the same debug binary with `NOCTURNE_ENGINE_UI=0` and with the engine, on the generated demo library, window captured through Iced (`scripts/headless-parity.sh`, `scripts/parity-diff.py`), per pixel over all three channels:
+
+| capture | mean difference | pixels over 16 | over 64 | over 128 |
+|---|---|---|---|---|
+| default, 1600x900 | 0.32 / 255 | 0.51 % | 0.16 % | 0.01 % |
+| default, 1920x1080 | 0.23 / 255 | 0.36 % | 0.11 % | 0.01 % |
+| Marquee, 1600x900 | 0.31 / 255 | 0.53 % | 0.15 % | 0.02 % |
+| Feed, 1600x900 | 0.40 / 255 | 0.67 % | 0.22 % | 0.01 % |
+| Classic, 1600x900 | 0.52 / 255 | 0.81 % | 0.30 % | 0.08 % |
+
+What is left is anti-aliasing and one pixel of text and logo placement (nav labels within 1 px of the hand-written link, the hero logo's edge, the Search button's outline); cards, rows, header geometry, colours, scrims and focus rings are identical. The geometry tests of the hand-written Home hold through the engine: `home_tree::tests` lay a card and a band out with the default sheet and compare with `Look::cell_h`, `Geo::band`, `band_h`, `row_dims` and the head height (the band is 1 px shorter than `Geo::band`, which counts 2 px for the frame and the rule while the frame takes no room in either page; the captures confirm the rules sit at the same distance).
+
+### Keyboard (headless, same key script through both builds)
+
+Down, Right, Right, Down, Up, Left, Enter (opens the item), Escape (back), by injected keys and by real keys through `wtype` (arrows reach the page through the paint widget). Focus, hero and the page after Enter and after Escape are the same as the hand-written page (0.3 to 0.6 mean difference); after Down then Up the page's scroll offset differs: the hand-written page decides from an offset it has not heard back about yet and keeps the band's bottom aligned, the engine from the real offset and aligns the band's top. Tab walks the visual order. Pointer: hover on a card moves the focus there, the click and the chips send the same messages (no pointer device in the headless session: checked with the scene's own hit tests and the widget's `iced_test` suite, not with a live pointer).
+
+### Performance (`fast-release`, 16 cores shared with other jobs, 516-node Home on the demo library)
+
+| step | cost |
+|---|---|
+| first build (cascade + layout, shaper already warm) | 2.6 ms |
+| rebuild when data or an image arrives (365 nodes) | 0.6 to 1.0 ms |
+| focus move that relayouts (5 elements restyled) | 0.9 ms |
+| recording a frame (13 images, 27 passes) | 0.2 ms median, 0.3 ms worst |
+| idle | no redraw requests, no rebuilds (the root tick does not dirty the scene) |
+
+A debug build is about ten times slower (cold first build 8 ms).
+
+### What still differs, and the risks for the next steps
+
+- Default-off: the cargo feature stays off until the scrolling quirks below and a live pointer pass are checked; flipping `default = [...]` in `crates/app/Cargo.toml` is the only change.
+- Page scroll after keyboard navigation differs slightly from the hand-written page (see above); the strip scrollbar (shown on hover by the hand-written strips) is not drawn, the page scrollbar is.
+- The libraries and Smart menus keep their pop-overs as slots, so their text is not themable by CSS beyond the slot's box; the account menu, banners and dialogs are unchanged layers above the scene. No chevrons on an overflowing link strip (it scrolls with the wheel or the focus).
+- Tooltips of the Search button are gone (it is a tree element; the icon buttons keep theirs).
+- The scene is rebuilt on every message that can change what Home shows (about 40 times while images load); it is cheap, but step E should make image arrival a targeted update.
+- Slots cost an `update` call per event each; fine for the dozen the header has, not for a slot per card.
