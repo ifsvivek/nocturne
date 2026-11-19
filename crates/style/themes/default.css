@@ -104,11 +104,11 @@ page { display: flex; flex-direction: column; color: var(--nocturne-text); font-
 .page-sub { max-width: 520px; color: var(--nocturne-text-secondary); font-size: 15px; line-height: 1.55; }
 .page-gap { height: 16px; flex: none; }
 .rule { height: 1px; flex: none; background: var(--nocturne-hairline); }
-.tabs { display: flex; flex-direction: row; gap: 4px; flex: none; }
-.tab { position: relative; display: flex; flex-direction: row; align-items: center; flex: none; height: 36px; padding: 0 12px; color: var(--nocturne-text-secondary); font-size: 15px; font-weight: 500; }
-.tab:hover, .tab.active { color: var(--nocturne-text); }
-.tab-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }
-.tab.active .tab-bar { background: var(--nocturne-accent); }
+.page-tabs { display: flex; flex-direction: row; gap: 4px; flex: none; }
+.page-tab { position: relative; display: flex; flex-direction: row; align-items: center; flex: none; height: 36px; padding: 0 12px; color: var(--nocturne-text-secondary); font-size: 15px; font-weight: 500; }
+.page-tab:hover, .page-tab.active { color: var(--nocturne-text); }
+.page-tab-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }
+.page-tab.active .page-tab-bar { background: var(--nocturne-accent); }
 .toolbar { display: flex; flex-direction: column; gap: 12px; flex: none; }
 .toolbar-bar { display: flex; flex-direction: row; align-items: center; gap: 12px; }
 .toolbar-seg { display: flex; flex-direction: row; gap: 4px; flex: none; }

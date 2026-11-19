@@ -271,21 +271,21 @@ impl App {
         d.add(0, "div.page-gap");
         // Tabs.
         if br.tabs.len() > 1 {
-            let row = d.add(0, "div.tabs");
+            let row = d.add(0, "div.page-tabs");
             d.inline(row, &format!("padding: 0 {}", px(pad)));
             let mut acts = vec![];
             for tb in &br.tabs {
                 let tab = d.add(
                     row,
                     if *tb == br.tab {
-                        "a.tab.active"
+                        "a.page-tab.active"
                     } else {
-                        "a.tab"
+                        "a.page-tab"
                     },
                 );
-                let l = d.add(tab, "span.tab-label");
+                let l = d.add(tab, "span.page-tab-label");
                 d.text(l, tb.label(br.scope.collection.as_deref()));
-                d.add(tab, "div.tab-bar");
+                d.add(tab, "div.page-tab-bar");
                 acts.push((tab, Message::Browse(pid, BMsg::Tab(*tb))));
             }
             d.add(0, "div.rule");
