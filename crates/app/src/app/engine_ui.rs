@@ -832,7 +832,10 @@ impl App {
                 h.it.hover = n;
                 // The pointer on a card moves the keyboard focus there (as the hand-written cells do).
                 let cell = match w {
-                    Which::Home => n.and_then(|n| ancestor_cell(&h.tree, &h.scene, n)),
+                    // Row 0 is the header's links: hovering one highlights it (`:hover`) but does not park the keyboard focus there, or it stays lit after the pointer leaves.
+                    Which::Home => n
+                        .and_then(|n| ancestor_cell(&h.tree, &h.scene, n))
+                        .filter(|&(row, _)| row > 0),
                     _ => None,
                 };
                 let item = match w {
@@ -927,6 +930,8 @@ impl App {
                         Nav::Activate => "enter",
                         Nav::Next | Nav::Prev => "tab",
                     };
+                    // `Message::Eng` does not mark the scenes stale on its own, and a key moves the selection the trees show (the search overlay's highlighted row).
+                    self.eng.dirty = true;
                     self.on_key(crate::keys::Key {
                         name: name.into(),
                         shift: nav == Nav::Prev,
@@ -934,7 +939,11 @@ impl App {
                     })
                 }
             },
-            StyledEvent::SafeMode => self.safe_theme(),
+            // `Message::Eng` does not mark the scenes stale: the open Theme Studio's preview must drop its rules too.
+            StyledEvent::SafeMode => {
+                self.eng.dirty = true;
+                self.safe_theme()
+            }
             StyledEvent::Frame(now) => {
                 if let (Some(h), _) = self.eng.host(w) {
                     h.scene.tick(now);
@@ -1020,6 +1029,25 @@ impl App {
             }
         }
         self.home_wants()
+    }
+
+    /// The row arrows: scroll strip `row` sideways by `dx` px (negative: toward the start), as a wheel gesture would.
+    pub(super) fn eng_strip_page(&mut self, row: usize, dx: f32) -> Task<Message> {
+        let Some(node) = self
+            .eng
+            .home
+            .as_ref()
+            .and_then(|h| h.tree.strips.get(&row).copied())
+        else {
+            return Task::none();
+        };
+        let (h, cache) = self.eng.host(Which::Home);
+        if let Some(h) = h {
+            h.scene.wheel(Some(node), -dx, 0.0, &mut |t, st, m| {
+                cache.measure(t, st, m, &mut shape)
+            });
+        }
+        self.eng_scrolled()
     }
 
     /// Move the Home focus to `(row, col)` (a pointer on a card, or the keyboard).

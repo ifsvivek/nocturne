@@ -76,6 +76,8 @@ pub struct Pauses {
     /// A dialog or menu is open.
     pub dialog: bool,
     pub playback: bool,
+    /// The Theme Studio is open: the slide must not change under the element being edited.
+    pub studio: bool,
 }
 
 impl Pauses {
@@ -87,8 +89,15 @@ impl Pauses {
             focus_inside,
             dialog,
             playback,
+            studio,
         } = *self;
-        window_inactive || pointer_down || description_open || focus_inside || dialog || playback
+        window_inactive
+            || pointer_down
+            || description_open
+            || focus_inside
+            || dialog
+            || playback
+            || studio
     }
 }
 
@@ -291,12 +300,13 @@ mod tests {
         h.pauses.pointer_down = false;
         assert!(!h.tick(secs(t0, 103)));
         assert!(h.tick(secs(t0, 104)), "4 s were left of the 10");
-        let setters: [fn(&mut Pauses); 5] = [
+        let setters: [fn(&mut Pauses); 6] = [
             |p| p.window_inactive = true,
             |p| p.description_open = true,
             |p| p.focus_inside = true,
             |p| p.dialog = true,
             |p| p.playback = true,
+            |p| p.studio = true,
         ];
         for set in setters {
             let mut h = Hero::new(3, 10, true);

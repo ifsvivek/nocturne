@@ -29,6 +29,11 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Fixed
 - Engine: boxes that only touch (fractional layout) were treated as overlapping and one of them was drawn beneath the page, so a card could vanish; the harness loads Catppuccin with its flavour palette.
+- Engine screens (`theme-engine`): the mouse wheel scrolls the library grid and the detail page again (a header strip above them swallowed it), and the page scrollbar can be dragged.
+- Engine Home: the row paging arrows of the Classic look scroll their strip; hovering a header link no longer leaves it lit after the pointer leaves; the Smart link no longer lights on every library page; in a window narrower than 640 px the brand makes room for the links.
+- Engine search overlay: the Up and Down keys move the highlighted result.
+- Theme Studio: the Home hero stops rotating while the Studio is open, and the safe look chord also resets the open Studio preview.
+- `tools/headless-pointer` gains `wheel <dx> <dy>` and `drag <x1> <y1> <x2> <y2>` for headless QA.
 - The built-in Marquee and Classic starters no longer make the theme engine warn about `display: carousel` and `content: server`; they are accepted as the layout layer's words.
 - `scripts/headless-parity.sh` captured the thumb view at a random moment (the `v` key raced the page load); the debug hook `view-thumb` waits for the library page and sets the view explicitly, and `PARITY_ONLY=<text>` runs a subset.
 - Home rows now ask the server for each item's overview and genres, so the hero shows the description; long wrapped text in the theme engine is no longer dropped when the renderer breaks one line more than the measure did.

@@ -223,7 +223,9 @@ impl App {
                 slots.push((n, s));
             }
         }
-        if hp.header_brand.shown() {
+        // In a very narrow window the brand gives its room to the links (otherwise the strip is a few px wide and its chevron covers "Home").
+        if self.eng_width() < 640.0 {
+        } else if hp.header_brand.shown() {
             let b = &hp.header_brand;
             let ty = t::typo(
                 &nocturne_core::customize::Text {
@@ -300,8 +302,10 @@ impl App {
                     a,
                     &format!("height: {}; width: {}; padding: 0", px(hh), px(w)),
                 );
-                let act = on(cur.is_some_and(|c| {
-                    libs.iter().any(|l| (l.origin, l.id.as_str()) == c) || c.1.starts_with("smart-")
+                // As the hand-written links: Libraries lights for one of the libraries, Smart only for a smart collection.
+                let act = on(cur.is_some_and(|c| match which {
+                    Link::Libraries => libs.iter().any(|l| (l.origin, l.id.as_str()) == c),
+                    _ => c.1.starts_with("smart-"),
                 }));
                 let slot = match which {
                     Link::Libraries => Slot::Libraries {
