@@ -206,6 +206,34 @@ pub fn layers(v: &str) -> Result<Vec<Fill>, String> {
                 Some(c) => Fill::Solid(c),
                 // A picture layer with only position, size and repeat words.
                 None if has_pic => continue,
+                // Only position, size and repeat words (`background: 0 0`): no fill, but the value still resets the old one.
+                None if toks.iter().all(|t| {
+                    t.trim_end_matches("px")
+                        .trim_end_matches('%')
+                        .parse::<f32>()
+                        .is_ok()
+                        || matches!(
+                            *t,
+                            "/" | "center"
+                                | "left"
+                                | "right"
+                                | "top"
+                                | "bottom"
+                                | "auto"
+                                | "cover"
+                                | "contain"
+                                | "repeat"
+                                | "no-repeat"
+                                | "repeat-x"
+                                | "repeat-y"
+                                | "scroll"
+                                | "fixed"
+                                | "local"
+                        )
+                }) =>
+                {
+                    continue;
+                }
                 None => return Err(format!("`{layer}` is not a supported background")),
             }
         };
@@ -877,6 +905,7 @@ mod pic_tests {
         assert_eq!(pic_above("url(x.png), linear-gradient(red, blue)"), 0);
         let l = layers("radial-gradient(circle at 50% 42%, red, blue), repeating-linear-gradient(135deg, red 0, blue 4px), #101010").unwrap();
         assert_eq!(l.len(), 1);
+        assert!(layers("0 0").unwrap().is_empty());
     }
 
     #[test]
