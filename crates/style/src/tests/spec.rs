@@ -605,3 +605,55 @@ fn spec_style_active_press_and_z_layers() {
     s.tick(t0 + Duration::from_millis(500));
     assert_eq!(s.style(b).xf.sx, 0.98);
 }
+
+#[test]
+fn keyframes_animate_opacity_and_transform() {
+    use std::time::{Duration, Instant};
+    let (d, a, _, _) = super::small();
+    let mut sc = super::scene(
+        &d,
+        "@keyframes pulse { from { opacity: 0 } 50% { opacity: 1; transform: scale(2) } to { opacity: 0.5 } } \
+         .a { animation: pulse 1s linear infinite; width: 50px; height: 50px }",
+        (400.0, 300.0),
+    );
+    assert!(sc.animating() && sc.decorative_only());
+    let t0 = Instant::now();
+    sc.tick(t0 + Duration::from_millis(500));
+    let e = sc.eff(a);
+    assert!((e.opacity.unwrap() - 1.0).abs() < 0.05, "{:?}", e.opacity);
+    assert!((e.xf.unwrap().sx - 2.0).abs() < 0.05);
+    // Endless: the next iteration starts over.
+    sc.tick(t0 + Duration::from_millis(1250));
+    let e = sc.eff(a);
+    assert!((e.opacity.unwrap() - 0.5).abs() < 0.1, "{:?}", e.opacity);
+}
+
+#[test]
+fn finite_animation_ends_and_forwards_holds() {
+    use std::time::{Duration, Instant};
+    let (d, a, _, _) = super::small();
+    let mut sc = super::scene(
+        &d,
+        "@keyframes f { from { opacity: 0 } to { opacity: 0.25 } } .a { animation: f 100ms forwards; width: 5px; height: 5px }",
+        (400.0, 300.0),
+    );
+    sc.tick(Instant::now() + Duration::from_millis(500));
+    assert!(!sc.animating(), "finished: no more frames");
+    assert_eq!(
+        sc.eff(a).opacity,
+        Some(0.25),
+        "forwards keeps the last frame"
+    );
+}
+
+#[test]
+fn unset_and_initial_restore_the_default() {
+    let (d, a, _, _) = super::small();
+    let sc = super::scene(
+        &d,
+        ".a { margin-top: -40px; padding-left: 9px; height: 30px } .a { margin-top: unset; padding-left: initial }",
+        (400.0, 300.0),
+    );
+    assert_eq!(sc.rects[a][1], 0.0);
+    assert_eq!(sc.insets[a][0], 0.0);
+}

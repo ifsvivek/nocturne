@@ -128,6 +128,9 @@ impl App {
                 c,
                 "a.button-flat.button-flat-mini.sectionTitleTextButton.emby-button",
             );
+            if k == HRow::NextUp {
+                d.attr(a, "href", "#/list.html?type=nextup");
+            }
             let t = d.add(a, "h2.sectionTitle.sectionTitle-cards");
             d.text(t, &title);
         } else {
@@ -139,6 +142,9 @@ impl App {
             "div.padded-top-focusscale.padded-bottom-focusscale.emby-scroller.scrollX",
         );
         let cont = d.add(scroller, "div.itemsContainer.scrollSlider.focuscontainer-x");
+        if matches!(k, HRow::Resume | HRow::NextUp) {
+            d.attr(cont, "data-monitor", "videoplayback,markplayed");
+        }
         tree.strips.insert(ri, scroller);
         tree.bands.insert(ri, sec);
         let writes = self.hooks.can_write();

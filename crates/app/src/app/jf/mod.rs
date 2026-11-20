@@ -91,5 +91,10 @@ pub(super) fn jf_root(tree: &mut super::header_tree::Tree, screen_class: &str) -
     // `#reactRoot`: a column as high as the window, the page area below the header's spacer growing to fill it.
     let root = d.add(body, "div.jf-react");
     d.set_id(root, "reactRoot");
+    // Tabbed pages always have the page-sized `.backgroundContainer` (themes tint it: Jellyfish's translucent teal over black); the item page adds its own with a backdrop.
+    if screen_class.starts_with("libraryDocument") {
+        let bc = d.add(root, "div.backdropContainer");
+        d.add(bc, "div.backgroundContainer");
+    }
     root
 }

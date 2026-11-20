@@ -284,7 +284,64 @@ fn gradient_bg(f: &Fill, w: f32, h: f32, opacity: f32) -> Option<Background> {
             }
             Some(Background::Gradient(Gradient::Linear(g)))
         }
+        // Drawn as an image by `draw_raster`.
+        Fill::Raster(_) => None,
     }
+}
+
+thread_local! {
+    /// Rasterised radial / repeating gradients by (gradient, size). Bounded; never rebuilt while the box keeps its size.
+    static RASTERS: std::cell::RefCell<HashMap<(u64, u32, u32), Handle>> = Default::default();
+}
+
+/// A radial or repeating gradient as an image layer. The raster is cached per box size; smooth (non-repeating) ones snap the size up to 32 px steps so a resize does not rasterise on every frame, and long edges are capped at 1600 px.
+fn draw_raster(
+    r: &mut iced::Renderer,
+    g: &paint::Raster,
+    rect: Rectangle,
+    rad: [f32; 4],
+    opacity: f32,
+    clip: Rectangle,
+) {
+    use iced::advanced::image::Renderer as _;
+    let Some(vis) = inter(clip, rect) else {
+        return;
+    };
+    let q = |v: f32| {
+        let v = if g.repeat {
+            v.round()
+        } else {
+            (v / 32.0).ceil() * 32.0
+        };
+        (v.max(1.0) as u32).min(1600)
+    };
+    let (bw, bh) = (q(rect.width), q(rect.height));
+    let h = RASTERS.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.len() >= 32 && !c.contains_key(&(g.id, bw, bh)) {
+            c.clear();
+        }
+        c.entry((g.id, bw, bh))
+            .or_insert_with(|| {
+                let px = paint::rasterize(
+                    g,
+                    rect.width.max(1.0) * bw as f32 / rect.width.max(1.0),
+                    rect.height.max(1.0) * bh as f32 / rect.height.max(1.0),
+                    bw,
+                    bh,
+                );
+                Handle::from_rgba(bw, bh, px)
+            })
+            .clone()
+    });
+    r.draw_image(
+        iced::advanced::image::Image {
+            border_radius: radius(rad),
+            ..iced::advanced::image::Image::new(h).opacity(opacity)
+        },
+        rect,
+        vis,
+    );
 }
 
 fn radius(r: [f32; 4]) -> border::Radius {
@@ -977,6 +1034,26 @@ impl<M> Styled<'_, M> {
     ) {
         let s: &Scene = &self.scene;
         let c = s.style(n);
+        if c.brightness < 1.0 {
+            // `filter: brightness()`: a black layer over the element (saturate, contrast and blur are not drawn).
+            r.fill_quad(
+                Quad {
+                    bounds: rect,
+                    border: Border {
+                        radius: radius(c.radius),
+                        ..Border::default()
+                    },
+                    shadow: Shadow::default(),
+                    snap: false,
+                },
+                Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: (1.0 - c.brightness) * opacity,
+                },
+            );
+        }
         if let Some(Fill::Linear { angle, stops }) = &c.mask {
             // `mask-image` fades the element to the surface behind it: draw that surface colour with the inverse alpha.
             let surface = s.scrim_color(n);
@@ -1704,7 +1781,11 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
                 }
                 if self.scene.animating() {
                     shell.publish((self.on_event)(StyledEvent::Frame(*now)));
-                    shell.request_redraw();
+                    if self.scene.decorative_only() {
+                        shell.request_redraw_at(*now + std::time::Duration::from_millis(33));
+                    } else {
+                        shell.request_redraw();
+                    }
                 }
             }
             _ => {}

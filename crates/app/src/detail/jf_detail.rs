@@ -23,6 +23,8 @@ impl Detail {
             skin,
             "div.page.libraryPage.itemDetailPage.noSecondaryNavPage.selfBackdropPage.mainAnimatedPage.noBackdropTransparency",
         );
+        // jellyfin-web keeps the page you came from in the DOM, hidden (a tabbed library page: `.backdropPage`); some themes key a backdrop dimming layer on `body:has(.backdropPage:not(.selfBackdropPage))`.
+        d.add(skin, "div.page.libraryPage.backdropPage.hide");
         d.set_id(page, "itemDetailPage");
         d.attr(page, "data-role", "page");
         // The backdrop: jellyfin-web's fixed `.backdropContainer > .backdropImage` behind the page (its script fades it to a low opacity), and `#itemBackdrop` as the spacer the ribbon overlaps.

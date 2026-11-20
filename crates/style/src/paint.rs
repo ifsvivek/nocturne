@@ -61,6 +61,54 @@ pub enum Fill {
         angle: f32,
         stops: Vec<Stop>,
     },
+    /// Radial and repeating gradients: Iced draws only plain linear ones, so the app rasterises these once per box size.
+    Raster(std::sync::Arc<Raster>),
+}
+
+/// How far a radial gradient reaches (CSS `<radial-extent>` or explicit radii).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Extent {
+    ClosestSide,
+    FarthestSide,
+    ClosestCorner,
+    FarthestCorner,
+    /// `circle 40px` (second value unused) or `ellipse 30% 50%`.
+    Len(StopPos, StopPos),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RKind {
+    /// `repeating-linear-gradient` (the plain one stays [`Fill::Linear`]).
+    Linear { angle: f32 },
+    Radial {
+        circle: bool,
+        extent: Extent,
+        /// Centre as a fraction of the box or pixels from its left/top.
+        at: (StopPos, StopPos),
+    },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Raster {
+    pub kind: RKind,
+    pub repeat: bool,
+    pub stops: Vec<Stop>,
+    /// Cache key: a hash of everything above.
+    pub id: u64,
+}
+
+impl Raster {
+    fn fill(kind: RKind, repeat: bool, stops: Vec<Stop>) -> Fill {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        format!("{kind:?}{repeat}{stops:?}").hash(&mut h);
+        Fill::Raster(std::sync::Arc::new(Raster {
+            kind,
+            repeat,
+            stops,
+            id: h.finish(),
+        }))
+    }
 }
 
 impl Fill {
@@ -146,6 +194,12 @@ fn gradient(args: &str) -> Result<Fill, String> {
         ang = a?;
         parts.remove(0);
     }
+    let stops = stop_list(parts)?;
+    Ok(Fill::Linear { angle: ang, stops })
+}
+
+/// The colour stops of a gradient (everything after the direction / shape part).
+fn stop_list(parts: Vec<&str>) -> Result<Vec<Stop>, String> {
     let mut stops: Vec<Stop> = vec![];
     // A colour hint (`a, 17vh, b`) moves the middle of the transition; Iced has no such stop, so it becomes a stop at that position with the middle colour (the curve through the same midpoint, drawn linearly on both sides).
     let mut hints: Vec<(usize, StopPos)> = vec![];
@@ -201,7 +255,83 @@ fn gradient(args: &str) -> Result<Fill, String> {
     if stops.len() < 2 {
         return Err("a gradient needs at least two stops".into());
     }
-    Ok(Fill::Linear { angle: ang, stops })
+    Ok(stops)
+}
+
+fn center(t: &str) -> Option<(StopPos, bool)> {
+    // (position, is a vertical-only keyword)
+    Some(match t {
+        "left" => (StopPos::Frac(0.0), false),
+        "right" => (StopPos::Frac(1.0), false),
+        "top" => (StopPos::Frac(0.0), true),
+        "bottom" => (StopPos::Frac(1.0), true),
+        "center" => (StopPos::Frac(0.5), false),
+        _ => (pos(t).ok()?, false),
+    })
+}
+
+/// `[circle | ellipse] [<extent> | <length>{1,2}] [at <position>]`; `None` when the first part is a colour stop.
+fn radial_prelude(first: &str) -> Option<(bool, Extent, (StopPos, StopPos))> {
+    let toks = split_top(first, None);
+    if value::color(toks.first()?).is_ok() {
+        return None;
+    }
+    let (mut circle, mut extent, mut lens) = (false, Extent::FarthestCorner, vec![]);
+    let mut at = vec![];
+    let mut in_at = false;
+    for t in toks {
+        match t {
+            "circle" => circle = true,
+            "ellipse" => circle = false,
+            "closest-side" => extent = Extent::ClosestSide,
+            "farthest-side" => extent = Extent::FarthestSide,
+            "closest-corner" => extent = Extent::ClosestCorner,
+            "farthest-corner" => extent = Extent::FarthestCorner,
+            "at" => in_at = true,
+            _ if in_at => at.push(center(t)?),
+            _ => lens.push(pos(t).ok()?),
+        }
+    }
+    if let Some(&a) = lens.first() {
+        extent = Extent::Len(a, *lens.get(1).unwrap_or(&a));
+    }
+    let c = StopPos::Frac(0.5);
+    let at = match at.as_slice() {
+        [] => (c, c),
+        [(x, true)] => (c, *x),
+        [(x, _)] => (*x, c),
+        [(a, true), (b, _)] => (*b, *a),
+        [(a, _), (b, _)] => (*a, *b),
+        _ => (c, c),
+    };
+    Some((circle, extent, at))
+}
+
+fn radial(args: &str, repeat: bool) -> Result<Fill, String> {
+    let mut parts = split_top(args, Some(','));
+    let (circle, extent, at) = match parts.first().and_then(|f| radial_prelude(f)) {
+        Some(p) => {
+            parts.remove(0);
+            p
+        }
+        None => (
+            false,
+            Extent::FarthestCorner,
+            (StopPos::Frac(0.5), StopPos::Frac(0.5)),
+        ),
+    };
+    Ok(Raster::fill(
+        RKind::Radial { circle, extent, at },
+        repeat,
+        stop_list(parts)?,
+    ))
+}
+
+fn repeating_linear(args: &str) -> Result<Fill, String> {
+    let Fill::Linear { angle, stops } = gradient(args)? else {
+        unreachable!()
+    };
+    Ok(Raster::fill(RKind::Linear { angle }, true, stops))
 }
 
 /// The address in a layer's first `url(...)` and the byte range of the whole call.
@@ -245,15 +375,21 @@ pub fn layers(v: &str) -> Result<Vec<Fill>, String> {
             layer
         };
         let l = layer.to_ascii_lowercase();
-        // Radial, conic and repeating gradients cannot be drawn: the layer is left out (the rest of the value still applies).
-        let unsupported = l.contains("radial-gradient(")
-            || l.contains("conic-gradient(")
-            || l.contains("repeating-linear-gradient(");
-        let fill = if unsupported {
+        // Conic gradients cannot be drawn: the layer is left out (the rest of the value still applies).
+        let kinds = [
+            ("repeating-linear-gradient(", 0),
+            ("repeating-radial-gradient(", 1),
+            ("radial-gradient(", 2),
+            ("linear-gradient(", 3),
+        ];
+        let found = kinds
+            .iter()
+            .find_map(|&(n, k)| l.find(n).map(|i| (n, k, i)));
+        let fill = if l.contains("conic-gradient(") {
             continue;
-        } else if let Some(i) = l.find("linear-gradient(") {
+        } else if let Some((name, kind, i)) = found {
             // Take the balanced call.
-            let args_start = i + "linear-gradient(".len();
+            let args_start = i + name.len();
             let mut depth = 1;
             let mut end = None;
             for (k, ch) in l[args_start..].char_indices() {
@@ -270,7 +406,13 @@ pub fn layers(v: &str) -> Result<Vec<Fill>, String> {
                 }
             }
             let end = end.ok_or("unclosed gradient")?;
-            gradient(&l[args_start..end])?
+            let args = &l[args_start..end];
+            match kind {
+                0 => repeating_linear(args)?,
+                1 => radial(args, true)?,
+                2 => radial(args, false)?,
+                _ => gradient(args)?,
+            }
         } else if l.contains("gradient(") {
             return Err("only linear-gradient() is supported".into());
         } else {
@@ -579,6 +721,25 @@ pub fn resolve(fill: &Fill, w: f32, h: f32) -> Option<Resolved> {
         return None;
     };
     let len = line_length(*angle, w, h).max(1.0);
+    let mut out = stop_fracs(stops, len);
+    for o in &mut out {
+        o.1 = o.1.clamp(0.0, 1.0);
+    }
+    if out.len() > MAX_STOPS {
+        // Keep the ends and spread the rest: the shape of a long scrim survives.
+        let m = out.len();
+        out = (0..MAX_STOPS)
+            .map(|k| out[k * (m - 1) / (MAX_STOPS - 1)])
+            .collect();
+    }
+    Some(Resolved {
+        angle: *angle,
+        stops: out,
+    })
+}
+
+/// Stop positions as fractions of a gradient line `len` long (percent, px, missing), made monotonic; not clamped to 0..1.
+pub fn stop_fracs(stops: &[Stop], len: f32) -> Vec<(Color, f32)> {
     let mut p: Vec<Option<f32>> = stops
         .iter()
         .map(|s| {
@@ -609,21 +770,11 @@ pub fn resolve(fill: &Fill, w: f32, h: f32) -> Option<Resolved> {
     let mut out: Vec<(Color, f32)> = vec![];
     let mut top = f32::NEG_INFINITY;
     for (s, q) in stops.iter().zip(p) {
-        let q = q.unwrap_or(0.0).max(top).clamp(0.0, 1.0);
+        let q = q.unwrap_or(0.0).max(top);
         top = q;
         out.push((s.color, q));
     }
-    if out.len() > MAX_STOPS {
-        // Keep the ends and spread the rest: the shape of a long scrim survives.
-        let m = out.len();
-        out = (0..MAX_STOPS)
-            .map(|k| out[k * (m - 1) / (MAX_STOPS - 1)])
-            .collect();
-    }
-    Some(Resolved {
-        angle: *angle,
-        stops: out,
-    })
+    out
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -950,6 +1101,273 @@ pub fn transition(v: &str) -> Result<TransSpec, String> {
     Ok(spec)
 }
 
+/// A resolved `animation` (the first of a list): what runs, how long, how often.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AnimSpec {
+    pub name: String,
+    pub dur: f32,
+    pub delay: f32,
+    /// `f32::INFINITY` for `infinite`.
+    pub iters: f32,
+    pub ease: Ease,
+    pub fill_fwd: bool,
+    pub fill_back: bool,
+    pub alternate: bool,
+    pub reverse: bool,
+}
+
+impl Default for AnimSpec {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            dur: 0.0,
+            delay: 0.0,
+            iters: 1.0,
+            ease: Ease::Ease,
+            fill_fwd: false,
+            fill_back: false,
+            alternate: false,
+            reverse: false,
+        }
+    }
+}
+
+/// The parts of an `animation` declaration that were written; the rest keeps the element's earlier value (longhands) or its default (the shorthand).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AnimPatch {
+    pub name: Option<String>,
+    pub dur: Option<f32>,
+    pub delay: Option<f32>,
+    pub iters: Option<f32>,
+    pub ease: Option<Ease>,
+    pub fill: Option<(bool, bool)>,
+    pub dir: Option<(bool, bool)>,
+    pub all: bool,
+}
+
+impl AnimPatch {
+    pub fn apply(&self, a: &mut AnimSpec) {
+        if self.all {
+            *a = AnimSpec::default();
+        }
+        if let Some(n) = &self.name {
+            a.name = n.clone();
+        }
+        if let Some(v) = self.dur {
+            a.dur = v;
+        }
+        if let Some(v) = self.delay {
+            a.delay = v;
+        }
+        if let Some(v) = self.iters {
+            a.iters = v;
+        }
+        if let Some(v) = self.ease {
+            a.ease = v;
+        }
+        if let Some((f, b)) = self.fill {
+            (a.fill_fwd, a.fill_back) = (f, b);
+        }
+        if let Some((alt, rev)) = self.dir {
+            (a.alternate, a.reverse) = (alt, rev);
+        }
+    }
+}
+
+/// `animation` shorthand: the first item of a comma list (several animations on one element are not run).
+pub fn animation(v: &str) -> Result<AnimPatch, String> {
+    let item = split_top(v, Some(',')).into_iter().next().unwrap_or("");
+    let mut p = AnimPatch {
+        all: true,
+        name: Some(String::new()),
+        ..Default::default()
+    };
+    let mut times = vec![];
+    for t in split_top(item, None) {
+        if let Some(ms) = time(t) {
+            times.push(ms);
+        } else if let Some(e) = Ease::parse(t) {
+            p.ease = Some(e);
+        } else if t == "infinite" {
+            p.iters = Some(f32::INFINITY);
+        } else if let Some(n) = num(t) {
+            p.iters = Some(n.max(0.0));
+        } else if let Some(d) = anim_dir(t) {
+            p.dir = Some(d);
+        } else if let Some(f) = anim_fill(t) {
+            p.fill = Some(f);
+        } else if matches!(t, "running" | "paused") {
+        } else if t != "none" {
+            p.name = Some(t.to_string());
+        }
+    }
+    p.dur = Some(times.first().copied().unwrap_or(0.0).max(0.0));
+    p.delay = Some(times.get(1).copied().unwrap_or(0.0));
+    Ok(p)
+}
+
+pub fn anim_dir(t: &str) -> Option<(bool, bool)> {
+    Some(match t {
+        "normal" => (false, false),
+        "reverse" => (false, true),
+        "alternate" => (true, false),
+        "alternate-reverse" => (true, true),
+        _ => return None,
+    })
+}
+
+pub fn anim_fill(t: &str) -> Option<(bool, bool)> {
+    Some(match t {
+        "none" => (false, false),
+        "forwards" => (true, false),
+        "backwards" => (false, true),
+        "both" => (true, true),
+        _ => return None,
+    })
+}
+
+/// One animation longhand.
+pub fn animation_part(name: &str, v: &str) -> Result<AnimPatch, String> {
+    let first = split_top(v, Some(','))
+        .into_iter()
+        .next()
+        .unwrap_or("")
+        .trim();
+    let mut p = AnimPatch::default();
+    let bad = || format!("`{first}` is not a valid {name}");
+    match name {
+        "animation-name" => {
+            p.name = Some(if first == "none" {
+                String::new()
+            } else {
+                first.to_string()
+            })
+        }
+        "animation-duration" => p.dur = Some(time(first).ok_or_else(bad)?.max(0.0)),
+        "animation-delay" => p.delay = Some(time(first).ok_or_else(bad)?),
+        "animation-iteration-count" => {
+            p.iters = Some(if first == "infinite" {
+                f32::INFINITY
+            } else {
+                num(first).ok_or_else(bad)?.max(0.0)
+            })
+        }
+        "animation-timing-function" => p.ease = Some(Ease::parse(first).ok_or_else(bad)?),
+        "animation-fill-mode" => p.fill = Some(anim_fill(first).ok_or_else(bad)?),
+        "animation-direction" => p.dir = Some(anim_dir(first).ok_or_else(bad)?),
+        _ => return Err(bad()),
+    }
+    Ok(p)
+}
+
+/// Radius (rx, ry) of a radial gradient in a `bw` x `bh` box around `(cx, cy)`.
+fn radial_radii(circle: bool, e: Extent, bw: f32, bh: f32, cx: f32, cy: f32) -> (f32, f32) {
+    let (nx, ny) = (cx.min(bw - cx).max(0.0), cy.min(bh - cy).max(0.0));
+    let (fx, fy) = (cx.max(bw - cx), cy.max(bh - cy));
+    let (rx, ry) = match e {
+        Extent::Len(a, b) => {
+            let l = |p: StopPos, whole: f32| match p {
+                StopPos::Frac(f) => f * whole,
+                StopPos::Px(v) => v,
+                _ => 0.0,
+            };
+            if circle {
+                let r = l(a, bw);
+                (r, r)
+            } else {
+                (l(a, bw), l(b, bh))
+            }
+        }
+        _ if circle => {
+            let r = match e {
+                Extent::ClosestSide => nx.min(ny),
+                Extent::FarthestSide => fx.max(fy),
+                Extent::ClosestCorner => nx.hypot(ny),
+                _ => fx.hypot(fy),
+            };
+            (r, r)
+        }
+        Extent::ClosestSide => (nx, ny),
+        Extent::FarthestSide => (fx, fy),
+        Extent::ClosestCorner => (nx * 2f32.sqrt(), ny * 2f32.sqrt()),
+        _ => (fx * 2f32.sqrt(), fy * 2f32.sqrt()),
+    };
+    (rx.max(0.01), ry.max(0.01))
+}
+
+/// Straight RGBA pixels (`pw` x `ph`) of a radial or repeating gradient painted over a `bw` x `bh` box (the pixel grid may be a scaled copy of the box). Colours blend premultiplied, as CSS does.
+pub fn rasterize(r: &Raster, bw: f32, bh: f32, pw: u32, ph: u32) -> Vec<u8> {
+    let mut out = vec![0u8; (pw * ph * 4) as usize];
+    if bw <= 0.0 || bh <= 0.0 || r.stops.len() < 2 {
+        return out;
+    }
+    // Position of a pixel along the gradient (in stop fractions) is `f(x, y)`; the stop table is built for the line / radius length.
+    let (len, f): (f32, Box<dyn Fn(f32, f32) -> f32>) = match r.kind {
+        RKind::Linear { angle } => {
+            let a = angle.to_radians();
+            let (dx, dy) = (a.sin(), -a.cos());
+            let len = line_length(angle, bw, bh).max(1.0);
+            (
+                len,
+                Box::new(move |x, y| ((x - bw / 2.0) * dx + (y - bh / 2.0) * dy) / len + 0.5),
+            )
+        }
+        RKind::Radial { circle, extent, at } => {
+            let pos_of = |p: StopPos, whole: f32| match p {
+                StopPos::Frac(f) => f * whole,
+                StopPos::Px(v) => v,
+                _ => whole / 2.0,
+            };
+            let (cx, cy) = (pos_of(at.0, bw), pos_of(at.1, bh));
+            let (rx, ry) = radial_radii(circle, extent, bw, bh, cx, cy);
+            (
+                rx,
+                Box::new(move |x, y| ((x - cx) / rx).hypot((y - cy) / ry)),
+            )
+        }
+    };
+    let stops = stop_fracs(&r.stops, len);
+    let (first, last) = (stops[0].1, stops[stops.len() - 1].1);
+    // Premultiplied stop colours.
+    let pm: Vec<[f32; 4]> = stops
+        .iter()
+        .map(|(c, _)| {
+            let a = c.a as f32 / 255.0;
+            [c.r as f32 * a, c.g as f32 * a, c.b as f32 * a, c.a as f32]
+        })
+        .collect();
+    let (sx, sy) = (bw / pw as f32, bh / ph as f32);
+    for py in 0..ph {
+        for px in 0..pw {
+            let mut t = f((px as f32 + 0.5) * sx, (py as f32 + 0.5) * sy);
+            if r.repeat && last > first {
+                t = first + (t - first).rem_euclid(last - first);
+            }
+            let i = stops.iter().position(|s| s.1 > t).unwrap_or(stops.len());
+            let c = if i == 0 {
+                pm[0]
+            } else if i == stops.len() {
+                pm[i - 1]
+            } else {
+                let (a, b) = (stops[i - 1].1, stops[i].1);
+                let k = if b > a { (t - a) / (b - a) } else { 1.0 };
+                let (p, q) = (pm[i - 1], pm[i]);
+                [0, 1, 2, 3].map(|j| p[j] + (q[j] - p[j]) * k)
+            };
+            let o = ((py * pw + px) * 4) as usize;
+            let a = c[3];
+            if a > 0.0 {
+                let inv = 255.0 / a;
+                out[o] = (c[0] * inv).round().clamp(0.0, 255.0) as u8;
+                out[o + 1] = (c[1] * inv).round().clamp(0.0, 255.0) as u8;
+                out[o + 2] = (c[2] * inv).round().clamp(0.0, 255.0) as u8;
+                out[o + 3] = a.round().clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod pic_tests {
     use super::*;
@@ -992,14 +1410,14 @@ mod pic_tests {
     }
 
     #[test]
-    fn counts_layers_over_the_picture_and_skips_radial_ones() {
+    fn counts_layers_over_the_picture_and_skips_conic_ones() {
         assert_eq!(
             pic_above("linear-gradient(red, blue), url(x.png) no-repeat"),
             1
         );
         assert_eq!(pic_above("url(x.png), linear-gradient(red, blue)"), 0);
-        let l = layers("radial-gradient(circle at 50% 42%, red, blue), repeating-linear-gradient(135deg, red 0, blue 4px), #101010").unwrap();
-        assert_eq!(l.len(), 1);
+        let l = layers("conic-gradient(red, blue), repeating-linear-gradient(135deg, red 0, blue 4px), #101010").unwrap();
+        assert_eq!(l.len(), 2);
         assert!(layers("0 0").unwrap().is_empty());
     }
 
@@ -1021,5 +1439,22 @@ mod pic_tests {
         p.repeat = (true, false);
         p.pos = BG_POS0;
         assert_eq!(pic_rects(&p, 100.0, 50.0, 50.0, 50.0).len(), 2);
+    }
+
+    #[test]
+    fn radial_and_repeating_rasterise() {
+        let l = layers("radial-gradient(circle at 50% 42%, rgba(255,0,0,.26), rgba(255,0,0,0) 62%), repeating-linear-gradient(135deg, #fff 0, #fff 2px, #0000 2px, #0000 11px), linear-gradient(red, blue)").unwrap();
+        assert_eq!(l.len(), 3);
+        let (Fill::Raster(a), Fill::Raster(b)) = (&l[0], &l[1]) else {
+            panic!()
+        };
+        // Centre of the glow is the first stop, the far corner is clear.
+        let px = rasterize(a, 100.0, 100.0, 100, 100);
+        assert!((64..=66).contains(&px[(42 * 100 + 50) * 4 + 3]));
+        assert_eq!(px[3], 0);
+        // The tile repeats with an 11 px period along the line.
+        let px = rasterize(b, 100.0, 100.0, 100, 100);
+        let at = |x: usize, y: usize| px[(y * 100 + x) * 4 + 3];
+        assert!((0..100).any(|x| at(x, 50) == 255) && (0..100).any(|x| at(x, 50) == 0));
     }
 }
