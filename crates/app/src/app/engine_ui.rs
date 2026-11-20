@@ -745,6 +745,7 @@ impl App {
             .build(&tree.doc, size, it, &tree.builders, &mut |text, st, max| {
                 cache.measure(text, st, max, &mut shape)
             });
+        crate::widget::pics::want_scene(&s);
         for n in e.engine.take_notices() {
             eprintln!("engine: {n}");
         }
@@ -941,6 +942,12 @@ impl App {
                 Task::none()
             }
         }
+    }
+
+    /// Build every scene again, layout included (a picture arrived that an `img` takes its size from).
+    pub(super) fn eng_relayout(&mut self) {
+        self.eng.dirty = true;
+        self.eng.sheet_gen += 1;
     }
 
     /// A picture was decoded (`Some`) or failed (`None`): the nodes that wait for it are filled in place, no scene is rebuilt. A failure changes what a card shows (its initial), which takes a rebuild.
@@ -1213,8 +1220,19 @@ impl App {
             .images(&h.tree.images)
             .marks(self.studio_marks(w))
             .inert(self.studio_picking());
+        // A glyph whose computed `color` is transparent is hidden (a theme that paints its own picture there).
+        let clear: std::collections::HashSet<u32> = (0..h.scene.doc.len())
+            .filter(|&n| h.scene.style(n).color.a == 0)
+            .filter_map(|n| h.scene.doc.nodes[n].slot)
+            .collect();
         for (i, slot) in h.tree.slots.iter().enumerate() {
-            s = s.slot(i as u32 + 1, self.eng_slot(*slot));
+            let id = i as u32 + 1;
+            let el = if clear.contains(&id) && matches!(slot, Slot::Icon { .. }) {
+                iced::widget::space().into()
+            } else {
+                self.eng_slot(*slot)
+            };
+            s = s.slot(id, el);
         }
         s.into()
     }

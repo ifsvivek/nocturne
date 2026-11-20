@@ -40,6 +40,8 @@ main.MuiBox-root { display: block; position: relative; flex: 1 1 auto; }
 .MuiButton-sizeLarge { padding: 8px 11px; font-size: 1rem; font-weight: 700; }
 .MuiButton-colorPrimary { color: var(--jf-palette-primary-main, #00a4dc); }
 .MuiButton-startIcon { display: flex; margin-right: 8px; margin-left: -4px; }
+.MuiButton-sizeMedium > .MuiButton-startIcon > *:first-child { font-size: 20px; }
+.MuiButton-sizeLarge > .MuiButton-startIcon > *:first-child { font-size: 22px; }
 .MuiButton-endIcon { display: flex; margin-left: 8px; margin-right: -4px; }
 .MuiButton-contained { background-color: var(--jf-palette-primary-main, #00a4dc); color: rgba(0,0,0,0.87); box-shadow: 0 3px 1px -2px rgba(0,0,0,0.2); }
 .MuiButton-contained:hover { background-color: var(--jf-palette-primary-dark, #00729a); }

@@ -73,6 +73,18 @@ pub fn shown<'a>(text: &'a str, c: &Computed) -> Cow<'a, str> {
     }
 }
 
+/// The natural size of a replaced element: the app's image, or the picture an `img` shows through `content: url()` once it is loaded.
+fn natural(doc: &Doc, styles: &[Rc<Computed>], i: Id) -> Option<(u32, u32)> {
+    let node = &doc.nodes[i];
+    node.image.map(|m| (m.w, m.h)).or_else(|| {
+        if node.tag == "img" {
+            super::paint::pic_dims(styles[i].pic_url.as_deref()?)
+        } else {
+            None
+        }
+    })
+}
+
 fn node_measure(
     env: &Env,
     i: Id,
@@ -81,8 +93,8 @@ fn node_measure(
     measure: &mut Measure,
 ) -> Size<f32> {
     let node = &env.doc.nodes[i];
-    if let Some(img) = node.image {
-        let (iw, ih) = (img.w.max(1) as f32, img.h.max(1) as f32);
+    if let Some((iw, ih)) = natural(env.doc, env.styles, i) {
+        let (iw, ih) = (iw.max(1) as f32, ih.max(1) as f32);
         // The sizes the style asks for are folded into the available space, not into `known`: read them from the style.
         let st = &env.styles[i].layout.size;
         let want = |d: Dimension, k: Option<f32>, a: AvailableSpace| {
@@ -386,15 +398,15 @@ impl Scene {
                 height: LengthPercentageAuto::length(FLOOR_MIN_PX),
             };
         }
-        if let Some(img) = node.image
+        if let Some((iw, ih)) = natural(&self.doc, &self.st.styles, i)
             && st.size.width == Dimension::auto()
             && st.size.height == Dimension::auto()
             && st.aspect_ratio.is_none()
         {
             // A replaced element with no size keeps its natural size (a block does not stretch it).
             st.size = Size {
-                width: px(img.w as f32),
-                height: px(img.h as f32),
+                width: px(iw as f32),
+                height: px(ih as f32),
             };
         }
         if node.virtual_item {

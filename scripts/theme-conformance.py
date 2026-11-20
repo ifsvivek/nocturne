@@ -15,6 +15,9 @@ THEMES_RAW = "https://raw.githubusercontent.com/awesome-jellyfin/awesome-jellyfi
 # ElegantFin's README documents one import for 10.11 and above and says Jellyfin 12 needs the Desktop (Legacy) display
 # mode; the mihaif7/elegantfin-jf12 fork resolved earlier looks almost stock and is not the theme people install.
 ALT_REPO = {}
+# Themes whose README documents a full install of more than one import (theme first, then a palette/flavour after it).
+# The first documented variant of the palette is used (Catppuccin: Mocha, the dark flavour; the theme alone has no colours).
+EXTRA_IMPORTS = {"Catppuccin": ["https://jellyfin.catppuccin.com/catppuccin-mocha.css"]}
 FORK_NOTES = {"ElegantFin": "official import; a jf12 fork (mihaif7/elegantfin-jf12) exists, not used"}
 JF_MAJOR = 12
 
@@ -56,7 +59,7 @@ def cmd_themes(a):
             imp = pick_import(readme(gm.group(1)))
             repo = gm.group(1)
         out.append({"name": name, "status": "hidden-pending-v12" if hidden_at != -1 and m.start() > hidden_at else "active",
-                    "repo": repo, "import_url": imp,
+                    "repo": repo, "import_url": imp, "extra_imports": EXTRA_IMPORTS.get(name, []),
                     "source": f"https://github.com/{repo}#readme" if repo else get_link,
                     "note": "" if imp else "no documented @import line (JS builder or other install method)",
                     "fork_note": FORK_NOTES.get(name, "")})

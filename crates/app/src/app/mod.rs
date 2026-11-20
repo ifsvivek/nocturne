@@ -31,6 +31,8 @@ pub(crate) use home_tree::CardIn;
 pub mod message;
 mod onboard;
 mod online;
+#[cfg(feature = "theme-engine")]
+mod pics;
 mod play;
 mod preview;
 mod remote;
@@ -611,6 +613,8 @@ impl App {
         let theme = self.sync_theme();
         #[cfg(feature = "theme-engine")]
         let eng = self.eng_sync(dirties);
+        #[cfg(feature = "theme-engine")]
+        let eng = Task::batch([eng, self.pics_sync()]);
         #[cfg(not(feature = "theme-engine"))]
         let eng = Task::none();
         #[cfg(feature = "theme-engine")]
@@ -629,6 +633,13 @@ impl App {
             Message::Key(k) => self.on_key(k),
             #[cfg(feature = "theme-engine")]
             Message::Eng(w, e) => self.eng_event(w, e),
+            #[cfg(feature = "theme-engine")]
+            Message::Pic(raw, p) => {
+                crate::widget::pics::put(raw, p);
+                // An `img` takes its natural size from the picture: lay the scenes out again.
+                self.eng_relayout();
+                Task::none()
+            }
             #[cfg(feature = "theme-engine")]
             Message::Studio(m) => self.studio_msg(m),
             #[cfg(feature = "theme-engine")]

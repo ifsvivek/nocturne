@@ -54,6 +54,7 @@ impl App {
             "div.MuiToolbar-root.MuiToolbar-gutters.MuiToolbar-dense.padded-left.padded-right",
         );
         let left = d.add(bar, "div.MuiStack-root");
+        let logo = self.jf_logo().is_some();
         let mut first = true;
         for (n, link) in self.nav_links().into_iter().enumerate() {
             let (label, active, msg): (String, bool, Option<Message>) = match link {
@@ -83,7 +84,13 @@ impl App {
             let large = std::mem::take(&mut first);
             let a = text_button(d, left, large, active && !large, "a");
             d.attr(a, "data-link", &n.to_string());
-            let icon = super::super::header::link_icon(&link, libs);
+            let mut icon = super::super::header::link_icon(&link, libs);
+            // The Home button shows the web client's logo (a theme swaps it for its own through `content`).
+            let brand = matches!(link, Link::Home) && logo;
+            if brand {
+                d.attr(a, "href", "#/");
+                icon = None;
+            }
             let ic = d.add(
                 a,
                 &format!(
@@ -92,6 +99,9 @@ impl App {
                 ),
             );
             let mut slot = None;
+            if brand {
+                d.add(ic, "img.jf-brand");
+            }
             if let Some(name) = icon {
                 d.inline(ic, "width: 22px; height: 22px");
                 slot = Some((

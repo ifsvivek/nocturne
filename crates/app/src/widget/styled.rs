@@ -333,6 +333,11 @@ fn layered_subtrees<M>(w: &Styled<'_, M>) -> Vec<bool> {
     has
 }
 
+/// The loaded background picture of node `n`.
+fn bg_pic(s: &Scene, n: Id) -> Option<std::sync::Arc<super::pics::Pic>> {
+    super::pics::get(s.style(n).pic_url.as_deref()?)
+}
+
 fn image_order<M>(w: &Styled<'_, M>) -> (Vec<u32>, Vec<u32>, usize) {
     let s: &Scene = &w.scene;
     let n = s.doc.len();
@@ -352,9 +357,8 @@ fn image_order<M>(w: &Styled<'_, M>) -> (Vec<u32>, Vec<u32>, usize) {
             continue;
         }
         let node = &s.doc.nodes[i];
-        if let (Some(img), Some(images)) = (node.image, w.images)
-            && images.contains_key(&img.id)
-        {
+        let has_img = matches!((node.image, w.images), (Some(img), Some(images)) if images.contains_key(&img.id));
+        if has_img || (node.image.is_none() && bg_pic(s, i).is_some()) {
             count += 1;
         }
         stack.push((i, true));
@@ -395,6 +399,7 @@ impl<M> Styled<'_, M> {
         let draws_image = s.doc.nodes[n]
             .image
             .is_some_and(|i| self.images.is_some_and(|m| m.contains_key(&i.id)));
+        let draws_pic = !draws_image && bg_pic(s, n).is_some();
         let here = ps.k == lo;
         let eff = s.eff(n);
         let opacity = eff.opacity.unwrap_or(c.opacity);
@@ -429,7 +434,9 @@ impl<M> Styled<'_, M> {
                 // An image is its own pass; the text of a node is drawn with the quads before it.
                 if draws_image && ps.k == lo + 1 {
                     self.paint_content(r, n, rect, opacity, &eff, clip, true);
-                } else if here {
+                } else if draws_pic && ps.k == lo + 1 {
+                    self.paint_pic(r, n, rect, opacity, clip);
+                } else if here && !draws_pic || draws_pic && ps.k == lo + 2 {
                     self.paint_content(r, n, rect, opacity, &eff, clip, false);
                 }
             }
@@ -445,7 +452,11 @@ impl<M> Styled<'_, M> {
                     let mut opened: Vec<Rectangle> = vec![];
                     for &k in kids {
                         let kr = tr(s.rects[k], Point::new(o.x + child_sh.0, o.y + child_sh.1));
-                        let above = opened.iter().any(|l| l.intersects(&kr));
+                        // Boxes that only touch (fractional layout) do not overlap.
+                        let above = opened.iter().any(|l| {
+                            l.intersection(&kr)
+                                .is_some_and(|i| i.width > 0.5 && i.height > 0.5)
+                        });
                         if above {
                             r.with_layer(clip, |r| {
                                 self.paint(
@@ -579,7 +590,13 @@ impl<M> Styled<'_, M> {
             );
         }
         let layers = eff.bg.as_ref().unwrap_or(&c.bg);
-        for f in layers.iter().rev() {
+        // Layers written above a loaded picture are drawn after it (`paint_pic`).
+        let above = if bg_pic(s, n).is_some() {
+            c.pic_above.min(layers.len())
+        } else {
+            0
+        };
+        for f in layers[above..].iter().rev() {
             if let Some(bg) = gradient_bg(f, rect.width, rect.height, opacity) {
                 r.fill_quad(
                     Quad {
@@ -693,6 +710,66 @@ impl<M> Styled<'_, M> {
             }
         }
         let _ = clip;
+    }
+
+    /// The `url()` picture of the node's background: placed by `background-size`, `-position` and `-repeat`, clipped to the box.
+    fn paint_pic(
+        &self,
+        r: &mut iced::Renderer,
+        n: Id,
+        rect: Rectangle,
+        opacity: f32,
+        clip: Rectangle,
+    ) {
+        use iced::advanced::svg::Renderer as _;
+        let s: &Scene = &self.scene;
+        let c = s.style(n);
+        let (Some(p), Some(pic), Some(vis)) = (c.pic(), bg_pic(s, n), inter(clip, rect)) else {
+            return;
+        };
+        let (iw, ih) = match &pic.data {
+            super::pics::Data::Raster(_) => (pic.w as f32, pic.h as f32),
+            super::pics::Data::Vector(h) => {
+                let z = r.measure_svg(h);
+                (z.width as f32, z.height as f32)
+            }
+        };
+        let layers = s.eff(n).bg.clone();
+        let layers = layers.as_ref().unwrap_or(&c.bg);
+        for [x, y, w, h] in paint::pic_rects(&p, rect.width, rect.height, iw, ih) {
+            let at = Rectangle::new(Point::new(rect.x + x, rect.y + y), Size::new(w, h));
+            match &pic.data {
+                super::pics::Data::Raster(hd) => r.draw_image(
+                    iced::advanced::image::Image {
+                        border_radius: radius(c.radius),
+                        ..iced::advanced::image::Image::new(hd.clone()).opacity(opacity)
+                    },
+                    at,
+                    vis,
+                ),
+                super::pics::Data::Vector(hd) => r.draw_svg(
+                    iced::advanced::svg::Svg::new(hd.clone()).opacity(opacity),
+                    at,
+                    vis,
+                ),
+            }
+        }
+        for f in layers[..c.pic_above.min(layers.len())].iter().rev() {
+            if let Some(bg) = gradient_bg(f, rect.width, rect.height, opacity) {
+                r.fill_quad(
+                    Quad {
+                        bounds: rect,
+                        border: Border {
+                            radius: radius(c.radius),
+                            ..Border::default()
+                        },
+                        shadow: Shadow::default(),
+                        snap: false,
+                    },
+                    bg,
+                );
+            }
+        }
     }
 
     /// Image and text.

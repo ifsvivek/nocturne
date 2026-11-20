@@ -61,6 +61,13 @@ pub struct Computed {
     /// The parts `bg` is made of, so that `background-color` and `background-image` set theirs without resetting the other: the image and gradient layers, and the colour layer.
     pub bg_img: Rc<[Fill]>,
     pub bg_col: Option<Fill>,
+    /// The `url()` picture of the background (the address as written), and its `background-size`, `-position` and `-repeat`.
+    pub pic_url: Option<Rc<str>>,
+    pub pic_size: paint::BgSize,
+    pub pic_pos: paint::BgPos,
+    pub pic_repeat: (bool, bool),
+    /// How many of `bg`'s layers are drawn over the picture.
+    pub pic_above: usize,
     /// Border colours: top, right, bottom, left.
     pub border_color: [Color; 4],
     /// Corner radii: top-left, top-right, bottom-right, bottom-left.
@@ -102,6 +109,16 @@ pub struct Computed {
 }
 
 impl Computed {
+    /// The background picture with its size, position and repeat.
+    pub fn pic(&self) -> Option<paint::Pic> {
+        Some(paint::Pic {
+            url: self.pic_url.clone()?,
+            size: self.pic_size,
+            pos: self.pic_pos,
+            repeat: self.pic_repeat,
+        })
+    }
+
     pub fn root() -> Self {
         Self {
             layout: Style {
@@ -116,6 +133,11 @@ impl Computed {
             bg: Rc::from(Vec::new()),
             bg_img: Rc::from(Vec::new()),
             bg_col: None,
+            pic_url: None,
+            pic_size: paint::BgSize::Auto,
+            pic_pos: paint::BG_POS0,
+            pic_repeat: (true, true),
+            pic_above: 0,
             border_color: [Color::rgba(255, 255, 255, 40); 4],
             radius: [0.0; 4],
             shadows: Rc::from(Vec::new()),
@@ -319,6 +341,11 @@ pub enum Op {
     /// `background-color` alone / `background-image` alone: the other part stays.
     BgColor(Option<Fill>),
     BgImage(Rc<[Fill]>),
+    PicUrl(Option<Rc<str>>),
+    PicSize(paint::BgSize),
+    PicPos(paint::BgPos),
+    PicRepeat((bool, bool)),
+    PicAbove(usize),
     Color(Color),
     Opacity(f32),
     Shadows(Rc<[Shadow]>),
@@ -1015,9 +1042,6 @@ const PLANNED: &[&str] = &[
     "animation-fill-mode",
     "word-spacing",
     "text-decoration-color",
-    "background-size",
-    "background-position",
-    "background-repeat",
     "background-attachment",
     "background-clip",
     "background-origin",
@@ -1419,14 +1443,43 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
         } else {
             p::<i32>(v)?.clamp(-1000, 1000)
         })),
-        "background" => one(Op::Bg(paint::layers(v).or_else(bad)?.into())),
+        "background" => {
+            let mut ops = vec![Op::Bg(paint::layers(v).or_else(bad)?.into())];
+            let p = paint::pic(v);
+            ops.push(Op::PicUrl(p.as_ref().map(|p| p.url.clone())));
+            ops.push(Op::PicSize(
+                p.as_ref().map_or(paint::BgSize::Auto, |p| p.size),
+            ));
+            ops.push(Op::PicPos(p.as_ref().map_or(paint::BG_POS0, |p| p.pos)));
+            ops.push(Op::PicRepeat(p.as_ref().map_or((true, true), |p| p.repeat)));
+            ops.push(Op::PicAbove(paint::pic_above(v)));
+            Ok(Outcome::Ops(ops))
+        }
+        "background-size" | "background-position" | "background-repeat" => {
+            let l = v.to_ascii_lowercase();
+            let first = split_top(&l, Some(',')).into_iter().next().unwrap_or("");
+            let toks = split_top(first, None);
+            let op = match name {
+                "background-size" => paint::bg_size(&toks).map(Op::PicSize),
+                "background-position" => paint::bg_pos(&toks).map(Op::PicPos),
+                _ => paint::bg_repeat(&toks).map(Op::PicRepeat),
+            };
+            match op {
+                Some(op) => one(op),
+                None => bad(format!("`{v}` is not supported for {name}")),
+            }
+        }
         "background-color" => one(Op::BgColor(
             paint::layers(v)
                 .or_else(bad)?
                 .into_iter()
                 .find(|f| matches!(f, Fill::Solid(_))),
         )),
-        "background-image" => one(Op::BgImage(paint::layers(v).or_else(bad)?.into())),
+        "background-image" => Ok(Outcome::Ops(vec![
+            Op::BgImage(paint::layers(v).or_else(bad)?.into()),
+            Op::PicUrl(paint::pic(v).map(|p| p.url)),
+            Op::PicAbove(paint::pic_above(v)),
+        ])),
         "color" => one(Op::Color(color(v)?)),
         "opacity" => one(Op::Opacity(
             match v.strip_suffix('%') {
@@ -1628,6 +1681,21 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
         })),
         "pointer-events" => one(Op::Pointer(!matches!(v, "none"))),
         "outline-color" => one(Op::Outline(Some(color(v)?))),
+        // A picture as the content of an element (an `img` showing its logo): drawn like a background picture, contained.
+        "content" if paint::url_call(v).is_some_and(|(_, r)| r.start == 0) => {
+            let (url, _) = paint::url_call(v).unwrap_or_default();
+            Ok(Outcome::Ops(vec![
+                Op::Content(None),
+                Op::PicUrl(Some(url.as_str().into())),
+                Op::PicSize(paint::BgSize::Contain),
+                Op::PicPos(paint::BgPos {
+                    x: (0.0, 0.0),
+                    y: (0.5, 0.0),
+                }),
+                Op::PicRepeat((false, false)),
+                Op::PicAbove(0),
+            ]))
+        }
         "content" => one(Op::Content(match v {
             "none" | "normal" => None,
             _ => match string_arg(v) {
@@ -2009,6 +2077,11 @@ impl Op {
                 c.bg_img = v.into();
                 c.bg = b.clone();
             }
+            Op::PicUrl(u) => c.pic_url = u.clone(),
+            Op::PicSize(x) => c.pic_size = *x,
+            Op::PicPos(x) => c.pic_pos = *x,
+            Op::PicRepeat(x) => c.pic_repeat = *x,
+            Op::PicAbove(x) => c.pic_above = *x,
             Op::BgColor(col) => {
                 c.bg_col = col.clone();
                 c.bg = c.bg_img.iter().cloned().chain(c.bg_col.clone()).collect();

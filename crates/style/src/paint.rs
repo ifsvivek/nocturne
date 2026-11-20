@@ -131,19 +131,54 @@ fn gradient(args: &str) -> Result<Fill, String> {
     Ok(Fill::Linear { angle: ang, stops })
 }
 
+/// The address in a layer's first `url(...)` and the byte range of the whole call.
+pub fn url_call(layer: &str) -> Option<(String, std::ops::Range<usize>)> {
+    let lower = layer.to_ascii_lowercase();
+    let start = lower.find("url(")?;
+    let inner = start + 4;
+    let rest = &layer[inner..];
+    let (mut quote, mut end) = (None::<char>, None);
+    for (i, ch) in rest.char_indices() {
+        match (quote, ch) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), _) => {}
+            (None, '"' | '\'') => quote = Some(ch),
+            (None, ')') => {
+                end = Some(i);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let end = end?;
+    let url = rest[..end].trim().trim_matches(['"', '\'']).trim();
+    Some((url.to_string(), start..inner + end + 1))
+}
+
 /// A `background` value: comma-separated layers, each a colour or `linear-gradient()` (other words in a layer, such as
-/// `center / cover no-repeat`, are ignored). The first layer is on top.
+/// `center / cover no-repeat`, are ignored). The first layer is on top. A layer with `url()` contributes only its colour here: the picture is [`pic`].
 pub fn layers(v: &str) -> Result<Vec<Fill>, String> {
     if v.trim() == "none" {
         return Ok(vec![]);
     }
-    if v.contains("url(") {
-        return Err("`url()` is never fetched; images come from the app's own data".into());
-    }
     let mut out = vec![];
     for layer in split_top(v, Some(',')) {
+        let stripped;
+        let has_pic = url_call(layer).is_some();
+        let layer = if let Some((_, r)) = url_call(layer) {
+            stripped = format!("{} {}", &layer[..r.start], &layer[r.end..]);
+            stripped.as_str()
+        } else {
+            layer
+        };
         let l = layer.to_ascii_lowercase();
-        let fill = if let Some(i) = l.find("linear-gradient(") {
+        // Radial, conic and repeating gradients cannot be drawn: the layer is left out (the rest of the value still applies).
+        let unsupported = l.contains("radial-gradient(")
+            || l.contains("conic-gradient(")
+            || l.contains("repeating-linear-gradient(");
+        let fill = if unsupported {
+            continue;
+        } else if let Some(i) = l.find("linear-gradient(") {
             // Take the balanced call.
             let args_start = i + "linear-gradient(".len();
             let mut depth = 1;
@@ -166,11 +201,41 @@ pub fn layers(v: &str) -> Result<Vec<Fill>, String> {
         } else if l.contains("gradient(") {
             return Err("only linear-gradient() is supported".into());
         } else {
-            let c = split_top(&l, None)
-                .into_iter()
-                .find_map(|t| value::color(t).ok())
-                .ok_or_else(|| format!("`{layer}` is not a supported background"))?;
-            Fill::Solid(c)
+            let toks = split_top(&l, None);
+            match toks.iter().find_map(|t| value::color(t).ok()) {
+                Some(c) => Fill::Solid(c),
+                // A picture layer with only position, size and repeat words.
+                None if has_pic => continue,
+                // Only position, size and repeat words (`background: 0 0`): no fill, but the value still resets the old one.
+                None if toks.iter().all(|t| {
+                    t.trim_end_matches("px")
+                        .trim_end_matches('%')
+                        .parse::<f32>()
+                        .is_ok()
+                        || matches!(
+                            *t,
+                            "/" | "center"
+                                | "left"
+                                | "right"
+                                | "top"
+                                | "bottom"
+                                | "auto"
+                                | "cover"
+                                | "contain"
+                                | "repeat"
+                                | "no-repeat"
+                                | "repeat-x"
+                                | "repeat-y"
+                                | "scroll"
+                                | "fixed"
+                                | "local"
+                        )
+                }) =>
+                {
+                    continue;
+                }
+                None => return Err(format!("`{layer}` is not a supported background")),
+            }
         };
         out.push(fill);
         if out.len() > MAX_LAYERS {
@@ -178,6 +243,248 @@ pub fn layers(v: &str) -> Result<Vec<Fill>, String> {
         }
     }
     Ok(out)
+}
+
+/// One side of `background-size`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BgDim {
+    Auto,
+    Px(f32),
+    Pct(f32),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BgSize {
+    Auto,
+    Cover,
+    Contain,
+    Dims(BgDim, BgDim),
+}
+
+/// `background-position` per axis as `(fraction of the free space, extra px)`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BgPos {
+    pub x: (f32, f32),
+    pub y: (f32, f32),
+}
+
+pub const BG_POS0: BgPos = BgPos {
+    x: (0.0, 0.0),
+    y: (0.0, 0.0),
+};
+
+/// A picture layer (`url(...)`) of a `background` value: the address as written and its size, position and repeat.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Pic {
+    pub url: std::rc::Rc<str>,
+    pub size: BgSize,
+    pub pos: BgPos,
+    /// Repeat along x and y.
+    pub repeat: (bool, bool),
+}
+
+fn bg_dim(t: &str) -> Option<BgDim> {
+    if t == "auto" {
+        return Some(BgDim::Auto);
+    }
+    if let Some(n) = t.strip_suffix('%') {
+        return n.trim().parse().ok().map(BgDim::Pct);
+    }
+    if let Some(n) = t.strip_suffix("px") {
+        return n.trim().parse().ok().map(BgDim::Px);
+    }
+    (t == "0").then_some(BgDim::Px(0.0))
+}
+
+/// `center`, `left 10px`, `50% 0`, `top`: per axis.
+pub fn bg_pos(toks: &[&str]) -> Option<BgPos> {
+    let one = |t: &str, horiz: bool| -> Option<(f32, f32)> {
+        match t {
+            "left" if horiz => Some((0.0, 0.0)),
+            "right" if horiz => Some((1.0, 0.0)),
+            "top" if !horiz => Some((0.0, 0.0)),
+            "bottom" if !horiz => Some((1.0, 0.0)),
+            "center" => Some((0.5, 0.0)),
+            _ => match bg_dim(t)? {
+                BgDim::Pct(p) => Some((p / 100.0, 0.0)),
+                BgDim::Px(p) => Some((0.0, p)),
+                BgDim::Auto => None,
+            },
+        }
+    };
+    match toks {
+        [a] if matches!(*a, "top" | "bottom") => Some(BgPos {
+            x: (0.5, 0.0),
+            y: one(a, false)?,
+        }),
+        [a] => Some(BgPos {
+            x: one(a, true)?,
+            y: (0.5, 0.0),
+        }),
+        [a, b] if matches!(*a, "top" | "bottom") && matches!(*b, "left" | "right") => Some(BgPos {
+            x: one(b, true)?,
+            y: one(a, false)?,
+        }),
+        [a, b] => Some(BgPos {
+            x: one(a, true)?,
+            y: one(b, false)?,
+        }),
+        _ => None,
+    }
+}
+
+pub fn bg_size(toks: &[&str]) -> Option<BgSize> {
+    match toks {
+        ["cover"] => Some(BgSize::Cover),
+        ["contain"] => Some(BgSize::Contain),
+        [a] => Some(BgSize::Dims(bg_dim(a)?, BgDim::Auto)),
+        [a, b] => Some(BgSize::Dims(bg_dim(a)?, bg_dim(b)?)),
+        _ => None,
+    }
+}
+
+pub fn bg_repeat(toks: &[&str]) -> Option<(bool, bool)> {
+    let on = |t: &str| t != "no-repeat";
+    match toks {
+        ["repeat-x"] => Some((true, false)),
+        ["repeat-y"] => Some((false, true)),
+        [a] if matches!(*a, "repeat" | "no-repeat" | "space" | "round") => Some((on(a), on(a))),
+        [a, b] => Some((on(a), on(b))),
+        _ => None,
+    }
+}
+
+fn pic_dims_map() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, (u32, u32)>> {
+    static M: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (u32, u32)>>> =
+        std::sync::OnceLock::new();
+    M.get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// The app tells the engine how big a loaded picture is (by the address as written in the stylesheet), so that an `img` whose picture comes from `content: url()` gets its natural size in layout.
+pub fn set_pic_dims(url: &str, w: u32, h: u32) {
+    let mut m = pic_dims_map();
+    if m.len() < 512 {
+        m.insert(url.to_string(), (w, h));
+    }
+}
+
+pub fn pic_dims(url: &str) -> Option<(u32, u32)> {
+    pic_dims_map()
+        .get(url)
+        .copied()
+        .filter(|d| d.0 > 0 && d.1 > 0)
+}
+
+/// How many fills of `layers(v)` are listed above the first picture layer (gradients written before the `url()` paint over it).
+pub fn pic_above(v: &str) -> usize {
+    let mut n = 0;
+    for layer in split_top(v, Some(',')) {
+        if url_call(layer).is_some() {
+            break;
+        }
+        n += layers(layer).map_or(0, |l| l.len());
+    }
+    n
+}
+
+/// The first picture layer of a `background` / `background-image` value, with the position, size and repeat words of the layer (the longhands set them otherwise).
+pub fn pic(v: &str) -> Option<Pic> {
+    for layer in split_top(v, Some(',')) {
+        let Some((url, r)) = url_call(layer) else {
+            continue;
+        };
+        if url.is_empty() {
+            return None;
+        }
+        let rest = format!("{} {}", &layer[..r.start], &layer[r.end..]).to_ascii_lowercase();
+        let rest = rest.replace('/', " / ");
+        let (mut pos, mut size, mut rep) = (vec![], vec![], vec![]);
+        let mut after = false;
+        for t in split_top(&rest, None) {
+            match t {
+                "/" => after = true,
+                "repeat" | "no-repeat" | "repeat-x" | "repeat-y" | "space" | "round" => {
+                    rep.push(t);
+                    after = false;
+                }
+                "scroll" | "fixed" | "local" | "border-box" | "padding-box" | "content-box" => {
+                    after = false
+                }
+                _ if value::color(t).is_ok() && !matches!(t, "center" | "top" | "left") => {}
+                _ if after => size.push(t),
+                _ => pos.push(t),
+            }
+        }
+        return Some(Pic {
+            url: url.as_str().into(),
+            size: bg_size(&size).unwrap_or(BgSize::Auto),
+            pos: bg_pos(&pos).unwrap_or(BG_POS0),
+            repeat: bg_repeat(&rep).unwrap_or((true, true)),
+        });
+    }
+    None
+}
+
+/// Where a picture of `iw` x `ih` is drawn in a box of `bw` x `bh` (relative to the box; callers clip to it): one rectangle, or the tiles that cover the box (at most 400).
+pub fn pic_rects(p: &Pic, bw: f32, bh: f32, iw: f32, ih: f32) -> Vec<[f32; 4]> {
+    if iw <= 0.0 || ih <= 0.0 || bw <= 0.0 || bh <= 0.0 {
+        return vec![];
+    }
+    let dim = |d: BgDim, b: f32| match d {
+        BgDim::Auto => None,
+        BgDim::Px(p) => Some(p),
+        BgDim::Pct(p) => Some(b * p / 100.0),
+    };
+    let (w, h) = match p.size {
+        BgSize::Auto => (iw, ih),
+        BgSize::Cover => {
+            let s = (bw / iw).max(bh / ih);
+            (iw * s, ih * s)
+        }
+        BgSize::Contain => {
+            let s = (bw / iw).min(bh / ih);
+            (iw * s, ih * s)
+        }
+        BgSize::Dims(a, b) => match (dim(a, bw), dim(b, bh)) {
+            (Some(w), Some(h)) => (w, h),
+            (Some(w), None) => (w, ih * w / iw),
+            (None, Some(h)) => (iw * h / ih, h),
+            (None, None) => (iw, ih),
+        },
+    };
+    if w < 0.5 || h < 0.5 {
+        return vec![];
+    }
+    let x = (bw - w) * p.pos.x.0 + p.pos.x.1;
+    let y = (bh - h) * p.pos.y.0 + p.pos.y.1;
+    let axis = |at: f32, len: f32, bound: f32, rep: bool| -> Vec<f32> {
+        if !rep {
+            return vec![at];
+        }
+        let mut s = at - (at / len).ceil() * len;
+        if s > 0.0 {
+            s -= len;
+        }
+        let mut v = vec![];
+        while s < bound && v.len() < 200 {
+            v.push(s);
+            s += len;
+        }
+        v
+    };
+    let xs = axis(x, w, bw, p.repeat.0);
+    let ys = axis(y, h, bh, p.repeat.1);
+    let mut out = vec![];
+    for &yy in &ys {
+        for &xx in &xs {
+            if out.len() < 400 {
+                out.push([xx, yy, w, h]);
+            }
+        }
+    }
+    out
 }
 
 /// A gradient ready to draw: angle and at most [`MAX_STOPS`] stops with ascending fractions.
@@ -567,4 +874,57 @@ pub fn transition(v: &str) -> Result<TransSpec, String> {
         spec.eases = vec![spec.eases[k]];
     }
     Ok(spec)
+}
+
+#[cfg(test)]
+mod pic_tests {
+    use super::*;
+
+    #[test]
+    fn reads_the_picture_layer_of_a_shorthand() {
+        let p = pic("url(\"a b.png\") center / cover no-repeat #000, linear-gradient(red, blue)")
+            .unwrap();
+        assert_eq!(&*p.url, "a b.png");
+        assert_eq!(p.size, BgSize::Cover);
+        assert_eq!(p.repeat, (false, false));
+        assert_eq!(p.pos.x, (0.5, 0.0));
+        // The gradient and the colour still come out of `layers`.
+        let l = layers("url(x.png) no-repeat, linear-gradient(red, blue)").unwrap();
+        assert_eq!(l.len(), 1);
+        assert!(pic("linear-gradient(red, blue)").is_none());
+        let d = pic("url(data:image/svg+xml,%3Csvg viewBox='0 0 1 1'/%3E)").unwrap();
+        assert!(d.url.starts_with("data:image/svg+xml,"));
+    }
+
+    #[test]
+    fn counts_layers_over_the_picture_and_skips_radial_ones() {
+        assert_eq!(
+            pic_above("linear-gradient(red, blue), url(x.png) no-repeat"),
+            1
+        );
+        assert_eq!(pic_above("url(x.png), linear-gradient(red, blue)"), 0);
+        let l = layers("radial-gradient(circle at 50% 42%, red, blue), repeating-linear-gradient(135deg, red 0, blue 4px), #101010").unwrap();
+        assert_eq!(l.len(), 1);
+        assert!(layers("0 0").unwrap().is_empty());
+    }
+
+    #[test]
+    fn places_and_tiles() {
+        let mut p = pic("url(x.png) 100% 0 / 50px auto no-repeat").unwrap();
+        // 100 x 50 image shown 50 wide: 25 high, flush right and top.
+        assert_eq!(
+            pic_rects(&p, 200.0, 100.0, 100.0, 50.0),
+            vec![[150.0, 0.0, 50.0, 25.0]]
+        );
+        p.size = BgSize::Cover;
+        p.pos = bg_pos(&["center"]).unwrap();
+        assert_eq!(
+            pic_rects(&p, 200.0, 200.0, 100.0, 50.0),
+            vec![[-100.0, 0.0, 400.0, 200.0]]
+        );
+        p.size = BgSize::Auto;
+        p.repeat = (true, false);
+        p.pos = BG_POS0;
+        assert_eq!(pic_rects(&p, 100.0, 50.0, 50.0, 50.0).len(), 2);
+    }
 }

@@ -530,12 +530,14 @@ impl Source {
     /// The user's libraries for the top nav. Collections and Playlists are views of their own
     /// (always in the nav), so a server library with that type or name is not listed twice.
     pub async fn libraries(&self) -> Result<Vec<Media>, Failed> {
-        let mut r = self.client.libraries(&self.user).await;
-        if let Ok(i) = &mut r {
-            i.items
-                .retain(|x| !is_global_view(x.collection_type.as_deref(), &x.name));
-        }
-        self.media(r)
+        let mut r = self.libraries_all().await?;
+        r.retain(|m| !is_view(m));
+        Ok(r)
+    }
+
+    /// Every library the server lists, Collections and Playlists included (the Server UI's My Media tiles show them).
+    pub async fn libraries_all(&self) -> Result<Vec<Media>, Failed> {
+        self.media(self.client.libraries(&self.user).await)
     }
 
     /// What the server's own UI is made of (home sections, library order, branding), for Server
@@ -936,6 +938,11 @@ pub fn image_key(m: &Media, art: Art, width: u32, extra: u32) -> String {
 /// Disk-cache key of a profile picture (the tag changes whenever the picture does).
 pub fn user_image_key(scope: &str, uid: &str, tag: &str, size: u32) -> String {
     format!("{scope}|user|{uid}|{tag}|{size}")
+}
+
+/// A library that is a Collections or Playlists view (see [`is_global_view`]).
+pub fn is_view(m: &Media) -> bool {
+    is_global_view(m.collection.as_deref(), &m.title)
 }
 
 /// Server views that the nav already offers as Collections and Playlists.

@@ -30,6 +30,17 @@ impl App {
         Some(web)
     }
 
+    /// The file name of the web client's own logo (`icon-transparent.<hash>.png`), as its stylesheet names it.
+    pub(super) fn jf_logo(&self) -> Option<String> {
+        let css = self.jf_base()?;
+        let i = css.find("icon-transparent.")?;
+        let end = i + css[i..].find(".png")? + 4;
+        let name = &css[i..end];
+        name.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+            .then(|| name.to_string())
+    }
+
     /// The server's branding CSS and the user's own theme as one text, in the web client's order (imports inlined once fetched). The compat translator never sees it.
     pub(super) fn jf_user_text(&self) -> String {
         let (src, ui) = (self.theme_source(), self.theme_ui());
@@ -40,6 +51,12 @@ impl App {
                 .to_string()
         };
         let mut out = String::new();
+        // The stock header logo, under any theme's own rule for it.
+        if let Some(l) = self.jf_logo() {
+            out += &format!(
+                ".MuiToolbar-root .MuiButton-startIcon img.jf-brand {{ content: url(\"{l}\"); height: 24px; width: auto; }}\n"
+            );
+        }
         if let Some(b) = ui.and_then(|u| self.themes.branding_of(u)) {
             out += &resolved(b);
             out.push('\n');

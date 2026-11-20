@@ -81,7 +81,16 @@ impl App {
         several: bool,
         n: usize,
     ) -> bool {
-        let items = h.items(k);
+        let mut items = h.items(k);
+        // The web client asks Next Up without the episodes already under Continue Watching.
+        if k == HRow::NextUp {
+            let resuming = h.items(HRow::Resume);
+            items.retain(|(m, _)| {
+                !resuming
+                    .iter()
+                    .any(|(r, _)| r.id == m.id && r.origin == m.origin)
+            });
+        }
         if items.is_empty() {
             return false;
         }
@@ -152,7 +161,11 @@ impl App {
                 pic_id: 0,
                 key: Some(self.pic_keys(m, art, width)),
                 title,
-                meta: String::new(),
+                meta: if kind_tile {
+                    m.collection.clone().unwrap_or_default()
+                } else {
+                    String::new()
+                },
                 index: ci,
                 progress: m.progress(),
                 badge: badge(m),
