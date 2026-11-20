@@ -618,6 +618,8 @@ impl App {
             || !self.probing.is_empty()
             || self.launch_scan
             || self.dl.busy()
+            // Remote-control commands from the server are acted on in the tick.
+            || !self.remote.is_empty()
             || self
                 .catalog
                 .slots
