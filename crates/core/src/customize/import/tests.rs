@@ -833,7 +833,7 @@ async fn font_file_count_and_total_size_limits() {
     let mut padded = ttf("Pad");
     padded.resize(1_900_000, 0);
     let mut routes: Vec<(&'static str, Route)> = vec![];
-    let names: Vec<&'static str> = (0..14)
+    let names: Vec<&'static str> = (0..26)
         .map(|i| &*Box::leak(format!("/f{i}.ttf").into_boxed_str()))
         .collect();
     for n in &names {
@@ -846,7 +846,7 @@ async fn font_file_count_and_total_size_limits() {
         routes.push((n, route("font/ttf", padded.clone())));
     }
     let s = serve(|_| routes).await;
-    // 14 different weights: 12 files are loaded
+    // 26 different weights: 24 files are loaded
     let src: String = names
         .iter()
         .enumerate()
@@ -854,12 +854,16 @@ async fn font_file_count_and_total_size_limits() {
         .collect();
     let r = resolve(&src, None, &opts()).await;
     assert_eq!(r.fonts.len(), fonts::MAX_FILES, "{}", reasons(&r));
-    assert_eq!(
-        r.notes
-            .iter()
-            .filter(|n| n.reason.contains("more than 12 font files"))
-            .count(),
-        2
+    let capped: Vec<_> = r
+        .notes
+        .iter()
+        .filter(|n| n.reason.contains("font file(s) were not loaded"))
+        .collect();
+    assert_eq!(capped.len(), 1, "one note, not one per file");
+    assert!(
+        capped[0].reason.starts_with("2 more"),
+        "{}",
+        capped[0].reason
     );
     // 5 x 1.9 MB: the fifth passes 8 MB
     let src: String = p
@@ -981,4 +985,58 @@ fn no_write_verbs_and_no_credentials_in_the_fetch_code() {
     ] {
         assert!(!src.to_ascii_lowercase().contains(bad), "{bad}");
     }
+}
+
+/// Google Fonts' `css2` format for a variable family: one `@font-face` per script subset and
+/// weight, the same file for every weight of a subset.
+#[tokio::test]
+async fn google_variable_family_is_fetched_once_per_wanted_subset() {
+    let s = serve(|b| {
+        let mut sheet = String::new();
+        for w in [400, 500, 700] {
+            for (name, file, range) in [
+                ("cyrillic", "cyr", "U+0301, U+0400-045F, U+0490-0491"),
+                ("greek", "greek", "U+0370-0377, U+037A-037F"),
+                ("latin-ext", "ext", "U+0100-02BA, U+02BD-02C5, U+1E00-1EFF"),
+                ("latin", "latin", "U+0000-00FF, U+0131, U+0152-0153"),
+            ] {
+                sheet += &format!(
+                    "/* {name} */\n@font-face {{\n  font-family: 'Inter';\n  font-style: normal;\n  font-weight: {w};\n  font-display: swap;\n  src: url({b}/s/inter/{file}.ttf) format('truetype');\n  unicode-range: {range};\n}}\n"
+                );
+            }
+        }
+        vec![
+            ("/css2", css(&sheet)),
+            ("/s/inter/cyr.ttf", route("font/ttf", ttf("Inter"))),
+            ("/s/inter/greek.ttf", route("font/ttf", ttf("Inter"))),
+            ("/s/inter/ext.ttf", route("font/ttf", ttf("Inter"))),
+            ("/s/inter/latin.ttf", route("font/ttf", ttf("Inter"))),
+        ]
+    })
+    .await;
+    let r = resolve(&format!("@import url('{}');", s.u("/css2")), None, &opts()).await;
+    assert_eq!(
+        r.fonts.len(),
+        6,
+        "latin and latin-ext for 3 weights: {}",
+        reasons(&r)
+    );
+    assert!(r.fonts[0].url.ends_with("/latin.ttf"), "Latin comes first");
+    assert_eq!(
+        (
+            s.hits("/s/inter/latin.ttf"),
+            s.hits("/s/inter/ext.ttf"),
+            s.hits("/s/inter/cyr.ttf"),
+            s.hits("/s/inter/greek.ttf")
+        ),
+        (1, 1, 0, 0),
+        "one download per distinct file, other scripts never"
+    );
+    assert_eq!(
+        r.notes.len(),
+        1,
+        "one line, not one per file: {}",
+        reasons(&r)
+    );
+    assert!(r.notes[0].info && r.notes[0].reason.starts_with("Inter: 2 subset"));
 }

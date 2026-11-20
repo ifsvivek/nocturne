@@ -247,8 +247,10 @@ impl Editor {
 /// What the app knows about a server whose UI might be used, right now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Avail {
-    /// Its `ServerUi` is loaded.
-    Ready,
+    /// Its `ServerUi` is loaded; `branded`: it has custom CSS (the default look of a server).
+    Ready {
+        branded: bool,
+    },
     /// Being fetched: the NOCTURNE layout shows meanwhile, without a note.
     Loading,
     SignedOut,
@@ -325,7 +327,35 @@ pub fn pick(
     item_server: Option<SourceId>,
     avail: &dyn Fn(SourceId) -> Avail,
 ) -> Pick {
-    let target = match sources.ui_of(ctx) {
+    // "All" never chosen: it follows the look of the first (highest priority) server, with the
+    // data of every source, so a choice made on that server is visible in the combined view too.
+    if ctx.is_none() && sources.ui_chosen(None).is_none() {
+        return match sources.first_server() {
+            Some(f) => Pick {
+                own: false,
+                ..pick(sources, Some(f.id), None, avail)
+            },
+            None => Pick::default(),
+        };
+    }
+    // Never chosen: a server shows its own UI when it has branding, everything else NOCTURNE's.
+    if sources.ui_chosen(ctx).is_none() {
+        let own = ctx.filter(|c| {
+            sources
+                .get(*c)
+                .is_some_and(|p| p.enabled && matches!(p.kind, ProfileKind::Jellyfin { .. }))
+        });
+        return match own.map(|c| (c, avail(c))) {
+            Some((c, Avail::Ready { branded: true })) => Pick {
+                from: Some(c),
+                own: true,
+                note: None,
+            },
+            // Not chosen, so nothing to explain.
+            _ => Pick::default(),
+        };
+    }
+    let target = match sources.ui_chosen(ctx).unwrap_or_default() {
         UiFrom::Nocturne => return Pick::default(),
         UiFrom::SelfServer => match ctx {
             Some(c) => c,
@@ -351,7 +381,7 @@ pub fn pick(
         return fallback(Some(UiNote::Disabled(target)));
     }
     match avail(target) {
-        Avail::Ready => Pick {
+        Avail::Ready { .. } => Pick {
             from: Some(target),
             own: ctx == Some(target),
             note: None,
@@ -376,6 +406,12 @@ pub fn wanted(sources: &Sources) -> Vec<SourceId> {
             v.push(i);
         }
     };
+    // A server nobody chose a look for is loaded to find out whether it has branding.
+    for p in &sources.profiles {
+        if sources.ui_chosen(Some(p.id)).is_none() {
+            add(p.id);
+        }
+    }
     for (k, to) in &sources.ui_from {
         let ctx = k.parse().ok().map(SourceId);
         match *to {
@@ -504,7 +540,7 @@ mod tests {
     }
 
     fn ready(_: SourceId) -> Avail {
-        Avail::Ready
+        Avail::Ready { branded: false }
     }
 
     #[test]
@@ -645,8 +681,51 @@ mod tests {
     }
 
     #[test]
+    fn branded_servers_default_to_their_own_ui_and_an_explicit_choice_wins() {
+        let (mut s, a, b, l) = setup();
+        let branded = |x: SourceId| Avail::Ready { branded: x == a };
+        // never chosen: branding -> self, no branding -> NOCTURNE, local and "All" -> NOCTURNE
+        let p = pick(&s, Some(a), None, &branded);
+        assert_eq!((p.from, p.own, p.note), (Some(a), true, None));
+        assert_eq!(pick(&s, Some(b), None, &branded), Pick::default());
+        assert_eq!(pick(&s, Some(l), None, &branded), Pick::default());
+        // "All" never chosen follows the first server: its branding, or what was chosen for it
+        let plain = |_: SourceId| Avail::Ready { branded: false };
+        let p = pick(&s, None, None, &branded);
+        assert_eq!((p.from, p.own), (Some(a), false));
+        assert_eq!(pick(&s, None, None, &plain), Pick::default());
+        s.set_ui_from(Some(a), UiFrom::Source(b));
+        let p = pick(&s, None, None, &plain);
+        assert_eq!((p.from, p.own), (Some(b), false), "All shows B's UI");
+        s.set_ui_from(Some(a), UiFrom::Nocturne);
+        assert_eq!(pick(&s, None, None, &branded), Pick::default());
+        s.ui_from.clear();
+        // still loading or offline: NOCTURNE without a note
+        assert_eq!(
+            pick(&s, Some(a), None, &|_| Avail::Loading),
+            Pick::default()
+        );
+        assert_eq!(
+            pick(&s, Some(a), None, &|_| Avail::Unreachable),
+            Pick::default()
+        );
+        // an explicit NOCTURNE is kept and wins over the default
+        assert!(s.set_ui_from(Some(a), UiFrom::Nocturne));
+        assert_eq!(s.ui_chosen(Some(a)), Some(UiFrom::Nocturne));
+        assert_eq!(pick(&s, Some(a), None, &branded), Pick::default());
+        // an explicit choice of another server's UI wins over the default too
+        assert!(s.set_ui_from(Some(a), UiFrom::Source(b)));
+        let p = pick(&s, Some(a), None, &|_| Avail::Ready { branded: true });
+        assert_eq!((p.from, p.own), (Some(b), false));
+    }
+
+    #[test]
     fn wanted_lists_the_servers_to_load() {
         let (mut s, a, b, l) = setup();
+        // servers nobody chose a look for are probed for branding
+        assert_eq!(wanted(&s), [a, b]);
+        s.set_ui_from(Some(a), UiFrom::Nocturne);
+        s.set_ui_from(Some(b), UiFrom::Nocturne);
         assert!(wanted(&s).is_empty());
         s.set_ui_from(Some(l), UiFrom::Source(b));
         assert_eq!(wanted(&s), [b]);

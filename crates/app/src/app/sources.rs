@@ -304,6 +304,8 @@ impl App {
         .width(Length::Fill);
         if let Some(n) = self.ui_note(Some(id)) {
             who = who.push(text(n).size(t::CAPTION).color(t::warn()));
+        } else if let Some(h) = self.ui_default_hint(Some(id)) {
+            who = who.push(text(h).size(t::CAPTION).color(t::text_secondary()));
         }
         let status = container(
             row![
@@ -352,7 +354,7 @@ impl App {
                 acts = acts.push(btn(
                     &format!(
                         "UI: {}",
-                        self.ui_choice_label(Some(id), self.sources.ui_of(Some(id)))
+                        self.ui_choice_label(Some(id), self.ui_current(Some(id)))
                     ),
                     false,
                     false,
@@ -400,8 +402,10 @@ impl App {
         .width(Length::Fill);
         if let Some(n) = self.ui_note(None) {
             who = who.push(text(n).size(t::CAPTION).color(t::warn()));
+        } else if let Some(h) = self.ui_default_hint(None) {
+            who = who.push(text(h).size(t::CAPTION).color(t::text_secondary()));
         }
-        let now = self.ui_choice_label(None, self.sources.ui_of(None));
+        let now = self.ui_choice_label(None, self.ui_current(None));
         row![
             who,
             action_button(

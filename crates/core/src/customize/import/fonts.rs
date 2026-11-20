@@ -9,7 +9,7 @@ use std::sync::Arc;
 pub const MAX_FILE: usize = 2 * 1024 * 1024;
 /// All font files of one theme.
 pub const MAX_TOTAL: usize = 8 * 1024 * 1024;
-pub const MAX_FILES: usize = 12;
+pub const MAX_FILES: usize = 24;
 /// A decoded font (a WOFF2 can be several times its download size).
 pub const MAX_DECODED: usize = 8 * 1024 * 1024;
 /// Descriptors read per theme; the rest are ignored with one note.
@@ -261,8 +261,8 @@ pub(super) fn ordered(face: &Face) -> Vec<&Src> {
     v.into_iter().map(|(_, s)| s).collect()
 }
 
-/// Does a `unicode-range` list cover basic Latin letters?
-fn latin(range: &str) -> bool {
+/// Does a `unicode-range` list cover `lo..=hi` entirely in one range?
+fn covers(range: &str, lo_need: u32, hi_need: u32) -> bool {
     range.split(',').any(|r| {
         let r = r.trim().to_ascii_uppercase();
         let Some(r) = r.strip_prefix("U+") else {
@@ -272,14 +272,26 @@ fn latin(range: &str) -> bool {
             Some((a, b)) => (u32::from_str_radix(a, 16), u32::from_str_radix(b, 16)),
             None => (u32::from_str_radix(r, 16), u32::from_str_radix(r, 16)),
         };
-        matches!((lo, hi), (Ok(lo), Ok(hi)) if lo <= 0x41 && hi >= 0x7A)
+        matches!((lo, hi), (Ok(lo), Ok(hi)) if lo <= lo_need && hi >= hi_need)
     })
 }
 
-/// One face per (family, weight, style): fonts served as several `unicode-range` subsets (Google
-/// Fonts) keep the Latin one, an unrestricted one wins over all. Returns the kept faces in order
-/// of appearance and the number of dropped duplicates.
-pub(super) fn select(faces: Vec<Face>) -> (Vec<Face>, usize) {
+/// Does a `unicode-range` list cover basic Latin letters?
+fn latin(range: &str) -> bool {
+    covers(range, 0x41, 0x7A)
+}
+
+/// Does it cover the Latin Extended-A letters (Google's `latin-ext`: U+0100-02BA and more)?
+fn latin_ext(range: &str) -> bool {
+    covers(range, 0x100, 0x17F)
+}
+
+/// Which faces of one (family, weight, style) are worth downloading: an unrestricted one wins over
+/// all; else the Latin and Latin Extended `unicode-range` subsets (Google Fonts serves one
+/// `@font-face` per script); the other scripts are skipped. Returns the kept faces, Latin first (so
+/// a download limit never costs a family its basic letters), and for each family the number of
+/// distinct skipped subsets.
+pub(super) fn select(faces: Vec<Face>) -> (Vec<Face>, Vec<(String, usize)>) {
     let mut keys: Vec<(String, u16, u16, FontStyle)> = vec![];
     let mut groups: Vec<Vec<Face>> = vec![];
     for f in faces {
@@ -291,20 +303,42 @@ pub(super) fn select(faces: Vec<Face>) -> (Vec<Face>, usize) {
             }
         }
     }
-    let (mut out, mut dropped) = (vec![], 0);
+    let (mut first, mut ext) = (vec![], vec![]);
+    let mut skipped: Vec<(String, Vec<String>)> = vec![];
     for g in groups {
-        dropped += g.len() - 1;
-        let best = g
-            .iter()
-            .position(|f| f.unicode_range.is_none())
-            .or_else(|| {
-                g.iter()
-                    .position(|f| f.unicode_range.as_deref().is_some_and(latin))
-            })
-            .unwrap_or(0);
-        out.extend(g.into_iter().nth(best));
+        if let Some(i) = g.iter().position(|f| f.unicode_range.is_none()) {
+            first.extend(g.into_iter().nth(i));
+            continue;
+        }
+        let wanted = |f: &Face| {
+            f.unicode_range
+                .as_deref()
+                .is_some_and(|r| latin(r) || latin_ext(r))
+        };
+        // Nothing Latin at all (a single-script font): keep the first so the family still loads.
+        let keep_first = !g.iter().any(wanted);
+        for (n, f) in g.into_iter().enumerate() {
+            if wanted(&f) || (keep_first && n == 0) {
+                if f.unicode_range.as_deref().is_some_and(latin) || keep_first {
+                    first.push(f);
+                } else {
+                    ext.push(f);
+                }
+            } else {
+                let r = f.unicode_range.clone().unwrap_or_default();
+                match skipped.iter_mut().find(|(fam, _)| *fam == f.family) {
+                    Some((_, rs)) if !rs.contains(&r) => rs.push(r),
+                    Some(_) => {}
+                    None => skipped.push((f.family.clone(), vec![r])),
+                }
+            }
+        }
     }
-    (out, dropped)
+    first.extend(ext);
+    (
+        first,
+        skipped.into_iter().map(|(f, r)| (f, r.len())).collect(),
+    )
 }
 
 /// `data:[mime][;base64],payload` decoded; only base64 payloads (what fonts use).
@@ -440,15 +474,15 @@ mod tests {
             unicode_range: r.map(Into::into),
             anchor: (1, 1),
         };
-        let (k, dropped) = select(vec![
+        let (k, skipped) = select(vec![
             mk(Some("U+0400-045F, U+0490-0491"), "cyr"),
+            mk(Some("U+0100-02BA, U+02BD-02C5"), "ext"),
             mk(Some("U+0000-00FF, U+0131"), "latin"),
-            mk(Some("U+0100-02AF"), "ext"),
+            mk(Some("U+0370-03FF"), "greek"),
         ]);
-        assert_eq!(
-            (k.len(), dropped, k[0].srcs[0].url.as_str()),
-            (1, 2, "latin")
-        );
+        let urls: Vec<_> = k.iter().map(|f| f.srcs[0].url.as_str()).collect();
+        assert_eq!(urls, ["latin", "ext"], "Latin first");
+        assert_eq!(skipped, [("Inter".to_string(), 2)]);
         let (k, _) = select(vec![mk(Some("U+0400-045F"), "cyr"), mk(None, "all")]);
         assert_eq!(k[0].srcs[0].url, "all");
     }

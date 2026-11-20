@@ -20,20 +20,7 @@ impl App {
         let mut tree = Tree::new();
         let body = super::jf_root(&mut tree, "libraryDocument.withSectionTabs.mouseIdle");
         self.jf_header_nodes(&mut tree, body, None);
-        let d = &mut tree.doc;
-        let spacer = d.add(body, "div.jf-spacer");
-        d.inline(spacer, "height: 48px");
-        let main = d.add(body, "main.MuiBox-root");
-        let skin = d.add(main, "div.skinBody");
-        let page = d.add(
-            skin,
-            "div.page.mainAnimatedPage.homePage.libraryPage.allLibraryPage.pageWithAbsoluteTabs.withTabs",
-        );
-        d.set_id(page, "indexPage");
-        d.attr(page, "data-role", "page");
-        let tab = d.add(page, "div.tabContent.pageTabContent.is-active");
-        d.set_id(tab, "homeTab");
-        let sections = d.add(tab, "div.sections.homeSectionsContainer");
+        let sections = home_frame(&mut tree, body);
         let gs = self.geos();
         let several = self.several_sources();
         let mut n = 0;
@@ -205,5 +192,69 @@ pub(crate) fn second_line(m: &Media) -> String {
         Kind::Movie | Kind::Series => m.year.map(|y| y.to_string()).unwrap_or_default(),
         Kind::MusicAlbum | Kind::Audio => m.sub.clone().unwrap_or_default(),
         _ => m.year.map(|y| y.to_string()).unwrap_or_default(),
+    }
+}
+
+/// Home's page frame under `#reactRoot` (the spacer under the header, `main`, `.skinBody`, the page and its tab); returns `.homeSectionsContainer`.
+/// The web client fills the window (`html, body, #reactRoot { height: 100% }`, the page absolute inside `main`) and the browser scrolls the overflow of that viewport. The engine scrolls the height of the root box, which ignores overflow: Home, the one page that scrolls as a whole, grows with its sections instead (the library page scrolls its own grid, the item page is not absolute). Without this the wheel, keys and scrollbar did nothing on Home.
+fn home_frame(tree: &mut Tree, root: Id) -> Id {
+    let d = &mut tree.doc;
+    for n in [0, d.nodes[root].parent.unwrap_or(0), root] {
+        d.inline(n, "height: auto !important");
+    }
+    let spacer = d.add(root, "div.jf-spacer");
+    d.inline(spacer, "height: 48px");
+    let main = d.add(root, "main.MuiBox-root");
+    let skin = d.add(main, "div.skinBody");
+    let page = d.add(
+        skin,
+        "div.page.mainAnimatedPage.homePage.libraryPage.allLibraryPage.pageWithAbsoluteTabs.withTabs",
+    );
+    d.inline(page, "position: relative !important");
+    d.set_id(page, "indexPage");
+    d.attr(page, "data-role", "page");
+    let tab = d.add(page, "div.tabContent.pageTabContent.is-active");
+    d.set_id(tab, "homeTab");
+    d.add(tab, "div.sections.homeSectionsContainer")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nocturne_style::{Builders, Fonts, Interaction, Scene, Sheet, approx};
+    use std::rc::Rc;
+
+    /// The web client's own rules that fix the page to the window, over the UA sheet.
+    const WEB: &str = "body, html { height: 100%; margin: 0 } #reactRoot { height: 100% } .mainAnimatedPage { position: absolute; top: 0; bottom: 0; left: 0; right: 0 } .skinBody { position: static }";
+
+    /// Home taller than the window must scroll as a whole: the wheel over a section, or over nothing, moves the page.
+    #[test]
+    fn home_scrolls_under_the_web_clients_fixed_height_page() {
+        let mut tree = Tree::new();
+        let root = super::super::jf_root(&mut tree, "libraryDocument.withSectionTabs.mouseIdle");
+        let sections = home_frame(&mut tree, root);
+        let mut rows = vec![];
+        for _ in 0..8 {
+            let v = tree.doc.add(sections, "div.verticalSection");
+            tree.doc.inline(v, "height: 300px");
+            rows.push(v);
+        }
+        let css = format!("{}\n{WEB}", super::super::UA);
+        let mut s = Scene::build(
+            tree.doc,
+            Rc::new(Sheet::parse(&css)),
+            Rc::new(Fonts::new()),
+            (1280.0, 800.0),
+            Interaction::default(),
+            None,
+            &Builders::new(),
+            &mut approx,
+        )
+        .expect("builds");
+        assert!(s.page_height() > 2400.0, "page is {}", s.page_height());
+        assert!(s.wheel(Some(rows[0]), 0.0, -120.0, &mut approx));
+        assert_eq!(s.scroll.page_y, 120.0);
+        assert!(s.wheel(None, 0.0, -120.0, &mut approx));
+        assert_eq!(s.scroll.page_y, 240.0);
     }
 }

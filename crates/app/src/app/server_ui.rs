@@ -33,7 +33,9 @@ impl App {
         match self.catalog.slot(id).map(|s| &s.status) {
             Some(Status::SignedOut) => Avail::SignedOut,
             Some(Status::Offline { .. }) => Avail::Unreachable,
-            _ if self.server_ui.contains_key(&id) => Avail::Ready,
+            _ if let Some(u) = self.server_ui.get(&id) => Avail::Ready {
+                branded: u.css.is_some(),
+            },
             _ => match self.ui_state.get(&id) {
                 Some(false) => Avail::Unreachable,
                 _ => Avail::Loading,
@@ -148,7 +150,7 @@ impl App {
         let choices = self.sources.ui_choices(ctx);
         let at = choices
             .iter()
-            .position(|c| *c == self.sources.ui_of(ctx))
+            .position(|c| *c == self.ui_current(ctx))
             .unwrap_or(0);
         let next = choices[(at + 1) % choices.len()];
         if self.sources.set_ui_from(ctx, next) {
@@ -171,9 +173,39 @@ impl App {
         self.ui_gen += 1;
     }
 
+    /// The look `ctx` has now: the saved choice, else the default (the server's own with branding).
+    pub(super) fn ui_current(&self, ctx: Option<SourceId>) -> UiFrom {
+        self.sources.ui_chosen(ctx).unwrap_or_else(|| {
+            match ctx.filter(|c| self.ui_pick_in(Some(*c), None).own) {
+                Some(_) => UiFrom::SelfServer,
+                None => UiFrom::Nocturne,
+            }
+        })
+    }
+
+    /// The hint next to the choice while it is the default: the user never chose, and the server has branding.
+    pub(super) fn ui_default_hint(&self, ctx: Option<SourceId>) -> Option<String> {
+        if self.sources.ui_chosen(ctx).is_some() {
+            return None;
+        }
+        if ctx.is_none() {
+            // Mirrors `server_ui::pick`: the first enabled server, whatever look it has.
+            let first = self.sources.first_server()?;
+            return Some(format!(
+                "Automatic: the combined view follows the look chosen for {}, the first server, and shows the items of every source",
+                first.label
+            ));
+        }
+        (self.ui_current(ctx) == UiFrom::SelfServer)
+            .then(|| "default: this server's look, it has a custom theme".into())
+    }
+
     /// The label of one choice, for the button.
     pub(super) fn ui_choice_label(&self, ctx: Option<SourceId>, c: UiFrom) -> String {
         match c {
+            UiFrom::Nocturne if ctx.is_none() && self.sources.ui_chosen(None).is_none() => {
+                "Automatic".into()
+            }
             UiFrom::Nocturne => "NOCTURNE".into(),
             UiFrom::SelfServer if ctx.is_none() => "Each item's server".into(),
             UiFrom::SelfServer => "This server".into(),

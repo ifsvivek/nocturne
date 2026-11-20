@@ -593,6 +593,7 @@ struct Net {
     font_total: usize,
     imports: usize,
     font_files: usize,
+    font_cache: std::collections::HashMap<String, (Arc<Vec<u8>>, Option<String>)>,
     stack: Vec<String>,
     memo: HashMap<String, Raw>,
     notes: Vec<Note>,
@@ -902,12 +903,16 @@ impl Net {
         })
     }
 
-    async fn font_file(&mut self, src: &fonts::Src) -> Result<(Vec<u8>, Option<String>), String> {
+    async fn font_file(
+        &mut self,
+        src: &fonts::Src,
+    ) -> Result<(Arc<Vec<u8>>, Option<String>), String> {
+        // One file serves every weight of a variable font: fetched, counted and decoded once.
+        if let Some(hit) = self.font_cache.get(&src.url) {
+            return Ok(hit.clone());
+        }
         if self.font_files >= fonts::MAX_FILES {
-            return Err(format!(
-                "more than {} font files in one theme",
-                fonts::MAX_FILES
-            ));
+            return Err(CAP.to_string());
         }
         self.font_files += 1;
         let raw: Arc<Vec<u8>> = if src.url.starts_with("data:") {
@@ -929,16 +934,23 @@ impl Net {
         self.font_total += raw.len();
         let sfnt = fonts::to_sfnt(&raw)?;
         let family = fonts::validate(&sfnt)?;
-        Ok((sfnt, family))
+        let hit = (Arc::new(sfnt), family);
+        self.font_cache.insert(src.url.clone(), hit.clone());
+        Ok(hit)
     }
 
     async fn load_fonts(&mut self) -> Vec<LoadedFont> {
         let faces = std::mem::take(&mut self.faces);
-        let (faces, dropped) = fonts::select(faces);
-        if dropped > 0 {
-            self.note((1, 1), "", format!("{dropped} other unicode-range part(s) of the same fonts were skipped; the Latin one is used"), true);
+        let (faces, skipped) = fonts::select(faces);
+        for (family, n) in skipped {
+            self.note(
+                (1, 1),
+                "",
+                format!("{family}: {n} subset(s) for other scripts skipped"),
+                true,
+            );
         }
-        let mut out = vec![];
+        let (mut out, mut capped) = (vec![], std::collections::BTreeSet::new());
         for face in faces {
             let mut why = "no loadable source (only TTF, OTF, WOFF and WOFF2 are used)".to_string();
             let mut shown = face.srcs.first().map(|s| s.url.clone()).unwrap_or_default();
@@ -953,6 +965,9 @@ impl Net {
                     Err(e) => {
                         why = e;
                         shown = src.url.clone();
+                        if why == CAP {
+                            break;
+                        }
                     }
                 }
             }
@@ -964,8 +979,11 @@ impl Net {
                     style: face.style,
                     internal_family,
                     url,
-                    bytes: bytes.into(),
+                    bytes: bytes.as_slice().into(),
                 }),
+                None if why == CAP => {
+                    capped.insert(shown);
+                }
                 None => {
                     let shown = if shown.starts_with("data:") {
                         "data:".into()
@@ -981,9 +999,24 @@ impl Net {
                 }
             }
         }
+        if !capped.is_empty() {
+            self.note(
+                (1, 1),
+                "",
+                format!(
+                    "{} more font file(s) were not loaded: at most {} different files per theme",
+                    capped.len(),
+                    fonts::MAX_FILES
+                ),
+                false,
+            );
+        }
         out
     }
 }
+
+/// The reason a font file was not fetched because the per-theme limit was reached.
+const CAP: &str = "font file limit";
 
 /// Expand the imports of `css` and load its fonts. `base` is the address the text came from (for
 /// relative imports); `None` for typed or pasted text. With `opts.remote` off, or nothing to
@@ -1021,6 +1054,7 @@ pub async fn resolve(css: &str, base: Option<&str>, opts: &Options) -> Resolved 
         font_total: 0,
         imports: 0,
         font_files: 0,
+        font_cache: Default::default(),
         stack: vec![],
         memo: HashMap::new(),
         notes: vec![],

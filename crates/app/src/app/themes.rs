@@ -925,6 +925,18 @@ impl App {
                     .color(t::text_tertiary()),
             );
             for (s, css) in branded {
+                // Jellyfin layout mode reads the branding with the engine, so report what the engine did.
+                if let Some(lines) = self.branding_engine_lines(css) {
+                    col = col.push(
+                        text(format!("{}: {}", s.profile.label, lines[0]))
+                            .size(t::CAPTION)
+                            .color(t::text_secondary()),
+                    );
+                    for l in &lines[1..] {
+                        col = col.push(text(l.clone()).size(t::CAPTION).color(t::text_tertiary()));
+                    }
+                    continue;
+                }
                 let line = match self.themes.parse_text(css) {
                     Ok(p) => format!(
                         "{}: {} applied, {} not understood",
@@ -1143,6 +1155,31 @@ impl App {
         }
         col = col.push(self.theme_report()).push(acts);
         col.width(Length::Fill).height(Length::Fill).into()
+    }
+
+    /// The engine's reading of a server's branding (imports inlined, no Jellyfin translation: the classes are native in layout mode): first the summary, then what it skipped. `None` without the engine.
+    #[cfg(feature = "theme-engine")]
+    fn branding_engine_lines(&self, css: &str) -> Option<Vec<String>> {
+        if !self.eng.enabled {
+            return None;
+        }
+        let text = self
+            .themes
+            .resolved_for(css)
+            .map_or(css, |r| r.css.as_str());
+        let sheet = nocturne_style::Sheet::parse(text);
+        let n = sheet.rules.len();
+        let skipped = sheet.report.failures();
+        let mut v = vec![format!(
+            "{n} rules read by the theme engine, {skipped} skipped"
+        )];
+        v.extend(sheet.report.lines());
+        Some(v)
+    }
+
+    #[cfg(not(feature = "theme-engine"))]
+    fn branding_engine_lines(&self, _: &str) -> Option<Vec<String>> {
+        None
     }
 
     /// What the engine skipped in the text being edited, when the engine reads it (the marker or its vocabulary) and is running.

@@ -104,7 +104,7 @@ pub struct Sources {
     pub next_id: u32,
     #[serde(rename = "profile")]
     pub profiles: Vec<Profile>,
-    /// Whose UI each source is browsed with: key `"all"` or a source id, absent means NOCTURNE.
+    /// Whose UI each source is browsed with: key `"all"` or a source id; absent means never chosen (NOCTURNE, except a server with custom branding uses its own UI).
     /// Only ever holds `self` or an existing server's id (`Sources::set_ui_from` checks).
     pub ui_from: BTreeMap<String, UiFrom>,
 }
@@ -195,6 +195,13 @@ impl Sources {
         self.clean_ui();
     }
 
+    /// The highest-priority enabled server: whose choice "All" follows while it has none of its own.
+    pub fn first_server(&self) -> Option<&Profile> {
+        self.profiles
+            .iter()
+            .find(|p| p.enabled && matches!(p.kind, ProfileKind::Jellyfin { .. }))
+    }
+
     fn is_server(&self, id: SourceId) -> bool {
         self.get(id)
             .is_some_and(|p| matches!(p.kind, ProfileKind::Jellyfin { .. }))
@@ -219,7 +226,7 @@ impl Sources {
                     }
                 };
                 match **v {
-                    UiFrom::Nocturne => false,
+                    UiFrom::Nocturne => true,
                     // A local folder has no UI of its own.
                     UiFrom::SelfServer => ctx.is_none_or(|c| self.is_server(c)),
                     UiFrom::Source(t) => self.is_server(t) && Some(t) != ctx,
@@ -234,7 +241,14 @@ impl Sources {
         }
     }
 
-    /// Whose UI `ctx` (a source, or `None` for "All") is browsed with.
+    /// The saved choice of `ctx`; `None` while the user never chose (a server with branding then
+    /// defaults to its own UI, see `server_ui::pick`).
+    pub fn ui_chosen(&self, ctx: Option<SourceId>) -> Option<UiFrom> {
+        let key = ctx.map_or(ALL.to_string(), |i| i.0.to_string());
+        self.ui_from.get(&key).copied()
+    }
+
+    /// The saved choice of `ctx`, NOCTURNE when there is none. Not the default look: use `server_ui::pick`.
     pub fn ui_of(&self, ctx: Option<SourceId>) -> UiFrom {
         let key = ctx.map_or(ALL.to_string(), |i| i.0.to_string());
         self.ui_from.get(&key).copied().unwrap_or_default()
@@ -260,10 +274,8 @@ impl Sources {
             return false;
         }
         let key = ctx.map_or(ALL.to_string(), |i| i.0.to_string());
-        match to {
-            UiFrom::Nocturne => self.ui_from.remove(&key),
-            t => self.ui_from.insert(key, t),
-        };
+        // An explicit NOCTURNE is stored too: only an absent key means "never chosen".
+        self.ui_from.insert(key, to);
         if let Some(p) = ctx.and_then(|c| self.profiles.iter_mut().find(|p| p.id == c)) {
             p.server_ui = to == UiFrom::SelfServer;
         }
