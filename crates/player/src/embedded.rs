@@ -6,6 +6,7 @@
 //! thread owns the EGL context + mpv render context; one event thread feeds `State`/`Event`.
 //! Teardown order (see `Drop`) is load-bearing; see docs/video-embedding.md.
 
+use crate::calls::{Kind, Runner, Written};
 use crate::mpv_ffi::{Ev, Mpv, PropData, RenderCtx, UPDATE_FRAME};
 use crate::{Buffering, Error, Event, Result, State, e};
 use std::ffi::{c_char, c_int, c_void};
@@ -83,12 +84,10 @@ const STUCK_AFTER: Duration = Duration::from_secs(15);
 /// still stuck is left behind (see [`crate::left_behind`]).
 const TEARDOWN_WAIT: Duration = Duration::from_millis(1200);
 
-type Job = Box<dyn FnOnce(&Mpv) + Send>;
-
 struct Shared {
     stop: AtomicBool,
-    /// Start of the mpv call the worker is running now (`None` when idle).
-    since: Mutex<Option<Instant>>,
+    /// The call worker (`crate::calls`): the UI thread's only way into libmpv.
+    calls: Runner,
     stuck: AtomicBool,
     dirty: Mutex<bool>,
     cv: Condvar,
@@ -149,8 +148,6 @@ pub fn geometry(x: f32, y: f32, w: f32, h: f32, scale: f32) -> Geometry {
 pub struct EmbeddedPlayer {
     // Drop order is explicit in `Drop`; field order only matters for the leftovers.
     mpv: ManuallyDrop<Arc<Mpv>>,
-    /// Every mpv call from the UI thread goes through this worker so a stuck core never blocks the UI.
-    calls: Option<Sender<Job>>,
     shared: Arc<Shared>,
     thread: Option<JoinHandle<()>>,
     events_thread: Option<JoinHandle<()>>,
@@ -214,9 +211,17 @@ impl EmbeddedPlayer {
             let (w0, h0) = (640, 360);
             let egl_win = WlEglSurface::new(surface.id(), w0, h0).map_err(e)?;
 
+            // Debug builds only (QA): `NOCTURNE_MPV_STALL_AFTER_MS=n` makes the core look stuck from n ms on.
+            #[cfg(debug_assertions)]
+            let stall = std::env::var("NOCTURNE_MPV_STALL_AFTER_MS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(|ms| Instant::now() + Duration::from_millis(ms));
+            #[cfg(not(debug_assertions))]
+            let stall = None;
             let shared = Arc::new(Shared {
                 stop: AtomicBool::new(false),
-                since: Mutex::new(None),
+                calls: Runner::new(stall),
                 stuck: AtomicBool::new(false),
                 dirty: Mutex::new(true),
                 cv: Condvar::new(),
@@ -292,32 +297,8 @@ impl EmbeddedPlayer {
                 .name("video-events".into())
                 .spawn(move || event_loop(mpv3, st3, etx, sh3))
                 .map_err(e)?;
-            let (ctx, crx) = channel::<Job>();
-            let (mpv4, sh4) = (mpv.clone(), shared.clone());
-            // Debug builds only (QA): `NOCTURNE_MPV_STALL_AFTER_MS=n` makes the core look stuck from n ms on.
-            #[cfg(debug_assertions)]
-            let stall = std::env::var("NOCTURNE_MPV_STALL_AFTER_MS")
-                .ok()
-                .and_then(|v| v.parse::<u64>().ok())
-                .map(|ms| Instant::now() + Duration::from_millis(ms));
-            std::thread::Builder::new()
-                .name("video-calls".into())
-                .spawn(move || {
-                    for job in crx {
-                        #[cfg(debug_assertions)]
-                        if stall.is_some_and(|t| Instant::now() >= t) {
-                            loop {
-                                std::thread::park();
-                            }
-                        }
-                        job(&mpv4);
-                        *sh4.since.lock().unwrap() = None;
-                    }
-                })
-                .map_err(e)?;
             Ok(Self {
                 mpv: ManuallyDrop::new(mpv),
-                calls: Some(ctx),
                 shared,
                 thread: Some(thread),
                 events_thread: Some(events_thread),
@@ -362,40 +343,36 @@ impl EmbeddedPlayer {
         &self.rx
     }
 
-    /// Runs `f` on the call worker and waits up to [`CALL_WAIT`]. While an earlier call is still
-    /// running (a busy or stuck core) this fails at once instead of queueing behind it.
-    fn call<T: Send + 'static>(&self, f: impl FnOnce(&Mpv) -> T + Send + 'static) -> Result<T> {
-        let busy = || e("the video engine is busy");
-        let Some(tx) = &self.calls else {
-            return Err(busy());
-        };
-        {
-            let mut since = self.shared.since.lock().unwrap();
-            if since.is_some() {
-                return Err(busy());
-            }
-            *since = Some(Instant::now());
+    /// A write (command or property set) on the call worker: always queued in order, even while the
+    /// core is busy. The result is returned only when the worker was idle and answered in time;
+    /// otherwise `None` (the write runs when the core frees).
+    fn submit(
+        &self,
+        kind: Kind,
+        f: impl FnOnce(&Mpv) -> std::result::Result<(), String> + Send + 'static,
+    ) -> Option<std::result::Result<(), String>> {
+        let m = Arc::clone(&self.mpv);
+        match self.shared.calls.write(kind, CALL_WAIT, move || f(&m)) {
+            Written::Done(r) => Some(r),
+            Written::Queued => None,
         }
-        let (rtx, rrx) = channel();
-        if tx
-            .send(Box::new(move |m| {
-                let _ = rtx.send(f(m));
-            }))
-            .is_err()
-        {
-            return Err(busy());
-        }
-        rrx.recv_timeout(CALL_WAIT).map_err(|_| busy())
     }
 
-    fn cmd(&self, name: &str, args: &[&str]) -> Result<()> {
+    fn put(
+        &self,
+        kind: Kind,
+        f: impl FnOnce(&Mpv) -> std::result::Result<(), String> + Send + 'static,
+    ) -> Result<()> {
+        self.submit(kind, f).unwrap_or(Ok(())).map_err(e)
+    }
+
+    fn cmd(&self, kind: Kind, name: &str, args: &[&str]) -> Result<()> {
         let (name, args): (String, Vec<String>) =
             (name.into(), args.iter().map(|a| a.to_string()).collect());
-        self.call(move |m| {
+        self.put(kind, move |m| {
             let a: Vec<&str> = args.iter().map(String::as_str).collect();
             m.command(&name, &a)
-        })?
-        .map_err(e)
+        })
     }
 
     /// Same contract as [`crate::Player::load`]: each of `headers` is a full header line, appended to
@@ -403,14 +380,13 @@ impl EmbeddedPlayer {
     pub fn load(&self, url: &str, headers: &[&str]) -> Result<()> {
         let (url, headers): (String, Vec<String>) =
             (url.into(), headers.iter().map(|h| h.to_string()).collect());
-        self.call(move |m| {
+        self.put(Kind::Keep, move |m| {
             m.command("change-list", &["http-header-fields", "clr", ""])?;
             for h in &headers {
                 m.command("change-list", &["http-header-fields", "append", h])?;
             }
             m.command("loadfile", &[&url, "replace"])
-        })?
-        .map_err(e)
+        })
     }
 
     pub fn play(&self) -> Result<()> {
@@ -426,34 +402,39 @@ impl EmbeddedPlayer {
     }
 
     pub fn seek_to(&self, secs: f64) -> Result<()> {
-        self.cmd("seek", &[&secs.to_string(), "absolute"])
+        self.cmd(Kind::Droppable, "seek", &[&secs.to_string(), "absolute"])
     }
 
     pub fn seek_by(&self, secs: f64) -> Result<()> {
-        self.cmd("seek", &[&secs.to_string(), "relative"])
+        self.cmd(Kind::Droppable, "seek", &[&secs.to_string(), "relative"])
     }
 
     /// 0..=130 (mpv's range); values outside are clamped.
     pub fn set_volume(&self, vol: f64) -> Result<()> {
         let v = vol.clamp(0.0, 130.0);
-        self.call(move |m| m.set_double("volume", v))?.map_err(e)
+        self.put(Kind::Droppable, move |m| m.set_double("volume", v))
     }
 
     pub fn stop(&self) -> Result<()> {
-        self.cmd("stop", &[])
+        self.cmd(Kind::Keep, "stop", &[])
     }
 
     /// Any mpv command, e.g. `command(&["set", "speed", "1.5"])`.
     pub fn command(&self, args: &[&str]) -> Result<()> {
         let (name, rest) = args.split_first().ok_or_else(|| e("empty command"))?;
-        self.cmd(name, rest)
+        self.cmd(Kind::Keep, name, rest)
     }
 
     /// Reads one mpv property as JSON, same shape as the child-process player. `None` when unavailable
     /// (or when the core is busy: the caller asks again on its next tick).
     pub fn prop(&self, name: &str) -> Option<serde_json::Value> {
         let name = name.to_string();
-        let s = self.call(move |m| m.get_string(&name)).ok()?.ok()?;
+        let m = Arc::clone(&self.mpv);
+        let s = self
+            .shared
+            .calls
+            .read(CALL_WAIT, move || m.get_string(&name))?
+            .ok()?;
         Some(match s.as_str() {
             "yes" => true.into(),
             "no" => false.into(),
@@ -467,7 +448,7 @@ impl EmbeddedPlayer {
     }
 
     fn set_paused(&self, p: bool) -> Result<()> {
-        self.call(move |m| m.set_flag("pause", p))?.map_err(e)
+        self.put(Kind::Keep, move |m| m.set_flag("pause", p))
     }
 }
 
@@ -477,10 +458,13 @@ impl Drop for EmbeddedPlayer {
         // SIGTERM. Whatever does not finish in time is left behind and the process ends without it.
         // `stop` first: frees the decoder/hwdec while the GL context and window are still alive. Without
         // it, freeing the render context hangs intermittently when the compositor is closing the window.
-        let stopped = self.cmd("stop", &[]).is_ok();
+        let stopped = matches!(
+            self.submit(Kind::Keep, |m| m.command("stop", &[])),
+            Some(Ok(()))
+        );
         self.shared.stop.store(true, SeqCst);
         self.shared.poke();
-        self.calls = None; // the worker ends after its current call
+        self.shared.calls.close(); // drops what is still queued; the worker ends after its current call
         let wait = if stopped {
             TEARDOWN_WAIT
         } else {
@@ -522,7 +506,7 @@ impl Drop for EmbeddedPlayer {
                 let _ = done_tx.send(());
             });
         let reaped = reaper.is_ok() && done_rx.recv_timeout(wait).is_ok();
-        if !(clean && reaped) || self.shared.since.lock().unwrap().is_some() {
+        if !(clean && reaped) || self.shared.calls.running_since().is_some() {
             crate::mark_left_behind();
         }
     }
@@ -531,7 +515,7 @@ impl Drop for EmbeddedPlayer {
 /// Mirrors `Player`'s IPC reader: property changes -> `State`, edges -> `Event`.
 fn event_loop(mpv: Arc<Mpv>, state: Arc<Mutex<State>>, tx: Sender<Event>, sh: Arc<Shared>) {
     while !sh.stop.load(SeqCst) {
-        let since = *sh.since.lock().unwrap();
+        let since = sh.calls.running_since();
         if since.is_some_and(|t| t.elapsed() > STUCK_AFTER) && !sh.stuck.swap(true, SeqCst) {
             let _ = tx.send(Event::Failed("the video engine stopped responding".into()));
         }

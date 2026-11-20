@@ -11,6 +11,8 @@
 //!
 //! Env override: `NOCTURNE_VO` picks the windowed video output (default `gpu-next`).
 
+#[cfg(target_os = "linux")]
+mod calls;
 mod deps;
 #[cfg(target_os = "linux")]
 mod embedded;
