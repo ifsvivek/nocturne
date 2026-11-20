@@ -35,7 +35,8 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Debug builds can write what the active theme did (tokens applied, not applied by kind, imports fetched, fonts loaded) as JSON with `NOCTURNE_THEME_REPORT=<file>` and the `theme-report@<ms>` key hook; `scripts/theme-conformance.sh` fills its applied / not applied column from it.
 
 ### Fixed
-- Glass: accent text (`--nocturne-accent-text`) is `#ef4444`, 5.6:1 on black and 4.8:1 on the panel fill (it was 4.35:1 and 3.74:1); a test keeps it at 4.5:1 or more.
+- Themes page: for a sheet the engine reads (the `nocturne:engine` marker) the report now lists what the engine skipped, not the stage-1 translator's "selector not supported" warnings.
+- Themes page: with "Themes may load from the web" off, Download is disabled with a one-line reason, as Refresh imports already was, so off means the app fetches no theme files.
 - An idle window no longer redraws: the app drew about 6 times a second on Home and 10 times a second in the Library with nothing happening, because a 200 ms polling tick ran all the time and every Iced message redraws the window. The tick now runs only while something needs it (a recent action, playback, a toast, a download, an offline server, onboarding), terminate signals and a second launch reach the app without it, and the Home hero wakes the app only when its slide changes (once a second only if the theme draws the progress hairline). Idle Home with the hero off, Library, Search, the item page and Settings draw 0 frames in 10 s.
 - Engine: boxes that only touch (fractional layout) were treated as overlapping and one of them was drawn beneath the page, so a card could vanish; the harness loads Catppuccin with its flavour palette.
 - Engine screens (`theme-engine`): the mouse wheel scrolls the library grid and the detail page again (a header strip above them swallowed it), and the page scrollbar can be dragged.

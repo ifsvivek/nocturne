@@ -32,6 +32,8 @@ type El<'a> = Element<'a, Message>;
 const SAFE: u64 = u64::MAX;
 /// Warnings shown in the list (the summary line counts all of them).
 const SHOWN: usize = 80;
+/// Why Download and Refresh are off: the setting means the app fetches no theme files at all.
+const OFF_NOTE: &str = "Downloading is off: Settings > Themes > Themes may load from the web.";
 
 #[derive(Clone)]
 pub enum Msg {
@@ -660,6 +662,7 @@ impl App {
             }
             Msg::Loaded(Err(e)) => self.note(e, true),
             Msg::Url(s) => self.th.url = s,
+            Msg::Download if !self.themes.remote() => self.note(OFF_NOTE, true),
             Msg::Download => match cz::validate_url(&self.th.url) {
                 Ok(u) => {
                     self.th.url = u.clone();
@@ -1014,7 +1017,7 @@ impl App {
                     false,
                     false,
                     false,
-                    th.busy || th.url.trim().is_empty(),
+                    th.busy || th.url.trim().is_empty() || !self.themes.remote(),
                     msg(Msg::Download)
                 ),
                 action_button(
@@ -1030,6 +1033,11 @@ impl App {
             .align_y(Alignment::Center),
         ]
         .spacing(t::S2);
+        let import = if self.themes.remote() {
+            import
+        } else {
+            import.push(text(OFF_NOTE).size(t::CAPTION).color(t::text_secondary()))
+        };
 
         let acts = {
             let previewing = th.preview;
@@ -1137,6 +1145,27 @@ impl App {
         col.width(Length::Fill).height(Length::Fill).into()
     }
 
+    /// What the engine skipped in the text being edited, when the engine reads it (the marker or its vocabulary) and is running.
+    #[cfg(feature = "theme-engine")]
+    fn engine_report(&self) -> Option<(usize, Vec<String>)> {
+        let raw = self.th.content.text();
+        let css = self
+            .themes
+            .resolved_for(&raw)
+            .map_or(raw, |r| r.css.clone());
+        if !self.eng.enabled || !nocturne_style::is_engine_sheet(&css) {
+            return None;
+        }
+        let (text, _) = nocturne_style::compat::translate(&css);
+        let rep = nocturne_style::Sheet::parse(&text).report;
+        Some((rep.failures(), rep.lines()))
+    }
+
+    #[cfg(not(feature = "theme-engine"))]
+    fn engine_report(&self) -> Option<(usize, Vec<String>)> {
+        None
+    }
+
     /// "N settings applied", the counts per kind, the contrast notes and the list with positions.
     fn theme_report(&self) -> El<'_> {
         let fetching: El<'_> = text("Fetching imports and fonts...")
@@ -1154,9 +1183,11 @@ impl App {
         if self.th.fetching {
             lines.push(fetching);
         }
+        // An engine sheet is read by the engine, not the stage-1 translator: report what the engine skipped.
+        let engine = self.engine_report();
         let mut head = format!("{} settings applied.", p.theme.count() + p.layout.count());
         let mut kinds: Vec<(cz::WarningKind, usize)> = vec![];
-        for w in &p.warnings {
+        for w in p.warnings.iter().filter(|_| engine.is_none()) {
             match kinds.iter_mut().find(|(k, _)| *k == w.kind) {
                 Some((_, n)) => *n += 1,
                 None => kinds.push((w.kind, 1)),
@@ -1165,12 +1196,23 @@ impl App {
         for (k, n) in &kinds {
             head.push_str(&format!(" {n} {}.", k.label()));
         }
-        if p.dropped_warnings > 0 {
+        if p.dropped_warnings > 0 && engine.is_none() {
             head.push_str(&format!(" {} more not listed.", p.dropped_warnings));
         }
+        if let Some((failures, _)) = &engine {
+            head = "Read by the theme engine.".to_owned();
+            if *failures > 0 {
+                head.push_str(&format!(" {failures} skipped."));
+            }
+        }
         lines.push(text(head).size(t::CAPTION).color(t::text()).into());
-        for a in crate::theme::advisories(&crate::theme::Tokens::resolve(&p.theme)) {
-            lines.push(text(a).size(t::CAPTION).color(t::warn()).into());
+        for l in engine.iter().flat_map(|r| r.1.iter().cloned()) {
+            lines.push(text(l).size(t::CAPTION).color(t::text_secondary()).into());
+        }
+        if engine.is_none() {
+            for a in crate::theme::advisories(&crate::theme::Tokens::resolve(&p.theme)) {
+                lines.push(text(a).size(t::CAPTION).color(t::warn()).into());
+            }
         }
         if let Some(r) = &self.th.resolved {
             lines.push(
@@ -1212,6 +1254,7 @@ impl App {
         for w in p
             .warnings
             .iter()
+            .filter(|_| engine.is_none())
             .filter(|w| !(w.kind == cz::WarningKind::FontNotDownloaded && loaded(&w.message)))
             .take(SHOWN)
         {
