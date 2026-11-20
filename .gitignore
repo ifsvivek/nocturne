@@ -28,3 +28,4 @@ secrets/
 /website/static/repo/
 __pycache__/
 *.pyc
+tools/headless-pointer/target/

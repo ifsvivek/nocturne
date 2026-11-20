@@ -412,7 +412,17 @@ impl Detail {
     pub(super) fn eng_view(&self) -> Option<Element<'_, Msg>> {
         let h = self.eng.as_ref()?;
         let (scene, tree) = (h.scene.as_ref()?, h.tree.as_ref()?);
-        Some(Styled::new(scene, Msg::Eng).images(&tree.images).into())
+        Some(
+            Styled::new(scene, Msg::Eng)
+                .images(&tree.images)
+                .probe(self.studio.as_ref())
+                .into(),
+        )
+    }
+
+    /// The built scene (for the Theme Studio's inspector).
+    pub fn eng_scene(&self) -> Option<&Scene> {
+        self.eng.as_ref()?.scene.as_ref()
     }
 }
 

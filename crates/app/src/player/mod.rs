@@ -171,6 +171,9 @@ pub const COVERS: usize = 10;
 pub struct Player {
     #[cfg(feature = "theme-engine")]
     bar: Option<std::cell::RefCell<bar_tree::BarHost>>,
+    /// The Theme Studio's marks, pick state and docked width while it is open.
+    #[cfg(feature = "theme-engine")]
+    pub studio: Option<crate::widget::styled::Probe>,
     pub ctx: PlayerCtx,
     pub media: Media,
     pub queue: Vec<Media>,
@@ -322,6 +325,8 @@ impl Player {
         let mut me = Self {
             #[cfg(feature = "theme-engine")]
             bar: bar_tree::BarHost::new(),
+            #[cfg(feature = "theme-engine")]
+            studio: None,
             media: media.clone(),
             queue,
             qi,
@@ -1075,10 +1080,19 @@ impl Player {
         }
     }
 
+    /// The Theme Studio is docked: the bar stays up so it can be picked.
+    fn studio_open(&self) -> bool {
+        #[cfg(feature = "theme-engine")]
+        return self.studio.is_some();
+        #[cfg(not(feature = "theme-engine"))]
+        false
+    }
+
     pub fn controls_visible(&self) -> bool {
         // The external backend has no video under the controls: nothing to get out of the way of.
         !self.video
             || self.problem.is_some()
+            || self.studio_open()
             || self.hide.visible(
                 Instant::now(),
                 // Anything open keeps the bar (and the menus anchored to it) up.

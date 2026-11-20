@@ -22,9 +22,12 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - The Home hero is a carousel (theme engine): slides from continue watching, next up and the newest movies and shows rotate on a timer (Settings: auto-rotate and interval) that pauses while the window is inactive, a button is held, a description is open, the focus is in use, a dialog or the player is open; Left and Right at the hero's buttons step slides, themes can show arrows, dots and a progress hairline, and the leaving slide fades out. The hero description clamps to three lines and opens on a click.
 - Themes can style a skeleton for the loading hero and rows (`.hero-skeleton`, `[data-region="loading"]`) and a scrim behind the header once the page has scrolled (`page[data-scrolled="true"]`).
 
+- Theme Studio works on the detail page (movie, series and episode) and on the player's controls bar too: the same pick, inspect and live edit, and the panel docks beside the player so the video keeps the rest of the window. While picking, hosted widgets (the header's Smart menu, search, avatar and history, the player's transport buttons, seek and volume tracks) select their element instead of acting; leaving pick mode restores them.
 - Debug builds can write what the active theme did (tokens applied, not applied by kind, imports fetched, fonts loaded) as JSON with `NOCTURNE_THEME_REPORT=<file>` and the `theme-report@<ms>` key hook; `scripts/theme-conformance.sh` fills its applied / not applied column from it.
 
 ### Fixed
+- The built-in Marquee and Classic starters no longer make the theme engine warn about `display: carousel` and `content: server`; they are accepted as the layout layer's words.
+- `scripts/headless-parity.sh` captured the thumb view at a random moment (the `v` key raced the page load); the debug hook `view-thumb` waits for the library page and sets the view explicitly, and `PARITY_ONLY=<text>` runs a subset.
 - Home rows now ask the server for each item's overview and genres, so the hero shows the description; long wrapped text in the theme engine is no longer dropped when the renderer breaks one line more than the measure did.
 - The hero's Play label keeps a contrasting colour under a theme that colours buttons.
 - Pasting or importing a theme that is (or contains) an `@import` now fetches it for the preview too, shows "Fetching imports and fonts..." while it downloads, and feeds the fetched, inlined stylesheet (and its fonts) to the theme engine for previews, the Theme Studio, saved themes and server UIs instead of the raw text.

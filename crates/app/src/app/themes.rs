@@ -336,7 +336,9 @@ impl App {
     /// theme, with imports inlined and `@font-face` removed once fetched (the raw text until then).
     #[cfg(feature = "theme-engine")]
     pub(super) fn engine_css(&self) -> Option<String> {
-        let raw = if self.th.preview {
+        let raw = if self.studio.open {
+            self.studio.css.clone()
+        } else if self.th.preview {
             self.th.content.text()
         } else {
             self.themes

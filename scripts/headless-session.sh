@@ -12,6 +12,7 @@ start)
   command -v sway >/dev/null || { echo "needs sway (pacman -S sway)" >&2; exit 1; }
   rm -rf "$D"; mkdir -p "$D"; chmod 700 "$D"
   printf 'output HEADLESS-1 resolution %s\nfocus_follows_mouse no\n' "${2:-1920x1080}" > "$D/config"
+  echo "${2:-1920x1080}" > "$D/size"
   # HS_BORDERLESS=1: windows without sway's border and title bar, so a window is the whole output (side-by-side captures against a browser at the same size).
   [ -z "${HS_BORDERLESS:-}" ] || printf 'default_border none\ndefault_floating_border none\ntitlebar_border_thickness 0\nfor_window [title=".*"] border none\n' >> "$D/config"
   before=$(ls "$XDG_RUNTIME_DIR" | grep -E '^wayland-[0-9]+$' || true)
@@ -31,7 +32,13 @@ run)
   outs=$(SWAYSOCK="$D/sway.sock" swaymsg -t get_outputs -r 2>/dev/null | grep -o '"name": "[^"]*"' || true)
   [ -n "$outs" ] && ! grep -qv HEADLESS <<<"$outs" || { echo "refusing: the sway behind $disp is not headless" >&2; exit 1; }
   # Silent: no PulseAudio/PipeWire server reachable, so mpv falls back to no audio output.
-  exec env WAYLAND_DISPLAY="$disp" SWAYSOCK="$D/sway.sock" PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=nonexistent "$@" ;;
+  exec env WAYLAND_DISPLAY="$disp" SWAYSOCK="$D/sway.sock" PULSE_SERVER=unix:/nonexistent PIPEWIRE_REMOTE=nonexistent NOCTURNE_HEADLESS=1 NOCTURNE_HEADLESS_SIZE="$(cat "$D/size" 2>/dev/null || echo 1920x1080)" "$@" ;;
+pointer)
+  # A real (virtual) pointer inside the headless session: tools/headless-pointer, built once.
+  shift; tool="$(cd "$(dirname "$0")/.." && pwd)/tools/headless-pointer"
+  bin="$tool/target/release/headless-pointer"
+  [ -x "$bin" ] || cargo build -q --release --manifest-path "$tool/Cargo.toml" >&2
+  exec "$0" run "$bin" "$@" ;;
 stop) alive && kill "$(cat "$D/pid")"; rm -rf "$D"; echo stopped ;;
 status) alive && echo "running on $(cat "$D/display")" || echo "not running" ;;
 *) sed -n 2,4p "$0"; exit 1 ;;
