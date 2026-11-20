@@ -132,6 +132,9 @@ impl App {
         if matches!(k, HRow::Resume | HRow::NextUp) {
             d.attr(cont, "data-monitor", "videoplayback,markplayed");
         }
+        // A row wider than the window shows its thin scrollbar on hover and the arrows at its ends (the web client has its arrow buttons).
+        d.attr(scroller, "data-scrollbar", "hover-x");
+        d.attr(scroller, "data-chevrons", "");
         tree.strips.insert(ri, scroller);
         tree.bands.insert(ri, sec);
         let writes = self.hooks.can_write();
@@ -145,7 +148,16 @@ impl App {
                     episode_line(m, Some(nocturne_core::customize::EpisodeFormat::Short)),
                 )
             } else if kind_tile {
-                (m.title.clone(), String::new())
+                // Tiles of several servers: which server a library belongs to (two have a Movies library each).
+                let t = match self.catalog.slot(m.origin).filter(|_| several) {
+                    Some(s) => format!(
+                        "{}  \u{b7}  {}",
+                        m.title,
+                        crate::widget::source::mark_text(s)
+                    ),
+                    None => m.title.clone(),
+                };
+                (t, String::new())
             } else {
                 (m.title.clone(), second_line(m))
             };
