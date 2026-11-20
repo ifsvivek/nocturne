@@ -143,6 +143,7 @@ impl EngineUi {
             Which::Header => hdr,
             Which::Page => page,
             Which::Search => search,
+            Which::Detail | Which::Bar => return (None, cache),
         };
         (h.as_mut(), cache)
     }
@@ -1127,21 +1128,35 @@ impl App {
     }
 
     /// The scene of one of the engine's screens, if it exists now.
-    pub(super) fn eng_scene_of(&self, w: Which) -> Option<&Scene> {
+    pub(super) fn eng_scene_of(&self, w: Which) -> Option<super::studio::SceneRef<'_>> {
+        use super::studio::SceneRef;
         let h = match w {
             Which::Home => &self.eng.home,
             Which::Header => &self.eng.hdr,
             Which::Page => &self.eng.page,
             Which::Search => &self.eng.search,
+            // The detail page (when it is the page in view) and the player's bar keep their own scenes.
+            Which::Detail => {
+                let d = self.stack.last()?.det.as_deref()?;
+                return d.eng_scene().map(SceneRef::Ref);
+            }
+            Which::Bar => return self.player.as_ref()?.bar_scene_now().map(SceneRef::Shared),
         };
-        h.as_ref().map(|h| &h.scene)
+        h.as_ref().map(|h| SceneRef::Ref(&h.scene))
     }
 
     /// The scene that is the page in view (the search overlay over a page, the library page, Home), for keyboard-only picking.
     pub(super) fn eng_main_scene(&self) -> Option<Which> {
-        [Which::Search, Which::Page, Which::Home, Which::Header]
-            .into_iter()
-            .find(|&w| self.eng_scene_of(w).is_some())
+        [
+            Which::Bar,
+            Which::Search,
+            Which::Detail,
+            Which::Page,
+            Which::Home,
+            Which::Header,
+        ]
+        .into_iter()
+        .find(|&w| self.eng_scene_of(w).is_some())
     }
 
     /// Families the engine can use by name (for the Studio's font list).
@@ -1196,7 +1211,8 @@ impl App {
         let mut s = Styled::new(&h.scene, move |e| Message::Eng(w, e))
             .keys(w != Which::Header)
             .images(&h.tree.images)
-            .marks(self.studio_marks(w));
+            .marks(self.studio_marks(w))
+            .inert(self.studio_picking());
         // A glyph whose computed `color` is transparent is hidden (a theme that paints its own picture there).
         let clear: std::collections::HashSet<u32> = (0..h.scene.doc.len())
             .filter(|&n| h.scene.style(n).color.a == 0)

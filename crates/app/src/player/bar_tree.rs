@@ -336,12 +336,10 @@ impl Player {
         tr.acts.insert(b, Msg::Act(act));
     }
 
-    /// The bar as the engine draws it (wrapped as the hand-written bar is: opaque to the picture's click layer, and telling the player when the pointer is on it).
-    pub(super) fn bar_view(&self) -> Element<'_, Msg> {
-        let Some(host) = self.bar.as_ref() else {
-            return bar(self);
-        };
+    /// Build the bar's scene from the player's state (every frame while the view is built, and when the user rules change).
+    fn bar_scene(&self, host: &RefCell<BarHost>) -> (Rc<Scene>, Vec<PSlot>) {
         let tree = self.bar_tree();
+        let dock = self.studio.as_ref().map_or(0.0, |p| p.dock);
         let mut h = host.borrow_mut();
         let css = sheet();
         if css != h.sheet {
@@ -356,7 +354,7 @@ impl Player {
         let BarHost { engine, cache, .. } = &mut *h;
         let scene = Rc::new(engine.build(
             &tree.doc,
-            (self.win.width, BAR_H),
+            ((self.win.width - dock).max(320.0), BAR_H),
             it,
             &Builders::new(),
             &mut |text, st, max| cache.measure(text, st, max, &mut shape),
@@ -366,10 +364,20 @@ impl Player {
         }
         h.scene = Some(scene.clone());
         h.acts = tree.acts;
-        drop(h);
-        let mut s = Styled::shared(scene, Msg::Eng).keys(false);
+        (scene, tree.slots)
+    }
+
+    /// The bar as the engine draws it (wrapped as the hand-written bar is: opaque to the picture's click layer, and telling the player when the pointer is on it).
+    pub(super) fn bar_view(&self) -> Element<'_, Msg> {
+        let Some(host) = self.bar.as_ref() else {
+            return bar(self);
+        };
+        let (scene, slots) = self.bar_scene(host);
+        let mut s = Styled::shared(scene, Msg::Eng)
+            .keys(false)
+            .probe(self.studio.as_ref());
         let f = facts(self);
-        for (i, slot) in tree.slots.iter().enumerate() {
+        for (i, slot) in slots.iter().enumerate() {
             let el: Element<'_, Msg> = match slot {
                 PSlot::Icon { name, color } => glyph(name, 16.0, *color).into(),
                 PSlot::Seek => controls::seek_track(self, f.frac),
@@ -383,6 +391,11 @@ impl Player {
             .into()
     }
 
+    /// The built scene (for the Theme Studio's inspector).
+    pub fn bar_scene_now(&self) -> Option<Rc<Scene>> {
+        self.bar.as_ref()?.borrow().scene.clone()
+    }
+
     /// The user stylesheet of the active theme (layered over the default sheet), or none.
     pub fn set_user_css(&mut self, css: Option<String>) {
         if let Some(host) = self.bar.as_ref() {
@@ -390,6 +403,9 @@ impl Player {
             if h.user != css {
                 h.engine.set_user_css(css.as_deref());
                 h.user = css;
+                drop(h);
+                // The Studio reads the scene right after an edit: it must already follow the new rules.
+                self.bar_scene(host);
             }
         }
     }

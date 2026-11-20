@@ -97,6 +97,13 @@ impl App {
     }
 
     pub(super) fn detail_msg(&mut self, pid: u64, msg: detail::Msg) -> Task<Message> {
+        // The Theme Studio's pick mode takes the page's pointer and key events first.
+        #[cfg(feature = "theme-engine")]
+        if let detail::Msg::Eng(e) = &msg
+            && let Some(t) = self.studio_event(super::message::Which::Detail, e)
+        {
+            return t;
+        }
         let Some(d) = self.page_mut(pid).and_then(|p| p.det.as_deref_mut()) else {
             return Task::none();
         };
@@ -141,6 +148,9 @@ impl App {
         );
         #[cfg(feature = "theme-engine")]
         let css = self.engine_css();
+        // The Studio's docked panel takes its width from the page.
+        #[cfg(feature = "theme-engine")]
+        let win = iced::Size::new(self.eng_width(), win.height);
         // Jellyfin layout mode for the item's own server.
         #[cfg(feature = "theme-engine")]
         let jf = self.jf_base().map(|b| (b, self.jf_user_text()));

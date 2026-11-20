@@ -274,6 +274,9 @@ pub struct Detail {
     expanded: nocturne_core::expand::Expanded,
     #[cfg(feature = "theme-engine")]
     eng: Option<Box<engine::Host>>,
+    /// The Theme Studio's marks and pick state for the scene (set by the app while the Studio is open).
+    #[cfg(feature = "theme-engine")]
+    pub studio: Option<crate::widget::styled::Probe>,
     /// Jellyfin layout mode: the server's base sheet and the branding and theme text over it (`None`: NOCTURNE's own page).
     #[cfg(feature = "theme-engine")]
     jf: Option<(std::sync::Arc<String>, String)>,
@@ -341,6 +344,8 @@ impl Detail {
             expanded: Default::default(),
             #[cfg(feature = "theme-engine")]
             eng: engine::enabled().then(|| Box::new(engine::Host::new())),
+            #[cfg(feature = "theme-engine")]
+            studio: None,
             #[cfg(feature = "theme-engine")]
             jf: None,
         };

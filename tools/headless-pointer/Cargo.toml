@@ -1,0 +1,13 @@
+[package]
+name = "headless-pointer"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+description = "Test tool: a virtual pointer for the invisible headless sway session only (scripts/headless-session.sh pointer)."
+
+[workspace]
+
+[dependencies]
+wayland-client = "0.31"
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }

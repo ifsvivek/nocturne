@@ -82,6 +82,17 @@ pub fn on_boot() -> Task<Message> {
             "sec-save" => Some(Message::Src(crate::app::message::SrcAct::SecSave)),
             "open-trakt" => Some(Message::Trakt(crate::app::trakt::Msg::Open)),
             // `open-global-0`: the header's n-th merged link (Movies, Shows, ...).
+            "view-poster" | "view-thumb" | "view-list" => {
+                use nocturne_core::libview::ViewKind as V;
+                Some(Message::DebugView(
+                    match name {
+                        "view-poster" => V::Poster,
+                        "view-thumb" => V::Landscape,
+                        _ => V::List,
+                    },
+                    80,
+                ))
+            }
             "open-movies" => Some(Message::OpenKind(nocturne_core::unified::UKind::Movies)),
             "open-shows" => Some(Message::OpenKind(nocturne_core::unified::UKind::Shows)),
             n if n.starts_with("open-library-") => n[13..].parse().ok().map(Message::OpenLibrary),

@@ -1135,6 +1135,9 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
     }
     let one = |op: Op| Ok(Outcome::Ops(vec![op]));
     match name {
+        // The stage-1 layout dialect (the built-in Marquee and Classic examples): the app's layout layer reads these, the engine draws what its own rules say.
+        "display" if v == "carousel" => Ok(Outcome::Ops(vec![])),
+        "content" if v == "server" => Ok(Outcome::Ops(vec![])),
         "display" => one(Op::Display(match v {
             // Approximations: Taffy has no inline formatting and no `contents`.
             "inline" | "inline-block" | "contents" | "list-item" | "table" | "-webkit-box" => {

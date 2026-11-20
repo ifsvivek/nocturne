@@ -11,7 +11,7 @@ use nocturne_core::source::{ConnectError, Media, Source, SourceId};
 use nocturne_jellyfin_user::Session;
 use std::time::Instant;
 
-/// Which of the engine's scenes an event belongs to: the whole Home page (header included), the header alone on other pages, the library page's body, or the search overlay.
+/// Which of the engine's scenes an event belongs to: the whole Home page (header included), the header alone on other pages, the library page's body, or the search overlay. `Detail` and `Bar` (the player's controls) are hosted by their own modules; only the Theme Studio names them.
 #[cfg(feature = "theme-engine")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Which {
@@ -19,6 +19,8 @@ pub enum Which {
     Header,
     Page,
     Search,
+    Detail,
+    Bar,
 }
 
 /// Which fan-out on the Home page an answer belongs to.
@@ -284,6 +286,8 @@ pub enum Message {
     CycleFilter,
     OpenSources,
     Themes(super::themes::Msg),
+    /// Debug builds only (`NOCTURNE_KEYS=view-thumb@ms`): set the library view once the page in view has its first items; tries left. Unlike the `v` key it does not depend on the page being loaded when it fires.
+    DebugView(nocturne_core::libview::ViewKind, u8),
     /// Debug builds only: a window capture for `NOCTURNE_SNAP`.
     Snapped(window::Screenshot, usize),
     /// Own profile read: (user id, picture tag).
