@@ -227,6 +227,11 @@ impl App {
         if self.studio.open {
             todo.push((self.studio.css.clone(), None));
         }
+        // The stylesheets the server's start page adds may import others.
+        #[cfg(feature = "theme-engine")]
+        if let Some(p) = self.jf_plugins(ui) {
+            todo.push((p.css.clone(), None));
+        }
         for (css, base) in todo {
             if self.themes.needs_resolve(&css) && self.th.resolving.insert(css.clone()) {
                 task = Task::batch([task, self.resolve_task(css, base, false)]);
@@ -603,6 +608,13 @@ impl App {
                     && self.th.resolving.insert(css.clone())
                 {
                     tasks.push(self.resolve_task(css, self.base_of(src, ui), true));
+                }
+                // Plugin stylesheets: forget the cached copies and read the servers' start pages again.
+                #[cfg(feature = "theme-engine")]
+                {
+                    nocturne_core::webcss::clear_plugin_cache();
+                    self.server_ui.clear();
+                    self.ui_gen += 1;
                 }
                 self.th.applied = None;
                 return Task::batch(tasks);
