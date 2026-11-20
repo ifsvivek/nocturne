@@ -14,6 +14,7 @@ mod pad;
 mod platform;
 mod player;
 mod queue;
+mod redraw;
 mod single;
 mod snap;
 mod style;

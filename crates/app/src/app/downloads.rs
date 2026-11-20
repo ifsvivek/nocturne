@@ -74,6 +74,11 @@ pub struct State {
 }
 
 impl State {
+    /// A transfer runs or one waits to start: the root tick must keep polling.
+    pub fn busy(&self) -> bool {
+        self.run.is_some() || self.queue.next().is_some()
+    }
+
     pub fn new(data: &std::path::Path) -> Self {
         let path = Queue::path(data);
         Self {

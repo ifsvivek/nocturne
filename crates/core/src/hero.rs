@@ -163,15 +163,27 @@ impl Hero {
         (self.shown.as_secs_f32() / self.interval.as_secs_f32()).clamp(0.0, 1.0)
     }
 
+    /// How long until the slide changes, if nothing pauses it (at least 100 ms): when an idle app needs to wake next.
+    pub fn next_in(&self, now: Instant) -> Duration {
+        let since = self
+            .last
+            .map_or(Duration::ZERO, |l| now.saturating_duration_since(l));
+        self.interval
+            .saturating_sub(self.shown + since)
+            .max(Duration::from_millis(100))
+    }
+
     /// Advance the clock to `now`; true when the slide changed. Paused time does not count.
     pub fn tick(&mut self, now: Instant) -> bool {
         let dt = self
             .last
             .map_or(Duration::ZERO, |l| now.saturating_duration_since(l));
-        self.last = Some(now);
         if !self.running() {
+            // Ticks stop while the carousel is paused: the first one after resuming must not count the gap.
+            self.last = None;
             return false;
         }
+        self.last = Some(now);
         self.shown += dt;
         if self.shown >= self.interval {
             self.step(1);
@@ -298,8 +310,11 @@ mod tests {
         h.pauses.pointer_down = true;
         assert!(!h.tick(secs(t0, 100)), "paused time does not count");
         h.pauses.pointer_down = false;
-        assert!(!h.tick(secs(t0, 103)));
-        assert!(h.tick(secs(t0, 104)), "4 s were left of the 10");
+        assert!(
+            !h.tick(secs(t0, 103)),
+            "the first tick after a pause only restarts the clock"
+        );
+        assert!(h.tick(secs(t0, 107)), "4 s were left of the 10");
         let setters: [fn(&mut Pauses); 6] = [
             |p| p.window_inactive = true,
             |p| p.description_open = true,
@@ -314,6 +329,26 @@ mod tests {
             h.tick(t0);
             assert!(!h.tick(secs(t0, 50)) && !h.running());
         }
+    }
+
+    #[test]
+    fn next_in_says_when_an_idle_app_must_wake() {
+        let t0 = Instant::now();
+        let mut h = Hero::new(3, 10, true);
+        h.tick(t0);
+        assert_eq!(h.next_in(t0), Duration::from_secs(10));
+        h.tick(secs(t0, 4));
+        assert_eq!(h.next_in(secs(t0, 4)), Duration::from_secs(6));
+        assert_eq!(
+            h.next_in(secs(t0, 7)),
+            Duration::from_secs(3),
+            "time since the last tick counts"
+        );
+        assert_eq!(
+            h.next_in(secs(t0, 60)),
+            Duration::from_millis(100),
+            "never a busy loop"
+        );
     }
 
     #[test]

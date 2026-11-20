@@ -205,6 +205,25 @@ enum AccountBack {
     Ready,
 }
 
+/// How long the root tick keeps running after the last real message.
+const AWAKE: Duration = Duration::from_secs(15);
+
+/// Does this message mean something happened (as opposed to a frame, a tick, a hover or a picture arriving)?
+fn keeps_awake(m: &Message) -> bool {
+    #[cfg(feature = "theme-engine")]
+    if matches!(m, Message::Eng(..)) {
+        return false;
+    }
+    !matches!(
+        m,
+        Message::Tick(_)
+            | Message::Frame(_)
+            | Message::Noop
+            | Message::NavScrolled(..)
+            | Message::Image(..)
+    )
+}
+
 pub struct App {
     cfg: Option<nocturne_jellyfin::Config>,
     /// `$XDG_DATA_HOME/nocturne`: each local source keeps its index under `local/<id>`.
@@ -283,6 +302,8 @@ pub struct App {
     glow: Handle,
     win: Size,
     now: Instant,
+    /// The root tick keeps running until then after any real message (async results such as failed writes land without one).
+    awake_until: Instant,
     note: Option<(String, Instant)>,
     /// A newer version, until dismissed (docs/dev/UPDATER_PLAN.md).
     update: Option<nocturne_core::update::UpdateState>,
@@ -426,6 +447,7 @@ impl App {
             glow: tex::glow(),
             win: Size::new(1280.0, 800.0),
             now: Instant::now(),
+            awake_until: Instant::now() + AWAKE,
             note: None,
             update: None,
             update_stage: UpdateStage::Idle,
@@ -522,7 +544,7 @@ impl App {
     pub fn subscription(&self) -> Subscription<Message> {
         let mut subs = vec![
             iced::keyboard::listen().filter_map(|e| crate::keys::from_event(&e).map(Message::Key)),
-            iced::time::every(Duration::from_millis(200)).map(Message::Tick),
+            Subscription::run(crate::redraw::wakes).map(|()| Message::Tick(Instant::now())),
             window::resize_events().map(|(_, s)| Message::Resized(s)),
             window::close_requests().map(Message::CloseRequested),
             event::listen_with(|e, _, _| match e {
@@ -549,6 +571,10 @@ impl App {
         ];
         if let Some(p) = &self.player {
             subs.push(p.subscription().map(Message::Player));
+        }
+        // Every message redraws the window, so the polling tick runs only while something needs it.
+        if let Some(d) = self.tick_period() {
+            subs.push(iced::time::every(d).map(Message::Tick));
         }
         subs.push(self.sp.subscription().map(Message::SyncPlay));
         if self.settings.couch != nocturne_core::settings::CouchMode::Off {
@@ -583,6 +609,43 @@ impl App {
         }
     }
 
+    /// How often the root tick must run now; `None` when nothing needs polling (an idle window then draws nothing).
+    fn tick_period(&self) -> Option<Duration> {
+        let busy = Instant::now() < self.awake_until
+            || self.player.is_some()
+            || self.note.is_some()
+            || self.ob_visible()
+            || !self.probing.is_empty()
+            || self.launch_scan
+            || self.dl.busy()
+            || self
+                .catalog
+                .slots
+                .iter()
+                .any(|s| matches!(s.status, Status::Offline { .. }))
+            || cfg!(debug_assertions)
+                && (std::env::var_os("NOCTURNE_SNAP_WATCH").is_some()
+                    // The old always-on tick, to measure against.
+                    || std::env::var_os("NOCTURNE_TICK_ALWAYS").is_some());
+        if busy {
+            return Some(Duration::from_millis(200));
+        }
+        // The hero's timer: a theme that draws the progress hairline needs a step a second, otherwise the app wakes only when the slide changes.
+        #[cfg(feature = "theme-engine")]
+        if self.eng.enabled
+            && self.eng_home_active()
+            && let Some(h) = self.stack.first().and_then(|p| p.home.as_deref())
+            && h.carousel.running()
+        {
+            return Some(if self.hero_hairline() {
+                Duration::from_secs(1)
+            } else {
+                h.carousel.next_in(Instant::now())
+            });
+        }
+        None
+    }
+
     fn animating(&self) -> bool {
         self.preview
             .as_ref()
@@ -606,6 +669,10 @@ impl App {
         let dirties = Self::eng_message_dirties(&msg);
         #[cfg(feature = "theme-engine")]
         let t0 = self.eng.stats.then(std::time::Instant::now);
+        if keeps_awake(&msg) {
+            self.awake_until = Instant::now() + AWAKE;
+        }
+        crate::redraw::log(&msg);
         let task = self.update_inner(msg);
         #[cfg(feature = "theme-engine")]
         self.studio_ext_sync();
@@ -2487,5 +2554,16 @@ mod tests {
         );
         assert!(ready_pic(&c, "u", None).is_none(), "removed: initial");
         assert!(ready_pic(&c, "other", Some("t1")).is_none());
+    }
+
+    #[test]
+    fn only_real_events_wake_the_tick() {
+        let now = Instant::now();
+        // The tick itself, frames, pictures arriving and hovers must not keep an idle app polling (every message redraws the window).
+        assert!(!keeps_awake(&Message::Tick(now)));
+        assert!(!keeps_awake(&Message::Frame(now)));
+        assert!(!keeps_awake(&Message::Noop));
+        assert!(keeps_awake(&Message::Back));
+        assert!(keeps_awake(&Message::Resized(iced::Size::new(1.0, 1.0))));
     }
 }

@@ -1060,6 +1060,17 @@ impl Scene {
         self.anims.tick(now)
     }
 
+    /// What keeps frames coming, for `NOCTURNE_REDRAW_LOG`.
+    pub fn anim_summary(&self) -> String {
+        let mut s = self.anims.summary();
+        for id in self.anims.nodes() {
+            if let Some(n) = self.doc.nodes.get(id) {
+                s += &format!(" [{} {:?}]", n.tag, n.classes);
+            }
+        }
+        s
+    }
+
     pub fn animating(&self) -> bool {
         self.anims.active()
     }

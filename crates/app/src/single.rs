@@ -18,6 +18,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static ACTIVATE: AtomicBool = AtomicBool::new(false);
 
+/// Is an activation waiting (without consuming it)?
+pub fn activate_pending() -> bool {
+    ACTIVATE.load(Ordering::Relaxed)
+}
+
 /// Did another launch ask us to come forward since the last call?
 pub fn take_activate() -> bool {
     ACTIVATE.swap(false, Ordering::Relaxed)

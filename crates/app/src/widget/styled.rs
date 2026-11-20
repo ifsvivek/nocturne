@@ -1775,6 +1775,7 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
                 }
             }
             Event::Window(window::Event::RedrawRequested(now)) => {
+                crate::redraw::draw(|| self.scene.anim_summary());
                 if b.size() != st.size {
                     st.size = b.size();
                     shell.publish((self.on_event)(StyledEvent::Resize(b.size())));
