@@ -107,3 +107,5 @@ Method: debug build, headless session (`HS_NAME=idle`), the demo server in devel
 | Home, hero on, 30 s window (3 slide changes) | 333 draws, 150 ticks | 151 to 159 draws (the three slide fades, 0.8 s each), 3 ticks | 4170 to 1111 (default), 1238 (Glass) |
 
 With the hero on, the only wake-ups are the slide changes (one per interval, 10 s by default) and the 380 ms crossfade they start. Playback keeps its own 200 ms player tick (a visible progress bar). A window that just received a message still ticks for 15 s, so measure after that.
+
+On a `fast-release` build (hero off, 30 s window after settling): Home and Library use 1 CPU tick (10 ms) of the whole process in 30 s, i.e. about 0.03 % of a core. The old always-on tick cannot be measured on that profile (`NOCTURNE_TICK_ALWAYS` is debug only); the 0.5.2 table above shows 46 to 52 % of a core idle on Home with the software renderer at 6 draws a second. `scripts/headless-parity.sh`: keys-2 and keys-5 differ by 0.3 % and 0.03 % of pixels with this change and also with `NOCTURNE_TICK_ALWAYS=1` (old behaviour), so they are not caused by it.
