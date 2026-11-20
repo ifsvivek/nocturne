@@ -360,11 +360,14 @@ impl App {
                 .clip(true),
             );
         }
-        // Same fill as the header: scrolled content must not show through behind the trail.
+        // The header's colour, but opaque: the header is translucent (a faint show-through is fine for its big labels), yet buttons and text scrolling under the thin trail made it unreadable.
         let bar = container(r.height(28))
             .width(Length::Fill)
             .padding([0.0, t::page_pad()])
-            .style(style::fill(t::header_bg()));
+            .style(style::fill(iced::Color {
+                a: 1.0,
+                ..t::header_bg()
+            }));
         Some(
             container(bar)
                 .width(Length::Fill)
