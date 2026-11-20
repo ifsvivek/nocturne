@@ -4,8 +4,24 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
-### Changed
-- The theme engine is on by default: Home, the header, Library, Search, the item page and the player's controls are element trees styled by the stylesheet (the look is unchanged with no theme). It is the `theme-engine` cargo feature, now a default feature of `nocturne-app`; `cargo build --no-default-features` builds the hand-written screens only, and `NOCTURNE_ENGINE_UI=0` shows them at run time for this release.
+## [0.5.2] - 2026-11-20
+
+NOCTURNE now draws its main screens with its own CSS theme engine, can show a Jellyfin server in that server's own look, and lets you build themes inside the app.
+
+### Highlights
+- A native theme engine (no browser) draws Home, the header, the library, search, the item page and the player's controls, with real flex, grid and positioned layout. With no theme the look is unchanged.
+- Your server's own look: a server with a custom theme is shown with its web client's page structure and stylesheets, including the stylesheets its plugins add and the fonts and pictures they load. Scripts never run. Any source can borrow another server's look.
+- Theme Studio: point at any element of the live screens and change it with controls; it writes real CSS you can keep editing by hand.
+- Two built-in themes, NOCTURNE and Glass. Paste or import any Jellyfin web theme and preview it before keeping it.
+- Update now for pacman, apt and dnf installs, through PackageKit and the desktop's own password prompt.
+- Windows preview: video plays inside the app window, text renders with bundled fonts, and starting playback no longer freezes the app.
+- Smoother and lighter: an idle window no longer redraws, large libraries use far less memory, and a stuck video engine can no longer freeze the app.
+
+### Known limitations
+- Theme effects without a native equivalent yet: backdrop blur becomes a translucent fill; masks, conic gradients and `filter: blur()`, `saturate()` and `contrast()` are not drawn; what a theme does with JavaScript does not happen. Settings > Themes lists everything that did not apply.
+- Fonts declared inside a server plugin's stylesheets are not loaded yet.
+- Windows and macOS remain unsigned previews; macOS plays video in mpv's own window.
+- `NOCTURNE_ENGINE_UI=0` brings back the hand-written screens for this release if a theme-engine screen misbehaves.
 
 ### Added
 - Glass: refined to match its reference design. The home hero is 85% of the window, the header gets link icons and a back button on item pages (no breadcrumb strip), the library page has a count chip and a vertical A to Z strip, episode cards carry glass buttons over the artwork, and Search is a centred field over rows of poster cards. Themes can set the side gutter (`--page-pad`), a back button in the header (`--header-back`) and a hero height in `vh`; the header scene over item pages carries a `page-header` class so a theme can leave it clear.
@@ -15,10 +31,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Theme engine: `radial-gradient()`, `repeating-linear-gradient()` and `repeating-radial-gradient()` are drawn (Iced only draws linear ones): each is rasterised once per box size into a cached picture layer in the right stacking order, never per frame (conic gradients are still skipped). `@keyframes` with `animation` (and its longhands) animate opacity, transform and colour; frames are requested only while something runs, endless animations at 30 per second, none with reduced motion, and never on an essential control. `filter: brightness()` dims an element (a theme's backdrop dimming), and `initial`/`unset` put the default back (ElegantFin's `margin-top: unset` had left the item ribbon about 100 px too high).
 - Jellyfin layout mode: Home and library pages have the page-sized `.backgroundContainer` themes tint (Jellyfish's teal), Continue Watching and Next Up carry the attributes themes use to lay them out (Zombie's big card with small ones), and the item page keeps a hidden previous page as the web client does.
 - Theme engine: gradient colour hints (`linear-gradient(180deg, transparent, 17vh, #111 50vh)`) and `vw`/`vh` stop positions, `[class*="..."]` selectors, `content: attr(title)`, and text beside `::before`/`::after` bullets (section titles of Zombie and Nebula no longer clip). The item page's body no longer carries `withSectionTabs`, so a theme's dim layer over the backdrop (ElegantFin) is the translucent gradient instead of a solid one, and the clear logo always fills its own box.
-- The engine's time budget is 300 ms per pass (it was 50 ms and switched heavy themes off in debug builds); `NOCTURNE_ENGINE_TIMING=1` logs every pass, and `cargo build --profile conformance` builds optimised code with the debug-only snapshot hooks the conformance harness needs.
 - Jellyfin layout mode draws the pictures a stylesheet names with `url()`: background images with `background-size`, `-position` and `-repeat` (gradients written above a picture paint over it), `content: url()` on the header logo, themed tile pictures and inline SVG; the server's own address may be http or on the LAN, any other host needs https, a public address and remote styles on. Unsupported gradients (conic) are skipped instead of dropping the whole declaration.
 - Jellyfin layout Home: the Collections and Playlists libraries are My Media tiles in the server's order, and tiles without a picture get the web client's colour class, icon and a theme's own tile picture.
-- Jellyfin layout mode (preview, `theme-engine` feature): when a source uses a server's UI and the server has its web client, Home, the header, the library and the item page are built with jellyfin-web's own page structure and styled with the server's own stylesheets (fetched from the server, cached, never bundled), then its branding CSS and your theme, so Jellyfin web themes look as they do in the browser. The engine learned `rem` from the root font, floats, absolute boxes against positioned ancestors, `inherit` and more.
+- Jellyfin layout mode: when a source uses a server's UI and the server has its web client, Home, the header, the library and the item page are built with jellyfin-web's own page structure and styled with the server's own stylesheets (fetched from the server, cached, never bundled), then its branding CSS and your theme, so Jellyfin web themes look as they do in the browser. The engine learned `rem` from the root font, floats, absolute boxes against positioned ancestors, `inherit` and more.
 - Jellyfin layout mode draws the web client's icons: the server's own Material Icons font is fetched from the server at run time (GET, size-capped, cached next to its stylesheets, never bundled), registered with the text shaper, and the item page's buttons, rating star and selector arrows use jellyfin-web's own `span.material-icons.<name>` elements, so a theme restyles them as on the web. Ligature text (`play_arrow` in a Material Icons span) shapes to the glyph; without the font the page shows plain glyphs instead of boxes.
 - Jellyfin layout mode item page: the Video, Audio and Subtitles lines of the current file (jellyfin-web's `form.trackSelections`, read-only), "Ends at", Resume with its "Play from the start" button, Shuffle and Watched on shows, and the backdrop dimmed by the page-sized `.backgroundContainer.withBackdrop` layer the theme sets the opacity of (as the web client does from script) instead of a fixed opacity.
 - Theme Studio (Themes > Open Studio): pick any element of the live Home, header, library and search screens and change it with colour, size, spacing, shape, shadow, accent bar, typography, layout and hover controls ("this element only" or "all like this"), with undo and redo, a CSS tab that stays in sync both ways, starters, save, apply globally or per server, and export as `.css`.
@@ -26,17 +41,18 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Themes can rebuild the familiar server web home layout: new parts for the unplayed-count badge, progress bar, episode line, caption alignment, row arrows, header server name, link icons and Watch together button, and library tiles, plus a built-in "Classic" example theme.
 - Themes follow `@import` and load web fonts: stylesheets that import other stylesheets (Jellyfin web themes, font sheets) now apply, and `@font-face` fonts in TTF, OTF, WOFF and WOFF2 are downloaded and used. https only, no cookies or sign-in, size, time and count limits, kept in the cache folder and refreshed only by hand or when the text changes. Settings > Themes has a switch that turns all downloading off.
 - One server's UI over another: each source, "All" and local folders can use NOCTURNE's layout, their own server's UI or another server's (its home sections and look, filled with what you are browsing). Local only; nothing is written to either server. A signed-out or unreachable UI server falls back to the NOCTURNE layout with a note.
-
 - Settings > Sources has a "UI:" button on every source and on a new "All sources" row to choose whose UI is used (NOCTURNE, this server, another server); a fallback is explained on the row. Settings > Themes lists the built-in themes first, has "Refresh imports", shows what was fetched and which fonts loaded, and previews a pasted or imported theme on the whole app until Keep or Revert (a floating bar on every screen).
 - Safe look: Ctrl+Shift+0 or starting with `NOCTURNE_SAFE_THEME=1` restores the built-in look at once, whatever theme is saved.
 - Data for the Glass look (UI follows): title logo art for server items (own or the show's) and local `logo.png` / `clearlogo.png` sidecars (next to the movie or in the show folder, read only); Settings > Home banner (rotate by itself, interval 5 to 30 s); the banner's slide selection and timer (several sources in order, no duplicates, pauses while hovered, focused, expanded, hidden or playing, none with reduced motion); expandable descriptions; loading states for skeleton placeholders.
-
 - Glass, a second built-in theme next to NOCTURNE (also a Theme Studio starter): black canvas, a glass header pill with the server name at the left, a full-bleed hero with the title as logo art, light and glass pill buttons, accent rails before section titles and squircle cards with their titles below. Backdrop blur falls back to the translucent fill.
 - The Home hero is a carousel (theme engine): slides from continue watching, next up and the newest movies and shows rotate on a timer (Settings: auto-rotate and interval) that pauses while the window is inactive, a button is held, a description is open, the focus is in use, a dialog or the player is open; Left and Right at the hero's buttons step slides, themes can show arrows, dots and a progress hairline, and the leaving slide fades out. The hero description clamps to three lines and opens on a click.
 - Themes can style a skeleton for the loading hero and rows (`.hero-skeleton`, `[data-region="loading"]`) and a scrim behind the header once the page has scrolled (`page[data-scrolled="true"]`).
-
 - Theme Studio works on the detail page (movie, series and episode) and on the player's controls bar too: the same pick, inspect and live edit, and the panel docks beside the player so the video keeps the rest of the window. While picking, hosted widgets (the header's Smart menu, search, avatar and history, the player's transport buttons, seek and volume tracks) select their element instead of acting; leaving pick mode restores them.
-- Debug builds can write what the active theme did (tokens applied, not applied by kind, imports fetched, fonts loaded) as JSON with `NOCTURNE_THEME_REPORT=<file>` and the `theme-report@<ms>` key hook; `scripts/theme-conformance.sh` fills its applied / not applied column from it.
+
+### Changed
+- The theme engine is on by default: Home, the header, Library, Search, the item page and the player's controls are element trees styled by the stylesheet (the look is unchanged with no theme). It is the `theme-engine` cargo feature, now a default feature of `nocturne-app`; `cargo build --no-default-features` builds the hand-written screens only, and `NOCTURNE_ENGINE_UI=0` shows them at run time for this release.
+- Loaded theme fonts apply at once to headings, labels and buttons (text without an explicit font keeps the launch font).
+- `sources.toml` is version 2: the per-server Server UI switch is now `ui_from = "self"` (migrated automatically).
 
 ### Fixed
 - Clicking a My Media tile in a server's own look no longer crashes: the paint widget kept hover, press and drag node numbers across a page swap and indexed the smaller new page with them; they are now dropped when the page is replaced.
@@ -65,23 +81,23 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Engine Home: the row paging arrows of the Classic look scroll their strip; hovering a header link no longer leaves it lit after the pointer leaves; the Smart link no longer lights on every library page; in a window narrower than 640 px the brand makes room for the links.
 - Engine search overlay: the Up and Down keys move the highlighted result.
 - Theme Studio: the Home hero stops rotating while the Studio is open, and the safe look chord also resets the open Studio preview.
-- `tools/headless-pointer` gains `wheel <dx> <dy>` and `drag <x1> <y1> <x2> <y2>` for headless QA.
 - The built-in Marquee and Classic starters no longer make the theme engine warn about `display: carousel` and `content: server`; they are accepted as the layout layer's words.
-- `scripts/headless-parity.sh` captured the thumb view at a random moment (the `v` key raced the page load); the debug hook `view-thumb` waits for the library page and sets the view explicitly, and `PARITY_ONLY=<text>` runs a subset.
 - Home rows now ask the server for each item's overview and genres, so the hero shows the description; long wrapped text in the theme engine is no longer dropped when the renderer breaks one line more than the measure did.
 - The hero's Play label keeps a contrasting colour under a theme that colours buttons.
 - Pasting or importing a theme that is (or contains) an `@import` now fetches it for the preview too, shows "Fetching imports and fonts..." while it downloads, and feeds the fetched, inlined stylesheet (and its fonts) to the theme engine for previews, the Theme Studio, saved themes and server UIs instead of the raw text.
 - Windows: text no longer shows as random symbols. The UI relied on fonts the PC does not have (Noto Sans, JetBrains Mono Nerd Font); Noto Sans (Regular, Medium, Bold) and JetBrains Mono (Regular, Bold) are now embedded in the app on every platform (SIL OFL-1.1, see THIRD_PARTY_NOTICES.md).
 - Windows: the app no longer freezes ("Not Responding") when playback starts, and the stats overlay shows values again. Starting mpv, connecting to its pipe and every property read waited on the UI thread (up to 300 ms each, several per tick, longer than mpv needs to open its window on a slow PC or virtual machine); all of it now runs on worker threads and properties come from a cache kept current by mpv's property observers. The same change applies to the external mpv window on Linux and macOS.
 - Windows: video plays inside the app window (a child window that mpv draws into) instead of a separate window. The controls bar and menus sit outside the picture (the window cannot be drawn over): the picture shrinks above the bar while it shows, stays visible around menus and panels (the window is cut out where they are drawn) and hides only under full-window overlays and prompts. If mpv cannot start in the window, the separate mpv window opens with a one-line notice; `NOCTURNE_VIDEO=external` forces it. Needs testing on a real PC.
-- The app's test run no longer crashes now and then with SIGSEGV: tests that build an `iced_test` simulator ran concurrently and now take a shared lock.
 - Signing in to a server whose old token was still in the keyring no longer opens with "Your session ended. Please sign in again."; the note only shows when the session restored at launch was rejected or the session ended while the app was open.
+
+### Development
+- The engine's time budget is 300 ms per pass (it was 50 ms and switched heavy themes off in debug builds); `NOCTURNE_ENGINE_TIMING=1` logs every pass, and `cargo build --profile conformance` builds optimised code with the debug-only snapshot hooks the conformance harness needs.
+- Debug builds can write what the active theme did (tokens applied, not applied by kind, imports fetched, fonts loaded) as JSON with `NOCTURNE_THEME_REPORT=<file>` and the `theme-report@<ms>` key hook; `scripts/theme-conformance.sh` fills its applied / not applied column from it.
+- `tools/headless-pointer` gains `wheel <dx> <dy>` and `drag <x1> <y1> <x2> <y2>` for headless QA.
+- `scripts/headless-parity.sh` captured the thumb view at a random moment (the `v` key raced the page load); the debug hook `view-thumb` waits for the library page and sets the view explicitly, and `PARITY_ONLY=<text>` runs a subset.
+- The app's test run no longer crashes now and then with SIGSEGV: tests that build an `iced_test` simulator ran concurrently and now take a shared lock.
 - `scripts/headless-input-check.sh` no longer loses chords: it waits for the virtual keyboard to appear, refocuses, checks the focus and only then sends the keys; each check starts from a known state and is repeated once if a chord went missing.
 - `scripts/theme-conformance.sh` runs each theme with the import its own project documents (ElegantFin no longer resolves to a Jellyfin 12 fork) and makes "All" use the server's UI, so the NOCTURNE side shows the server's sections.
-
-### Changed
-- Loaded theme fonts apply at once to headings, labels and buttons (text without an explicit font keeps the launch font).
-- `sources.toml` is version 2: the per-server Server UI switch is now `ui_from = "self"` (migrated automatically).
 
 ## [0.5.1] - 2026-11-19
 
