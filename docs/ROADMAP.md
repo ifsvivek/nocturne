@@ -135,9 +135,14 @@ A review of the Jellyfin ecosystem (server, web and other official clients: issu
 
 Nothing is dropped for good. Earlier decisions to revisit when users ask for them:
 
-- **Distribution**: a Homebrew tap for macOS; signed Windows and macOS installers (signing certificates cost money); X11 sessions on Linux (0.5 made Linux Wayland-only; X11 would come back as the external-window video mode only).
+- **Distribution**: signed Windows and macOS installers (signing certificates cost money).
 - **Theme effects without a native equivalent yet**: conic gradients, `filter: blur()`, `saturate()` and `contrast()`, `backdrop-filter` blur (now a translucent fill), masks, animations on virtualised library cards, and native versions of what popular themes do with JavaScript.
 - **Server UI**: plugin pages and custom tabs of the web client, shown natively where a plugin's data is readable.
+
+## Dropped (will not be built)
+
+- X11 sessions on Linux: NOCTURNE is Wayland-only since 0.5.
+- A Homebrew tap or cask.
 
 ## Upstream reports
 
