@@ -213,7 +213,7 @@
       <figure class="m-0"><Shot name="sections-crop" sizes={right} /><figcaption class="mt-4 text-sm text-ink-2">Settings, Sources, Sections: the server's home sections for your account, editable once server changes are on.</figcaption></figure>
     </div>
     <p class="mx-auto mt-10 mb-0 w-[min(1000px,100%-40px)] text-sm text-ink-3">{v052
-      ? "Not a browser: nothing in a theme runs, so what a theme builds with JavaScript is missing, and effects without a native equivalent differ: backdrop blur becomes a translucent fill, and masks, @keyframes animations and radial or repeating gradients are not drawn. Settings, Admin and setup keep their own screens and take a theme's colours, radii and fonts."
+      ? "Not a browser: nothing in a theme runs, so what a theme builds with JavaScript is missing, and effects without a native equivalent differ: backdrop blur becomes a translucent fill, and masks, conic gradients and blur, saturate or contrast filters are not drawn. Settings, Admin and setup keep their own screens and take a theme's colours, radii and fonts."
       : "Not arbitrary web CSS: each page keeps its structure, and a Jellyfin web theme applies only partly, mostly its colours, radii and font. Letter spacing is read but not drawn; density, type size and backdrop blur are applied approximately."}</p>
   </section>
 
