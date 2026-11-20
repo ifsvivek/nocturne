@@ -793,7 +793,7 @@ impl<M> Styled<'_, M> {
         };
         let layers = s.eff(n).bg.clone();
         let layers = layers.as_ref().unwrap_or(&c.bg);
-        for [x, y, w, h] in paint::pic_rects(&p, rect.width, rect.height, iw, ih) {
+        for [x, y, w, h] in paint::pic_rects(&p, rect.width, rect.height, iw, ih, c.font_size) {
             let at = Rectangle::new(Point::new(rect.x + x, rect.y + y), Size::new(w, h));
             match &pic.data {
                 super::pics::Data::Raster(hd) => r.draw_image(

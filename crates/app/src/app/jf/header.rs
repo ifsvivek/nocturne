@@ -242,7 +242,8 @@ impl App {
             let (sort, _) = Self::sort_label(br);
             for (w, s) in [
                 (w_of(&Self::filters_label(br)), Slot::Filters),
-                (w_of(&sort), Slot::Sort),
+                // The arrow comes from a fallback font the measure does not know: a little slack keeps the label on one line.
+                (w_of(&sort) + 8.0, Slot::Sort),
             ] {
                 let n = d.add(g2, "div.slot.MuiButton-root.MuiButtonGroup-grouped");
                 d.inline(n, &format!("width: {}; height: 32px", px(w)));

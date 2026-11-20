@@ -156,7 +156,7 @@ pub(crate) fn card_doc(
     let mut icon = None;
     if missing {
         let n = d.add(img, "span.cardImageIcon.material-icons");
-        d.inline(n, "width: 64px; height: 64px");
+        d.inline(n, "width: 80px; height: 80px"); // the web's 5em
         icon = Some((n, missing_icon(c)));
     }
     d.attr(img, "data-action", "link");
