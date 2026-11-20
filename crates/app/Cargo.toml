@@ -17,7 +17,8 @@ name = "nocturne"
 path = "src/main.rs"
 
 [features]
-# The element-tree theme engine (`docs/dev/THEME_ENGINE_PLAN.md`): widget and preview only, off in every normal build until the screens move onto it.
+# The element-tree theme engine (`docs/dev/THEME_ENGINE_PLAN.md`): Home, header, Library, Search, Detail and the player bar are styled trees. On by default since 0.5.2; `cargo build --no-default-features` gives the hand-written screens only, and `NOCTURNE_ENGINE_UI=0` selects them at run time.
+default = ["theme-engine"]
 theme-engine = ["dep:nocturne-style"]
 
 [dependencies]
