@@ -992,7 +992,24 @@ impl Scene {
         };
         for id in ids {
             let c = self.st.styles[id].clone();
-            let spec = c.anim.as_ref().filter(|_| !self.doc.nodes[id].essential);
+            // Nothing runs on an element that is not drawn (the web client's base sheet has endless spinners on hidden elements).
+            let shown = {
+                let mut n = Some(id);
+                let mut ok = true;
+                while let Some(i) = n {
+                    let st = &self.st.styles[i];
+                    if st.layout.display == taffy::style::Display::None || !st.visible {
+                        ok = false;
+                        break;
+                    }
+                    n = self.doc.nodes[i].parent;
+                }
+                ok
+            };
+            let spec = c
+                .anim
+                .as_ref()
+                .filter(|_| shown && !self.doc.nodes[id].essential);
             let kf = spec.and_then(|a| self.sheet.keyframes.get(&a.name).cloned());
             let spec = kf.as_ref().and(spec);
             let base = Eff {

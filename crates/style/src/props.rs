@@ -1109,10 +1109,10 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
     let v = value.trim();
     // CSS-wide keywords: `inherit` (and `unset`, which is `inherit` for the inherited properties) takes the parent's value; on a property that is not inherited and not tracked here it is silently dropped.
     // `initial` (and `unset` on a property that is not inherited) puts back the default: a theme that writes `margin-top: unset` takes away jellyfin-web's own negative margin.
-    if matches!(v, "initial" | "unset" | "revert") {
-        if let Some(init) = initial_of(name) {
-            return compile(name, init);
-        }
+    if matches!(v, "initial" | "unset" | "revert")
+        && let Some(init) = initial_of(name)
+    {
+        return compile(name, init);
     }
     if matches!(v, "inherit" | "unset") {
         let kind: Option<&'static str> = match name {
