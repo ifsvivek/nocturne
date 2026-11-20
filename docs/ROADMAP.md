@@ -70,6 +70,7 @@ Add-ons in the style of media-center add-on catalogs: an add-on is a web address
 
 - Its own sign-in, local network (or a private overlay network) only, read-only toward the servers it merges unless the user turns writes on.
 - It holds sign-ins for every merged server, so it gets a security review before release.
+- Controlled from Settings > Gateway (NOCTURNE starts and stops the service, no separate setup): Gateway Off (default) / On; status (Online, Stopped, or the error); Allow connections from: this computer only (default), the local network, or remote over HTTPS (needs a certificate, off by default); caching: none (default) or a size limit; the gateway address with Copy and a QR code for phones; the gateway's own sign-in for phones and TVs (never a server's password). No torrent features.
 
 ## Then: compatibility and correctness
 
