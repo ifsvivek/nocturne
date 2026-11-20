@@ -482,7 +482,9 @@ pub fn font_scale() -> f32 {
 }
 
 pub fn page_pad() -> f32 {
-    PAGE_PAD * density()
+    look()
+        .and_then(|l| l.layout.base.header.pad)
+        .unwrap_or(PAGE_PAD * density())
 }
 
 /// Header height (explicit `height` wins over the density-scaled default).
@@ -490,6 +492,11 @@ pub fn header_h() -> f32 {
     look()
         .and_then(|l| l.layout.base.header.height)
         .unwrap_or(HEADER_H * density())
+}
+
+/// A theme replaced the breadcrumb strip by a back button in the header.
+pub fn header_back() -> bool {
+    look().is_some_and(|l| l.layout.base.header.back == Some(true))
 }
 
 /// The header takes its own row and pushes the content down (`position: static`); otherwise it

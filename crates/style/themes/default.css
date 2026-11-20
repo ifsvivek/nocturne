@@ -172,6 +172,8 @@ page { display: flex; flex-direction: column; background: var(--nocturne-bg, tra
 .detail-chips { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; }
 .detail-meta, .detail-genres { display: flex; flex-direction: row; align-items: center; gap: 8px; }
 .detail-rating, .detail-cert { display: none; }
+/* The facts line below the hero has year and runtime, the tags have the genres: the hero's copies are for themes that set the facts as a line of text (they show them again). */
+.detail-year, .detail-runtime, .detail-genres { display: none; }
 .detail-title { color: var(--nocturne-text); font-size: 48px; font-weight: 700; line-height: 1.08; }
 .detail-logo { width: 680px; max-width: 100%; height: 110px; object-fit: contain; object-position: left; }
 .detail-parent, .detail-tracks { display: none; }
@@ -226,7 +228,7 @@ page { display: flex; flex-direction: column; background: var(--nocturne-bg, tra
 .section-titles { display: flex; flex-direction: column; flex: 1; gap: 8px; min-width: 0; }
 .section-title { color: var(--nocturne-text); font-size: 28px; font-weight: 700; }
 .section-text { max-width: 520px; color: var(--nocturne-text-secondary); font-size: 15px; line-height: 1.55; }
-.section-meta { align-self: flex-end; color: var(--nocturne-text-tertiary); font-family: monospace; font-size: 11px; }
+.section-meta { display: none; align-self: flex-end; color: var(--nocturne-text-tertiary); font-family: monospace; font-size: 11px; }
 .section-strip { margin-top: -2px; display: flex; flex-direction: row; flex: none; padding: 0 0 0 calc(var(--nocturne-page-pad) - 12px); overflow-x: scroll; overflow-y: hidden; }
 .section-skeleton, .skeleton-row { display: none; }
 .skeleton { flex: none; border-radius: var(--nocturne-r-card); background: alpha(var(--nocturne-text), 0.06); }

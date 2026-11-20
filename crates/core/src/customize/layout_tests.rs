@@ -526,6 +526,16 @@ fn hostile_layout_input_never_panics() {
 }
 
 #[test]
+fn header_back_page_pad_and_a_vh_hero_height_are_read() {
+    let r = clean(".header{--header-back:on;--page-pad:96px}.hero{height:85vh}");
+    let l = &r.layout.base;
+    assert_eq!(l.header.back, Some(true));
+    assert_eq!(l.header.pad, Some(96.0));
+    assert_eq!(l.hero.height_vh, Some(85.0));
+    assert_eq!(l.hero.height, None);
+}
+
+#[test]
 fn classic_has_the_web_home_layout() {
     let r = clean(PRESETS[2].1);
     assert_eq!(PRESETS[2].0, "Classic");

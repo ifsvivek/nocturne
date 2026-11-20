@@ -722,16 +722,60 @@ impl Settings {
     }
 
     pub fn load() -> Self {
-        Self::default_path().map_or_else(Self::default, |p| Self::load_from(&p))
+        Self::load_checked().0
+    }
+
+    /// Like [`Settings::load`], plus the one-line notice to show when the file could not be read (a copy of it was kept).
+    pub fn load_checked() -> (Self, Option<String>) {
+        match Self::default_path() {
+            Some(p) => Self::load_report(&p),
+            None => (Self::default(), None),
+        }
     }
 
     /// Missing, unreadable or corrupt file gives defaults; an older version is stamped current
     /// (new fields take their defaults, so "migration" is just that).
     pub fn load_from(path: &Path) -> Self {
-        let mut s: Self = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|t| toml::from_str(&t).ok())
-            .unwrap_or_default();
+        Self::load_report(path).0
+    }
+
+    /// A file that exists but does not parse (a hand-edit with a duplicate key, say) is never silently dropped: a copy is kept as `settings.toml.bad-<unix time>`, a repaired parse (a repeated key keeps its last value) is used when there is one, and the notice says where the copy is.
+    pub fn load_report(path: &Path) -> (Self, Option<String>) {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return (Self::migrated(Self::default()), None);
+        };
+        let (mut s, bad) = match toml::from_str::<Self>(&text) {
+            Ok(s) => (s, false),
+            Err(_) => (
+                toml::from_str(&drop_repeated_keys(&text)).unwrap_or_default(),
+                true,
+            ),
+        };
+        s.migrate();
+        if !bad {
+            return (s, None);
+        }
+        let when = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let name = format!(
+            "{}.bad-{when}",
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("settings.toml")
+        );
+        let copy = path.with_file_name(name);
+        let note = match std::fs::copy(path, &copy) {
+            Ok(_) => format!(
+                "Your settings file could not be read; a copy was kept at {}.",
+                copy.display()
+            ),
+            Err(_) => "Your settings file could not be read and no copy could be made.".into(),
+        };
+        (s, Some(note))
+    }
+
+    fn migrated(mut s: Self) -> Self {
         s.migrate();
         s
     }
@@ -760,6 +804,40 @@ impl Settings {
         std::fs::write(&tmp, text)?;
         std::fs::rename(&tmp, path)
     }
+}
+
+/// The text with every repeated `key =` line (within one `[table]`) reduced to its last occurrence: TOML rejects the file otherwise, and the later line is what a hand-editor meant.
+fn drop_repeated_keys(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut table = String::new();
+    let mut last: std::collections::HashMap<(String, String), usize> = Default::default();
+    let key_of = |l: &str| {
+        let t = l.trim_start();
+        (!t.starts_with('#') && !t.starts_with('['))
+            .then(|| t.split_once('=').map(|(k, _)| k.trim().to_string()))
+            .flatten()
+    };
+    for (i, l) in lines.iter().enumerate() {
+        if l.trim_start().starts_with('[') {
+            table = l.trim().to_string();
+        } else if let Some(k) = key_of(l) {
+            last.insert((table.clone(), k), i);
+        }
+    }
+    table.clear();
+    let mut out = String::new();
+    for (i, l) in lines.iter().enumerate() {
+        if l.trim_start().starts_with('[') {
+            table = l.trim().to_string();
+        } else if let Some(k) = key_of(l)
+            && last.get(&(table.clone(), k)) != Some(&i)
+        {
+            continue;
+        }
+        out.push_str(l);
+        out.push('\n');
+    }
+    out
 }
 
 #[cfg(test)]
@@ -873,6 +951,34 @@ mod tests {
         assert!(!s.autoplay_next && !s.sync_progress && s.version == VERSION);
         std::fs::write(&p, "this is {{ not toml").unwrap();
         assert_eq!(Settings::load_from(&p), Settings::default(), "corrupt");
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn a_duplicate_key_keeps_a_copy_repairs_and_says_so() {
+        let d = dir("dup");
+        let p = d.join("settings.toml");
+        std::fs::create_dir_all(&d).unwrap();
+        let text =
+            "version = 3\nautoplay_next = false\nautoplay_next = true\nauto_skip_intro = true\n";
+        std::fs::write(&p, text).unwrap();
+        let (s, note) = Settings::load_report(&p);
+        // The repeated key keeps its last value and the rest of the file survives.
+        assert!(s.autoplay_next && s.auto_skip_intro);
+        let note = note.expect("a notice");
+        assert!(note.contains("settings.toml.bad-"), "{note}");
+        let kept: Vec<_> = std::fs::read_dir(&d)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".bad-"))
+            .collect();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(std::fs::read_to_string(kept[0].path()).unwrap(), text);
+        // The original is untouched until something is saved.
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), text);
+        // A good file gives no notice.
+        std::fs::write(&p, "version = 3\n").unwrap();
+        assert!(Settings::load_report(&p).1.is_none());
         std::fs::remove_dir_all(d).unwrap();
     }
 

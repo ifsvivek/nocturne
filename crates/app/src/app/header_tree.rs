@@ -210,6 +210,16 @@ impl App {
         let brand = d.add(left, "div.header-brand");
         let mut slots: Vec<(Id, Slot)> = vec![];
         let mut icon_slots: Vec<(Id, Slot)> = vec![];
+        if t::header_back()
+            && self
+                .stack
+                .last()
+                .is_some_and(|p| p.view == super::View::Detail)
+        {
+            let n = d.add(brand, "div.slot.header-back");
+            d.inline(n, "width: 40px; height: 40px; margin-right: 10px");
+            slots.push((n, Slot::Back));
+        }
         if !crate::couch::on() && t::header_item(t::HeaderItem::History) {
             for (s, last) in [(Slot::Back, false), (Slot::Forward, true)] {
                 let n = d.add(brand, "div.slot");

@@ -109,7 +109,7 @@ pub fn strip_block(s: Sec) -> f32 {
     2.0 * t::S8 + HEAD_BLOCK + t::S4 + strip_h(s) + 1.0
 }
 
-/// "Rated / Premiere / ..." rows of the metadata table.
+/// "Premiere / Studio / Added ..." rows of the metadata table (rating, year, runtime and genres are shown elsewhere on the page).
 pub fn facts(m: &Media, f: &Full) -> Vec<(&'static str, String)> {
     let mut v: Vec<(&'static str, String)> = vec![];
     let mut put = |k: &'static str, x: Option<String>| {
@@ -117,7 +117,6 @@ pub fn facts(m: &Media, f: &Full) -> Vec<(&'static str, String)> {
             v.push((k, x));
         }
     };
-    put("Rated", f.official_rating.clone());
     put(
         if m.kind == Kind::Person {
             "Born"
@@ -128,10 +127,6 @@ pub fn facts(m: &Media, f: &Full) -> Vec<(&'static str, String)> {
     );
     put("Place", f.places.first().cloned());
     put("Studio", f.studios.first().map(|s| s.1.clone()));
-    put(
-        "Genres",
-        (!m.genres.is_empty()).then(|| m.genres.join(", ")),
-    );
     put(
         "Added",
         m.added.as_deref().map(|d| d.chars().take(10).collect()),

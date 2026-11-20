@@ -1201,14 +1201,11 @@ impl<M> Styled<'_, M> {
     pub(super) fn tip_of(&self, hover: Option<Id>) -> Option<(Id, &str)> {
         let mut at = hover;
         while let Some(i) = at {
-            if let Some((_, v)) = self.scene.doc.nodes[i]
-                .attrs
-                .iter()
-                .find(|(k, _)| k == "title")
-            {
+            let node = self.scene.doc.nodes.get(i)?;
+            if let Some((_, v)) = node.attrs.iter().find(|(k, _)| k == "title") {
                 return Some((i, v.as_str()));
             }
-            at = self.scene.doc.nodes[i].parent;
+            at = node.parent;
         }
         None
     }
@@ -1533,6 +1530,12 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
     }
 
     fn diff(&self, tree: &mut Tree) {
+        // The scene is replaced wholesale (a page swap); node ids kept from the old one may not exist in the new one.
+        let n = self.scene.doc.nodes.len();
+        let st = tree.state.downcast_mut::<State>();
+        st.hover = st.hover.filter(|&i| i < n);
+        st.pressed = st.pressed.filter(|&i| i < n);
+        st.drag = st.drag.filter(|d| d.0 < n);
         tree.diff_children(&self.slots);
     }
 
@@ -1822,10 +1825,13 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
         let st = tree.state.downcast_ref::<State>();
         let mut up = st.hover;
         while let Some(n) = up {
-            if self.scene.doc.nodes[n].focusable {
+            let Some(node) = self.scene.doc.nodes.get(n) else {
+                break;
+            };
+            if node.focusable {
                 return mouse::Interaction::Pointer;
             }
-            up = self.scene.doc.nodes[n].parent;
+            up = node.parent;
         }
         mouse::Interaction::None
     }
@@ -1908,5 +1914,49 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
 impl<'a, M: Clone + 'a> From<Styled<'a, M>> for Element<'a, M> {
     fn from(s: Styled<'a, M>) -> Self {
         Element::new(s)
+    }
+}
+
+#[cfg(test)]
+mod stale_state_tests {
+    use super::*;
+    use nocturne_style::{Builders, Doc, Fonts, Interaction, Sheet, approx};
+    use std::rc::Rc;
+
+    fn scene(n: usize) -> Scene {
+        let mut d = Doc::new("page");
+        for _ in 1..n {
+            d.add(0, "div");
+        }
+        Scene::build(
+            d,
+            Rc::new(Sheet::parse("div { height: 10px }")),
+            Rc::new(Fonts::new()),
+            (100.0, 100.0),
+            Interaction::default(),
+            None,
+            &Builders::new(),
+            &mut approx,
+        )
+        .expect("builds")
+    }
+
+    #[test]
+    fn node_ids_from_a_replaced_scene_are_dropped() {
+        let (big, small) = (scene(50), scene(5));
+        let el: Element<'_, ()> = Styled::new(&big, |_| ()).into();
+        let mut tree = Tree::new(&el);
+        let st = tree.state.downcast_mut::<State>();
+        (st.hover, st.pressed, st.drag) = (Some(40), Some(41), Some((42, true, 0.0)));
+        let el: Element<'_, ()> = Styled::new(&small, |_| ()).into();
+        el.as_widget().diff(&mut tree);
+        let st = tree.state.downcast_ref::<State>();
+        assert!(st.hover.is_none() && st.pressed.is_none() && st.drag.is_none());
+        // A stale id handed straight to the tooltip lookup is harmless too.
+        assert!(
+            Styled::new(&small, |_: StyledEvent| ())
+                .tip_of(Some(40))
+                .is_none()
+        );
     }
 }
