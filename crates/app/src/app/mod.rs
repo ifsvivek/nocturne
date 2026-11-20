@@ -2343,6 +2343,9 @@ impl App {
             }
             if !self.admin_open
                 && !self.settings_open
+                && !self.th.open
+                && !self.src_open
+                && self.folders.is_none()
                 && !plain
                 && let Some(c) = self.crumbs()
             {
