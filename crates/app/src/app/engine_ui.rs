@@ -831,7 +831,10 @@ impl App {
                 h.it.hover = n;
                 // The pointer on a card moves the keyboard focus there (as the hand-written cells do).
                 let cell = match w {
-                    Which::Home => n.and_then(|n| ancestor_cell(&h.tree, &h.scene, n)),
+                    // Row 0 is the header's links: hovering one highlights it (`:hover`) but does not park the keyboard focus there, or it stays lit after the pointer leaves.
+                    Which::Home => n
+                        .and_then(|n| ancestor_cell(&h.tree, &h.scene, n))
+                        .filter(|&(row, _)| row > 0),
                     _ => None,
                 };
                 let item = match w {

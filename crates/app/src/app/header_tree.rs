@@ -203,6 +203,10 @@ impl App {
             },
         );
         d.inline(header, &format!("height: {}", px(hh)));
+        if fixed {
+            // Home's header lies over the hero and the strips: once the page has scrolled, this layer (the header's own fill again, so a transparent header stays transparent) hides what passes behind it, as the hand-written header does.
+            d.add(header, "div.header-backdrop");
+        }
         let bar = d.add(header, "div.header-bar");
         d.inline(bar, &format!("height: {}", px(hh - 1.0)));
         d.add(header, "div.header-rule");
@@ -300,8 +304,10 @@ impl App {
                     a,
                     &format!("height: {}; width: {}; padding: 0", px(hh), px(w)),
                 );
-                let act = on(cur.is_some_and(|c| {
-                    libs.iter().any(|l| (l.origin, l.id.as_str()) == c) || c.1.starts_with("smart-")
+                // As the hand-written links: Libraries lights for one of the libraries, Smart only for a smart collection.
+                let act = on(cur.is_some_and(|c| match which {
+                    Link::Libraries => libs.iter().any(|l| (l.origin, l.id.as_str()) == c),
+                    _ => c.1.starts_with("smart-"),
                 }));
                 let slot = match which {
                     Link::Libraries => Slot::Libraries {

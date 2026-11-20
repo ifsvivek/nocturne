@@ -4,6 +4,8 @@ page { display: flex; flex-direction: column; background: var(--nocturne-bg, tra
 /* ---- header ---- */
 .header { display: flex; flex-direction: column; z-index: 20; background: var(--nocturne-header-bg); }
 .header-fixed { position: fixed; top: 0; left: 0; right: 0; }
+.header-backdrop { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--nocturne-header-bg); }
+page[data-scrolled="true"] .header-backdrop { display: block; }
 .header-bar { display: flex; flex-direction: row; align-items: center; padding: 0 var(--nocturne-page-pad); }
 .header-rule { height: 1px; background: var(--nocturne-hairline); }
 .header-left { display: flex; flex-direction: row; align-items: center; flex: 1; gap: 32px; min-width: 0; }
