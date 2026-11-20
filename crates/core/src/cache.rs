@@ -21,6 +21,12 @@ impl<K: Hash + Eq + Clone, V> Cache<K, V> {
         self.map.get(k)
     }
 
+    pub fn remove(&mut self, k: &K) {
+        if self.map.remove(k).is_some() {
+            self.order.retain(|o| o != k);
+        }
+    }
+
     pub fn insert(&mut self, k: K, v: V) {
         if self.map.insert(k.clone(), v).is_none() {
             self.order.push_back(k);
@@ -36,6 +42,19 @@ impl<K: Hash + Eq + Clone, V> Cache<K, V> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remove_frees_the_slot() {
+        let mut c = Cache::new(2);
+        c.insert("a", 1);
+        c.insert("b", 2);
+        c.remove(&"a");
+        c.insert("c", 3);
+        assert_eq!(
+            (c.get(&"a"), c.get(&"b"), c.get(&"c")),
+            (None, Some(&2), Some(&3))
+        );
+    }
 
     #[test]
     fn evicts_oldest_and_updates_in_place() {

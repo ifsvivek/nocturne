@@ -982,6 +982,36 @@ impl App {
         }
     }
 
+    /// Let go of the library grid's decoded pictures far from the rows in view: the grid keeps every card's picture otherwise, so scrolling a long library adds up. A card that comes back into range is fetched again (from the disk cache) like one never shown.
+    pub(super) fn eng_trim_pics(&mut self, keep: std::ops::Range<usize>) {
+        let Some(g) = self.eng.page.as_ref().and_then(|h| h.tree.grid.as_ref()) else {
+            return;
+        };
+        let mut gone: Vec<(u32, String)> = vec![];
+        {
+            let mut d = g.data.borrow_mut();
+            for idx in (0..d.cards.len()).filter(|i| !keep.contains(i)) {
+                if let Some(c) = d.cards[idx].as_mut()
+                    && let Some((key, _)) = c.key.clone()
+                    && matches!(c.pic, Pic::Ready(_))
+                {
+                    c.pic = Pic::Loading;
+                    gone.push((c.pic_id, key.clone()));
+                    d.waiting.entry(key).or_default().push(idx);
+                }
+            }
+        }
+        if let Some(h) = self.eng.page.as_mut() {
+            for (id, _) in &gone {
+                h.tree.images.remove(id);
+                h.tree.done.remove(id);
+            }
+        }
+        for (_, key) in gone {
+            self.images.remove(&key);
+        }
+    }
+
     /// The page scrolled: keep the legacy scroll fields (they drive which images load) in step.
     fn eng_scrolled(&mut self) -> Task<Message> {
         let off = self
