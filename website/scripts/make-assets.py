@@ -24,7 +24,7 @@ SKIP_FULL = {"picker", "05-search", "03-movie-detail", "smart-menu", "downloads"
 # variant. Framed on the 3840x2160 captures; check by eye after a recapture (open sized/*-crop-*.webp).
 CROPS = {
     # command palette with its results list (one title found on several sources)
-    "search-crop": ("05-search", (0.305, 0.065, 0.695, 0.565), 1280),
+    "search-crop": ("05-search", (0.30, 0.01, 0.70, 0.41), 1280),
     # "Server changes" paragraph and the "Allow NOCTURNE to change data" row with its OFF switch (.reticle in app.css)
     "settings-crop": ("07-settings", (0.02, 0.30, 0.98, 0.48), 2560),
     # "Who's watching?" tiles, centred, 16:9 like the account-menu still beside it
@@ -32,7 +32,7 @@ CROPS = {
     # video picture without the control bar (about 24:13, like the layer stack in How.svelte)
     "video-crop": ("06-playback", (0.025, 0.0, 0.975, 0.905), 1280),
     # the player control bar and seek line (stops above the mouse pointer at the bottom edge)
-    "controls-crop": ("06-playback", (0.0, 0.905, 1.0, 0.994), 1280),
+    "controls-crop": ("06-playback", (0.0, 0.92, 1.0, 1.0), 1280),
     # the Versions and sources picker on the movie detail page, 16:9 like the series still beside it
     "alternates-crop": ("03-movie-detail", (0.30, 0.30, 0.70, 0.70), 1920),
     # 0.4 captures (3840x2160 headless, scale 2, see README)
