@@ -842,6 +842,19 @@ mod tests {
     }
 
     #[test]
+    fn glass_accent_text_reads_on_its_grounds() {
+        let k = Tokens::resolve(
+            &cz::parse(include_str!("../../style/themes/glass.css"))
+                .unwrap()
+                .theme,
+        );
+        for ground in [k.frame, k.surface, k.raised] {
+            let r = contrast(k.accent_text, ground);
+            assert!(r >= 4.5, "accent text {r:.2}:1");
+        }
+    }
+
+    #[test]
     fn default_theme_resolves_to_the_built_in_look() {
         assert_eq!(Tokens::resolve(&cz::Theme::default()), Tokens::DEFAULT);
     }
