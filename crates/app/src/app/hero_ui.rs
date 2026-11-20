@@ -33,7 +33,23 @@ impl App {
             .is_some()
     }
 
-    /// 5 times a second from the root tick: keep the slides current, feed the pauses, advance the timer and move the progress hairline.
+    /// Does the theme draw the carousel's progress hairline? Only then is it worth waking once a second to move it.
+    pub(super) fn hero_hairline(&self) -> bool {
+        let Some(h) = self.eng.home.as_ref() else {
+            return false;
+        };
+        // `display: none` on the track hides the fill with it.
+        let mut n = h.tree.hero_fx.progress;
+        while let Some(i) = n {
+            if h.scene.is_hidden(i) {
+                return false;
+            }
+            n = h.scene.doc.nodes[i].parent;
+        }
+        h.tree.hero_fx.progress.is_some()
+    }
+
+    /// From the root tick: keep the slides current, feed the pauses, advance the timer and move the progress hairline.
     pub(super) fn hero_tick(&mut self, now: Instant) -> Task<Message> {
         if !self.eng.enabled {
             return Task::none();
@@ -96,7 +112,7 @@ impl App {
             self.eng.dirty = true;
             return self.home_wants();
         }
-        if running && active {
+        if running && active && self.hero_hairline() {
             self.eng_home_edit(|doc, tree| match tree.hero_fx.progress {
                 Some(n) => {
                     doc.nodes[n].inline = Some(format!("width: {:.1}%", progress * 100.0));

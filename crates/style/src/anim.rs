@@ -218,6 +218,30 @@ impl Anims {
         !self.by_node.is_empty() || self.runs.values().any(|r| !r.done)
     }
 
+    pub fn nodes(&self) -> Vec<Id> {
+        self.by_node.keys().copied().collect()
+    }
+
+    /// What keeps frames coming, for `NOCTURNE_REDRAW_LOG`.
+    pub fn summary(&self) -> String {
+        let t: Vec<String> = self
+            .by_node
+            .iter()
+            .flat_map(|(id, v)| {
+                v.iter().map(move |a| {
+                    format!(
+                        "transition node {id:?} {:?} {}ms elapsed {:?}",
+                        a.prop as u8,
+                        a.dur,
+                        self.now.map(|n| n.saturating_duration_since(a.start))
+                    )
+                })
+            })
+            .collect();
+        let r = self.runs.values().filter(|r| !r.done).count();
+        format!("{} runs {r}", t.join("; "))
+    }
+
     /// Does anything override a style (a held `forwards` animation counts)?
     pub fn any(&self) -> bool {
         !self.by_node.is_empty() || !self.runs.is_empty()

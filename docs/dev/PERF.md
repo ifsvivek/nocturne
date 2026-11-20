@@ -85,3 +85,27 @@ Two fat-LTO `release` builds of the same commit (`main` at the theme fidelity ro
 | Engine on, `NOCTURNE_ENGINE_UI=0` (fallback) | | RSS 324 to 326 MiB, first frame 1.9 to 2.4 s (noisy) | the fallback runs |
 
 The +2.8 MiB is the engine crate with Taffy and `cssparser`, the default stylesheets and the engine screens (two crates under MPL-2.0 are new in the notices: `cssparser`, `dtoa-short`). The idle CPU of about 50 % appears in both builds in the GPU-less session (software rendering of an animating Home), so it is not caused by the engine; confirm on a real GPU session before quoting an idle CPU. The package builds and the Windows/macOS cross checks could not run (no container daemon), see the 0.5.2 release notes.
+
+## Idle redraws, 2026-11-20
+
+An idle app redrew about 6 times a second on Home and 10 times a second in the Library. Cause: the root `Message::Tick` subscription (`time::every(200 ms)`) ran for the whole life of the app, and Iced redraws the window after every message that reaches `update`, so a polling tick is a redraw (the Library, with its engine scene, drew twice per tick). The tick polls state that other messages change (toast expiry, offline retry, downloads, hooks, onboarding), so it was never needed while nothing happens.
+
+Fix (`crates/app/src/app/mod.rs`, `redraw.rs`): `App::tick_period()` returns `None` when idle. The tick runs (200 ms) for 15 s after any real message (`keeps_awake`: not a tick, frame, hover, picture or no-op), and while a player exists, a toast shows, onboarding is visible, a download runs or waits, a server is offline or being probed, or the first local scan is pending. Terminate signals and a second launch (`single::activate_pending`) are read by a message-free stream (`redraw::wakes`, polls two atomics every 500 ms and sends only when one is set). The Home hero wakes the app at the time its slide changes (`Hero::next_in`); only when the theme draws the progress hairline (`hero_hairline`, not hidden by `display: none`) does it wake once a second to move it. The hairline edit no longer runs for themes that hide it.
+
+Method: debug build, headless session (`HS_NAME=idle`), the demo server in developer-token mode, settled 12 to 30 s, then counted over a window. `NOCTURNE_REDRAW_LOG=1` (debug builds) prints one line per message (`Message` is not `Debug`: the variant index in `app/message.rs`; `Eng` events by name) and per drawn frame of an engine screen with what keeps it animating. `NOCTURNE_TICK_ALWAYS=1` (debug) restores the old always-on tick for the "before" rows. "Hero off" is `hero_autoplay = false` in `settings.toml`. CPU is utime plus stime clock ticks (100 per second) of the whole process over the window; it is a debug build, so only the ratio means anything.
+
+| Screen (default theme unless noted) | Before: draws / 10 s | After: draws / 10 s | CPU ticks / 10 s before to after |
+|---|---|---|---|
+| Home | 69 (hero on; the always-on tick) | 0 with the hero off | 1625 to 1 |
+| Library (Movies) | 100 | 0 | 619 to 1 |
+| Search overlay | not measured, same tick | 0 | n/a |
+| Item page | not measured, same tick | 0 | n/a |
+| Settings (hand-written Iced page; 0 messages) | 50 messages | 0 messages | 195 to 1 |
+| Home, `NOCTURNE_ENGINE_UI=0` | 50 messages | 0 | 946 to 1 |
+| Library, `NOCTURNE_ENGINE_UI=0` | not measured | 0 | n/a |
+| Glass: Home (hero off) and Library | not measured | 0 and 0 | n/a |
+| Home, hero on, 30 s window (3 slide changes) | 333 draws, 150 ticks | 151 to 159 draws (the three slide fades, 0.8 s each), 3 ticks | 4170 to 1111 (default), 1238 (Glass) |
+
+With the hero on, the only wake-ups are the slide changes (one per interval, 10 s by default) and the 380 ms crossfade they start. Playback keeps its own 200 ms player tick (a visible progress bar). A window that just received a message still ticks for 15 s, so measure after that.
+
+On a `fast-release` build (hero off, 30 s window after settling): Home and Library use 1 CPU tick (10 ms) of the whole process in 30 s, i.e. about 0.03 % of a core. The old always-on tick cannot be measured on that profile (`NOCTURNE_TICK_ALWAYS` is debug only); the 0.5.2 table above shows 46 to 52 % of a core idle on Home with the software renderer at 6 draws a second. `scripts/headless-parity.sh`: keys-2 and keys-5 differ by 0.3 % and 0.03 % of pixels with this change and also with `NOCTURNE_TICK_ALWAYS=1` (old behaviour), so they are not caused by it.
