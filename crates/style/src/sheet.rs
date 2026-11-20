@@ -35,6 +35,9 @@ pub struct Decl {
     pub val: Val,
 }
 
+/// The frames of one `@keyframes`: (offset, declarations).
+pub type Frames = Vec<(f32, Rc<[Decl]>)>;
+
 pub struct Rule {
     pub sel: Selector,
     pub spec: u32,
@@ -401,6 +404,8 @@ pub struct Sheet {
     pub uses_viewport: bool,
     /// A pseudo-element rule whose selector has a state pseudo-class.
     pub pseudo_dynamic: bool,
+    /// `@keyframes` by name: (offset 0..=1, declarations) in ascending order.
+    pub keyframes: HashMap<String, Rc<Frames>>,
     order: u32,
     decls: usize,
 }
@@ -530,6 +535,17 @@ impl Build<'_> {
                         }
                         _ => false,
                     };
+                    if matches!(name.as_str(), "keyframes" | "-webkit-keyframes") && has_block {
+                        self.flush(&src[plain_from..i], media);
+                        let end = block_end(b, head).min(src.len());
+                        let nm = src[i + 1 + name.len()..head]
+                            .trim()
+                            .trim_matches(['"', '\'']);
+                        self.keyframes(nm, &src[(head + 1).min(end)..end]);
+                        i = (end + 1).min(src.len());
+                        plain_from = i;
+                        continue;
+                    }
                     if !handled {
                         // Cut the at-rule out so the shared reader never sees it (it is reported here, once).
                         self.flush(&src[plain_from..i], media);
@@ -574,6 +590,55 @@ impl Build<'_> {
             i += 1;
         }
         self.flush(&src[plain_from.min(src.len())..], media);
+    }
+
+    /// `@keyframes name { from { .. } 50% { .. } to { .. } }`: each frame's declarations are compiled like a rule's.
+    fn keyframes(&mut self, name: &str, body: &str) {
+        let b = body.as_bytes();
+        let mut frames: Vec<(f32, Rc<[Decl]>)> = vec![];
+        let mut i = 0;
+        while i < b.len() {
+            let open = block_start(b, i);
+            if open >= b.len() || b[open] != b'{' {
+                break;
+            }
+            let close = block_end(b, open).min(b.len());
+            let sels = &body[i..open];
+            let decls = &body[(open + 1).min(close)..close];
+            i = (close + 1).min(b.len());
+            let Ok((rules, _)) = read_rules(&format!(".k{{{decls}}}")) else {
+                continue;
+            };
+            let Some(r) = rules.into_iter().next() else {
+                continue;
+            };
+            let list: Rc<[Decl]> = r
+                .decls
+                .into_iter()
+                .filter(|(n, _, _)| !n.starts_with("animation"))
+                .filter_map(|(n, v, imp)| self.compile(n, v, imp))
+                .collect();
+            for sel in sels.split(',') {
+                let at = match sel.trim().to_ascii_lowercase().as_str() {
+                    "from" => 0.0,
+                    "to" => 1.0,
+                    t => match t
+                        .strip_suffix('%')
+                        .and_then(|n| n.trim().parse::<f32>().ok())
+                    {
+                        Some(p) if (0.0..=100.0).contains(&p) => p / 100.0,
+                        _ => continue,
+                    },
+                };
+                frames.push((at, list.clone()));
+            }
+        }
+        frames.sort_by(|a, b| a.0.total_cmp(&b.0));
+        if !frames.is_empty() && self.sheet.keyframes.len() < 256 {
+            self.sheet
+                .keyframes
+                .insert(name.to_string(), Rc::new(frames));
+        }
     }
 
     fn at_rule_note(&mut self, name: &str, _block: bool) {

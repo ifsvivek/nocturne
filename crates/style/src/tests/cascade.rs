@@ -181,7 +181,10 @@ fn layer_blocks_are_flattened_and_other_at_rules_reported_once() {
     let s = scene(&d, css, (800.0, 600.0));
     assert_eq!(w(&s, a), 17.0);
     let r = s.warnings();
-    assert!(r.count(Kind::UnsupportedAtRule) >= 3 && r.count(Kind::Planned) >= 1);
+    assert!(
+        r.count(Kind::UnsupportedAtRule) >= 3,
+        "keyframes are read, not reported"
+    );
     assert_eq!(r.count(Kind::Syntax), 0);
 }
 

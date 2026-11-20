@@ -2,7 +2,7 @@
 //! the declared time with the declared curve. Only paint properties animate (opacity, transform, colours, backgrounds), never
 //! layout. The app drives the clock: call [`Anims::tick`] once per frame while [`Anims::active`] is true.
 use crate::doc::Id;
-use crate::paint::{ALL_APROPS, AProp, Ease, Fill, Stop, StopPos, Xf};
+use crate::paint::{ALL_APROPS, AProp, AnimSpec, Ease, Fill, Stop, StopPos, Xf};
 use crate::props::Computed;
 use nocturne_core::customize::value::Color;
 use std::collections::HashMap;
@@ -38,10 +38,98 @@ struct Anim {
     ease: Ease,
 }
 
+/// A `@keyframes` animation running on a node: the values it sets, per property, at their offsets (0..=1, with the element's own value standing in at the ends).
+struct Run {
+    spec: Rc<AnimSpec>,
+    start: Instant,
+    opacity: Vec<(f32, f32)>,
+    xf: Vec<(f32, Xf)>,
+    color: Vec<(f32, Color)>,
+    /// A finite animation that has ended (kept only while `fill-mode: forwards` holds its last frame).
+    done: bool,
+}
+
 #[derive(Default)]
 pub struct Anims {
     by_node: HashMap<Id, Vec<Anim>>,
+    runs: HashMap<Id, Run>,
     now: Option<Instant>,
+}
+
+static REDUCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Reduced motion: `@keyframes` animations are not started (the element shows its plain style).
+pub fn set_reduced(on: bool) {
+    REDUCED.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Frames of one property with the element's own value standing in at 0 and 1 when the keyframes do not set them.
+fn ends<T: Copy>(mut v: Vec<(f32, T)>, base: T) -> Vec<(f32, T)> {
+    if v.first().is_none_or(|f| f.0 > 0.0) {
+        v.insert(0, (0.0, base));
+    }
+    if v.last().is_none_or(|f| f.0 < 1.0) {
+        v.push((1.0, base));
+    }
+    v
+}
+
+/// The values of one property along the animation: linear between the surrounding offsets, the timing function applied per interval.
+fn along<T: Copy>(
+    list: &[(f32, T)],
+    p: f32,
+    ease: Ease,
+    mix: impl Fn(T, T, f32) -> T,
+) -> Option<T> {
+    let (first, last) = (list.first()?, list.last()?);
+    if p <= first.0 {
+        return Some(first.1);
+    }
+    if p >= last.0 {
+        return Some(last.1);
+    }
+    let k = list.iter().position(|e| e.0 > p)?;
+    let (a, b) = (list[k - 1], list[k]);
+    let t = if b.0 > a.0 {
+        (p - a.0) / (b.0 - a.0)
+    } else {
+        1.0
+    };
+    Some(mix(a.1, b.1, ease.at(t)))
+}
+
+impl Run {
+    fn elapsed_ms(&self, now: Instant) -> f32 {
+        now.saturating_duration_since(self.start).as_secs_f32() * 1000.0
+    }
+
+    fn ends_ms(&self) -> f32 {
+        self.spec.delay + self.spec.dur * self.spec.iters
+    }
+
+    /// Progress through the keyframes (0..=1) now, or `None` when the animation sets nothing (before its delay without `backwards`, after its end without `forwards`).
+    fn progress(&self, now: Instant) -> Option<f32> {
+        let a = &*self.spec;
+        let ms = self.elapsed_ms(now) - a.delay;
+        let (iter, t) = if ms < 0.0 {
+            if !a.fill_back {
+                return None;
+            }
+            (0.0, 0.0)
+        } else if a.dur <= 0.0 || ms >= a.dur * a.iters {
+            if !a.fill_fwd {
+                return None;
+            }
+            let it = a.iters.max(1.0);
+            let end = if it.fract() == 0.0 { 1.0 } else { it.fract() };
+            ((it.ceil() - 1.0).max(0.0), end)
+        } else {
+            let x = ms / a.dur;
+            (x.floor(), x.fract())
+        };
+        let rev = a.reverse ^ (a.alternate && iter % 2.0 == 1.0);
+        Some(if rev { 1.0 - t } else { t })
+    }
 }
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
@@ -125,17 +213,101 @@ fn value_of(c: &Computed, p: AProp) -> AV {
 }
 
 impl Anims {
+    /// Frames are needed: a transition or a keyframe animation is still moving.
     pub fn active(&self) -> bool {
-        !self.by_node.is_empty()
+        !self.by_node.is_empty() || self.runs.values().any(|r| !r.done)
+    }
+
+    /// Does anything override a style (a held `forwards` animation counts)?
+    pub fn any(&self) -> bool {
+        !self.by_node.is_empty() || !self.runs.is_empty()
+    }
+
+    /// Only endless keyframe animations are running: decorative, so 30 frames a second are enough.
+    pub fn decorative_only(&self) -> bool {
+        self.by_node.is_empty()
+            && self.runs.values().any(|r| !r.done)
+            && self
+                .runs
+                .values()
+                .all(|r| r.done || r.spec.iters.is_infinite())
+    }
+
+    /// Start (or keep) the keyframe animation `spec` on `id`; `None` removes it. `frames` are (offset, the element's style with that frame's declarations applied, which properties the frame sets: opacity, transform, colour).
+    pub fn set_run(
+        &mut self,
+        id: Id,
+        spec: Option<&Rc<AnimSpec>>,
+        frames: impl FnOnce() -> Vec<(f32, Eff)>,
+        base: &Eff,
+        now: Instant,
+    ) {
+        let Some(spec) = spec else {
+            self.runs.remove(&id);
+            return;
+        };
+        if REDUCED.load(std::sync::atomic::Ordering::Relaxed) {
+            self.runs.remove(&id);
+            return;
+        }
+        if self.runs.get(&id).is_some_and(|r| r.spec == *spec) {
+            return;
+        }
+        let frames = frames();
+        let col = |pick: &dyn Fn(&Eff) -> bool| frames.iter().any(|f| pick(&f.1));
+        let (has_o, has_x, has_c) = (
+            col(&|e| e.opacity.is_some()),
+            col(&|e| e.xf.is_some()),
+            col(&|e| e.color.is_some()),
+        );
+        let mut run = Run {
+            spec: spec.clone(),
+            start: now,
+            opacity: vec![],
+            xf: vec![],
+            color: vec![],
+            done: false,
+        };
+        if has_o {
+            let v = frames
+                .iter()
+                .filter_map(|f| f.1.opacity.map(|o| (f.0, o)))
+                .collect();
+            run.opacity = ends(v, base.opacity.unwrap_or(1.0));
+        }
+        if has_x {
+            let v = frames
+                .iter()
+                .filter_map(|f| f.1.xf.map(|o| (f.0, o)))
+                .collect();
+            run.xf = ends(v, base.xf.unwrap_or(Xf::IDENTITY));
+        }
+        if has_c {
+            let v = frames
+                .iter()
+                .filter_map(|f| f.1.color.map(|o| (f.0, o)))
+                .collect();
+            if let Some(b) = base.color {
+                run.color = ends(v, b);
+            }
+        }
+        if run.opacity.is_empty() && run.xf.is_empty() && run.color.is_empty() {
+            self.runs.remove(&id);
+            return;
+        }
+        self.runs.insert(id, run);
+        self.now.get_or_insert(now);
     }
 
     pub fn clear(&mut self) {
         self.by_node.clear();
+        self.runs.clear();
     }
 
     /// Drop animations of nodes `from..` (they were removed).
     pub fn clear_from(&mut self, from: Id) {
         self.by_node.retain(|k, _| *k < from);
+        self.runs.retain(|k, _| *k < from);
     }
 
     pub fn forget(&mut self, id: Id) {
@@ -151,6 +323,13 @@ impl Anims {
             });
             !v.is_empty()
         });
+        for r in self.runs.values_mut() {
+            if !r.done && r.spec.iters.is_finite() && r.elapsed_ms(now) >= r.ends_ms() {
+                r.done = true;
+            }
+        }
+        // A finished run that holds nothing is dropped.
+        self.runs.retain(|_, r| !r.done || r.spec.fill_fwd);
         self.active()
     }
 
@@ -168,6 +347,26 @@ impl Anims {
     /// The animated overrides of a node (empty when nothing runs on it).
     pub fn eff(&self, id: Id) -> Eff {
         let mut e = Eff::default();
+        let (Some(now), Some(run)) = (self.now, self.runs.get(&id)) else {
+            return self.eff_transitions(id, e);
+        };
+        e = self.eff_transitions(id, e);
+        if let Some(p) = run.progress(now) {
+            let ease = run.spec.ease;
+            if !run.opacity.is_empty() {
+                e.opacity = along(&run.opacity, p, ease, lerp);
+            }
+            if !run.xf.is_empty() {
+                e.xf = along(&run.xf, p, ease, |a, b, t| a.lerp(&b, t));
+            }
+            if !run.color.is_empty() {
+                e.color = along(&run.color, p, ease, lerp_c);
+            }
+        }
+        e
+    }
+
+    fn eff_transitions(&self, id: Id, mut e: Eff) -> Eff {
         let Some(list) = self.by_node.get(&id) else {
             return e;
         };

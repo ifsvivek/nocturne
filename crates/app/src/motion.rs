@@ -7,6 +7,8 @@ static REDUCED: AtomicBool = AtomicBool::new(false);
 
 pub fn set_reduced(on: bool) {
     REDUCED.store(on, Ordering::Relaxed);
+    #[cfg(feature = "theme-engine")]
+    nocturne_style::anim::set_reduced(on);
 }
 
 pub fn reduced() -> bool {

@@ -4,8 +4,8 @@ use crate::anim::{Anims, Eff};
 use crate::cascade::{Budget, Cx, Failure, Interaction, Styler, flags};
 use crate::doc::{Doc, Id};
 use crate::fonts::Fonts;
-use crate::props::{Computed, Transform};
-use crate::sheet::Sheet;
+use crate::props::{Computed, Ctx, Op, Transform};
+use crate::sheet::{Sheet, Val};
 use crate::text::{self, Block, Measure, TextStyle};
 use crate::virt::{self, Builders};
 use crate::warn::{Kind, Report};
@@ -317,6 +317,7 @@ impl Scene {
             cascade,
             layout: t1.elapsed(),
         };
+        s.sync_runs(0..n, Instant::now());
         Ok(s)
     }
 
@@ -335,7 +336,7 @@ impl Scene {
 
     /// Animated overrides for painting node `i` (empty when nothing animates).
     pub fn eff(&self, i: Id) -> Eff {
-        if self.anims.active() {
+        if self.anims.any() {
             self.anims.eff(i)
         } else {
             Eff::default()
@@ -930,6 +931,7 @@ impl Scene {
             return Ok(up);
         }
         let mut paint_lists = false;
+        self.sync_runs(r.changed.iter().map(|c| c.0), now);
         for (id, old) in &r.changed {
             let new = self.st.styles[*id].clone();
             self.anims.changed(*id, old, &new, now);
@@ -974,7 +976,66 @@ impl Scene {
         self.anims.clear();
         self.tree_dirty = true;
         self.layout_all(measure);
+        self.sync_runs(0..self.doc.len(), Instant::now());
         Ok(())
+    }
+
+    /// Start, keep or stop the `@keyframes` animation of each node (only opacity, transform and colour are animated; an essential control is never animated).
+    fn sync_runs(&mut self, ids: impl IntoIterator<Item = Id>, now: Instant) {
+        if self.sheet.keyframes.is_empty() {
+            return;
+        }
+        let ctx = Ctx {
+            vw: self.viewport.0,
+            vh: self.viewport.1,
+            rem: 16.0,
+        };
+        for id in ids {
+            let c = self.st.styles[id].clone();
+            let spec = c.anim.as_ref().filter(|_| !self.doc.nodes[id].essential);
+            let kf = spec.and_then(|a| self.sheet.keyframes.get(&a.name).cloned());
+            let spec = kf.as_ref().and(spec);
+            let base = Eff {
+                opacity: Some(c.opacity),
+                xf: Some(c.xf),
+                color: Some(c.color),
+                ..Eff::default()
+            };
+            self.anims.set_run(
+                id,
+                spec,
+                || {
+                    let mut out = vec![];
+                    for (at, decls) in kf.iter().flat_map(|k| k.iter()) {
+                        let mut f = (*c).clone();
+                        let mut e = Eff::default();
+                        for d in decls.iter() {
+                            let Val::Ops(ops) = &d.val else {
+                                continue;
+                            };
+                            for op in ops {
+                                op.apply(&mut f, ctx, &c);
+                                match op {
+                                    Op::Opacity(_) => e.opacity = Some(f.opacity),
+                                    Op::Transform { .. } => e.xf = Some(f.xf),
+                                    Op::Color(_) => e.color = Some(f.color),
+                                    _ => {}
+                                }
+                            }
+                        }
+                        out.push((*at, e));
+                    }
+                    out
+                },
+                &base,
+                now,
+            );
+        }
+    }
+
+    /// Only endless `@keyframes` animations are running (30 frames a second are enough).
+    pub fn decorative_only(&self) -> bool {
+        self.anims.decorative_only()
     }
 
     /// Advance animations to `now`; true while any is still running (keep requesting frames).

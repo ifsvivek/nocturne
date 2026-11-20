@@ -82,6 +82,10 @@ pub struct Computed {
     pub object_pos: (f32, f32),
     pub xf: Xf,
     pub trans: Rc<TransSpec>,
+    /// `animation` (a `@keyframes` run), when one is named.
+    pub anim: Option<Rc<paint::AnimSpec>>,
+    /// `filter: brightness()` below 1: the element is dimmed with a black layer of that alpha.
+    pub brightness: f32,
     pub opacity: f32,
     pub visible: bool,
     pub pointer_events: bool,
@@ -148,6 +152,8 @@ impl Computed {
             object_pos: (0.5, 0.5),
             xf: Xf::IDENTITY,
             trans: Rc::default(),
+            anim: None,
+            brightness: 1.0,
             opacity: 1.0,
             visible: true,
             pointer_events: true,
@@ -364,6 +370,8 @@ pub enum Op {
         sy: f32,
     },
     Origin(f32, f32),
+    Anim(Rc<paint::AnimPatch>),
+    Brightness(f32),
     TransAll(Rc<TransSpec>),
     TransProps(Vec<TP>),
     TransDur(Vec<f32>),
@@ -1033,13 +1041,6 @@ const WEBKIT_ALIASES: &[&str] = &[
 
 /// Valid CSS that the engine plans to draw but does not yet.
 const PLANNED: &[&str] = &[
-    "animation",
-    "animation-name",
-    "animation-duration",
-    "animation-delay",
-    "animation-iteration-count",
-    "animation-timing-function",
-    "animation-fill-mode",
     "word-spacing",
     "text-decoration-color",
     "background-attachment",
@@ -1075,6 +1076,26 @@ fn logical_sides(name: &str) -> Option<(&str, [usize; 2], bool)> {
     Some((base, axis_sides, single.is_some()))
 }
 
+/// The initial value of a property that is not inherited, as CSS text (the common box properties only).
+fn initial_of(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "margin" | "padding" | "border-radius" | "gap" | "row-gap" | "column-gap" => "0",
+        n if n.starts_with("margin-") || n.starts_with("padding-") => "0",
+        "width" | "height" | "top" | "right" | "bottom" | "left" | "inset" | "flex-basis"
+        | "min-width" | "min-height" | "z-index" | "aspect-ratio" => "auto",
+        "max-width" | "max-height" | "transform" | "box-shadow" | "filter" | "mask-image"
+        | "background-image" | "animation-name" => "none",
+        "background" => "none",
+        "background-color" => "transparent",
+        "opacity" => "1",
+        "position" => "static",
+        "overflow" | "overflow-x" | "overflow-y" => "visible",
+        "flex-grow" => "0",
+        "flex-shrink" => "1",
+        _ => return None,
+    })
+}
+
 /// Compile one declaration (the value must not contain `var()`).
 pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
     // Vendor-prefixed spellings of properties that are standard here.
@@ -1087,6 +1108,12 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
     };
     let v = value.trim();
     // CSS-wide keywords: `inherit` (and `unset`, which is `inherit` for the inherited properties) takes the parent's value; on a property that is not inherited and not tracked here it is silently dropped.
+    // `initial` (and `unset` on a property that is not inherited) puts back the default: a theme that writes `margin-top: unset` takes away jellyfin-web's own negative margin.
+    if matches!(v, "initial" | "unset" | "revert") {
+        if let Some(init) = initial_of(name) {
+            return compile(name, init);
+        }
+    }
     if matches!(v, "inherit" | "unset") {
         let kind: Option<&'static str> = match name {
             "color" => Some("color"),
@@ -1498,7 +1525,7 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
                 .next(),
         )),
         "filter" | "-webkit-filter" => {
-            let mut ds = None;
+            let (mut ds, mut bright, mut other) = (None, 1.0, None);
             for f in split_top(v, None) {
                 if let Some(a) = f
                     .strip_prefix("drop-shadow(")
@@ -1508,16 +1535,32 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
                         .or_else(bad)?
                         .into_iter()
                         .next();
+                } else if let Some(a) = f
+                    .strip_prefix("brightness(")
+                    .and_then(|x| x.strip_suffix(')'))
+                {
+                    bright = match a.trim().strip_suffix('%') {
+                        Some(n) => p::<f32>(n)? / 100.0,
+                        None => value::number(a).or_else(bad)?,
+                    }
+                    .clamp(0.0, 1.0);
                 } else if f != "none" {
-                    return Err(Issue {
-                        kind: Kind::Planned,
-                        msg: format!(
-                            "`filter: {f}` is planned but not drawn yet (only drop-shadow() is)"
-                        ),
-                    });
+                    other = Some(f);
                 }
             }
-            one(Op::DropShadow(ds))
+            let ops = vec![Op::DropShadow(ds), Op::Brightness(bright)];
+            match other {
+                Some(f) => Ok(Outcome::Approx(
+                    ops,
+                    // Leaked once per distinct filter would be overkill: a fixed text.
+                    if f.starts_with("blur(") {
+                        "filter: blur() is not drawn (drop-shadow() and brightness() are)"
+                    } else {
+                        "filter: only drop-shadow() and brightness() are drawn"
+                    },
+                )),
+                None => Ok(Outcome::Ops(ops)),
+            }
         }
         "backdrop-filter" => Ok(Outcome::Approx(
             vec![],
@@ -1572,6 +1615,16 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
             let (x, y) = position(v)?;
             one(Op::Origin(x, y))
         }
+        "animation" => one(Op::Anim(Rc::new(paint::animation(v).or_else(bad)?))),
+        "animation-name"
+        | "animation-duration"
+        | "animation-delay"
+        | "animation-iteration-count"
+        | "animation-timing-function"
+        | "animation-fill-mode"
+        | "animation-direction" => one(Op::Anim(Rc::new(
+            paint::animation_part(name, v).or_else(bad)?,
+        ))),
         "transition" => one(Op::TransAll(Rc::new(paint::transition(v).or_else(bad)?))),
         "transition-property" => one(Op::TransProps(
             split_top(v, Some(','))
@@ -2141,6 +2194,12 @@ impl Op {
                 };
             }
             Op::Origin(x, y) => c.xf.origin = (*x, *y),
+            Op::Anim(p) => {
+                let mut a = c.anim.as_deref().cloned().unwrap_or_default();
+                p.apply(&mut a);
+                c.anim = (!a.name.is_empty()).then(|| Rc::new(a));
+            }
+            Op::Brightness(b) => c.brightness = *b,
             Op::TransAll(t) => c.trans = t.clone(),
             Op::TransProps(p) => {
                 let mut t = (*c.trans).clone();
