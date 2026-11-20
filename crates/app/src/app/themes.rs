@@ -83,6 +83,8 @@ pub enum Msg {
     How,
     /// The report panel's tab: `false` this theme, `true` server branding.
     ReportTab(bool),
+    /// Copy the open report tab as plain text.
+    CopyReport,
 }
 
 pub struct State {
@@ -746,6 +748,7 @@ impl App {
             }
             Msg::How => self.th.how ^= true,
             Msg::ReportTab(b) => self.th.brand_tab = b,
+            Msg::CopyReport => return iced::clipboard::write(self.report_text()),
             Msg::Cycle(src) => {
                 let mut order = vec![None];
                 order.extend(self.themes.themes.iter().map(|t| Some(t.id)));
@@ -1277,7 +1280,20 @@ impl App {
             self.theme_report()
         };
         column![
-            row![tab("This theme", false), tab("Server branding", true)].spacing(t::S2),
+            row![
+                tab("This theme", false),
+                tab("Server branding", true),
+                space::horizontal(),
+                action_button(
+                    "Copy",
+                    false,
+                    false,
+                    false,
+                    false,
+                    Message::Themes(Msg::CopyReport)
+                ),
+            ]
+            .spacing(t::S2),
             container(
                 scroll(container(body).padding(Padding {
                     right: t::S3,
@@ -1378,22 +1394,20 @@ impl App {
     }
 
     /// "N settings applied", the counts per kind, the contrast notes and the list with positions.
-    fn theme_report(&self) -> El<'_> {
-        let fetching: El<'_> = text("Fetching imports and fonts...")
-            .size(t::CAPTION)
-            .color(t::text_secondary())
-            .into();
+    /// The "This theme" report as plain lines: drawn by [`Self::theme_report`] and copied by the Copy button.
+    fn theme_report_lines(&self) -> Vec<RLine> {
+        let fetching = RLine::new("Fetching imports and fonts...", Tone::Secondary);
         let Some(p) = &self.th.parsed else {
-            return if self.th.fetching {
+            return vec![if self.th.fetching {
                 fetching
             } else {
-                text("Paste, type or import a theme to see what the app understood.")
-                    .size(t::CAPTION)
-                    .color(t::text_tertiary())
-                    .into()
-            };
+                RLine::new(
+                    "Paste, type or import a theme to see what the app understood.",
+                    Tone::Tertiary,
+                )
+            }];
         };
-        let mut lines: Vec<El<'_>> = vec![];
+        let mut lines = vec![];
         if self.th.fetching {
             lines.push(fetching);
         }
@@ -1419,44 +1433,35 @@ impl App {
                 head.push_str(&format!(" {failures} skipped."));
             }
         }
-        lines.push(text(head).size(t::CAPTION).color(t::text()).into());
+        lines.push(RLine::new(head, Tone::Primary));
         for l in engine.iter().flat_map(|r| r.1.iter().cloned()) {
-            lines.push(text(l).size(t::CAPTION).color(t::text_secondary()).into());
+            lines.push(RLine::new(l, Tone::Secondary));
         }
         if engine.is_none() {
             for a in crate::theme::advisories(&crate::theme::Tokens::resolve(&p.theme)) {
-                lines.push(text(a).size(t::CAPTION).color(t::warn()).into());
+                lines.push(RLine::new(a, Tone::Warn));
             }
         }
         if let Some(r) = &self.th.resolved {
-            lines.push(
-                text(fetch_summary(r))
-                    .size(t::CAPTION)
-                    .color(t::text_secondary())
-                    .into(),
-            );
+            lines.push(RLine::new(fetch_summary(r), Tone::Secondary));
             for f in r.fonts.iter().take(6) {
-                lines.push(
-                    text(format!(
+                lines.push(RLine::new(
+                    format!(
                         "Font {} {}, loaded{}",
                         f.family,
                         f.weight,
                         Options::new(true, false)
                             .fetched_at(&f.url)
                             .map_or(String::new(), |at| format!(", fetched {}", ago(at)))
-                    ))
-                    .size(t::CAPTION)
-                    .color(t::text_secondary())
-                    .into(),
-                );
+                    ),
+                    Tone::Secondary,
+                ));
             }
         } else if !self.themes.remote() && import::has_remote(&self.th.content.text()) {
-            lines.push(
-                text("Imports and fonts are not fetched: Settings > Themes > Fetch theme imports is off.")
-                    .size(t::CAPTION)
-                    .color(t::text_secondary())
-                    .into(),
-            );
+            lines.push(RLine::new(
+                "Imports and fonts are not fetched: Settings > Themes > Fetch theme imports is off.",
+                Tone::Secondary,
+            ));
         }
         let loaded = |m: &str| {
             self.th.resolved.as_ref().is_some_and(|r| {
@@ -1472,22 +1477,103 @@ impl App {
             .filter(|w| !(w.kind == cz::WarningKind::FontNotDownloaded && loaded(&w.message)))
             .take(SHOWN)
         {
-            let c = if w.kind.informational() {
-                t::text_tertiary()
+            let tone = if w.kind.informational() {
+                Tone::Tertiary
             } else {
-                t::text_secondary()
+                Tone::Secondary
             };
-            lines.push(
-                row![
-                    mono(format!("{}:{}", w.line, w.col)).width(56),
-                    text(w.message.clone()).size(t::CAPTION).color(c),
-                ]
-                .spacing(t::S2)
-                .into(),
-            );
+            lines.push(RLine {
+                pos: Some(format!("{}:{}", w.line, w.col)),
+                text: w.message.clone(),
+                tone,
+            });
         }
+        lines
+    }
+
+    fn theme_report(&self) -> El<'_> {
+        let lines: Vec<El<'_>> = self
+            .theme_report_lines()
+            .into_iter()
+            .map(|l| {
+                let c = match l.tone {
+                    Tone::Primary => t::text(),
+                    Tone::Secondary => t::text_secondary(),
+                    Tone::Tertiary => t::text_tertiary(),
+                    Tone::Warn => t::warn(),
+                };
+                let body = text(l.text).size(t::CAPTION).color(c);
+                match l.pos {
+                    Some(pos) => row![mono(pos).width(56), body].spacing(t::S2).into(),
+                    None => body.into(),
+                }
+            })
+            .collect();
         column(lines).spacing(2).into()
     }
+
+    /// The open report tab as plain text, for the Copy button.
+    fn report_text(&self) -> String {
+        let mut out = String::new();
+        if self.th.brand_tab {
+            out.push_str("Server branding\n");
+            let mut any = false;
+            for s in &self.catalog.slots {
+                let Some(r) = self.brand_report(s.id) else {
+                    continue;
+                };
+                any = true;
+                out.push_str(&format!("\n{}\n", s.profile.label));
+                for l in r.lines {
+                    out.push_str(&format!("{l}\n"));
+                }
+                for (h, items) in r.groups {
+                    out.push_str(&format!("{h}\n"));
+                    for i in items {
+                        out.push_str(&format!("  - {i}\n"));
+                    }
+                }
+            }
+            if !any {
+                out.push_str("\nNo server has branding or plugin stylesheets to report.\n");
+            }
+        } else {
+            out.push_str("This theme\n\n");
+            for l in self.theme_report_lines() {
+                match l.pos {
+                    Some(p) => out.push_str(&format!("{p}  {}\n", l.text)),
+                    None => out.push_str(&format!("{}\n", l.text)),
+                }
+            }
+        }
+        out
+    }
+}
+
+/// One line of the "This theme" report.
+struct RLine {
+    /// `line:col` of a warning in the edited text.
+    pos: Option<String>,
+    text: String,
+    tone: Tone,
+}
+
+impl RLine {
+    fn new(text: impl Into<String>, tone: Tone) -> Self {
+        Self {
+            pos: None,
+            text: text.into(),
+            tone,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Tone {
+    Primary,
+    Secondary,
+    Tertiary,
+    Warn,
 }
 
 /// One server's branding and plugin-stylesheet report: summary lines, then groups of (heading, items).
