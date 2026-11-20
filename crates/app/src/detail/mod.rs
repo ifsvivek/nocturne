@@ -346,6 +346,7 @@ impl Detail {
             eng: engine::enabled().then(|| Box::new(engine::Host::new())),
             #[cfg(feature = "theme-engine")]
             studio: None,
+            #[cfg(feature = "theme-engine")]
             jf: None,
         };
         let t = d.load();
