@@ -153,6 +153,13 @@ impl App {
 
     /// Route a player message (and keys) and leave the page when it says it is over.
     pub(super) fn player_msg(&mut self, msg: player::Msg) -> Task<Message> {
+        // The Theme Studio's pick mode takes the bar's pointer events first.
+        #[cfg(feature = "theme-engine")]
+        if let player::Msg::Eng(e) = &msg
+            && let Some(t) = self.studio_event(super::message::Which::Bar, e)
+        {
+            return t;
+        }
         let Some(p) = self.player.as_mut() else {
             return Task::none();
         };

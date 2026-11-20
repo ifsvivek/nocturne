@@ -97,6 +97,13 @@ impl App {
     }
 
     pub(super) fn detail_msg(&mut self, pid: u64, msg: detail::Msg) -> Task<Message> {
+        // The Theme Studio's pick mode takes the page's pointer and key events first.
+        #[cfg(feature = "theme-engine")]
+        if let detail::Msg::Eng(e) = &msg
+            && let Some(t) = self.studio_event(super::message::Which::Detail, e)
+        {
+            return t;
+        }
         let Some(d) = self.page_mut(pid).and_then(|p| p.det.as_deref_mut()) else {
             return Task::none();
         };
