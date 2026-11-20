@@ -27,7 +27,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Fixed
 - Engine screens (`theme-engine`): the mouse wheel scrolls the library grid and the detail page again (a header strip above them swallowed it), and the page scrollbar can be dragged.
-- Engine Home: the row paging arrows of the Classic look scroll their strip; hovering a header link no longer leaves it lit after the pointer leaves; the header gets a solid backdrop once Home has scrolled; the Smart link no longer lights on every library page; in a window narrower than 640 px the brand makes room for the links.
+- Engine Home: the row paging arrows of the Classic look scroll their strip; hovering a header link no longer leaves it lit after the pointer leaves; the Smart link no longer lights on every library page; in a window narrower than 640 px the brand makes room for the links.
 - Engine search overlay: the Up and Down keys move the highlighted result.
 - Theme Studio: the Home hero stops rotating while the Studio is open, and the safe look chord also resets the open Studio preview.
 - `tools/headless-pointer` gains `wheel <dx> <dy>` and `drag <x1> <y1> <x2> <y2>` for headless QA.

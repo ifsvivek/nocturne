@@ -203,10 +203,6 @@ impl App {
             },
         );
         d.inline(header, &format!("height: {}", px(hh)));
-        if fixed {
-            // Home's header lies over the hero and the strips: once the page has scrolled, this layer (the header's own fill again, so a transparent header stays transparent) hides what passes behind it, as the hand-written header does.
-            d.add(header, "div.header-backdrop");
-        }
         let bar = d.add(header, "div.header-bar");
         d.inline(bar, &format!("height: {}", px(hh - 1.0)));
         d.add(header, "div.header-rule");
