@@ -755,6 +755,28 @@ impl App {
     }
 }
 
+/// The stack indices the breadcrumb shows: the logical path, not the raw history. A detail page opened from search or a card while another detail page was open has that page beneath it, but it is not its parent; only a show (or season) above its episode is.
+fn trail(stack: &[super::Page]) -> Vec<usize> {
+    let parent_of = |a: &nocturne_core::source::Media, b: &nocturne_core::source::Media| {
+        b.series_id.as_deref() == Some(a.id.as_str())
+            || (a.kind == nocturne_core::source::Kind::Season
+                && a.series_id.is_some()
+                && a.series_id == b.series_id)
+    };
+    (0..stack.len())
+        .filter(|&i| {
+            let p = &stack[i];
+            if p.view != View::Detail || i + 1 == stack.len() {
+                return true;
+            }
+            match (&p.media, stack[i + 1].media.as_ref()) {
+                (Some(a), Some(b)) if stack[i + 1].view == View::Detail => parent_of(a, b),
+                _ => true,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -785,26 +807,4 @@ mod tests {
         assert_eq!(nav_more(300.0, 400.0, 1000.0), (true, true));
         assert_eq!(nav_more(600.0, 400.0, 1000.0), (true, false));
     }
-}
-
-/// The stack indices the breadcrumb shows: the logical path, not the raw history. A detail page opened from search or a card while another detail page was open has that page beneath it, but it is not its parent; only a show (or season) above its episode is.
-fn trail(stack: &[super::Page]) -> Vec<usize> {
-    let parent_of = |a: &nocturne_core::source::Media, b: &nocturne_core::source::Media| {
-        b.series_id.as_deref() == Some(a.id.as_str())
-            || (a.kind == nocturne_core::source::Kind::Season
-                && a.series_id.is_some()
-                && a.series_id == b.series_id)
-    };
-    (0..stack.len())
-        .filter(|&i| {
-            let p = &stack[i];
-            if p.view != View::Detail || i + 1 == stack.len() {
-                return true;
-            }
-            match (&p.media, stack[i + 1].media.as_ref()) {
-                (Some(a), Some(b)) if stack[i + 1].view == View::Detail => parent_of(a, b),
-                _ => true,
-            }
-        })
-        .collect()
 }
