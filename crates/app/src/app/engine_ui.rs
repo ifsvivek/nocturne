@@ -926,6 +926,8 @@ impl App {
                         Nav::Activate => "enter",
                         Nav::Next | Nav::Prev => "tab",
                     };
+                    // `Message::Eng` does not mark the scenes stale on its own, and a key moves the selection the trees show (the search overlay's highlighted row).
+                    self.eng.dirty = true;
                     self.on_key(crate::keys::Key {
                         name: name.into(),
                         shift: nav == Nav::Prev,
