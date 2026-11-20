@@ -1,14 +1,13 @@
 # Contributing
 
-Thanks for helping. NOCTURNE is an unofficial desktop client for Jellyfin and local media (Linux, Wayland only; Windows and macOS are previews); read
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/WRITES.md](docs/WRITES.md) first.
+NOCTURNE is a desktop media center for local folders and Jellyfin servers. It runs on Linux under Wayland, with Windows and macOS previews. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/WRITES.md](docs/WRITES.md) before changing code.
 
 ## Ground rules
 
 - **Never test against a server that holds data you care about.** Anything that writes (progress, played, favourites, admin actions, passwords) must be tested only on a throwaway server (below).
 - `crates/jellyfin` stays GET-only. A test (`crates/jellyfin/tests/readonly.rs`) fails if a write verb appears. Writes belong in `crates/jellyfin-user` or `crates/jellyfin-admin` and must respect the `allow_server_writes` switch; destructive admin calls need the `Confirmed` token minted by the confirmation dialog.
 - No secrets, tokens, server addresses, media titles or personal paths in code, tests, logs or issues.
-- Linux first, Wayland only (X11 is not supported). Windows and macOS are unsigned previews ([docs/PLATFORMS.md](docs/PLATFORMS.md)): keep OS-specific code inside the platform seams listed there and do not extend the macOS/Windows implementations before that phase starts.
+- Linux first, Wayland only. X11 is not supported. Windows and macOS are unsigned previews ([docs/PLATFORMS.md](docs/PLATFORMS.md)): keep OS-specific code inside the platform seams listed there.
 - Keep changes small and focused; one concern per pull request.
 
 ## Setup
@@ -20,7 +19,7 @@ cargo run -p nocturne-app        # the app (binary: nocturne); debug builds read
 cargo test --workspace           # offline tests
 ```
 
-Several worktrees (agents, parallel branches) multiply the build cache: `source scripts/build-env.sh` once per shell to share compiled dependencies through sccache (`cargo install --locked sccache`, optional), and run `scripts/cache-budget.sh` (`--enforce` to trim) to see the disk use against the 70 GB cache / 100 GB project limits. Debug builds carry line tables only; use `--profile fast-release` for quick optimised QA builds and plain `--release` only for published artifacts. Details: [docs/PACKAGING.md](docs/PACKAGING.md#build-profiles-shared-cache-and-disk-budget).
+Several worktrees multiply the build cache: `source scripts/build-env.sh` once per shell to share compiled dependencies through sccache (`cargo install --locked sccache`, optional), and run `scripts/cache-budget.sh` (`--enforce` to trim) to see the disk use against the 70 GB cache / 100 GB project limits. Debug builds carry line tables only; use `--profile fast-release` for quick optimised QA builds and plain `--release` only for published artifacts. Details: [docs/PACKAGING.md](docs/PACKAGING.md#build-profiles-shared-cache-and-disk-budget).
 
 Before opening a pull request run `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo deny`, secret scan). At minimum `cargo fmt --all` and `cargo clippy --workspace --all-targets -- -D warnings` must be clean.
 
