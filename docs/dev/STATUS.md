@@ -5,7 +5,7 @@ Maintainer working notes for the public tree. User-facing status is in
 
 ## Release state
 
-**0.5.1 is the latest release (2026-11-19)**, after 0.5.0 the same day; 0.4.0 (2026-11-18) and 0.3.0 before it. Published: GitHub release (tarball, .deb, .rpm, Windows setup.exe and zip, macOS .dmg and, from 0.5.1, the macOS `.tar.gz`, best-effort AppImage), signed pacman, apt and dnf repositories at `https://nocturne.ifsvivek.in/repo`, the website, and the signed update manifest. Contents: [CHANGELOG.md](../../CHANGELOG.md) `[0.5.0]` and `[0.5.1]`; per-feature status in [FEATURES.md](../FEATURES.md); the 0.5 QA pass in [QA_REPORT.md](../QA_REPORT.md). Release flow: [PACKAGING.md](../PACKAGING.md#releasing) (CI builds and drafts, the maintainer signs repositories and update artifacts locally). Gate: `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo deny`, secret scan of the tree and history).
+**0.5.2 is the latest release (2026-11-20)**: the theme engine on by default, servers in their own look, Theme Studio, Glass, Update now. Before it 0.5.1 and 0.5.0 (2026-11-19), 0.4.0 (2026-11-18) and 0.3.0. Published: GitHub release (tarball, .deb, .rpm, Windows setup.exe and zip, macOS .dmg and, from 0.5.1, the macOS `.tar.gz`, best-effort AppImage), signed pacman, apt and dnf repositories at `https://nocturne.ifsvivek.in/repo`, the website, and the signed update manifest. Contents: [CHANGELOG.md](../../CHANGELOG.md) `[0.5.0]` and `[0.5.1]`; per-feature status in [FEATURES.md](../FEATURES.md); the 0.5 QA pass in [QA_REPORT.md](../QA_REPORT.md). Release flow: [PACKAGING.md](../PACKAGING.md#releasing) (CI builds and drafts, the maintainer signs repositories and update artifacts locally). Gate: `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo deny`, secret scan of the tree and history).
 
 What 0.5 added: native CSS themes with layout on named parts (`crates/core/src/customize/`, Themes page in `crates/app/src/app/themes.rs`, Marquee and Feed examples, a theme per server); Server UI per server (`core/server_ui.rs`, `app/server_ui.rs`; home-sections editor behind `allow_server_writes`); in-app updates (`core/update.rs`, `core/update_install.rs`, signed with a separate ed25519 key); Linux Wayland-only; apt and dnf repositories; Windows and macOS previews; real text editing in every field; built-in Trakt client id; headless test-session scripts. 0.5.1: the macOS update tarball, theme import creating a new theme (`customize::import_name`), a steadier `scripts/headless-input-check.sh`.
 
@@ -17,7 +17,7 @@ On the branch `theme-engine` (cargo feature `theme-engine`, a default feature si
 
 Jellyfin layout mode is built (THEME_ENGINE_PLAN section 14; `app/jf`, `detail/jf_detail.rs`, `core/webcss.rs`); `scripts/theme-conformance.sh --default` renders every listed theme side by side with jellyfin-web.
 
-## Still open after 0.5.1
+## Still open after 0.5.2
 
 - The updater end to end from a published release (tested with unit and integration tests and a local server); the macOS update path has never run on a Mac.
 - Windows and macOS previews on real hardware (build, keyring, mpv IPC, paths, SmartScreen / Gatekeeper behaviour); signing certificates. Unreleased: Windows fixes from the first real-PC (VM) test: bundled fonts, non-blocking mpv IPC with a property cache, in-window video through a child window (all written and cross-checked, to be run on Windows).
