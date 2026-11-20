@@ -858,7 +858,21 @@ impl App {
                 self.fan_answer(pid, kind, epoch, origin, r)
             }
             Message::ServerUi(id, r) => {
+                #[cfg(feature = "theme-engine")]
+                let font = r.as_ref().and_then(|u| u.web_font.clone());
                 self.server_ui_answer(id, r);
+                #[cfg(feature = "theme-engine")]
+                if let Some((_, bytes)) = font {
+                    return iced::font::load(std::borrow::Cow::Owned(bytes.to_vec()))
+                        .map(move |_| Message::JfFont(id));
+                }
+                Task::none()
+            }
+            #[cfg(feature = "theme-engine")]
+            Message::JfFont(id) => {
+                if !self.eng.icons_ready.contains(&id) {
+                    self.eng.icons_ready.push(id);
+                }
                 Task::none()
             }
             Message::SectionsSaved(id, ok) => self.sections_saved(id, ok),

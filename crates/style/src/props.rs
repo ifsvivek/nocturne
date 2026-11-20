@@ -2066,7 +2066,8 @@ impl Op {
             }
             Op::FontSize(l, _) => {
                 let px = match l {
-                    Len::Em(e) => e * font,
+                    // `em` (and `%`) of a font size is the parent's: an earlier `font-size` on the same element (`.material-icons { 24px }` then `.starIcon { 1.4em }`) must not compound.
+                    Len::Em(e) => e * base.font_size,
                     other => other.px(font, cx).unwrap_or(font),
                 };
                 c.font_size = clean(px).clamp(6.0, 200.0);

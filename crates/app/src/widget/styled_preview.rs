@@ -45,8 +45,12 @@ fn env(k: &str) -> Option<String> {
 }
 
 /// Plain ASCII text is shaped the way the hand-written pages' `text()` widgets shape it (Iced's basic shaping), so a label measures and lands on the same pixels; anything else (accents, emoji, scripts, the tracked labels' hair spaces) needs the advanced shaper.
-pub(crate) fn shaping_of(s: &str) -> Shaping {
-    if s.is_ascii() {
+/// An icon font ("Material Icons") draws a glyph for a whole word (`play_arrow`) through ligatures, which only the advanced shaper applies.
+pub(crate) fn shaping_of(s: &str, font: &nocturne_style::FontChoice) -> Shaping {
+    // ponytail: by family name; a registry of ligature families if a theme font ever needs it.
+    let icons =
+        matches!(font, nocturne_style::FontChoice::Named(n) if n.to_lowercase().contains("icons"));
+    if s.is_ascii() && !icons {
         Shaping::Basic
     } else {
         Shaping::Advanced
@@ -63,7 +67,7 @@ pub(crate) fn shape(text: &str, st: &TextStyle, max: Option<f32>) -> (f32, f32) 
         font: font_for(st.weight, st.italic, &st.font),
         align_x: Alignment::Default,
         align_y: alignment::Vertical::Top,
-        shaping: shaping_of(text),
+        shaping: shaping_of(text, &st.font),
         wrapping: Wrapping::Word,
     });
     let b = p.min_bounds();

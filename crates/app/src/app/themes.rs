@@ -366,13 +366,21 @@ impl App {
         } else {
             raw
         };
-        raw.map_or_else(Vec::new, |r| {
+        let mut fams: Vec<String> = raw.map_or_else(Vec::new, |r| {
             self.themes
                 .fonts_for(&r)
                 .iter()
                 .map(|f| f.family.clone())
                 .collect()
-        })
+        });
+        // The server web client's icon font, once the text shaper has it.
+        if let Some(ui) = self.theme_ui()
+            && self.eng.icons_ready.contains(&ui)
+            && let Some((fam, _)) = self.server_ui.get(&ui).and_then(|u| u.web_font.as_ref())
+        {
+            fams.push(fam.clone());
+        }
+        fams
     }
 
     /// Translate the editor text, fetching its imports first (from the cache unless `refresh`).

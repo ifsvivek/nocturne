@@ -106,6 +106,8 @@ pub struct EngineUi {
     css: String,
     /// Families of fetched theme fonts registered with the engine.
     fetched_fams: Vec<String>,
+    /// Servers whose web-client icon font is loaded in the text shaper.
+    pub(super) icons_ready: Vec<nocturne_core::source::SourceId>,
     user: Option<String>,
     cache: MeasureCache,
     pub home: Option<Hosted>,
@@ -155,6 +157,7 @@ impl Default for EngineUi {
             engine: Engine::new(DEFAULT_CSS),
             css: String::new(),
             fetched_fams: vec![],
+            icons_ready: vec![],
             user: None,
             cache: MeasureCache::new(),
             home: None,
@@ -308,6 +311,10 @@ impl App {
         // Jellyfin layout mode: the engine's base layer is the browser's defaults, the server's stylesheets go in the user layer.
         let jf = self.jf_base();
         crate::detail::JF_MODE.store(jf.is_some(), std::sync::atomic::Ordering::Relaxed);
+        let icons = self
+            .theme_ui()
+            .is_some_and(|u| self.eng.icons_ready.contains(&u));
+        crate::detail::JF_ICONS.store(icons && jf.is_some(), std::sync::atomic::Ordering::Relaxed);
         let css = if jf.is_some() {
             super::jf::UA.to_string()
         } else {

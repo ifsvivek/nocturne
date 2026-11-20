@@ -39,6 +39,26 @@ impl Client {
         }
     }
 
+    /// `GET /web/<path>` as bytes, at most `max` (a font file). `Ok(None)`: not there, or bigger than `max`.
+    pub async fn web_bytes(&self, path: &str, max: usize) -> Result<Option<Vec<u8>>> {
+        let segs: Vec<&str> = std::iter::once("web")
+            .chain(path.split('/').filter(|s| !s.is_empty()))
+            .collect();
+        let url = self.url(&segs, &[]);
+        let p = url.path().to_string();
+        match self.send(url, p).await {
+            Ok(r) => {
+                if r.content_length().is_some_and(|n| n as usize > max) {
+                    return Ok(None);
+                }
+                let b = r.bytes().await.map_err(crate::client::http_err)?;
+                Ok((b.len() <= max).then(|| b.to_vec()))
+            }
+            Err(Error::Status { status: 404, .. }) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     /// Which stylesheets the server's web client has. `Ok(None)`: no web client.
     pub async fn web_files(&self) -> Result<Option<WebFiles>> {
         let Some(index) = self.web_text("index.html").await? else {
@@ -84,6 +104,39 @@ pub fn index_stylesheets(html: &str) -> Vec<String> {
         rest = &rest[end..];
     }
     out
+}
+
+/// The file of the first `@font-face` for `family` in `css` whose `src` has a `.ttf` (or `.otf`) `url(...)`, relative to `/web/`. The text shaper reads those, not woff.
+pub fn font_face_file(css: &str, family: &str) -> Option<String> {
+    let mut rest = css;
+    while let Some(i) = rest.find("@font-face") {
+        rest = &rest[i + 10..];
+        let end = rest.find('}').unwrap_or(rest.len());
+        let body = &rest[..end];
+        let fam = body.split("font-family:").nth(1).map(|f| {
+            f.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .trim_matches(['"', '\''])
+        });
+        if fam != Some(family) {
+            continue;
+        }
+        for u in body.split("url(").skip(1) {
+            let f = u
+                .split(')')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .trim_matches(['"', '\'']);
+            let f = f.split(['?', '#']).next().unwrap_or("");
+            if f.ends_with(".ttf") || f.ends_with(".otf") {
+                return Some(f.to_string());
+            }
+        }
+    }
+    None
 }
 
 fn attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
@@ -163,5 +216,12 @@ mod tests {
             ]
         );
         assert!(css_chunks("nothing").is_empty());
+        let face = r#"@font-face{font-family:Material Icons;src:url(a.eot);src:local("x"),url(m.woff2) format("woff2"),url(m.1.ttf) format("truetype")}@font-face{font-family:Other;src:url(o.ttf)}"#;
+        assert_eq!(
+            font_face_file(face, "Material Icons").as_deref(),
+            Some("m.1.ttf")
+        );
+        assert_eq!(font_face_file(face, "Other").as_deref(), Some("o.ttf"));
+        assert_eq!(font_face_file(face, "Nope"), None);
     }
 }

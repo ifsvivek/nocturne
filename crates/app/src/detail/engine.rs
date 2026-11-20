@@ -97,6 +97,14 @@ impl Detail {
         }
     }
 
+    /// The fetched font families the page's text may name (the theme's web fonts, the web client's icon font).
+    pub fn set_fams(&mut self, fams: Vec<String>) {
+        if self.fams != fams {
+            self.fams = fams;
+            self.eng_sync(false);
+        }
+    }
+
     /// Jellyfin layout mode for this page: the server's base sheet and the branding and theme text (`None` leaves the mode).
     pub fn set_jf(&mut self, jf: Option<(std::sync::Arc<String>, String)>) {
         let same = match (&self.jf, &jf) {
@@ -145,6 +153,11 @@ impl Detail {
             h.engine.set_user_css(h.user.as_deref());
             h.jf_key = None;
             h.sheet = sheet;
+        }
+        for f in &self.fams {
+            if !h.engine.fonts_mut().has(f) {
+                h.engine.fonts_mut().register(f);
+            }
         }
         if let Some((base, text)) = &self.jf {
             let key = (std::sync::Arc::as_ptr(base) as usize, text.clone());
