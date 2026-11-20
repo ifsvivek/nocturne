@@ -601,3 +601,63 @@ fn class_attribute_selectors_read_the_class_list() {
     );
     assert_eq!(r(&s, b)[2], 33.0);
 }
+
+/// jellyfin-web's `.indicator` (2em box, set before `.countIndicator { font-size: 88% }`).
+#[test]
+fn round_badge_em_size_follows_its_own_font_size() {
+    let mut d = Doc::new("page");
+    let b = d.add(0, "div.countIndicator.indicator");
+    d.text(b, "12");
+    let s = scene(
+        &d,
+        ".indicator{display:flex;align-items:center;justify-content:center;border-radius:100em;height:2em;width:2em} .countIndicator{font-size:88%}",
+        (400.0, 300.0),
+    );
+    let fs = s.style(b).font_size;
+    assert!((fs - 14.08).abs() < 0.01);
+    // `em` is the element's own final font size, not the one in force when the declaration was read.
+    assert_eq!((r(&s, b)[2], r(&s, b)[3]), (2.0 * fs, 2.0 * fs));
+    assert_eq!(s.style(b).radius, [100.0 * fs; 4]);
+}
+
+/// An icon plus a label (`gap`/`margin` in em, set before the `font-size` that decides them) keeps its space.
+#[test]
+fn icon_and_label_keep_their_em_gap() {
+    let mut d = Doc::new("page");
+    let b = d.add(0, "div.dc");
+    let i = d.add(b, "span.i");
+    d.text(i, "\u{2661}");
+    let l = d.add(b, "span.l");
+    d.text(l, "Favourite");
+    let s = scene(
+        &d,
+        ".dc { display: flex; align-items: center; gap: .5em } .l { margin-left: .25em } .dc, .l { font-size: 20px }",
+        (400.0, 300.0),
+    );
+    // gap .5em + margin .25em of the label, both at 20 px
+    let (ri, rl) = (r(&s, i), r(&s, l));
+    assert!(
+        (rl[0] - (ri[0] + ri[2]) - 15.0).abs() < 0.1,
+        "{ri:?} {rl:?}"
+    );
+}
+
+/// jellyfin-web's `.detailButton-icon { font-size: 1.6em !important; height: 1em; width: 1em }`: the icon box is as big as its enlarged glyph, so the label is not under it.
+#[test]
+fn important_font_size_sizes_the_icon_box_in_em() {
+    let mut d = Doc::new("page");
+    let b = d.add(0, "div.row");
+    let i = d.add(b, "span.detailButton-icon");
+    d.text(i, "\u{2661}");
+    let l = d.add(b, "span.l");
+    d.text(l, "Favourite");
+    let s = scene(
+        &d,
+        ".row { display: flex } .detailButton-icon { font-size: 1.6em !important; height: 1em; width: 1em; margin-right: .25em } .detailButton-icon { font-size: 30px }",
+        (400.0, 300.0),
+    );
+    // 1.6em of the parent's 16 px, not the later 30 px: 25.6 px square plus a .25em margin of 25.6 px.
+    let (ri, rl) = (r(&s, i), r(&s, l));
+    assert_eq!((ri[2], ri[3]), (25.6, 25.6));
+    assert!((rl[0] - ri[2] - 6.4).abs() < 0.1, "{ri:?} {rl:?}");
+}

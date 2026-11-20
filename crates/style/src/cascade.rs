@@ -375,60 +375,69 @@ impl Styler {
             c.vars = Rc::new(vars);
         }
         let base = c.clone();
-        for h in hits {
-            let ops: DynOps;
-            let slice: &[Op] = match &h.decl.val {
-                Val::Custom(_) => continue,
-                Val::Ops(o) => o,
-                Val::Dynamic(text) => {
-                    let sub = match crate::props::substitute(text, &c.vars, 0) {
-                        Ok(s) => s,
-                        Err(e) => {
-                            self.note(h, Kind::Variable, format!("{}: {e}", h.decl.name));
+        // `em` lengths resolve against the element's own final font size, whatever the declaration order: font-size ops run first (pass 0), the rest after.
+        for font_pass in [true, false] {
+            for h in hits {
+                let ops: DynOps;
+                let slice: &[Op] = match &h.decl.val {
+                    Val::Custom(_) => continue,
+                    Val::Ops(o) => o,
+                    Val::Dynamic(text) => {
+                        if font_pass && h.decl.name != "font-size" && h.decl.name != "font" {
                             continue;
                         }
-                    };
-                    let key = (h.decl.name.clone(), sub);
-                    ops = match self.dyn_memo.get(&key) {
-                        Some(r) => r.clone(),
-                        None => {
-                            let r = Rc::new(match crate::props::compile(&key.0, &key.1) {
-                                Ok(Outcome::Ops(o) | Outcome::Approx(o, _)) => Ok(o),
-                                Ok(Outcome::NoEffect) => Ok(vec![]),
-                                Err(i) => Err((i.kind, i.msg)),
-                            });
-                            if self.dyn_memo.len() < 4096 {
-                                self.dyn_memo.insert(key, r.clone());
+                        let sub = match crate::props::substitute(text, &c.vars, 0) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                self.note(h, Kind::Variable, format!("{}: {e}", h.decl.name));
+                                continue;
                             }
-                            r
-                        }
-                    };
-                    match &*ops {
-                        Ok(o) => o,
-                        Err((k, m)) => {
-                            self.note(h, *k, m.clone());
-                            continue;
+                        };
+                        let key = (h.decl.name.clone(), sub);
+                        ops = match self.dyn_memo.get(&key) {
+                            Some(r) => r.clone(),
+                            None => {
+                                let r = Rc::new(match crate::props::compile(&key.0, &key.1) {
+                                    Ok(Outcome::Ops(o) | Outcome::Approx(o, _)) => Ok(o),
+                                    Ok(Outcome::NoEffect) => Ok(vec![]),
+                                    Err(i) => Err((i.kind, i.msg)),
+                                });
+                                if self.dyn_memo.len() < 4096 {
+                                    self.dyn_memo.insert(key, r.clone());
+                                }
+                                r
+                            }
+                        };
+                        match &*ops {
+                            Ok(o) => o,
+                            Err((k, m)) => {
+                                self.note(h, *k, m.clone());
+                                continue;
+                            }
                         }
                     }
+                };
+                let user = h.key.1 >= USER;
+                for op in slice {
+                    if sets_font(op) != font_pass {
+                        continue;
+                    }
+                    if let (Some(desc), true) = (floor, user)
+                        && let Some(what) = floor_violation(op)
+                    {
+                        let sel = h
+                            .rule
+                            .map_or("style attribute", |r| &*sheet.rules[r as usize].text);
+                        self.report.add(
+                            Kind::Floor,
+                            format!(
+                                "`{sel}` tried to {what} {desc}, an essential control; kept visible"
+                            ),
+                        );
+                        continue;
+                    }
+                    op.apply(c, cx, &base);
                 }
-            };
-            let user = h.key.1 >= USER;
-            for op in slice {
-                if let (Some(desc), true) = (floor, user)
-                    && let Some(what) = floor_violation(op)
-                {
-                    let sel = h
-                        .rule
-                        .map_or("style attribute", |r| &*sheet.rules[r as usize].text);
-                    self.report.add(
-                        Kind::Floor,
-                        format!(
-                            "`{sel}` tried to {what} {desc}, an essential control; kept visible"
-                        ),
-                    );
-                    continue;
-                }
-                op.apply(c, cx, &base);
             }
         }
     }
@@ -768,4 +777,8 @@ impl Styler {
         self.sib.truncate(keep);
         self.prot.truncate(keep);
     }
+}
+
+fn sets_font(op: &Op) -> bool {
+    matches!(op, Op::FontSize(..) | Op::Inherit("font-size"))
 }
