@@ -227,7 +227,9 @@ impl App {
                 slots.push((n, s));
             }
         }
-        if hp.header_brand.shown() {
+        // In a very narrow window the brand gives its room to the links (otherwise the strip is a few px wide and its chevron covers "Home").
+        if self.eng_width() < 640.0 {
+        } else if hp.header_brand.shown() {
             let b = &hp.header_brand;
             let ty = t::typo(
                 &nocturne_core::customize::Text {
