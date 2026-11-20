@@ -2188,6 +2188,15 @@ impl App {
             if let Some(h) = self.hints() {
                 layers.push(h);
             }
+            #[cfg(feature = "theme-engine")]
+            if self.studio.open {
+                // The panel sits beside the player: the video hole is laid out narrower and its bounds follow.
+                return iced::widget::row![
+                    Element::from(Stack::with_children(layers)),
+                    self.studio_panel()
+                ]
+                .into();
+            }
             return Stack::with_children(layers).into();
         }
         let ready = matches!(self.phase, Phase::Ready);
