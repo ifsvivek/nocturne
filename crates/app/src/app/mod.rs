@@ -2348,6 +2348,7 @@ impl App {
                 && !self.src_open
                 && self.folders.is_none()
                 && !plain
+                && !t::header_back()
                 && let Some(c) = self.crumbs()
             {
                 layers.push(c);

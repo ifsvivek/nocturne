@@ -245,8 +245,8 @@ opt_struct! {
         hidden: bool, layout: RowLayout, gap: f32, columns: u8, padding: f32, order: i32,
         details: bool, framed: bool,
     }
-    Hero { hidden: bool, style: HeroStyle, height: f32, overlay: Fill }
-    Header { position: HeaderPosition, height: f32, align: HeaderAlign, link_icons: bool }
+    Hero { hidden: bool, style: HeroStyle, height: f32, height_vh: f32, overlay: Fill }
+    Header { position: HeaderPosition, height: f32, align: HeaderAlign, link_icons: bool, back: bool, pad: f32 }
     Visibility { hidden: bool }
     Button { hover_scale: f32, transition_ms: u32 }
     Controls { background: Fill }
@@ -467,6 +467,15 @@ fn first<'a>(v: &'a str, notes: &mut Notes) -> &'a str {
 fn px(v: &str, lo: f32, hi: f32, what: &str, notes: &mut Notes) -> Result<f32, String> {
     let f = value::length(first(v, notes), BASE_PX)?;
     Ok(clamp(f, lo, hi, what, notes))
+}
+
+fn vh_share(v: &str) -> Option<f32> {
+    v.trim()
+        .to_ascii_lowercase()
+        .strip_suffix("vh")?
+        .trim()
+        .parse()
+        .ok()
 }
 
 fn signed_px(v: &str) -> Result<f32, String> {
@@ -894,6 +903,10 @@ fn set_part(
                 )?);
                 p.hero.hidden = Some(false);
             }
+            // A share of the window's height (`85vh`) instead of pixels.
+            "height" if vh_share(v).is_some() => {
+                p.hero.height_vh = vh_share(v).map(|n| clamp(n, 20.0, 100.0, "hero height", notes))
+            }
             "height" => p.hero.height = Some(px(v, 120.0, 1200.0, "hero height", notes)?),
             "background" | "background-color" => p.hero.overlay = Some(fill(v, notes)?),
             _ => return Ok(false),
@@ -921,6 +934,10 @@ fn set_part(
             "--header-link-icons" => {
                 p.header.link_icons = Some(one_of(v, &[("on", true), ("off", false)])?)
             }
+            // A back button before the brand on pages below the first (and no breadcrumb strip).
+            // The side gutter of every page (the header, rows, the grid).
+            "--page-pad" => p.header.pad = Some(px(v, 8.0, 240.0, "page gutter", notes)?),
+            "--header-back" => p.header.back = Some(one_of(v, &[("on", true), ("off", false)])?),
             "--header-items" => {
                 let mut shown = [false; 4];
                 let words = v

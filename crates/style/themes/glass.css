@@ -30,9 +30,12 @@
 @media (min-width: 1024px) { :root { --nocturne-page-pad: 80px; } }
 @media (min-width: 1280px) { :root { --nocturne-page-pad: 96px; } }
 page { background: #000000; font-family: Inter, "Noto Sans", sans-serif; }
+.hero-title, .detail-title { font-family: Inter, "Noto Sans", sans-serif; }
 
 /* ---- header: the brand at the left, the glass pill (links, a divider, icons) at the right ---- */
-.header { height: 80px; background: transparent; --header-items: nav search account; }
+.header { height: 80px; background: transparent; --header-items: nav search account; --header-link-icons: on; --header-back: on; --page-pad: 96px; }
+.page-header { background: transparent; }
+.header-back { border: 1px solid var(--glass-edge); border-radius: 20px; background: var(--glass-sheen), var(--glass-fill); box-shadow: var(--glass-shadow); }
 .header-rule { display: none; }
 .header-bar { align-items: center; padding: 0 var(--nocturne-page-pad); }
 .header-left { gap: 0; }
@@ -55,7 +58,8 @@ page { background: #000000; font-family: Inter, "Noto Sans", sans-serif; }
 page[data-scrolled="true"] .header::before { opacity: 1; }
 
 /* ---- hero: full bleed, the logo as title, light and glass pills ---- */
-.hero { height: 765px; --hero-style: billboard; }
+.band-rule { display: none; }
+.hero { height: 85vh; --hero-style: billboard; }
 .hero-fill { background: #000000; }
 .hero-img { object-position: 50% 28%; }
 .hero-scrim-side { background: linear-gradient(90deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.522) 16%, rgba(0, 0, 0, 0.341) 32%, rgba(0, 0, 0, 0.188) 46%, rgba(0, 0, 0, 0.09) 57%, rgba(0, 0, 0, 0.031) 64%, rgba(0, 0, 0, 0) 70%); }
@@ -90,7 +94,7 @@ page[data-scrolled="true"] .header::before { opacity: 1; }
 .row-title { --row-details: off; }
 .card { --title-position: below; }
 .section-resume .card, .section-next-up .card { aspect-ratio: 16/9; width: 380px; }
-.section-latest .card { aspect-ratio: 2/3; width: 168px; }
+.section-latest .card { aspect-ratio: 2/3; width: 178px; }
 .row-title, .section-title { display: flex; flex-direction: row; align-items: center; gap: 10px; color: #f1f2f4; font-size: 24px; font-weight: 600; }
 .row-title::before, .section-title::before { content: ""; width: 3px; height: 30px; border-radius: 999px; background: #dc2626; }
 .card-image { border: 1px solid var(--nocturne-edge); transition: border-color 220ms ease; }
@@ -118,12 +122,20 @@ page[data-scrolled="true"] .header::before { opacity: 1; }
 
 /* ---- detail ---- */
 .detail-top { height: 0; }
-.detail { height: 765px; }
+.detail { height: 85vh; }
 .detail-scrim-side { background: linear-gradient(90deg, #000000 0%, rgba(0, 0, 0, 0.667) 20%, rgba(0, 0, 0, 0.298) 42%, rgba(0, 0, 0, 0) 68%); opacity: 0.84; }
 .detail-scrim-foot { background: linear-gradient(180deg, rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, 0.14) 64%, rgba(0, 0, 0, 0.55) 82%, #000000 100%); }
 .detail-body { padding: 96px 0 72px var(--nocturne-page-pad); }
 .detail-col { gap: 0; width: 520px; }
-.detail-eyebrow, .detail-kind, .detail-mark { display: none; }
+.detail-eyebrow, .detail-kind, .detail-mark, .detail-head, .detail-about, .detail-facts, .detail-tags { display: none; }
+.detail-logo, .detail-logo-gap, .detail-title { order: 0; }
+.detail-parent { order: 1; display: block; margin-top: 14px; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(255, 255, 255, 0.68); }
+.detail-season { order: 2; display: block; margin-top: 4px; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: #ffffff; }
+.detail-chips { order: 3; }
+.detail-summary { order: 4; }
+.detail-more { order: 5; }
+.detail-actions { order: 6; }
+.detail-error { order: 7; }
 .detail-logo { width: 340px; height: 96px; object-position: left bottom; }
 .detail-logo-gap { height: 96px; }
 .detail-title { font-size: 48px; font-weight: 800; line-height: 0.95; letter-spacing: -0.03em; text-transform: uppercase; color: #ffffff; text-shadow: 0 3px 14px rgba(0, 0, 0, 0.45); }
@@ -184,3 +196,63 @@ page[data-scrolled="true"] .header::before { opacity: 1; }
 .page-sub, .library-frame { display: none; }
 .page-title { display: flex; flex-direction: row; align-items: center; gap: 10px; font-size: 24px; font-weight: 600; }
 .page-title::before { content: ""; width: 3px; height: 30px; border-radius: 999px; background: #dc2626; }
+.page-library .card { width: 164px; aspect-ratio: 2/3; }
+.page-library .rule { display: none; }
+.page-tabs { gap: 2px; margin-top: 4px; }
+.page-tab { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: #969aa1; transition: background 180ms ease, color 180ms ease; }
+.page-tab:hover { background: rgba(255, 255, 255, 0.07); color: #f1f2f4; }
+.page-tab.active { background: rgba(255, 255, 255, 0.12); color: #ffffff; font-weight: 600; }
+.page-tab-bar { display: none; }
+.library-count { order: -1; display: flex; align-items: center; height: 24px; padding: 0 10px; border: 1px solid #26292e; border-radius: 12px; background: #1a1c20; color: #969aa1; font-family: inherit; font-size: 11px; font-weight: 500; }
+.az { position: absolute; top: 150px; right: 10px; width: 22px; flex-direction: column; align-items: center; gap: 0; padding: 4px 0; border-radius: 8px; background: #101113; }
+.az-letter { width: 22px; height: 24px; border-radius: 4px; font-family: inherit; font-size: 12px; color: #f1f2f4; }
+.az-letter:hover { background: rgba(255, 255, 255, 0.07); }
+.az-letter.on { background: #dc2626; color: #ffffff; }
+.card-chip { display: none; }
+.card:hover .card-chip, .card-chip.on { display: flex; }
+.card-chips.keep .card-chip.on { border-color: rgba(255, 255, 255, 0.07); background: var(--glass-sheen), var(--glass-fill); color: #f1f2f4; }
+.card:hover .card-chip.on { border-color: #dc2626; background: #dc2626; color: #101113; }
+
+/* ---- detail: sections, season tabs, episode cards, cast; the track block is the spec's Info dialog, which NOCTURNE does not have, so it stays out of the page ---- */
+.detail-info, .hero-season { display: none; }
+.tab { height: 32px; padding: 0 12px; border-bottom-width: 0; border-radius: 8px; font-size: 13px; font-weight: 500; color: #969aa1; transition: background 180ms ease, color 180ms ease; }
+.tab:hover { background: rgba(255, 255, 255, 0.07); color: #f1f2f4; }
+.tab.active { background: rgba(255, 255, 255, 0.12); color: #ffffff; font-weight: 600; }
+.tab:focus { background: rgba(255, 255, 255, 0.12); }
+.episode-thumb { border: 1px solid #26292e; transition: border-color 220ms ease; }
+.episode:hover .episode-thumb { border-color: rgba(241, 242, 244, 0.22); }
+.episode-play { display: none; }
+.episode-check { top: 22px; left: 22px; right: auto; width: 32px; height: 32px; border: 1px solid var(--glass-edge); border-radius: 12px; background: var(--glass-sheen), var(--glass-fill); }
+.episode-check-glyph { color: #f1f2f4; font-size: 14px; }
+.episode-actions { position: absolute; top: 22px; right: 22px; flex-direction: row; gap: 4px; }
+.round { width: 32px; height: 32px; border: 1px solid var(--glass-edge); border-radius: 12px; background: var(--glass-sheen), var(--glass-fill); color: #969aa1; font-size: 15px; }
+.round:hover { border-color: rgba(255, 255, 255, 0.16); color: #f1f2f4; }
+.round.on { border-color: #dc2626; background: #dc2626; color: #101113; }
+.episode-title { font-size: 17px; font-weight: 600; line-height: 22px; }
+.episode:hover .episode-title { color: #dc2626; }
+.episode-meta { font-family: inherit; font-size: 12px; color: #969aa1; }
+.episode-overview { height: 36px; padding: 0; font-size: 13px; line-height: 18px; color: #969aa1; }
+
+/* ---- search: the overlay reads as the spec's page, a centred field over rows of poster cards ---- */
+.search-layer { padding-top: 100px; background: #000000; }
+.search-panel { flex: 1; width: 100%; max-width: none; max-height: none; background: transparent; border-radius: 0; }
+.search-frame { display: none; }
+.search-head { align-self: center; flex: none; width: 856px; max-width: 100%; height: 37px; padding: 0 12px; border: 1px solid #dc2626; border-radius: 3px; background: #101113; }
+.search-tag { display: none; }
+.search-panel .rule { display: none; }
+.search-list { flex-direction: row; flex-wrap: wrap; align-content: flex-start; padding: 0 var(--nocturne-page-pad); }
+.hit-group { display: flex; flex-direction: row; align-items: center; gap: 10px; width: 100%; height: auto; padding: 28px 0 20px; font-size: 24px; font-weight: 600; letter-spacing: 0; text-transform: none; color: #f1f2f4; }
+.hit-group::before { content: ""; width: 3px; height: 30px; border-radius: 999px; background: #dc2626; }
+.hit { flex-direction: column; align-items: flex-start; gap: 0; width: 178px; margin: 0 14px 32px 0; padding: 0; background: transparent; }
+.hit:hover { background: transparent; }
+.hit:focus { background: transparent; }
+.hit-pic { width: 178px; height: 267px; border: 1px solid #26292e; border-radius: 10px; background: #101113; transition: border-color 220ms ease; }
+.hit:hover .hit-pic, .hit:focus .hit-pic { border-color: rgba(241, 242, 244, 0.22); }
+.hit:focus .hit-pic { border-color: #dc2626; }
+.hit-text { flex: none; width: 100%; padding: 10px 2px 0; }
+.hit-title { font-size: 13px; font-weight: 500; }
+.hit:hover .hit-title, .hit:focus .hit-title { color: #dc2626; }
+.hit-meta { margin-top: 4px; font-family: inherit; font-size: 11px; color: #969aa1; }
+.search-note { padding: 28px var(--nocturne-page-pad); }
+
+.detail-year, .detail-runtime, .detail-genres { display: flex; }
