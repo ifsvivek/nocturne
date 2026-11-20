@@ -197,13 +197,19 @@
       <figure class="m-0"><Shot name="marquee" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Marquee: a billboard under a see-through header and wide carousels without captions.</figcaption></figure>
       <figure class="m-0"><Shot name="feed" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Feed: no billboard, a grid of thumbnails with the title and details below.</figcaption></figure>
     </div>
+    {#if v052}
+    <div class="stagger mx-auto mt-[clamp(56px,7vw,96px)] grid w-[min(1520px,100%-40px)] gap-6 md:grid-cols-2">
+      <figure class="m-0"><Shot name="glass" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Glass: a black canvas, a glass header pill, a full-bleed hero and squircle cards.</figcaption></figure>
+      <figure class="m-0"><Shot name="studio" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Theme Studio: pick an element of the live screen and change it with controls.</figcaption></figure>
+    </div>
+    {/if}
     <dl class="stagger mx-auto mt-14 grid w-[min(1000px,100%-40px)] gap-x-14 gap-y-10 md:grid-cols-2">
       {#each look as [t, d]}
         <div class="rule pt-5"><dt class="role">{t}</dt><dd class="m-0 mt-3 text-ink-2">{d}</dd></div>
       {/each}
     </dl>
     <div class="stagger wrap mt-[clamp(56px,7vw,96px)] grid gap-x-8 gap-y-12 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] md:items-end">
-      <figure class="m-0"><Shot name="server-ui" sizes={left} /><figcaption class="mt-4 text-sm text-ink-2">Server UI: with Living room alone in the source filter, Home follows that server's layout.</figcaption></figure>
+      <figure class="m-0"><Shot name="server-ui" sizes={left} /><figcaption class="mt-4 text-sm text-ink-2">Server UI: with Study alone in the source filter, Home follows that server's own layout and branding.</figcaption></figure>
       <figure class="m-0"><Shot name="sections-crop" sizes={right} /><figcaption class="mt-4 text-sm text-ink-2">Settings, Sources, Sections: the server's home sections for your account, editable once server changes are on.</figcaption></figure>
     </div>
     <p class="mx-auto mt-10 mb-0 w-[min(1000px,100%-40px)] text-sm text-ink-3">{v052

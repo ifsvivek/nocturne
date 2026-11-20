@@ -53,7 +53,7 @@ const ALT = {
   "picker-crop": "The Who's watching? profile picker: two round profile tiles, an Add profile tile and a Use as default profile box",
   "account-menu": "The account menu with Settings, Sources, Admin, Watch together, Add another account, Switch server and Sign out",
   "admin-dashboard": "The administrator dashboard of one server, view-only while changes are off",
-  "search-crop": "The search palette: the same film listed once per source, Local, Living room and Study",
+  "search-crop": "The search palette over the Movies library: a query with matching movies, people and genres, each with a thumbnail and a source mark",
   "settings-crop": "The setting Allow NOCTURNE to change data on the server, switched off and described as off by default",
   "video-crop": "The video picture on its own, without the player controls",
   "controls-crop": "The player control bar: seek, play, chapters, audio, subtitles and volume",
@@ -67,10 +67,12 @@ const ALT = {
   "downloads-crop": "The Downloads panel: Northbound Lights downloading, 50 MB of 417 MB, with Pause and Cancel",
   "hdr-crop": "The HDR question in the player: Play here in SDR, or Open in HDR pop-out window, with Remember my choice",
   "trakt-crop": "The Trakt dialog: what is sent to Trakt, then Connect Trakt and Advanced: use your own Client ID",
-  themes: "Settings, Themes: the examples Marquee and Feed, the saved themes with Marquee active, a theme per server, and the Marquee stylesheet in the editor",
+  themes: "Settings, Themes: the two built-in themes listed apart, NOCTURNE then Glass, example themes, the saved theme Glass marked active, a theme per server, and its stylesheet in the editor",
+  studio: "Theme Studio beside Home with a Continue watching card picked: its selector, This element only or All like this, and colour, size, spacing, shape, effect, typography and layout controls",
+  glass: "Home in the Glass theme: a black canvas, a glass header pill with the server name, a full-bleed hero with light pill buttons and red accent rails before the section titles",
   marquee: "Home with the Marquee theme: a full-bleed billboard under a see-through header, a red accent and wide thumbnails without captions",
   feed: "Home with the Feed theme: no billboard, Continue watching as a grid of thumbnails with the title and details below",
-  "server-ui": "Home in the server's layout with only Living room in the source filter: the billboard, then the server's My media row of its libraries",
+  "server-ui": "Home in a server's own look (Study, with its branding stylesheet) with only that server in the source filter: its My media tiles, Continue Watching, Next Up and Recently Added rows",
   "sections-crop": "Home of Living room: the server's home sections, each with On or Off and up and down arrows, view-only until server changes are on",
 };
 // Image props for one screenshot: src (largest), srcset, intrinsic size and alt, so layout never shifts.
