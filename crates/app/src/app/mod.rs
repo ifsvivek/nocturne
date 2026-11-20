@@ -360,7 +360,7 @@ pub struct App {
 impl App {
     pub fn boot(cfg: Option<nocturne_jellyfin::Config>) -> (Self, Task<Message>) {
         crate::timing::mark("boot");
-        let settings = Settings::load();
+        let (settings, settings_notice) = Settings::load_checked();
         crate::motion::set_reduced(
             settings
                 .reduce_motion
@@ -446,7 +446,8 @@ impl App {
             win: Size::new(1280.0, 800.0),
             now: Instant::now(),
             awake_until: Instant::now() + AWAKE,
-            note: None,
+            // A settings file that could not be read stays on screen long enough to read the path.
+            note: settings_notice.map(|n| (n, Instant::now() + 20 * TOAST)),
             update: None,
             update_stage: UpdateStage::Idle,
             pk_available: false,
@@ -2343,6 +2344,9 @@ impl App {
             }
             if !self.admin_open
                 && !self.settings_open
+                && !self.th.open
+                && !self.src_open
+                && self.folders.is_none()
                 && !plain
                 && !t::header_back()
                 && let Some(c) = self.crumbs()

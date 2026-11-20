@@ -58,7 +58,17 @@ impl App {
     }
 
     pub(super) fn open_admin(&mut self) -> Task<Message> {
-        if !self.admin || self.adm.is_some() {
+        if !self.admin {
+            return Task::none();
+        }
+        // Settings, Themes and Sources are drawn above the Admin page: step out of them first, or the header lights up Admin while they stay on screen.
+        self.settings_open = false;
+        self.src_open = false;
+        self.th.open = false;
+        self.folders = None;
+        self.menu = false;
+        if self.adm.is_some() {
+            self.admin_open = true;
             return Task::none();
         }
         let targets = self.admin_targets();

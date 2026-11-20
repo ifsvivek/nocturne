@@ -58,7 +58,7 @@ What NOCTURNE does as of 0.5.1 (2026-11-19); entries tagged (0.4) or (0.5) say w
 - [x] (0.4) Trakt (opt-in, one-click connect with the built-in client id; your own Trakt app stays an advanced option): scrobble and watched-history import. Verified live against a real Trakt account (2026-11-17): browser sign-in with PKCE through the local redirect `http://127.0.0.1:38917/callback`, username, history read, scrobble start/stop ([TRAKT.md](TRAKT.md))
 - [~] (0.4) Remote control from other Jellyfin apps (opt-in, needs server changes on). Verified on a throwaway 12.x server: the session shows as controllable, and Play, Pause, Unpause, Seek, Next and Stop sent through the server's API took effect; with the setting off the session is not controllable. Not yet tried from a phone app ([WRITES.md](WRITES.md))
 - [~] (0.4) Couch mode: 10-foot layout, keyboard / remote-key navigation, gamepad (`gilrs`). Layout and key paths checked; **no real gamepad or TV tested**
-- [x] Seek bar with chapters and trickplay hover thumbnails, volume, fullscreen, mini player
+- [x] Seek bar with chapters and trickplay hover thumbnails, volume, fullscreen, mini player (a 640x360 window with only the picture; a tiling compositor keeps its own window size, so there only the controls hide)
 - [x] Audio and subtitle menus, subtitle styling and delay, audio delay, speed, aspect and picture controls
 - [x] Skip intro / credits, next-episode autoplay, queue panel
 - [x] Quality selector with transcode fallback, playback info overlay, key help overlay, context menu, screenshot

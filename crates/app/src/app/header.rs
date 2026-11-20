@@ -256,8 +256,14 @@ impl App {
         match b.content {
             Some(BrandContent::User) => self.session().map_or(app, |(_, s)| s.user_name.clone()),
             Some(BrandContent::App) => app,
+            // The server whose look is shown, else the one selected in the filter, else the last signed-in one.
             _ => self
-                .active
+                .theme_ui()
+                .or(match self.filter {
+                    nocturne_core::sources::SourceFilter::One(id) => Some(id),
+                    nocturne_core::sources::SourceFilter::All => None,
+                })
+                .or(self.active)
                 .map(|id| self.label_of(id))
                 .filter(|l| !l.is_empty())
                 .or_else(|| {
@@ -305,7 +311,8 @@ impl App {
 
     /// Breadcrumbs for deep pages: Home > ... > current; every crumb but the last goes back to it.
     pub(super) fn crumbs(&self) -> Option<El<'_>> {
-        let n = self.stack.len();
+        let trail = trail(&self.stack);
+        let n = trail.len();
         if n < 3 {
             return None;
         }
@@ -322,8 +329,10 @@ impl App {
         } else {
             (0..n).collect()
         };
+        // `shown` indexes the trail; the stack index is what a click goes back to.
+        let shown: Vec<(usize, usize)> = shown.into_iter().map(|k| (k, trail[k])).collect();
         let mut r = row![].spacing(t::S2).align_y(Alignment::Center);
-        for (k, i) in shown.into_iter().enumerate() {
+        for (k, (ti, i)) in shown.into_iter().enumerate() {
             if k > 0 {
                 r = r.push(mono(if elided && k == 1 {
                     "\u{2026}  \u{203A}"
@@ -331,7 +340,7 @@ impl App {
                     "\u{203A}"
                 }));
             }
-            let last = i == n - 1;
+            let last = ti == n - 1;
             let label = text(title(&self.stack[i]))
                 .size(t::CAPTION)
                 .wrapping(text::Wrapping::None);
@@ -354,11 +363,14 @@ impl App {
                 .clip(true),
             );
         }
-        // Same fill as the header: scrolled content must not show through behind the trail.
+        // The header's colour, but opaque: the header is translucent (a faint show-through is fine for its big labels), yet buttons and text scrolling under the thin trail made it unreadable.
         let bar = container(r.height(28))
             .width(Length::Fill)
             .padding([0.0, t::page_pad()])
-            .style(style::fill(t::header_bg()));
+            .style(style::fill(iced::Color {
+                a: 1.0,
+                ..t::header_bg()
+            }));
         Some(
             container(bar)
                 .width(Length::Fill)
@@ -741,6 +753,28 @@ impl App {
             nocturne_core::sources::SourceFilter::One(id) => self.label_of(id),
         }
     }
+}
+
+/// The stack indices the breadcrumb shows: the logical path, not the raw history. A detail page opened from search or a card while another detail page was open has that page beneath it, but it is not its parent; only a show (or season) above its episode is.
+fn trail(stack: &[super::Page]) -> Vec<usize> {
+    let parent_of = |a: &nocturne_core::source::Media, b: &nocturne_core::source::Media| {
+        b.series_id.as_deref() == Some(a.id.as_str())
+            || (a.kind == nocturne_core::source::Kind::Season
+                && a.series_id.is_some()
+                && a.series_id == b.series_id)
+    };
+    (0..stack.len())
+        .filter(|&i| {
+            let p = &stack[i];
+            if p.view != View::Detail || i + 1 == stack.len() {
+                return true;
+            }
+            match (&p.media, stack[i + 1].media.as_ref()) {
+                (Some(a), Some(b)) if stack[i + 1].view == View::Detail => parent_of(a, b),
+                _ => true,
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
