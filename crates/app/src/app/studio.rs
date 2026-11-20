@@ -954,24 +954,20 @@ impl App {
             }
             #[cfg(debug_assertions)]
             Msg::DebugSelect(sel) => {
-                let found = SCENES
-                    .into_iter()
-                    .find_map(|w| {
-                        let sc = self.eng_scene_of(w)?;
-                        inspect::matches_of(&sc.doc, &sel).first().map(|&n| (w, n))
-                    });
+                let found = SCENES.into_iter().find_map(|w| {
+                    let sc = self.eng_scene_of(w)?;
+                    inspect::matches_of(&sc.doc, &sel).first().map(|&n| (w, n))
+                });
                 if let Some((w, n)) = found {
                     self.studio_select(w, n);
                 }
             }
             #[cfg(debug_assertions)]
             Msg::DebugPointer(sel, click) => {
-                let found = SCENES
-                    .into_iter()
-                    .find_map(|w| {
-                        let sc = self.eng_scene_of(w)?;
-                        inspect::matches_of(&sc.doc, &sel).first().map(|&n| (w, n))
-                    });
+                let found = SCENES.into_iter().find_map(|w| {
+                    let sc = self.eng_scene_of(w)?;
+                    inspect::matches_of(&sc.doc, &sel).first().map(|&n| (w, n))
+                });
                 if let Some((w, n)) = found {
                     let e = if click {
                         StyledEvent::Click(n)
