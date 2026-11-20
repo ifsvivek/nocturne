@@ -1102,6 +1102,24 @@ impl<M> Styled<'_, M> {
         out
     }
 
+    /// The page's own scrollbar thumb (widget coordinates; node 0), for dragging it: the same geometry `paint_scrollbar` draws.
+    fn page_bar(&self) -> Option<Bar> {
+        let s = &*self.scene;
+        let (page, view) = (s.page_height(), s.viewport.1);
+        if page <= view + 0.5 {
+            return None;
+        }
+        let len = (view * view / page).clamp(24.0, view);
+        let max = page - view;
+        let top = s.scroll.page_y.clamp(0.0, max) / max * (view - len);
+        Some(Bar {
+            node: 0,
+            vertical: true,
+            thumb: Rectangle::new(Point::new(s.viewport.0 - 10.0, top), Size::new(10.0, len)),
+            ratio: max / (view - len).max(1.0),
+        })
+    }
+
     /// The `title` of the element under the pointer (or of its nearest ancestor that has one) and the element it sits on.
     pub(super) fn tip_of(&self, hover: Option<Id>) -> Option<(Id, &str)> {
         let mut at = hover;
@@ -1546,19 +1564,22 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
             (Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)), Some(p))
                 if !captured =>
             {
-                self.bars(st.hover, None).into_iter().find_map(|bar| {
-                    let t = bar.thumb;
-                    Rectangle::new(
-                        Point::new(t.x - 4.0, t.y - 4.0),
-                        Size::new(t.width + 8.0, t.height + 8.0),
-                    )
-                    .contains(p)
-                    .then_some((
-                        bar.node,
-                        bar.vertical,
-                        if bar.vertical { p.y } else { p.x },
-                    ))
-                })
+                self.bars(st.hover, None)
+                    .into_iter()
+                    .chain(self.page_bar())
+                    .find_map(|bar| {
+                        let t = bar.thumb;
+                        Rectangle::new(
+                            Point::new(t.x - 4.0, t.y - 4.0),
+                            Size::new(t.width + 8.0, t.height + 8.0),
+                        )
+                        .contains(p)
+                        .then_some((
+                            bar.node,
+                            bar.vertical,
+                            if bar.vertical { p.y } else { p.x },
+                        ))
+                    })
             }
             _ => None,
         };
@@ -1595,7 +1616,8 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
                     let now = if vertical { p.y } else { p.x };
                     let ratio = self
                         .bars(st.hover, Some(node))
-                        .iter()
+                        .into_iter()
+                        .chain(self.page_bar())
                         .find(|bar| bar.node == node)
                         .map_or(1.0, |bar| bar.ratio);
                     // The scene's own wheel handling moves the container: dragging the thumb by `d` px is a wheel of `-d * ratio`.
@@ -1639,7 +1661,10 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
                     }
                 }
             }
-            Event::Mouse(mouse::Event::WheelScrolled { delta }) if !captured => {
+            // Only over this widget: a header strip above a page must not swallow the wheel meant for the page below it.
+            Event::Mouse(mouse::Event::WheelScrolled { delta })
+                if !captured && cursor.is_over(b) =>
+            {
                 let (dx, dy) = match *delta {
                     mouse::ScrollDelta::Lines { x, y } => (x * 48.0, y * 48.0),
                     mouse::ScrollDelta::Pixels { x, y } => (x, y),

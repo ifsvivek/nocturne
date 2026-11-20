@@ -932,6 +932,11 @@ impl App {
             }
             Message::HomeStripPage(row, dir) => {
                 let vw = self.win.width - 2.0 * t::page_pad();
+                // The engine's strips scroll in their scene, not in an Iced scrollable.
+                #[cfg(feature = "theme-engine")]
+                if self.eng_home_active() {
+                    return self.eng_strip_page(row, dir * vw * 0.9);
+                }
                 let Some(h) = self.stack.first_mut().and_then(|p| p.home.as_deref_mut()) else {
                     return Task::none();
                 };

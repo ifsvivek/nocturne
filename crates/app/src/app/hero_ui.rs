@@ -45,6 +45,7 @@ impl App {
         let (focused, pointer, playback) =
             (self.win_focused, self.pointer_down, self.player.is_some());
         let dialog = !active || self.search.is_some() || self.menu;
+        let studio = self.studio.open;
         let Some(h) = self.stack.first_mut().and_then(|p| p.home.as_deref_mut()) else {
             return Task::none();
         };
@@ -81,6 +82,7 @@ impl App {
             focus_inside: in_use,
             dialog,
             playback,
+            studio,
         };
         let before = h.carousel.index();
         if h.carousel.tick(now)
