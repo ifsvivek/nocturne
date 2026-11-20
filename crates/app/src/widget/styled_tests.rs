@@ -8,13 +8,12 @@ use iced::{Element, Event, Point, Rectangle, Size, mouse, window};
 use iced_test::{Simulator, selector};
 use nocturne_style::{Builders, Dir, Doc, Fonts, Interaction, Scene, Sheet, approx};
 use std::rc::Rc;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::MutexGuard;
 use std::time::Instant;
 
-/// The headless renderer is not safe to start from many threads at once (a parallel run crashed): one simulator at a time.
+/// The headless renderer is not safe to start from many threads at once: the crate-wide simulator lock, shared with every other `Simulator` test.
 fn serial() -> MutexGuard<'static, ()> {
-    static L: Mutex<()> = Mutex::new(());
-    L.lock().unwrap_or_else(|e| e.into_inner())
+    crate::sim_lock()
 }
 
 #[derive(Clone, Debug, PartialEq)]
