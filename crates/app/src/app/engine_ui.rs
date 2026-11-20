@@ -1015,6 +1015,25 @@ impl App {
         self.home_wants()
     }
 
+    /// The row arrows: scroll strip `row` sideways by `dx` px (negative: toward the start), as a wheel gesture would.
+    pub(super) fn eng_strip_page(&mut self, row: usize, dx: f32) -> Task<Message> {
+        let Some(node) = self
+            .eng
+            .home
+            .as_ref()
+            .and_then(|h| h.tree.strips.get(&row).copied())
+        else {
+            return Task::none();
+        };
+        let (h, cache) = self.eng.host(Which::Home);
+        if let Some(h) = h {
+            h.scene.wheel(Some(node), -dx, 0.0, &mut |t, st, m| {
+                cache.measure(t, st, m, &mut shape)
+            });
+        }
+        self.eng_scrolled()
+    }
+
     /// Move the Home focus to `(row, col)` (a pointer on a card, or the keyboard).
     pub(super) fn eng_focus(&mut self, row: usize, col: usize) -> Task<Message> {
         let wants = self.hover_home(row, col);
