@@ -151,6 +151,8 @@ pub struct ServerUi {
     pub disclaimer: Option<String>,
     /// The server's own jellyfin-web stylesheets (`webcss`), the base layer of Jellyfin layout mode. `None`: the server runs without its web client.
     pub web_css: Option<std::sync::Arc<String>>,
+    /// The icon font of that web client (`family`, ttf bytes), registered with the text shaper so ligature text draws icons.
+    pub web_font: Option<(String, std::sync::Arc<Vec<u8>>)>,
 }
 
 impl ServerUi {
@@ -165,6 +167,7 @@ impl ServerUi {
             css: text(&branding.custom_css),
             disclaimer: text(&branding.login_disclaimer),
             web_css: None,
+            web_font: None,
         }
     }
 
@@ -405,6 +408,7 @@ impl ServerUi {
             css: self.css.clone(),
             disclaimer: self.disclaimer.clone(),
             web_css: self.web_css.clone(),
+            web_font: self.web_font.clone(),
             ..Default::default()
         }
     }
@@ -594,6 +598,7 @@ mod tests {
             css: Some("a{}".into()),
             disclaimer: Some("d".into()),
             web_css: None,
+            web_font: None,
         };
         let loaded = HashMap::from([(a, ui.clone())]);
         let libs = || ["x", "y", "z"].map(String::from).to_vec();

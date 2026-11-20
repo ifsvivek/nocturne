@@ -27,7 +27,7 @@ pub use config::Config;
 pub use model::{Item, Items, PublicInfo, User, UserData};
 pub use play::{MediaStream, PlayItem, Segment, SegmentKind, Transcode, TrickplayInfo};
 pub use server_ui::{Branding, DisplayPrefs, UserConfig};
-pub use web::{WebFiles, css_chunks, index_stylesheets};
+pub use web::{WebFiles, css_chunks, font_face_file, index_stylesheets};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

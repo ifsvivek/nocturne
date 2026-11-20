@@ -16,7 +16,7 @@ pub const FOCUS_WITHIN: u8 = 16;
 /// Limits on what a selector may cost to parse and to match.
 pub const MAX_LEN: usize = 500;
 /// Compounds in one selector, counting those inside `:is()`, `:not()` and `:has()`.
-pub const MAX_PARTS: usize = 16;
+pub const MAX_PARTS: usize = 32;
 pub const MAX_NEST: u8 = 3;
 pub const MAX_LIST: usize = 16;
 /// Nodes one element may visit while being matched against all rules.

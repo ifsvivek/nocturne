@@ -193,6 +193,9 @@ pub enum Message {
     Fan(u64, FanKind, u64, SourceId, Option<Vec<Media>>),
     /// A server's own layout and branding (Server UI); `None` when the read failed.
     ServerUi(SourceId, Option<nocturne_core::server_ui::ServerUi>),
+    /// The icon font of a server's web client reached the text shaper.
+    #[cfg(feature = "theme-engine")]
+    JfFont(SourceId),
     /// The home-sections editor's save finished.
     SectionsSaved(SourceId, bool),
     /// One library's latest items on Home page `pid`: (pid, request epoch, source, library id, items).

@@ -29,16 +29,28 @@ impl Detail {
         let art = geom::hero_art(m);
         if let Some(h) = self.img(m, art, 1920).or_else(|| self.blur(m, art)) {
             let bc = t_.doc.add(root, "div.backdropContainer");
-            let bi = t_.pic(bc, "img.backdropImage.backdropImageFadeIn.jfImage", h);
-            t_.doc.inline(bi, "opacity: 0.2");
+            t_.pic(bc, "img.backdropImage.backdropImageFadeIn.jfImage", h);
+            // jellyfin-web's script adds `withBackdrop` to the page-sized `.backgroundContainer` while a backdrop shows; the theme sheet sets its opacity (0.86 in the dark theme), so the backdrop is seen through a dark layer.
+            t_.doc.add(root, "div.backgroundContainer.withBackdrop");
         }
         let d = &mut t_.doc;
         let bd = d.add(page, "div.itemBackdrop");
         d.set_id(bd, "itemBackdrop");
-        if m.logo.is_some()
-            && let Some(l) = self.img(m, Art::Logo, 800)
-        {
-            let lg = t_.doc.add(page, "div.detailLogo");
+        // jellyfin-web always has `.detailLogo`; its script adds `hide` when the item has no logo (themes key off `.detailLogo:not(.hide)`, e.g. to hide the item name under a logo).
+        let logo = m
+            .logo
+            .is_some()
+            .then(|| self.img(m, Art::Logo, 800))
+            .flatten();
+        let lg = t_.doc.add(
+            page,
+            if logo.is_some() {
+                "div.detailLogo"
+            } else {
+                "div.detailLogo.hide"
+            },
+        );
+        if let Some(l) = logo {
             t_.pic(lg, "img.jfImage.jfContain", l);
         }
         let d = &mut t_.doc;
@@ -101,7 +113,11 @@ impl Detail {
             item(d, ".mediaInfoText.mediaInfoOfficialRating", c);
         }
         if let Some(r) = m.rating {
-            item(d, ".starRatingContainer", &format!("\u{2605} {r:.1}"));
+            let n = d.add(misc, "div.mediaInfoItem.starRatingContainer");
+            icon(d, n, "starIcon", "star", false, "\u{2605}");
+            // An element holds either text or children here, so the number sits in its own span (the web has a bare text node).
+            let v = d.add(n, "span.starRating");
+            d.text(v, &format!("{r:.1}"));
         }
         if let Some(c) = self.full.as_ref().and_then(|f| f.critic) {
             item(
@@ -110,44 +126,56 @@ impl Detail {
                 &format!("{c:.0}"),
             );
         }
+        // jellyfin-web ends the facts with "Ends at" (now + what is left), for anything with a video and a runtime.
+        if let Some(r) = m.runtime_min
+            && matches!(m.kind, Kind::Movie | Kind::Episode | Kind::Video)
+        {
+            let left = m
+                .progress()
+                .map_or(r, |p| ((1.0 - p) * r as f32).round() as u32);
+            let n = d.add(misc, "div.mediaInfoItem.endsAt");
+            d.text(
+                n,
+                &format!(
+                    "Ends at {}",
+                    nocturne_core::detail::ends_at(nocturne_core::detail::local_minutes(), left)
+                ),
+            );
+        }
         let btns = d.add(rib, "div.mainDetailButtons.focuscontainer-x");
         for (i, a) in self.dacts().into_iter().enumerate() {
             let d = &mut t_.doc;
             let (label, _) = model::spec(a, m);
-            let class = match a {
-                model::DAct::Play => "btnPlay",
-                model::DAct::PlayAll => "btnPlay",
-                model::DAct::Shuffle => "btnShuffle",
-                model::DAct::Watched => "btnPlaystate",
-                model::DAct::Fav => "btnUserRating",
-                model::DAct::More => "btnMoreCommands",
-                _ => "btnMoreCommands",
-            };
-            let b = d.add(
-                btns,
-                &format!("button.button-flat.{class}.detailButton.emby-button"),
-            );
-            d.attr(b, "title", label);
-            let c = d.add(b, "div.detailButton-content");
-            let icon = d.add(c, "span.detailButton-icon");
-            d.inline(icon, "min-width: 1em; min-height: 1em");
-            let name = match a {
-                model::DAct::Play | model::DAct::PlayAll => "\u{25B6}",
-                model::DAct::Watched => "\u{2713}",
-                model::DAct::Fav => "\u{2665}",
-                model::DAct::Shuffle => "\u{21C4}",
-                model::DAct::Prev => "\u{2039}",
-                model::DAct::Next => "\u{203A}",
-                _ => "\u{22EE}",
-            };
-            d.text(icon, name);
+            let (class, name, fallback) = button_of(a);
+            let b = jf_button(d, btns, class, label, name, fallback);
             t_.acts.insert(b, Msg::Act(a));
             t_.cell(b, (DRow::Actions, i));
+            // Buttons jellyfin-web has and NOCTURNE's own page keeps in menus: they take no focus cell here (clicks only).
+            if a == model::DAct::Play && m.progress().is_some() {
+                let r = jf_button(&mut t_.doc, btns, "btnReplay", "Play", "replay", "\u{21BA}");
+                t_.acts.insert(r, Msg::MoreAct(model::MoreAct::FromStart));
+            }
+            if a == model::DAct::Play && m.kind == Kind::Series {
+                let (c, n, f) = button_of(model::DAct::Shuffle);
+                let b = jf_button(&mut t_.doc, btns, c, "Shuffle", n, f);
+                t_.acts.insert(b, Msg::Act(model::DAct::Shuffle));
+                let (c, n, f) = button_of(model::DAct::Watched);
+                let b = jf_button(&mut t_.doc, btns, c, "Mark watched", n, f);
+                t_.acts.insert(b, Msg::Act(model::DAct::Watched));
+            }
         }
         // Primary content: tagline, overview, the people lines.
         let d = &mut t_.doc;
         let pc = d.add(primary, "div.detailPagePrimaryContent.padded-right");
         let ds = d.add(pc, "div.detailSection");
+        if let Some(info) = self
+            .full
+            .as_ref()
+            .and_then(|f| f.info.first())
+            .filter(|_| matches!(m.kind, Kind::Movie | Kind::Episode | Kind::Video))
+        {
+            jf_tracks(d, ds, info);
+        }
         let dsc = d.add(ds, "div.detailSectionContent");
         if let Some(tag) = self.full.as_ref().and_then(|f| f.tagline.as_deref()) {
             let h = d.add(dsc, "h3.tagline");
@@ -309,4 +337,132 @@ fn jf_root_doc(t_: &mut DTree) -> Id {
     let root = d.add(body, "div.jf-react");
     d.set_id(root, "reactRoot");
     root
+}
+
+/// `(class, material icon, fallback glyph)` of a page action, as jellyfin-web names them.
+fn button_of(a: model::DAct) -> (&'static str, &'static str, &'static str) {
+    use model::DAct::*;
+    match a {
+        Play | PlayAll | View => ("btnPlay", "play_arrow", "\u{25B6}"),
+        Shuffle => ("btnShuffle", "shuffle", "\u{21C4}"),
+        Watched => ("btnPlaystate", "check", "\u{2713}"),
+        Fav => ("btnUserRating", "favorite", "\u{2665}"),
+        Prev => ("btnPrevious", "navigate_before", "\u{2039}"),
+        Next => ("btnNext", "navigate_next", "\u{203A}"),
+        Series => ("btnSeries", "tv", "\u{25A3}"),
+        Versions => ("btnSplitVersions", "call_split", "\u{2442}"),
+        More => ("btnMoreCommands", "more_vert", "\u{22EE}"),
+    }
+}
+
+/// An icon of the web client's icon font. `named`: an empty `span.material-icons.<name>` whose glyph is its `:before` rule (the buttons); else the name as ligature text in the span (`star` shapes to the glyph). While the font is not available `fallback` is drawn instead, never boxes.
+fn icon(
+    d: &mut nocturne_style::Doc,
+    parent: Id,
+    class: &str,
+    name: &str,
+    named: bool,
+    fallback: &str,
+) -> Id {
+    let on = super::JF_ICONS.load(std::sync::atomic::Ordering::Relaxed);
+    let by_class = on && named;
+    let s = d.add(
+        parent,
+        &format!(
+            "span.material-icons.{class}{}",
+            if by_class {
+                format!(".{name}")
+            } else {
+                String::new()
+            }
+        ),
+    );
+    d.attr(s, "aria-hidden", "true");
+    if on && !named {
+        d.text(s, name);
+    } else if !on {
+        d.text(s, fallback);
+    }
+    s
+}
+
+/// One `.detailButton` of `.mainDetailButtons`: `button > .detailButton-content > span.material-icons.detailButton-icon`.
+fn jf_button(
+    d: &mut nocturne_style::Doc,
+    parent: Id,
+    class: &str,
+    title: &str,
+    name: &str,
+    fallback: &str,
+) -> Id {
+    let b = d.add(
+        parent,
+        &format!("button.button-flat.{class}.detailButton.emby-button"),
+    );
+    d.attr(b, "type", "button");
+    d.attr(b, "title", title);
+    let c = d.add(b, "div.detailButton-content");
+    icon(d, c, "detailButton-icon", name, true, fallback);
+    b
+}
+
+/// `form.trackSelections`: the Video, Audio and Subtitles lines as `.selectContainer > label.selectLabel + select.detailTrackSelect + .selectArrowContainer`. Read-only here (the select is `disabled`, as jellyfin-web disables Video and a single audio track); the tracks played are chosen in the player.
+fn jf_tracks(d: &mut nocturne_style::Doc, parent: Id, info: &nocturne_core::detail::InfoBlock) {
+    use nocturne_core::detail::StreamRow;
+    let rows = |k: &str| {
+        info.streams
+            .iter()
+            .filter(|s| s.kind == k)
+            .collect::<Vec<_>>()
+    };
+    let (video, audio, subs) = (rows("Video"), rows("Audio"), rows("Subtitle"));
+    if video.is_empty() && audio.is_empty() && subs.is_empty() {
+        return;
+    }
+    let form = d.add(parent, "form.trackSelections.focuscontainer-x");
+    let title = |r: &StreamRow| {
+        if r.title.is_empty() {
+            format!("{} {}", r.detail, r.codec).trim().to_string()
+        } else {
+            r.title.clone()
+        }
+    };
+    let mut line = |name: &str, label: &str, text: &str, enabled: bool| {
+        let c = d.add(
+            form,
+            &format!(
+                "div.selectContainer.select{name}Container.trackSelectionFieldContainer.flex-shrink-zero"
+            ),
+        );
+        let l = d.add(c, "label.selectLabel");
+        d.text(l, label);
+        let sel = d.add(
+            c,
+            &format!("select.select{name}.detailTrackSelect.emby-select-withcolor.emby-select"),
+        );
+        if !enabled {
+            d.attr(sel, "disabled", "disabled");
+        }
+        d.text(sel, text);
+        if enabled {
+            let ac = d.add(c, "div.selectArrowContainer");
+            icon(
+                d,
+                ac,
+                "selectArrow",
+                "keyboard_arrow_down",
+                true,
+                "\u{2304}",
+            );
+        }
+    };
+    if let Some(v) = video.first() {
+        line("Video", "Video", &title(v), false);
+    }
+    if let Some(a) = audio.first() {
+        line("Audio", "Audio", &title(a), audio.len() > 1);
+    }
+    if !subs.is_empty() {
+        line("Subtitles", "Subtitles", "Off", true);
+    }
 }
