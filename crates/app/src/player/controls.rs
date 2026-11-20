@@ -371,9 +371,6 @@ pub fn bar(p: &Player) -> Element<'_, Msg> {
 
     let nowrap = text::Wrapping::None;
     let mut mid = row![].spacing(t::S3).align_y(Alignment::Center);
-    if let Some(e) = ends {
-        mid = mid.push(mono(e));
-    }
     mid = mid
         .push(
             text(p.media.title.clone())
@@ -383,6 +380,9 @@ pub fn bar(p: &Player) -> Element<'_, Msg> {
                 .wrapping(nowrap),
         )
         .push(mono(status).wrapping(nowrap));
+    if let Some(e) = ends {
+        mid = mid.push(mono(e).wrapping(nowrap));
+    }
     let row1 = container(
         row![ctl, container(mid).width(Length::Fill).clip(true), menus]
             .spacing(t::S4)

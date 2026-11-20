@@ -438,7 +438,41 @@ pub fn fmt_delay(secs: f64) -> String {
 pub fn ends_at(now_hm: (u32, u32), remaining: f64, speed: f64) -> String {
     let add = (remaining / speed.max(0.01) / 60.0).round() as u32;
     let m = (now_hm.0 * 60 + now_hm.1 + add) % (24 * 60);
-    format!("Ends at {}:{:02}", m / 60, m % 60)
+    format!("Ends at {}", clock_text(m))
+}
+
+/// A time of day (minutes since midnight) in the system locale's 12 or 24 hour style; the one formatter for every clock time in the app.
+pub fn clock_text(min: u32) -> String {
+    let (h, m) = (min / 60 % 24, min % 60);
+    if clock_12h() {
+        format!(
+            "{}:{m:02} {}",
+            if h % 12 == 0 { 12 } else { h % 12 },
+            if h < 12 { "AM" } else { "PM" }
+        )
+    } else {
+        format!("{h:02}:{m:02}")
+    }
+}
+
+/// Whether the locale's time format uses a 12 hour clock (read once from `nl_langinfo(T_FMT)`; other platforms: 12 hour).
+fn clock_12h() -> bool {
+    static C: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *C.get_or_init(|| {
+        #[cfg(unix)]
+        // SAFETY: setlocale/nl_langinfo return NUL-terminated strings; called once, on first use.
+        unsafe {
+            libc::setlocale(libc::LC_TIME, c"".as_ptr());
+            let f = libc::nl_langinfo(libc::T_FMT);
+            if f.is_null() {
+                return true;
+            }
+            let f = std::ffi::CStr::from_ptr(f).to_string_lossy();
+            f.contains("%I") || f.contains("%l") || f.contains("%p") || f.contains("%r")
+        }
+        #[cfg(not(unix))]
+        true
+    })
 }
 
 /// Local (hour, minute) now.
@@ -805,10 +839,12 @@ pub fn items(pop: Pop, tracks: &[Track], s: &Settings) -> Vec<Item> {
                     MenuAct::AudioOriginal,
                 ));
             }
+            // A lone track is the one playing even before mpv flags it selected.
+            let only = audio.len() == 1;
             v.extend(
                 audio
                     .iter()
-                    .map(|t| item(t.label(), t.selected, MenuAct::Audio(t.id))),
+                    .map(|t| item(t.label(), t.selected || only, MenuAct::Audio(t.id))),
             );
             v
         }
@@ -1164,9 +1200,19 @@ mod tests {
 
     #[test]
     fn ends_at_wraps_midnight_and_scales_with_speed() {
-        assert_eq!(ends_at((12, 0), 3600.0, 1.0), "Ends at 13:00");
-        assert_eq!(ends_at((12, 0), 3600.0, 2.0), "Ends at 12:30");
-        assert_eq!(ends_at((23, 50), 1200.0, 1.0), "Ends at 0:10");
+        // The clock style follows the locale, so compare against the one formatter.
+        assert_eq!(
+            ends_at((12, 0), 3600.0, 1.0),
+            format!("Ends at {}", clock_text(13 * 60))
+        );
+        assert_eq!(
+            ends_at((12, 0), 3600.0, 2.0),
+            format!("Ends at {}", clock_text(12 * 60 + 30))
+        );
+        assert_eq!(
+            ends_at((23, 50), 1200.0, 1.0),
+            format!("Ends at {}", clock_text(10))
+        );
     }
 
     #[test]
