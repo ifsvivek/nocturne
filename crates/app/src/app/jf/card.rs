@@ -129,6 +129,10 @@ pub(crate) fn card_doc(
     );
     d.attr(card, "data-source", &c.source.to_string());
     d.attr(card, "data-index", &c.index.to_string());
+    // jellyfin-web sets it on cards of items with a resume position (themes tell Continue Watching apart by it).
+    if c.progress.is_some() {
+        d.attr(card, "data-positionticks", "1");
+    }
     let bx = d.add(card, "div.cardBox.cardBox-bottompadded");
     let scal = d.add(bx, "div.cardScalable");
     let pad = if look.overflow {
