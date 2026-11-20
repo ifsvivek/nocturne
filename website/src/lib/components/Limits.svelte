@@ -1,6 +1,6 @@
 <script>
   import { VERSION, shipped } from "#lib/site.js";
-  // From docs/ROADMAP.md and FEATURES.md: what 0.5 does not do, and where it is still rough. Revisit at every release.
+  // From docs/ROADMAP.md and FEATURES.md: what 0.5.x does not do, and where it is still rough. Revisit at every release.
   const missing = [
     "A supported AppImage: the GitHub release has only an experimental one (about 107 MB, it bundles its own libraries; use the repositories where you can). Flatpak is being evaluated",
     "X11 sessions: from 0.5, Linux needs Wayland",
@@ -9,12 +9,20 @@
     "Admin: HTTPS and proxy editing, access schedules",
     "Live TV, DVR, DLNA, casting and gapless music, not planned",
   ];
+  // 0.5.2 rows replace the 0.5 ones they outdate only once VERSION reaches 0.5.2.
   const rough = [
     "HDR in the pop-out window needs an HDR display and mpv 0.42 or newer; it has been tried on a Linux, a Windows and a macOS HDR setup. In the window, HDR is tone-mapped to SDR.",
-    "Windows (x64) and macOS (Apple Silicon) are previews on the GitHub release: built on GitHub's machines and tried by the maintainer on a real PC and Mac, but unsigned, so the system warns on first start. Video plays in mpv's own window there.",
-    "Themes: letter spacing is read but not drawn, and the hover zoom has not been tried with a real pointer yet. A Jellyfin theme from the web has not been tried against the app.",
-    "Server UI has not been tried with several servers at once or with a server's real branding CSS. Live TV and the audio and book continue rows are not shown.",
-    "In-app updates have been tested against a local server, not yet from a published release. In-app update on macOS is planned; the macOS preview shows Download instead.",
+    ...(shipped("0.5.2") ? [
+      "Windows (x64) and macOS (Apple Silicon) are previews on the GitHub release: built on GitHub's machines and tried by the maintainer on a real PC and Mac, but unsigned, so the system warns on first start. The Windows preview brings its own fonts, no longer freezes when playback starts and plays video inside the app window, with the picture making room for the controls bar rather than under it (not yet tried on a real PC); the macOS preview still plays it in mpv's own window, and now updates itself in the app, as the Windows preview does.",
+      "Themes are drawn natively, not by a browser: what a theme does with JavaScript does not run, backdrop blur becomes a translucent fill, and masks, @keyframes animations and radial or repeating gradients are not drawn. Settings, Admin and setup keep their own screens.",
+      "Your server's own look needs the server's web client; without it the source shows NOCTURNE's layout and Settings, Sources says why. Parts the web client builds with JavaScript are drawn but not wired: the item page's track choices only show, and Play all and Shuffle in the library toolbar do nothing. Live TV and the audio and book continue rows are not shown.",
+      "In-app updates have been tested against a local server, not yet from a published release, and the update of the macOS preview has not run on a Mac yet. Update now needs PackageKit; without it the banner shows the command.",
+    ] : [
+      "Windows (x64) and macOS (Apple Silicon) are previews on the GitHub release: built on GitHub's machines and tried by the maintainer on a real PC and Mac, but unsigned, so the system warns on first start. Video plays in mpv's own window there.",
+      "Themes: letter spacing is read but not drawn, and the hover zoom has not been tried with a real pointer yet. A Jellyfin theme from the web has not been tried against the app.",
+      "Server UI has not been tried with several servers at once or with a server's real branding CSS. Live TV and the audio and book continue rows are not shown.",
+      "In-app updates have been tested against a local server, not yet from a published release. In-app update on macOS is planned; the macOS preview shows Download instead.",
+    ]),
     "Couch mode has not been tried with a real gamepad or on a TV. Remote control was tried through the server, not yet from a phone app.",
     "The .deb and .rpm install from the apt and dnf repositories in clean containers, not yet on a full desktop install. On Ubuntu 24.04, video plays in an external mpv window.",
     "Copies without an IMDb, TMDB or TVDB id are not merged, so the same film can show twice rather than one being hidden by mistake.",

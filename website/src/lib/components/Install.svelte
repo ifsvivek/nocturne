@@ -1,5 +1,5 @@
 <script>
-  import { RELEASED, REPO, RELEASES, VERSION } from "#lib/site.js";
+  import { RELEASED, REPO, RELEASES, VERSION, shipped } from "#lib/site.js";
   import Next from "./Next.svelte";
   // [needs, detail, status, version that ships the detail (marked until VERSION reaches it)]
   const specs = [
@@ -8,7 +8,9 @@
     ["Display", "A Wayland session (GNOME, KDE Plasma, Sway and others). X11 sessions are not supported: NOCTURNE says so and exits. Video plays in the window; NOCTURNE_VIDEO=external opens it in an external mpv window instead.", "Wayland only"],
     ["Graphics", "A Vulkan driver for the UI, OpenGL/EGL for video.", "Other GPU setups not yet tested"],
     ["Media", "Local folders you can read, a Jellyfin server, several servers, or any mix. None of them is required on its own.", "Jellyfin developed against 12.x", "0.3.0"],
-    ["Updates", "Package installs update with pacman, apt or dnf, and NOCTURNE shows the command when a new version is out. A per-user install, such as the tarball under ~/.local, updates itself: Download and install, then Restart to update, after a signature check. At most one check a day.", "Off in Settings, Updates", "0.5.0"],
+    ["Updates", (shipped("0.5.2")
+      ? "Package installs update with pacman, apt or dnf. When a new version is out NOCTURNE shows the command, and where PackageKit runs, Update now updates only NOCTURNE after your desktop's password prompt, then offers Restart."
+      : "Package installs update with pacman, apt or dnf, and NOCTURNE shows the command when a new version is out.") + " A per-user install, such as the tarball under ~/.local, updates itself: Download and install, then Restart to update, after a signature check. At most one check a day.", "Off in Settings, Updates", "0.5.0"],
     ["Keyring", "A Secret Service provider (gnome-keyring, KWallet or KeePassXC) to remember server sign-ins.", "Required to stay signed in to a server"],
     ["Distribution", "The Arch package is tested on Arch. The .deb and .rpm are built in Debian and Fedora containers and install-tested in clean ones, not yet on a full desktop install. The tarball is built on current Arch, so it needs a current glibc.", "Ubuntu 24.04: video in an external mpv window (libmpv 0.37); openSUSE untested", "0.4.0"],
   ];

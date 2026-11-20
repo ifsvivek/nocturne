@@ -1,6 +1,9 @@
 <script>
   import Shot from "./Shot.svelte";
   import Next from "./Next.svelte";
+  import { shipped } from "#lib/site.js";
+  // 0.5.2 copy is not marked ahead of time: it shows only once VERSION reaches 0.5.2 and replaces the 0.5 copy it outdates.
+  const v052 = shipped("0.5.2");
   const sources = [
     "A guided setup: local folders, a server, or both, then the promises and the real read-only switch",
     "Several Jellyfin servers, each with its own account",
@@ -39,8 +42,17 @@
     ["Remote control", "Other Jellyfin apps see this computer as a device and can play, pause, seek, skip, stop, and change the volume and tracks. Needs server changes on. Tried through the server, not yet from a phone app.", ""],
     ["One watched state", "Mark a title watched and its copies on your other sources follow, matched by IMDb, TMDB or TVDB id, never by title. Server copies change only with server changes on, each on its own server.", ""],
   ];
-  // Themes and Server UI, new in 0.5: [title, text].
-  const look = [
+  // Themes and Server UI: [title, text]. 0.5.2 rebuilt both on the native CSS engine.
+  const look = v052 ? [
+    ["Theme Studio", "Themes, Open Studio: point at any part of the live app and change it with controls for colour, size, spacing, shape, shadow, type, layout and hover, on that element only or on all like it. Undo and redo, and a CSS tab that stays in sync both ways: the Studio writes real CSS you can edit by hand, save, use for one server or all, and export."],
+    ["NOCTURNE and Glass", "Two built-in themes: NOCTURNE, the default look, and Glass, with a black canvas, a glass header pill, a full-bleed hero that rotates and shows the title as logo art, pill buttons and an accent rail before each section title. Spotlight, Marquee, Feed and Classic are starters to build from."],
+    ["Paste a Jellyfin theme", "Paste a stylesheet, its @import line or an https address. Its imports, fonts and pictures are fetched, the preview covers the whole app until you Keep or Revert, and Settings, Themes lists what was fetched, which fonts loaded and what did not apply."],
+    ["Fetched safely", "Theme files come over https from public addresses only (your own server excepted), with no cookies or sign-in and with size, time and count limits. They are kept in the cache and fetched again only when you ask, and one switch in Settings, Themes turns all downloading off."],
+    ["Your server's own look", "When a source uses its server's UI and the server has its web client, Home, the header, libraries and the item page are built natively with the web client's own page structure, then styled with the server's own stylesheets, its branding and your theme, in the browser's order. Most community Jellyfin themes look as they do in the browser. Nothing is bundled and nothing runs: the stylesheets and the icon font are read from the server."],
+    ["One server's UI over another", "Each source, All and your local folders can use NOCTURNE's layout, their own server's UI or another server's: its home sections and its look, filled with what you are browsing. Only in this app: nothing is written to either server."],
+    ["Safe look", "Ctrl+Shift+0, or starting with NOCTURNE_SAFE_THEME=1, brings back the built-in look at once, whatever theme is saved."],
+    ["Home sections", "Settings, Sources, Sections reorders and switches the server's home sections for your account. That is a change on the server, so it needs server changes on."],
+  ] : [
     ["Themes", "Colours, corner radii, the window background and a font. Cards: shape, size, caption, shadow and a hover zoom. Home rows as a carousel or a grid, the hero as a billboard, a banner or none, the header's height and items, and the order of Home's sections."],
     ["Marquee and Feed", "Two built-in examples to start from: Marquee, a billboard and wide carousels without captions; Feed, a grid of thumbnails with the title and details below."],
     ["Import", "Paste a stylesheet, open a .css file or type one https address, fetched once and refreshed only when you ask. A preview lasts 15 seconds unless you keep it. Nothing in a stylesheet runs or loads, and every line NOCTURNE cannot use is listed with its line and column."],
@@ -178,7 +190,9 @@
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s9">
     <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 9</span><h2 id="s9" class="scene-title">Your look</h2><Next v="0.5.0" class="mt-5 ml-0" /></header>
     <div class="reveal mx-auto w-[min(1320px,100%-40px)]"><Shot name="themes" sizes={framed} /></div>
-    <p class="subtitle">Themes are CSS that NOCTURNE reads itself and draws natively, with no browser inside. They restyle NOCTURNE's own parts, in Settings, Themes.</p>
+    <p class="subtitle">{v052
+      ? "Themes are CSS that NOCTURNE lays out and draws itself, with no browser inside: real flex, grid and positioning on Home, the header, libraries, search, the detail page and the player's controls. Build one by pointing at the app, or paste one from the web."
+      : "Themes are CSS that NOCTURNE reads itself and draws natively, with no browser inside. They restyle NOCTURNE's own parts, in Settings, Themes."}</p>
     <div class="stagger mx-auto mt-[clamp(56px,7vw,96px)] grid w-[min(1520px,100%-40px)] gap-6 md:grid-cols-2">
       <figure class="m-0"><Shot name="marquee" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Marquee: a billboard under a see-through header and wide carousels without captions.</figcaption></figure>
       <figure class="m-0"><Shot name="feed" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Feed: no billboard, a grid of thumbnails with the title and details below.</figcaption></figure>
@@ -192,7 +206,9 @@
       <figure class="m-0"><Shot name="server-ui" sizes={left} /><figcaption class="mt-4 text-sm text-ink-2">Server UI: with Living room alone in the source filter, Home follows that server's layout.</figcaption></figure>
       <figure class="m-0"><Shot name="sections-crop" sizes={right} /><figcaption class="mt-4 text-sm text-ink-2">Settings, Sources, Sections: the server's home sections for your account, editable once server changes are on.</figcaption></figure>
     </div>
-    <p class="mx-auto mt-10 mb-0 w-[min(1000px,100%-40px)] text-sm text-ink-3">Not arbitrary web CSS: each page keeps its structure, and a Jellyfin web theme applies only partly, mostly its colours, radii and font. Letter spacing is read but not drawn; density, type size and backdrop blur are applied approximately.</p>
+    <p class="mx-auto mt-10 mb-0 w-[min(1000px,100%-40px)] text-sm text-ink-3">{v052
+      ? "Not a browser: nothing in a theme runs, so what a theme builds with JavaScript is missing, and effects without a native equivalent differ: backdrop blur becomes a translucent fill, and masks, @keyframes animations and radial or repeating gradients are not drawn. Settings, Admin and setup keep their own screens and take a theme's colours, radii and fonts."
+      : "Not arbitrary web CSS: each page keeps its structure, and a Jellyfin web theme applies only partly, mostly its colours, radii and font. Letter spacing is read but not drawn; density, type size and backdrop blur are applied approximately."}</p>
   </section>
 
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s6">

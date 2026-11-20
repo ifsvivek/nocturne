@@ -23,10 +23,10 @@ const files = (d) => readdirSync(d).flatMap((f) => (statSync(join(d, f)).isDirec
 const read = (dir, f) => readFileSync(join(dir, f), "utf8");
 // Site files only: repo/ holds the generated, signed package repositories (checksums, upstream XML namespaces), not site copy.
 const own = (d) => files(d).filter((f) => !f.startsWith(join(d, "repo/")));
-let off, on, prev, v03, v04;
+let off, on, prev, v03, v04, v051, v052;
 // prev: the same site while VERSION was 0.2.0, when every new-in-0.3 claim must carry its "Coming in 0.3" mark.
 // v03 / v04: the page just before and just after 0.4.0 ships, for the 0.4 marks.
-before(() => { off = build(false); on = build(true); prev = build(true, "0.2.0"); v03 = build(true, "0.3.0"); v04 = build(true, "0.4.0"); });
+before(() => { off = build(false); on = build(true); prev = build(true, "0.2.0"); v03 = build(true, "0.3.0"); v04 = build(true, "0.4.0"); v051 = build(true, "0.5.1"); v052 = build(true, "0.5.2"); });
 
 test("RELEASED=false: no repo or release links, coming soon", () => {
   for (const f of ["index.html", "privacy.html", "404.html", "repo.html"]) {
@@ -61,7 +61,7 @@ test("package repository page: exact pacman, apt and dnf steps, signing key, oth
   ]) assert.ok(h.includes(s), s);
   assert.equal((h.match(/5204 B42A F768 DE21 0D49 79E3 97FA 02EF CF1A 4E3B/g) || []).length, 1, "one fingerprint for all three repositories");
   // One-file alternative: download from the release, install with the distribution's tool; the file names follow the version.
-  for (const [d, ver] of [[v03, "0.4.0"], [v04, "0.4.0"], [on, "0.5.1"]]) {
+  for (const [d, ver] of [[v03, "0.4.0"], [v04, "0.4.0"], [v051, "0.5.1"]]) {
     const t = read(d, "repo.html").replace(/&#39;/g, "'").replace(/&amp;/g, "&");
     const rel = `https://github.com/ifsvivek/nocturne/releases/download/v${ver}`;
     for (const x of [`href="${rel}/nocturne_${ver}_amd64.deb"`, `sudo apt install ./nocturne_${ver}_amd64.deb`,
@@ -111,21 +111,40 @@ test("0.4 copy is marked before 0.4.0 and unmarked from it; credits wherever a s
 });
 
 test("0.5 copy is marked before 0.5.0 and unmarked from it; Wayland only", () => {
-  const h = read(v04, "index.html"), n = read(on, "index.html");
+  const h = read(v04, "index.html"), n = read(v051, "index.html");
   assert.ok((h.match(/Coming in 0\.5/g) || []).length >= 8, "marks in the 0.4.0 build");
   assert.match(read(v04, "privacy.html"), /Coming in 0\.5/);
-  for (const f of ["index.html", "repo.html", "privacy.html"]) assert.doesNotMatch(read(on, f), /Coming in/, f);
+  for (const f of ["index.html", "repo.html", "privacy.html"]) assert.doesNotMatch(read(v051, f), /Coming in/, f);
   assert.ok(n.includes("Version 0.5.1") && n.includes("Early software, version 0.5.1."));
   for (const s of ["Your look", "Marquee and Feed", "with no browser inside", "a Jellyfin web theme applies only partly", "Letter spacing is read but not drawn", "Server UI", "branding CSS",
     "Settings, Sources, Sections", "Every text field edits like any other", "Connect Trakt", "Download and install, then Restart to update", "PREFIX=~/.local", "ed25519 signature",
     "X11 sessions are not supported", "In-app update on macOS is planned", "hover zoom has not been tried with a real pointer", "Server UI has not been tried with several servers"]) assert.ok(n.includes(s), s);
   // Linux is Wayland-only from 0.5: X11 is named only as unsupported.
-  for (const f of ["index.html", "repo.html", "privacy.html"]) for (const m of read(on, f).matchAll(/X11/g)) assert.match(read(on, f).slice(m.index - 40, m.index + 60), /not supported|needs Wayland/, f);
-  assert.match(read(on, "privacy.html"), /Once a day it asks this site/, "privacy names the update check");
+  for (const f of ["index.html", "repo.html", "privacy.html"]) for (const m of read(v051, f).matchAll(/X11/g)) assert.match(read(v051, f).slice(m.index - 40, m.index + 60), /not supported|needs Wayland/, f);
+  assert.match(read(v051, "privacy.html"), /Once a day it asks this site/, "privacy names the update check");
+});
+
+test("0.5.2 copy appears only from 0.5.2, without a mark, and replaces the 0.5 copy it outdates", () => {
+  const text = (d, f) => read(d, f).replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+  const NEW = {
+    "index.html": ["real flex, grid and positioning", "Theme Studio", "NOCTURNE and Glass", "Spotlight, Marquee, Feed and Classic", "Paste a Jellyfin theme", "Fetched safely", "Your server's own look",
+      "Most community Jellyfin themes look as they do in the browser", "One server's UI over another", "Ctrl+Shift+0", "backdrop blur becomes a translucent fill", "Can I use my Jellyfin theme?",
+      "Update now", "PackageKit", "video inside the app window in the Windows preview", "no longer freezes when playback starts", "Play all and Shuffle in the library toolbar do nothing", "has not run on a Mac yet", "now updates itself in the app, as the Windows preview does"],
+    "privacy.html": ["turns all theme downloads off", "the addresses a theme you add loads its files from"],
+  };
+  const OLD = ["a Jellyfin web theme applies only partly", "Letter spacing is read but not drawn", "In-app update on macOS is planned", "Server UI has not been tried with several servers",
+    "Package installs never update themselves", "nothing in it runs or loads", "with video in mpv's own window;"];
+  for (const [f, list] of Object.entries(NEW)) for (const s of list) {
+    assert.ok(text(v052, f).includes(s), `0.5.2: ${s}`);
+    assert.ok(!text(v051, f).includes(s), `0.5.1 must not show: ${s}`);
+  }
+  for (const s of OLD) { assert.ok(text(v051, "index.html").includes(s), `0.5.1: ${s}`); assert.ok(!text(v052, "index.html").includes(s), `0.5.2 drops: ${s}`); }
+  for (const f of ["index.html", "repo.html", "privacy.html"]) assert.doesNotMatch(read(v052, f), /Coming in/, f);
+  assert.ok(read(v052, "index.html").includes("Early software, version 0.5.2."));
 });
 
 test("content hygiene: no em dashes, no GPU model or compositor advice, every img has alt and size", () => {
-  for (const d of [off, on, prev, v04]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
+  for (const d of [off, on, prev, v04, v052]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
     const h = readFileSync(f, "utf8");
     assert.doesNotMatch(h, /\u2014|\u2013/, f);
     assert.doesNotMatch(h, /nvidia|nvdec|hyprland|geforce|radeon|\bRTX\b/i, f);
@@ -141,11 +160,11 @@ test("required copy, no JS, no inline style", () => {
   const h = read(off, "index.html");
   for (const s of ["YOUR MEDIA. YOUR NIGHT.", "not affiliated with or endorsed by Jellyfin", "GPL-3.0-or-later", "Copyright (C) 2026 ifsvivek", 'rel="canonical" href="https://nocturne.ifsvivek.in/"', "og:image", "og.jpg", "twitter:card"])
     assert.ok(h.includes(s), s);
-  for (const d of [off, on, prev, v04]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
+  for (const d of [off, on, prev, v04, v052]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
     assert.doesNotMatch(readFileSync(f, "utf8"), /<script\b|<style\b|\sstyle=/i, f);
   }
   // Other platforms may only be named as previews or planned, never as finished (0.4 ships unsigned Windows and macOS previews on the GitHub release).
-  for (const t of [h, read(on, "index.html"), read(on, "repo.html"), read(on, "privacy.html"), read(v04, "index.html")]) for (const m of t.matchAll(/\b(Windows|macOS)\b/g)) assert.match(t.slice(m.index, m.index + 160), /planned|preview/, `${m[0]} named without "preview" or "planned"`);
+  for (const t of [h, read(on, "index.html"), read(on, "repo.html"), read(on, "privacy.html"), read(v04, "index.html"), read(v052, "index.html"), read(v052, "privacy.html")]) for (const m of t.matchAll(/\b(Windows|macOS)\b/g)) assert.match(t.slice(m.index, m.index + 160), /planned|preview/, `${m[0]} named without "preview" or "planned"`);
   // One self-hosted font, preloaded, and the stylesheet points at the same hashed file.
   const font = h.match(/<link rel="preload" href="([^"]+\.woff2)" as="font"/)?.[1];
   assert.ok(font && existsSync(join(off, font)), "preloaded font file");
@@ -153,7 +172,7 @@ test("required copy, no JS, no inline style", () => {
 });
 
 test("no external origins except upstream credit links", () => {
-  for (const d of [off, on, prev, v04]) for (const f of own(d).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) {
+  for (const d of [off, on, prev, v04, v052]) for (const f of own(d).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) {
     for (const m of readFileSync(f, "utf8").replace(/\/\*![\s\S]*?\*\//g, "").matchAll(/https?:\/\/([^\s"'<>)\\/]+)/g)) assert.ok(ALLOWED.has(m[1]), `${f}: ${m[1]}`);
   }
 });

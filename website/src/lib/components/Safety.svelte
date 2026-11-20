@@ -1,6 +1,7 @@
 <script>
   import Shot from "./Shot.svelte";
   import Next from "./Next.svelte";
+  import { shipped } from "#lib/site.js";
   // [title, text, version that ships it (marked until VERSION reaches it)]
   const facts = [
     ["Your files", "Indexed where they are. NOCTURNE never renames, moves, modifies or deletes a local file; its index, resume points and your edits live in its own data folder.", "0.3.0"],
@@ -10,8 +11,12 @@
     ["Sign-in", "Every server token lives in the system keyring (Secret Service), never in a file."],
     ["Online services", "Online details, subtitle search, Trakt and remote control are each off until you turn them on. For details only the title, year and ids are sent, never file names or paths; your keys stay in the keyring.", "0.4.0"],
     ["Downloads", "An offline copy is fetched with plain reads from its server, resumes after an interruption and never overwrites a file.", "0.4.0"],
-    ["Themes", "A stylesheet is only read: nothing in it runs or loads. A theme from an https address is fetched once, and again only when you ask.", "0.5.0"],
-    ["Updates", "A per-user install replaces itself only after the download matches its announced size, sha256 and ed25519 signature; if any step fails, the current version stays. Package installs never update themselves.", "0.5.0"],
+    shipped("0.5.2")
+      ? ["Themes", "Nothing in a stylesheet runs. The files it names (imports, fonts, pictures) are fetched over https from public addresses only, or from your own server, with no cookies or sign-in and with size, time and count limits, and again only when you ask. One switch turns all downloading off; Ctrl+Shift+0 brings back the built-in look."]
+      : ["Themes", "A stylesheet is only read: nothing in it runs or loads. A theme from an https address is fetched once, and again only when you ask.", "0.5.0"],
+    ["Updates", "A per-user install replaces itself only after the download matches its announced size, sha256 and ed25519 signature; if any step fails, the current version stays. " + (shipped("0.5.2")
+      ? "A package install changes only through your package manager: Update now asks PackageKit, your desktop asks for your password, and NOCTURNE never runs sudo or sees it."
+      : "Package installs never update themselves."), "0.5.0"],
     ["Telemetry", "None. No analytics, no crash reports. Besides the servers you add and the services you turn on, the app asks this site once a day whether a newer version exists, sending only its version; Settings, Updates turns that off."],
   ];
 </script>
