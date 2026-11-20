@@ -2344,6 +2344,7 @@ impl App {
             if !self.admin_open
                 && !self.settings_open
                 && !plain
+                && !t::header_back()
                 && let Some(c) = self.crumbs()
             {
                 layers.push(c);

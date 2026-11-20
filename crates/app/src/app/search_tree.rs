@@ -89,7 +89,7 @@ impl App {
                 let row = tree.doc.add(list, "a.hit");
                 tree.doc.focusable(row);
                 let pic_box = tree.doc.add(row, "div.hit-pic");
-                let pic = self.pic(m, Art::Poster, 32);
+                let pic = self.pic(m, Art::Poster, 200);
                 match &pic {
                     Pic::Missing => {
                         let init = crate::widget::text::initial(&m.title);
@@ -100,7 +100,7 @@ impl App {
                         }
                     }
                     _ => {
-                        let id = tree.pic(Some(self.pic_keys(m, Art::Poster, 32)), &pic);
+                        let id = tree.pic(Some(self.pic_keys(m, Art::Poster, 200)), &pic);
                         let n = tree.doc.add(pic_box, "img.card-img");
                         let (w, h) = match &pic {
                             Pic::Ready(h) | Pic::Blur(h) => dims(h),

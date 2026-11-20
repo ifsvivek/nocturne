@@ -87,6 +87,10 @@ pub fn hero_cfg(p: &Parts, win_w: f32, win_h: f32) -> Option<(f32, bool)> {
     let h = p
         .hero
         .height
+        .or(p
+            .hero
+            .height_vh
+            .map(|v| (win_h * v / 100.0).round().max(120.0)))
         .unwrap_or(if banner { 320.0 } else { hero_h(win_w, win_h) });
     Some((h, banner))
 }

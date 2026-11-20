@@ -518,6 +518,8 @@ impl App {
             self.jf_header_tree()
         } else {
             let mut tree = Tree::new();
+            // The header scene sits over another page: a theme must be able to leave its backdrop clear.
+            tree.doc.nodes[0].classes.push("page-header".into());
             self.header_nodes(&mut tree, 0, false);
             tree
         };
