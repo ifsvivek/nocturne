@@ -61,6 +61,13 @@ Run: 2026-11-19 22:38, NOCTURNE commit `5d1aaf3`, jellyfin server 12.4.0, 1920x1
 | **mean of run themes** | 45 | 45 | 54 | 54 | | | | |
 <!-- END GENERATED -->
 
+## Round 3 notes (Jellyfin layout mode)
+
+- **Harness fairness.** Run the harness on `cargo build --profile conformance -p nocturne-app --features theme-engine` (optimised code plus the debug-only snapshot hooks): `scripts/theme-conformance.sh --bin target/conformance/nocturne`. `NOCTURNE_ENGINE_TIMING=1` logs every styling pass; the slowest pass of every theme was 23 to 29 ms (Jellyfish included), the guard is now 300 ms (it was 50 ms and switched Jellyfish off in debug builds, which left the page unstyled and made it look like a stale backdrop: the series' picture at its natural size).
+- **Fixed in the engine.** Gradient colour hints and `vw`/`vh` stop positions (ElegantFin's wrapper and backdrop dim); the item page's body is no longer `withSectionTabs` (a theme rule `.withSectionTabs .backgroundContainer.withBackdrop { background: solid }` hid the backdrop); the clear logo is an in-flow image filling `.detailLogo` (Abyss's `position: static` logo had filled the whole page); text beside `::before`/`::after` bullets gets its own box (Zombie "Nex"/"Rec", Nebula "Next Up" wrapping); `[class*="defaultCardBackground"]` (Nebula's dark tiles); `content: attr(title)` (Netflin's Resume label).
+- **Not done.** Radial and repeating-linear gradients (Jellyfish's teal glow and jellyfish artwork, JellyThemes tiles): Iced's gradient is linear only, a faithful version needs a rasterised texture per box. `@keyframes` (`animScaleUp` on the backdrop, so the backdrop is not scaled up as in the browser), `backdrop-filter`, masks. The detail ribbon sits about 100 px higher than the web's under ElegantFin (min-height and negative margins of `.detailPageWrapperContainer`).
+- A stale previous-item backdrop could not be reproduced with the optimised build: a `Detail` is built per item with its own picture table keyed by item, and the tree only has a backdrop layer when that item's image (or blurhash) is there.
+
 ## Engine gaps seen in the baseline
 
 At commit `42dd6dc` the engine is not wired: NOCTURNE renders its own look whatever the server's CSS says, so the four app captures of every theme are identical and the scores only measure how close the stock look happens to be. This is the baseline for the engine steps D to F. What the pairs show, ordered by how many themes and screens it affects:
