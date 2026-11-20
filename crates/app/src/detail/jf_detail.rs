@@ -51,7 +51,7 @@ impl Detail {
             },
         );
         if let Some(l) = logo {
-            t_.pic(lg, "img.jfImage.jfContain", l);
+            t_.pic(lg, "img.jfLogo", l);
         }
         let d = &mut t_.doc;
         let wrap = d.add(page, "div.detailPageWrapperContainer");

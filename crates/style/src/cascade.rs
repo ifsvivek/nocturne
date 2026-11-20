@@ -548,6 +548,26 @@ impl Styler {
             self.sib[i] = self.sib_hash(doc, i);
             for (slot, which) in [(0, Gen::Before), (1, Gen::After)] {
                 if let Some(gs) = &self.data[g as usize].pgen[slot] {
+                    // `content: attr(name)` (a NUL marker): this element's own attribute, which a shared style group cannot know.
+                    if let Some(name) = gs.content.strip_prefix('\u{0}') {
+                        let v = doc.nodes[i]
+                            .attrs
+                            .iter()
+                            .find(|(k, _)| k == name)
+                            .map(|(_, v)| v.as_str())
+                            .filter(|v| !v.is_empty());
+                        if let Some(v) = v {
+                            generated.push((
+                                i,
+                                which,
+                                Rc::new(GenStyle {
+                                    content: Rc::from(v),
+                                    style: gs.style.clone(),
+                                }),
+                            ));
+                        }
+                        continue;
+                    }
                     generated.push((i, which, gs.clone()));
                 }
             }

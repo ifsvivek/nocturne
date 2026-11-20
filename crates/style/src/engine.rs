@@ -165,12 +165,20 @@ impl Engine {
                 Ok(Ok(s)) => {
                     let took = s.timing.cascade + s.timing.layout;
                     if std::env::var_os("NOCTURNE_ENGINE_TIMING").is_some() {
-                        eprintln!("engine: apply {} ms (budget {} ms)", took.as_millis(), self.budget.as_millis());
+                        eprintln!(
+                            "engine: apply {} ms (budget {} ms)",
+                            took.as_millis(),
+                            self.budget.as_millis()
+                        );
                     }
                     if took > self.budget {
                         // Built, but slow: kept for now; repeated slowness switches the theme off.
                         self.overruns += 1;
-                        self.notices.push(format!("the theme is slow to apply ({} ms, budget {} ms)", took.as_millis(), self.budget.as_millis()));
+                        self.notices.push(format!(
+                            "the theme is slow to apply ({} ms, budget {} ms)",
+                            took.as_millis(),
+                            self.budget.as_millis()
+                        ));
                         if self.overruns >= MAX_OVERRUNS {
                             self.switch_off();
                         }

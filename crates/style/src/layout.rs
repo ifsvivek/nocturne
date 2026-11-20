@@ -36,6 +36,8 @@ pub enum Leaf {
     Node(Id),
     /// The in-flow spacer that gives a virtual container its full height.
     Spacer(Id),
+    /// The element's own text, as a box of its own between its `::before` and `::after` boxes.
+    Own(Id),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -161,7 +163,9 @@ pub fn run(tree: &mut TaffyTree<Leaf>, root: NodeId, env: &Env, measure: &mut Me
             style,
             |_, _| 0.0,
             |known, avail| match ctx {
-                Some(&mut Leaf::Node(i)) => node_measure(env, i, known, avail, measure),
+                Some(&mut Leaf::Node(i) | &mut Leaf::Own(i)) => {
+                    node_measure(env, i, known, avail, measure)
+                }
                 Some(&mut Leaf::Spacer(c)) => {
                     let w = match avail.width {
                         AvailableSpace::Definite(w) => w,
@@ -210,6 +214,8 @@ pub struct Scene {
     nodes: Vec<NodeId>,
     vp_node: NodeId,
     pub(crate) vwrap: HashMap<Id, (NodeId, NodeId)>,
+    /// Elements whose own text sits in a box between their generated boxes.
+    own: HashMap<Id, NodeId>,
     /// Origin (page coordinates) of each virtual container's item area.
     pub(crate) vorigin: HashMap<Id, (f32, f32)>,
     pub(crate) tree_dirty: bool,
@@ -295,6 +301,7 @@ impl Scene {
             nodes: vec![],
             vp_node: dummy,
             vwrap: HashMap::new(),
+            own: HashMap::new(),
             vorigin: HashMap::new(),
             tree_dirty: true,
             style_dirty: vec![],
@@ -386,6 +393,11 @@ impl Scene {
             };
             st.min_size.height = LengthPercentageAuto::length(self.viewport.1);
         }
+        if self.has_own_run(i) && st.display == Display::Block {
+            // Generated boxes beside the text of a block (a bullet before a section title): they share one line.
+            st.display = Display::Flex;
+            st.align_items = taffy::style::AlignItems::CENTER;
+        }
         if node.virtual_proto {
             st.display = Display::None;
         }
@@ -413,6 +425,17 @@ impl Scene {
             virt::item_style(self, i, &mut st);
         }
         st
+    }
+
+    /// Text of its own next to in-flow `::before`/`::after` boxes (an absolutely positioned one does not take part).
+    fn has_own_run(&self, i: Id) -> bool {
+        let n = &self.doc.nodes[i];
+        n.text.is_some()
+            && n.children.is_empty()
+            && [n.before, n.after].into_iter().flatten().any(|g| {
+                self.st.styles[g].layout.position != Position::Absolute
+                    && self.st.styles[g].layout.display != Display::None
+            })
     }
 
     fn build_kids(&mut self) {
@@ -486,6 +509,7 @@ impl Scene {
             .expect("taffy node");
         let mut fixed: Vec<NodeId> = vec![];
         let mut vwrap = HashMap::new();
+        let mut own = HashMap::new();
         // An absolutely positioned box is placed against its nearest positioned ancestor, not its parent (Taffy's rule): hang it from that ancestor when both axes are pinned by insets (a box with an auto axis keeps its static position under its parent).
         self.cb.clear();
         let mut moved: HashMap<Id, Vec<NodeId>> = HashMap::new();
@@ -534,6 +558,18 @@ impl Scene {
             }
             if let Some(m) = moved.get(&i) {
                 ch.extend(m);
+            }
+            if self.has_own_run(i) {
+                let run = tree
+                    .new_leaf_with_context(Style::default(), Leaf::Own(i))
+                    .expect("taffy node");
+                let at = usize::from(
+                    self.doc.nodes[i]
+                        .before
+                        .is_some_and(|b| ch.contains(&nodes[b])),
+                );
+                ch.insert(at.min(ch.len()), run);
+                own.insert(i, run);
             }
             if self.doc.nodes[i].virt.is_some() {
                 let wrapper = tree
@@ -584,6 +620,7 @@ impl Scene {
         self.nodes = nodes;
         self.vp_node = vp;
         self.vwrap = vwrap;
+        self.own = own;
         self.tree_dirty = false;
     }
 
@@ -669,6 +706,17 @@ impl Scene {
                 l.border.right + l.padding.right,
                 l.border.bottom + l.padding.bottom,
             ];
+            if let Some(run) = self.own.get(&i) {
+                // The text is drawn in its own box: the insets stand for the gap between it and the element's edges.
+                let r = self.tree.layout(*run).expect("layout");
+                let (x, y) = (r.location.x, r.location.y);
+                self.insets[i] = [
+                    x,
+                    y,
+                    (l.size.width - x - r.size.width).max(0.0),
+                    (l.size.height - y - r.size.height).max(0.0),
+                ];
+            }
             if let Some((w, _)) = self.vwrap.get(&i) {
                 let wl = self.tree.layout(*w).expect("layout").location;
                 self.vorigin

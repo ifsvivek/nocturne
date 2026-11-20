@@ -571,3 +571,33 @@ fn a_var_with_a_fallback_after_a_plain_declaration_paints() {
     assert_eq!(s.style(0).bg.len(), 1, "the root's colour is painted");
     let _ = b;
 }
+
+#[test]
+fn own_text_gets_its_own_box_beside_generated_bullets() {
+    let mut d = Doc::new("page");
+    let t = d.add(0, "h2.t");
+    d.text(t, "Next Up");
+    let s = scene(
+        &d,
+        ".t { font-size: 20px } .t::before { content: \"\"; display: inline-block; width: 6px; height: 6px; margin-right: 8px } .t::after { content: \"\"; display: inline-block; width: 6px; height: 6px }",
+        (400.0, 300.0),
+    );
+    assert!(r(&s, t)[2] > 14.0 + 20.0, "width {}", r(&s, t)[2]);
+    assert!(
+        (s.insets[t][0] - 14.0).abs() < 0.5,
+        "text starts after the bullet: {:?}",
+        s.insets[t]
+    );
+}
+
+#[test]
+fn class_attribute_selectors_read_the_class_list() {
+    let mut d = Doc::new("page");
+    let b = d.add(0, "div.defaultCardBackground3.x");
+    let s = scene(
+        &d,
+        "[class*=\"defaultCardBackground\"] { width: 33px; height: 5px }",
+        (400.0, 300.0),
+    );
+    assert_eq!(r(&s, b)[2], 33.0);
+}

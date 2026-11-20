@@ -192,7 +192,17 @@ impl Detail {
         // Debug aid (QA): `NOCTURNE_ENGINE_DUMP=detail` prints every node of the page with its box.
         if std::env::var("NOCTURNE_ENGINE_DUMP").as_deref() == Ok("detail") {
             for i in 0..scene.doc.len() {
-                eprintln!("detail: #{i} {} rect {:?} disp {:?} overflow {:?} op {} bg {:?} pos {:?} z {}", scene.doc.describe(i), scene.rects[i], scene.style(i).layout.display, scene.style(i).layout.overflow, scene.style(i).opacity, scene.style(i).bg, scene.style(i).layout.position, scene.style(i).z);
+                eprintln!(
+                    "detail: #{i} {} rect {:?} disp {:?} overflow {:?} op {} bg {:?} pos {:?} z {}",
+                    scene.doc.describe(i),
+                    scene.rects[i],
+                    scene.style(i).layout.display,
+                    scene.style(i).layout.overflow,
+                    scene.style(i).opacity,
+                    scene.style(i).bg,
+                    scene.style(i).layout.position,
+                    scene.style(i).z
+                );
             }
         }
         h.scene = Some(scene);

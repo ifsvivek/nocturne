@@ -190,7 +190,13 @@ fn gradient(args: &str) -> Result<Fill, String> {
             mid(a.color.b, b.color.b),
             mid(a.color.a, b.color.a),
         );
-        stops.insert(at, Stop { color, pos: Some(h) });
+        stops.insert(
+            at,
+            Stop {
+                color,
+                pos: Some(h),
+            },
+        );
     }
     if stops.len() < 2 {
         return Err("a gradient needs at least two stops".into());
@@ -967,12 +973,21 @@ mod pic_tests {
     #[test]
     fn colour_hints_and_viewport_stops_are_kept() {
         let l = layers("linear-gradient(180deg, transparent, 17vh, #102030 50vh)").unwrap();
-        let Fill::Linear { stops, .. } = &l[0] else { panic!() };
+        let Fill::Linear { stops, .. } = &l[0] else {
+            panic!()
+        };
         assert_eq!(stops.len(), 3, "the hint became a stop");
         assert_eq!(stops[1].pos, Some(StopPos::Vh(17.0)));
-        assert_eq!(layers("linear-gradient(0deg,#111827,45%,rgba(17,24,39,.25))").unwrap().len(), 1);
+        assert_eq!(
+            layers("linear-gradient(0deg,#111827,45%,rgba(17,24,39,.25))")
+                .unwrap()
+                .len(),
+            1
+        );
         let p = at_viewport(&l, 1000.0, 1000.0);
-        let Fill::Linear { stops, .. } = &p[0] else { panic!() };
+        let Fill::Linear { stops, .. } = &p[0] else {
+            panic!()
+        };
         assert_eq!(stops[2].pos, Some(StopPos::Px(500.0)));
     }
 

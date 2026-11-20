@@ -1698,6 +1698,18 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
         }
         "content" => one(Op::Content(match v {
             "none" | "normal" => None,
+            // `attr(title)`: kept as a marker (NUL + name); the cascade reads the attribute of the element that owns the pseudo-element.
+            a if a.to_ascii_lowercase().starts_with("attr(") && a.ends_with(')') => {
+                let name = a[5..a.len() - 1].trim();
+                if name.is_empty()
+                    || !name
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                {
+                    return bad("only `attr(name)` with a plain attribute name is supported");
+                }
+                Some(Rc::from(format!("\u{0}{name}")))
+            }
             _ => match string_arg(v) {
                 Some(s) => Some(Rc::from(s.chars().take(MAX_CONTENT).collect::<String>())),
                 None => return bad("only `content: \"text\"` is supported"),
