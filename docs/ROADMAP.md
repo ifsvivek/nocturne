@@ -54,7 +54,7 @@ From the maintainer's brief ([dev/V06_BRIEF.md](dev/V06_BRIEF.md)); not started,
 - **Play and save links with yt-dlp**: play a pasted video link in the player (mpv's yt-dlp hook), and optionally save it into a local folder through the downloads queue (off by default). `yt-dlp` stays an optional, never-bundled dependency.
 - **Player choice**: keep in-window libmpv as the default and add an external player (VLC, mpv, IINA on macOS, MPC-HC on Windows, detected automatically) that opens the stream in that player; progress is tracked where the player allows it (VLC through its control interface). A built-in choice, not an add-on.
 - **Themes gallery** on the Themes page: NOCTURNE themes and community Jellyfin themes with previews and one-click install, on top of paste-and-test, preview and Keep / Revert; respects the remote CSS switch. Themes live as folders in this repository (`themes/`): anyone can open a pull request, the maintainer merges, and the gallery index ships with the website. The gallery is a curated list, not a gate: any theme can still be pasted, imported from a file or loaded from a URL, marked "not from the gallery".
-- Evaluate Flatpak (sandbox permissions for GPU, Wayland, keyring and local folders), and the path from the Windows and macOS previews to signed installers once real-machine testing exists.
+- Evaluate Flatpak (sandbox permissions for GPU, Wayland, keyring and local folders).
 
 ## Then: 0.7, add-ons
 
@@ -129,13 +129,12 @@ A review of the Jellyfin ecosystem (server, web and other official clients: issu
 - Packages: Arch is the only distribution tested on a real install; the .deb and .rpm (apt and dnf repositories) are install-tested in containers only ([PLATFORMS.md](PLATFORMS.md))
 - Screen-reader support: re-evaluated on Iced once the migration ships (Iced's accessibility support is still limited)
 - HDR in the window depends on libmpv gaining a modern render API; until then it is tone-mapped to SDR, with an HDR pop-out window in 0.4, untested on an HDR display ([HDR.md](HDR.md))
-- Windows and macOS: signed installers, native in-window video, media keys and real-machine testing; unsigned previews are on the GitHub release since 0.5, never run on real hardware ([PLATFORMS.md](PLATFORMS.md))
+- Windows and macOS: native in-window video on macOS (Windows plays in the window since 0.5.2), media keys, and more real-machine testing; the unsigned previews on the GitHub release have been tried on a real PC and Mac ([PLATFORMS.md](PLATFORMS.md))
 
 ## Reconsidered
 
 Nothing is dropped for good. Earlier decisions to revisit when users ask for them:
 
-- **Distribution**: signed Windows and macOS installers (signing certificates cost money).
 - **Theme effects without a native equivalent yet**: conic gradients, `filter: blur()`, `saturate()` and `contrast()`, `backdrop-filter` blur (now a translucent fill), masks, animations on virtualised library cards, and native versions of what popular themes do with JavaScript.
 - **Server UI**: plugin pages and custom tabs of the web client, shown natively where a plugin's data is readable.
 
@@ -143,6 +142,7 @@ Nothing is dropped for good. Earlier decisions to revisit when users ask for the
 
 - X11 sessions on Linux: NOCTURNE is Wayland-only since 0.5.
 - A Homebrew tap or cask.
+- Code signing for Windows and macOS: the builds stay unsigned previews (the system warns on first start). Linux packages and the in-app updates stay signed with NOCTURNE's own keys.
 
 ## Upstream reports
 

@@ -34,7 +34,7 @@ Tried on a real Windows PC and a Mac by the maintainer (2026-11-19): they instal
 | `.deb` (Debian 13, Ubuntu 24.04+) | shipping; signed apt repository (`/repo/deb`); install-tested in clean containers | `Depends: libmpv2` (Ubuntu 24.04's 0.37 plays in an external mpv window) |
 | `.rpm` (Fedora) | shipping; signed dnf repository (`/repo/rpm`); install-tested in a clean container | `Requires: mpv-libs` (RPM Fusion) |
 | AppImage | experimental: a best-effort job in `release.yml`, not recommended or supported (large; libmpv and glibc conflicts, see PACKAGING.md) | bundled |
-| Windows `.exe` setup + portable `.zip` | unsigned preview on the GitHub release; per-user install; built and smoke-tested in CI, wine-tested, never run on a real PC | bundles a pinned `mpv.exe` (drawn into a child window of the app, or its own window as the fallback) |
+| Windows `.exe` setup + portable `.zip` | unsigned preview on the GitHub release; per-user install; built and smoke-tested in CI, wine-tested, tried on a real PC by the maintainer | bundles a pinned `mpv.exe` (drawn into a child window of the app, or its own window as the fallback) |
 | macOS `.dmg` (Apple Silicon) + `.tar.gz` | unsigned preview on the GitHub release (ad-hoc signed bundle: right-click > Open); built and smoke-tested in CI, never run on a real Mac; the `.tar.gz` is what the in-app updater installs | bundled libmpv + mpv (dylibbundler) |
 | Flatpak | being evaluated | n/a |
 
