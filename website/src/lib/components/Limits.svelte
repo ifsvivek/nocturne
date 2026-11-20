@@ -7,7 +7,7 @@
     "Servers other than Jellyfin",
     "Book reading and audiobook playback",
     "Admin: HTTPS and proxy editing, access schedules",
-    "Live TV, DVR, DLNA, casting and gapless music, not planned",
+    "Live TV, DVR, DLNA, casting and gapless music (planned for a later release)",
   ];
   // 0.5.2 rows replace the 0.5 ones they outdate only once VERSION reaches 0.5.2.
   const rough = [

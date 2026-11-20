@@ -38,7 +38,7 @@ Themes: `NOCTURNE_KEYS=open-themes@ms,theme-safe@ms,layout-all@ms,layout-2@ms (c
 - Linux first, Wayland only (Arch is the primary tested platform; .deb and .rpm are install-tested in containers). macOS and Windows are unsigned previews built and smoke-tested in CI but never run on real hardware, so neither is claimed as supported ([PLATFORMS.md](../PLATFORMS.md)). Platform-specific code stays inside the seams listed there.
 - Iced replaced GPUI; the reasons are in [DECISIONS.md](../DECISIONS.md). `vendor/xattr` and the `[patch]` that only GPUI needed are gone.
 - Sources are a two-variant enum (Jellyfin, Local) behind one catalog ([SOURCES.md](../SOURCES.md)); Jellyfin is the first media source, not the last; UI copy avoids hard-coding the product name where practical.
-- Out of scope: Live TV/DVR, DLNA, acting as a cast target, gapless music.
+- Planned for 0.9 (ROADMAP): Live TV/DVR, DLNA, acting as a cast target, gapless music.
 - Read-only by default: every server change sits behind one master setting (`allow_server_writes`, default off), routed to the item's origin server. Local files are never modified. See [WRITES.md](../WRITES.md).
 - `crates/jellyfin` is GET-only (enforced by `crates/jellyfin/tests/readonly.rs`); admin writes live in `crates/jellyfin-admin` behind a `Confirmed` token; user-scope writes in `crates/jellyfin-user`.
 - Tests that write run only against a throwaway Jellyfin (`scripts/test-jellyfin.sh`) and must use isolated `XDG_CONFIG_HOME`/`XDG_DATA_HOME` (`scripts/run-isolated.sh` does this) and an explicit `NOCTURNE_JF_URL`. Never type real credentials into a test window.

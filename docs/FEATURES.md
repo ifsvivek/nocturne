@@ -96,8 +96,8 @@ What NOCTURNE does as of 0.5.1 (2026-11-19); entries tagged (0.4) or (0.5) say w
 - [x] Libraries: rename; Providers page with the metadata and image fetchers the server offers per library and item type (order, on / off), local metadata readers, and what the server lacks (subtitle, lyric and segment providers shown read only); refresh schedule shown (metadata refresh days per library, the server-wide scan task's triggers). A library's type cannot be changed
 - [x] Access and limits per user: library access, feature switches (remote access, playback, transcoding, remuxing, downloads, deletion, collections, subtitles, public sharing, hidden), maximum parental rating, blocked and allowed tags, remote bitrate limit, session limit, failed-sign-in lockout, profile image upload / remove, display preferences (read only). Jellyfin has no password length or expiry rules, so none are offered
 
-## Not planned
-Live TV / DVR, DLNA, acting as a cast target, gapless music playback.
+## Planned later
+Live TV / DVR, DLNA (browse and renderer), being a cast target for Jellyfin apps, gapless music playback: 0.9 in [ROADMAP.md](ROADMAP.md).
 
 ## Platform and quality
 - [x] Full-window responsive layout, keyboard-first navigation, loading / empty / error states

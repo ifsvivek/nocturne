@@ -73,6 +73,15 @@ Add-ons in the style of media-center add-on catalogs: an add-on is a web address
 - It holds sign-ins for every merged server, so it gets a security review before release.
 - Controlled from Settings > Gateway (NOCTURNE starts and stops the service, no separate setup): Gateway Off (default) / On; status (Online, Stopped, or the error); Allow connections from: this computer only (default), the local network, or remote over HTTPS (needs a certificate, off by default); caching: none (default) or a size limit; the gateway address with Copy and a QR code for phones; the gateway's own sign-in for phones and TVs (never a server's password). No torrent features.
 
+## Then: 0.9, living room
+
+Brought back from the old "dropped" list (maintainer, 2026-11-20).
+
+- **Live TV and DVR** from Jellyfin: channels, guide, live playback with time-shift where the server allows it, recordings as a library; scheduling and cancelling recordings are server writes, behind `allow_server_writes`.
+- **DLNA**: browse DLNA/UPnP media servers on the local network as another source (read-only), and act as a DLNA renderer so a phone or another app can send media to NOCTURNE.
+- **Cast target**: besides the Jellyfin remote control NOCTURNE already supports and the DLNA renderer above, be listed as a playback target for the official Jellyfin apps on the network. Google Cast receiving stays out unless an open, licence-compatible path exists.
+- **Gapless music playback** (mpv's gapless audio with the next track prefetched), together with the music depth under "Later".
+
 ## Then: compatibility and correctness
 
 A review of the Jellyfin ecosystem (server, web and other official clients: issues, pull requests, API changes) found no critical problems in NOCTURNE. It did find a set of small fixes worth doing before new features.
@@ -122,12 +131,13 @@ A review of the Jellyfin ecosystem (server, web and other official clients: issu
 - HDR in the window depends on libmpv gaining a modern render API; until then it is tone-mapped to SDR, with an HDR pop-out window in 0.4, untested on an HDR display ([HDR.md](HDR.md))
 - Windows and macOS: signed installers, native in-window video, media keys and real-machine testing; unsigned previews are on the GitHub release since 0.5, never run on real hardware ([PLATFORMS.md](PLATFORMS.md))
 
-## Dropped (will not be built)
+## Reconsidered
 
-- Live TV and DVR
-- DLNA setup
-- Acting as a cast target
-- Gapless music playback
+Nothing is dropped for good. Earlier decisions to revisit when users ask for them:
+
+- **Distribution**: a Homebrew tap for macOS; signed Windows and macOS installers (signing certificates cost money); X11 sessions on Linux (0.5 made Linux Wayland-only; X11 would come back as the external-window video mode only).
+- **Theme effects without a native equivalent yet**: conic gradients, `filter: blur()`, `saturate()` and `contrast()`, `backdrop-filter` blur (now a translucent fill), masks, animations on virtualised library cards, and native versions of what popular themes do with JavaScript.
+- **Server UI**: plugin pages and custom tabs of the web client, shown natively where a plugin's data is readable.
 
 ## Upstream reports
 
