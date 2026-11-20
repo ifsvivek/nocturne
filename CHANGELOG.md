@@ -4,6 +4,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Changed
+- The theme engine is on by default: Home, the header, Library, Search, the item page and the player's controls are element trees styled by the stylesheet (the look is unchanged with no theme). It is the `theme-engine` cargo feature, now a default feature of `nocturne-app`; `cargo build --no-default-features` builds the hand-written screens only, and `NOCTURNE_ENGINE_UI=0` shows them at run time for this release.
+
 ### Added
 - Theme engine: gradient colour hints (`linear-gradient(180deg, transparent, 17vh, #111 50vh)`) and `vw`/`vh` stop positions, `[class*="..."]` selectors, `content: attr(title)`, and text beside `::before`/`::after` bullets (section titles of Zombie and Nebula no longer clip). The item page's body no longer carries `withSectionTabs`, so a theme's dim layer over the backdrop (ElegantFin) is the translucent gradient instead of a solid one, and the clear logo always fills its own box.
 - The engine's time budget is 300 ms per pass (it was 50 ms and switched heavy themes off in debug builds); `NOCTURNE_ENGINE_TIMING=1` logs every pass, and `cargo build --profile conformance` builds optimised code with the debug-only snapshot hooks the conformance harness needs.
