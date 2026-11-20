@@ -140,7 +140,7 @@ fn rejects_what_it_cannot_do() {
 
 #[test]
 fn complexity_limits() {
-    let long = format!(".a{}", " .b".repeat(20));
+    let long = format!(".a{}", " .b".repeat(40));
     assert!(select::parse(&long).is_err());
     assert!(select::parse(":is(:is(:is(:is(.a))))").is_err());
     let wide = format!(

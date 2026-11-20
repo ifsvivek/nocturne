@@ -166,8 +166,9 @@ impl Media {
             // 1 tick = 100 ns.
             runtime_min: i
                 .run_time_ticks
-                .map(|t| (t / 600_000_000) as u32)
-                .filter(|m| *m > 0),
+                .filter(|t| *t > 0)
+                // To the nearest minute, at least one (jellyfin-web shows "1m" for a clip of a few seconds).
+                .map(|t| ((t + 300_000_000) / 600_000_000).max(1) as u32),
             rating: i.community_rating,
             number: i.index_number,
             season_number: i.parent_index_number,
@@ -546,9 +547,10 @@ impl Source {
         match (prefs, cfg) {
             (Ok(p), Ok(c)) => {
                 let mut ui = crate::server_ui::ServerUi::new(&p, &c, &branding);
-                ui.web_css = crate::webcss::fetch(&self.client, &self.scope)
-                    .await
-                    .map(Into::into);
+                if let Some(w) = crate::webcss::fetch(&self.client, &self.scope).await {
+                    ui.web_css = Some(w.css.into());
+                    ui.web_font = w.font.map(|(f, b)| (f, b.into()));
+                }
                 Ok(ui)
             }
             _ => Err(Failed),

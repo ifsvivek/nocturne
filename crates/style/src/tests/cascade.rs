@@ -283,6 +283,31 @@ fn sharing_stays_correct_with_has() {
     assert_eq!((s.rects[r1][3], s.rects[r2][3] != 7.0), (7.0, true));
 }
 
+/// Netflin's rule that hides the item name when the page has a logo: 17 compounds with `:has(A B, C D)`, `:not(:has())`, `:not(.hide)` and `~` (it was refused as too complex at 16).
+#[test]
+fn jellyfin_web_logo_hides_the_item_name() {
+    let mut d = Doc::new("html");
+    d.nodes[0].classes.push("layout-desktop".into());
+    let body = d.add(0, "body");
+    let page = d.add(body, "div.page");
+    d.set_id(page, "itemDetailPage");
+    d.add(page, "div.itemBackdrop");
+    let logo = d.add(page, "div.detailLogo");
+    let wrap = d.add(page, "div.detailPageWrapperContainer");
+    let prim = d.add(wrap, "div.detailPagePrimaryContainer");
+    let ic = d.add(prim, "div.detailImageContainer");
+    d.add(ic, "div.card.portraitCard");
+    let rib = d.add(prim, "div.detailRibbon");
+    let info = d.add(rib, "div.infoWrapper");
+    let nc = d.add(info, "div.nameContainer");
+    let name = d.add(nc, "h1.itemName.infoText.parentNameLast");
+    let css = ".detailLogo { display: block; width: 10px; height: 10px } .itemName { display: block; width: 5px; height: 5px } \
+        .layout-desktop #itemDetailPage:has(.detailImageContainer :is(.portraitCard,.backdropCard),.recordingFields .recordingButton):not(:has(.detailImageContainer .cardImageIcon.person,.programGuideSection:not(.hide))) .detailLogo:not(.hide)~.detailPageWrapperContainer .nameContainer>.itemName.parentNameLast{display:none}";
+    let s = scene(&d, css, (800.0, 600.0));
+    assert_eq!(w(&s, logo), 10.0);
+    assert_eq!(w(&s, name), 0.0, "the item name is hidden under a logo");
+}
+
 fn cards_doc(n: usize) -> (Doc, Id, Vec<Id>) {
     let mut d = Doc::new("page");
     let row = d.add(0, "div.row");

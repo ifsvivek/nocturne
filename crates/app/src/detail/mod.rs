@@ -280,11 +280,19 @@ pub struct Detail {
     /// Jellyfin layout mode: the server's base sheet and the branding and theme text over it (`None`: NOCTURNE's own page).
     #[cfg(feature = "theme-engine")]
     jf: Option<(std::sync::Arc<String>, String)>,
+    /// Font families the theme and the server's web client brought (registered with this page's engine by name).
+    #[cfg(feature = "theme-engine")]
+    fams: Vec<String>,
 }
 
 /// Jellyfin layout mode is on for the page in view: set by the app before a detail page opens, so that the poster the layout shows is requested with the first batch.
 #[cfg(feature = "theme-engine")]
 pub(crate) static JF_MODE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// The web client's icon font is loaded for the page in view (else the layout draws plain glyphs for its icons).
+#[cfg(feature = "theme-engine")]
+pub(crate) static JF_ICONS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 pub fn pic_key(m: &Media, art: Art, w: u32) -> String {
@@ -348,6 +356,8 @@ impl Detail {
             studio: None,
             #[cfg(feature = "theme-engine")]
             jf: None,
+            #[cfg(feature = "theme-engine")]
+            fams: vec![],
         };
         let t = d.load();
         #[cfg(feature = "theme-engine")]

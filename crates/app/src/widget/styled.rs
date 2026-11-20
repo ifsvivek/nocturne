@@ -762,7 +762,7 @@ impl<M> Styled<'_, M> {
                        w: f32,
                        color: Color,
                        align: Alignment| {
-            let shaping = crate::widget::styled_preview::shaping_of(&content);
+            let shaping = crate::widget::styled_preview::shaping_of(&content, &ts.font);
             r.fill_text(
                 Text {
                     content,
@@ -860,7 +860,7 @@ impl<M> Styled<'_, M> {
                         font,
                         align_x: al,
                         align_y: alignment::Vertical::Top,
-                        shaping: crate::widget::styled_preview::shaping_of(&shown),
+                        shaping: crate::widget::styled_preview::shaping_of(&shown, &ts.font),
                         wrapping: if one_line {
                             Wrapping::None
                         } else {
