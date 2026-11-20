@@ -634,6 +634,8 @@ impl App {
             #[cfg(feature = "theme-engine")]
             Message::Pic(raw, p) => {
                 crate::widget::pics::put(raw, p);
+                // An `img` takes its natural size from the picture: lay the scenes out again.
+                self.eng_relayout();
                 Task::none()
             }
             #[cfg(feature = "theme-engine")]

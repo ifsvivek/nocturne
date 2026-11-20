@@ -66,6 +66,8 @@ pub struct Computed {
     pub pic_size: paint::BgSize,
     pub pic_pos: paint::BgPos,
     pub pic_repeat: (bool, bool),
+    /// How many of `bg`'s layers are drawn over the picture.
+    pub pic_above: usize,
     /// Border colours: top, right, bottom, left.
     pub border_color: [Color; 4],
     /// Corner radii: top-left, top-right, bottom-right, bottom-left.
@@ -135,6 +137,7 @@ impl Computed {
             pic_size: paint::BgSize::Auto,
             pic_pos: paint::BG_POS0,
             pic_repeat: (true, true),
+            pic_above: 0,
             border_color: [Color::rgba(255, 255, 255, 40); 4],
             radius: [0.0; 4],
             shadows: Rc::from(Vec::new()),
@@ -342,6 +345,7 @@ pub enum Op {
     PicSize(paint::BgSize),
     PicPos(paint::BgPos),
     PicRepeat((bool, bool)),
+    PicAbove(usize),
     Color(Color),
     Opacity(f32),
     Shadows(Rc<[Shadow]>),
@@ -1445,6 +1449,7 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
             ));
             ops.push(Op::PicPos(p.as_ref().map_or(paint::BG_POS0, |p| p.pos)));
             ops.push(Op::PicRepeat(p.as_ref().map_or((true, true), |p| p.repeat)));
+            ops.push(Op::PicAbove(paint::pic_above(v)));
             Ok(Outcome::Ops(ops))
         }
         "background-size" | "background-position" | "background-repeat" => {
@@ -1470,6 +1475,7 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
         "background-image" => Ok(Outcome::Ops(vec![
             Op::BgImage(paint::layers(v).or_else(bad)?.into()),
             Op::PicUrl(paint::pic(v).map(|p| p.url)),
+            Op::PicAbove(paint::pic_above(v)),
         ])),
         "color" => one(Op::Color(color(v)?)),
         "opacity" => one(Op::Opacity(
@@ -1672,6 +1678,21 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
         })),
         "pointer-events" => one(Op::Pointer(!matches!(v, "none"))),
         "outline-color" => one(Op::Outline(Some(color(v)?))),
+        // A picture as the content of an element (an `img` showing its logo): drawn like a background picture, contained.
+        "content" if paint::url_call(v).is_some_and(|(_, r)| r.start == 0) => {
+            let (url, _) = paint::url_call(v).unwrap_or_default();
+            Ok(Outcome::Ops(vec![
+                Op::Content(None),
+                Op::PicUrl(Some(url.as_str().into())),
+                Op::PicSize(paint::BgSize::Contain),
+                Op::PicPos(paint::BgPos {
+                    x: (0.0, 0.0),
+                    y: (0.5, 0.0),
+                }),
+                Op::PicRepeat((false, false)),
+                Op::PicAbove(0),
+            ]))
+        }
         "content" => one(Op::Content(match v {
             "none" | "normal" => None,
             _ => match string_arg(v) {
@@ -2057,6 +2078,7 @@ impl Op {
             Op::PicSize(x) => c.pic_size = *x,
             Op::PicPos(x) => c.pic_pos = *x,
             Op::PicRepeat(x) => c.pic_repeat = *x,
+            Op::PicAbove(x) => c.pic_above = *x,
             Op::BgColor(col) => {
                 c.bg_col = col.clone();
                 c.bg = c.bg_img.iter().cloned().chain(c.bg_col.clone()).collect();

@@ -35,7 +35,32 @@ pub(crate) struct Look {
     pub person: bool,
 }
 
+/// jellyfin-web's `getDefaultColorIndex`: which of the five `defaultCardBackground` classes a title gets (the digit sum of the middle character's code, last digit, modulo 5, plus 1).
+fn default_bg_index(title: &str) -> usize {
+    let u: Vec<u16> = title.encode_utf16().collect();
+    let Some(&c) = u.get(u.len() / 2) else {
+        return 1;
+    };
+    let sum: u32 = c.to_string().bytes().map(|b| u32::from(b - b'0')).sum();
+    (sum % 10 % 5) as usize + 1
+}
+
+/// The icon a card without a picture shows: `CardIn::meta` when the caller knows better (a library's type), else by kind.
+fn missing_icon(c: &CardIn) -> &'static str {
+    match (c.meta.as_str(), c.kind) {
+        ("music", _) | (_, "audio") => "music",
+        ("movies", _) | (_, "movie") => "film",
+        ("tvshows", _) | (_, "series" | "season" | "episode") => "tv",
+        ("boxsets", _) => "layers",
+        ("playlists", _) => "queue",
+        (_, "person") => "people",
+        _ => "folder",
+    }
+}
+
 pub(crate) struct Built {
+    /// The icon node of a card without a picture and its name.
+    pub icon: Option<(Id, &'static str)>,
     pub card: Id,
     pub play: Id,
     pub fav: Id,
@@ -52,6 +77,16 @@ pub(crate) fn card(
 ) -> Built {
     c.pic_id = tree.pic(c.key.take(), &c.pic);
     let b = card_doc(&mut tree.doc, parent, &c, look, subtitle);
+    if let Some((n, name)) = b.icon {
+        tree.slot(
+            n,
+            super::super::header_tree::Slot::Icon {
+                name,
+                side: 64,
+                lit: false,
+            },
+        );
+    }
     if let Some((ri, ci)) = c.at {
         let at = At::Home(ri, ci);
         tree.act(b.played, Message::Cell(at, CellAct::Played));
@@ -102,14 +137,24 @@ pub(crate) fn card_doc(
         format!("div.cardPadder.cardPadder-{}", w.to_lowercase())
     };
     d.add(scal, &pad);
+    let missing = matches!(c.pic, Pic::Missing);
     let img = d.add(
         scal,
-        if matches!(c.pic, Pic::Missing) {
-            "a.cardImageContainer.cardContent.itemAction.defaultCardBackground"
+        &if missing {
+            format!(
+                "a.cardImageContainer.cardContent.itemAction.defaultCardBackground.defaultCardBackground{}",
+                default_bg_index(&c.title)
+            )
         } else {
-            "a.cardImageContainer.coveredImage.cardContent.itemAction"
+            "a.cardImageContainer.coveredImage.cardContent.itemAction".to_string()
         },
     );
+    let mut icon = None;
+    if missing {
+        let n = d.add(img, "span.cardImageIcon.material-icons");
+        d.inline(n, "width: 64px; height: 64px");
+        icon = Some((n, missing_icon(c)));
+    }
     d.attr(img, "data-action", "link");
     if !matches!(c.pic, Pic::Missing) {
         let n = d.add(img, "img.jfImage");
@@ -169,6 +214,7 @@ pub(crate) fn card_doc(
         d.text(bdi, subtitle);
     }
     Built {
+        icon,
         card,
         play,
         fav,

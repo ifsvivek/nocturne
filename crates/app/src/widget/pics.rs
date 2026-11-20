@@ -97,6 +97,10 @@ pub fn take_wanted() -> Vec<(String, String, Option<String>)> {
 
 /// Keep the decoded picture (or the failure, so that it is not asked again).
 pub fn put(raw: String, pic: Option<Arc<Pic>>) {
+    if let Some(p) = &pic {
+        // Layout sizes an `img` whose picture is its `content` from this.
+        nocturne_style::paint::set_pic_dims(&raw, p.w, p.h);
+    }
     let mut st = store();
     let add = pic.as_ref().map_or(0, |p| p.bytes);
     if st.bytes + add > MAX_BYTES {
@@ -110,10 +114,11 @@ pub fn put(raw: String, pic: Option<Arc<Pic>>) {
 /// Decode fetched bytes (off the UI thread): rasters are limited to 2048 px on the long side.
 pub fn decode(bytes: &[u8], svg_data: bool) -> Result<Pic, String> {
     if svg_data {
+        let (w, h) = svg_size(bytes);
         return Ok(Pic {
             data: Data::Vector(svg::Handle::from_memory(bytes.to_vec())),
-            w: 0,
-            h: 0,
+            w,
+            h,
             bytes: bytes.len() * 4,
         });
     }
@@ -129,4 +134,59 @@ pub fn decode(bytes: &[u8], svg_data: bool) -> Result<Pic, String> {
         h,
         bytes: (w * h * 4) as usize,
     })
+}
+
+/// The size of an SVG picture from its root tag (`width`/`height`, else `viewBox`); 0 x 0 when it says neither.
+fn svg_size(b: &[u8]) -> (u32, u32) {
+    let head = String::from_utf8_lossy(&b[..b.len().min(2048)]).to_string();
+    let Some(i) = head.to_ascii_lowercase().find("<svg") else {
+        return (0, 0);
+    };
+    let tag = &head[i..head[i..].find('>').map_or(head.len(), |e| i + e)];
+    let attr = |name: &str| -> Option<String> {
+        let at = tag.to_ascii_lowercase().find(&format!(" {name}="))? + name.len() + 2;
+        let q = tag[at..]
+            .chars()
+            .next()
+            .filter(|c| matches!(c, '"' | '\''))?;
+        let rest = &tag[at + 1..];
+        Some(rest[..rest.find(q)?].to_string())
+    };
+    let num = |s: &str| s.trim().trim_end_matches("px").parse::<f32>().ok();
+    if let (Some(w), Some(h)) = (
+        attr("width").and_then(|s| num(&s)),
+        attr("height").and_then(|s| num(&s)),
+    ) {
+        return (w.max(1.0) as u32, h.max(1.0) as u32);
+    }
+    if let Some(vb) = attr("viewbox") {
+        let n: Vec<f32> = vb
+            .split([' ', ','])
+            .filter_map(|t| t.parse().ok())
+            .collect();
+        if n.len() == 4 {
+            return (n[2].max(1.0) as u32, n[3].max(1.0) as u32);
+        }
+    }
+    (0, 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn svg_sizes_come_from_the_root_tag() {
+        assert_eq!(
+            svg_size(b"<svg xmlns='x' viewBox='0 0 120 30'><g/></svg>"),
+            (120, 30)
+        );
+        assert_eq!(
+            svg_size(
+                b"<?xml version='1.0'?><svg width=\"64px\" height=\"16\" viewBox=\"0 0 1 1\">"
+            ),
+            (64, 16)
+        );
+        assert_eq!(svg_size(b"<svg>"), (0, 0));
+    }
 }

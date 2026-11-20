@@ -152,7 +152,11 @@ impl App {
                 pic_id: 0,
                 key: Some(self.pic_keys(m, art, width)),
                 title,
-                meta: String::new(),
+                meta: if kind_tile {
+                    m.collection.clone().unwrap_or_default()
+                } else {
+                    String::new()
+                },
                 index: ci,
                 progress: m.progress(),
                 badge: badge(m),

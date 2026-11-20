@@ -172,7 +172,13 @@ pub fn layers(v: &str) -> Result<Vec<Fill>, String> {
             layer
         };
         let l = layer.to_ascii_lowercase();
-        let fill = if let Some(i) = l.find("linear-gradient(") {
+        // Radial, conic and repeating gradients cannot be drawn: the layer is left out (the rest of the value still applies).
+        let unsupported = l.contains("radial-gradient(")
+            || l.contains("conic-gradient(")
+            || l.contains("repeating-linear-gradient(");
+        let fill = if unsupported {
+            continue;
+        } else if let Some(i) = l.find("linear-gradient(") {
             // Take the balanced call.
             let args_start = i + "linear-gradient(".len();
             let mut depth = 1;
@@ -318,6 +324,41 @@ pub fn bg_repeat(toks: &[&str]) -> Option<(bool, bool)> {
         [a, b] => Some((on(a), on(b))),
         _ => None,
     }
+}
+
+fn pic_dims_map() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, (u32, u32)>> {
+    static M: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (u32, u32)>>> =
+        std::sync::OnceLock::new();
+    M.get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// The app tells the engine how big a loaded picture is (by the address as written in the stylesheet), so that an `img` whose picture comes from `content: url()` gets its natural size in layout.
+pub fn set_pic_dims(url: &str, w: u32, h: u32) {
+    let mut m = pic_dims_map();
+    if m.len() < 512 {
+        m.insert(url.to_string(), (w, h));
+    }
+}
+
+pub fn pic_dims(url: &str) -> Option<(u32, u32)> {
+    pic_dims_map()
+        .get(url)
+        .copied()
+        .filter(|d| d.0 > 0 && d.1 > 0)
+}
+
+/// How many fills of `layers(v)` are listed above the first picture layer (gradients written before the `url()` paint over it).
+pub fn pic_above(v: &str) -> usize {
+    let mut n = 0;
+    for layer in split_top(v, Some(',')) {
+        if url_call(layer).is_some() {
+            break;
+        }
+        n += layers(layer).map_or(0, |l| l.len());
+    }
+    n
 }
 
 /// The first picture layer of a `background` / `background-image` value, with the position, size and repeat words of the layer (the longhands set them otherwise).

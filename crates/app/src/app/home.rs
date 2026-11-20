@@ -256,6 +256,10 @@ pub struct Home {
     pub resume_e: Vec<Entry>,
     pub nextup_e: Vec<Entry>,
     pub latest: Vec<LatestRow>,
+    /// The Collections and Playlists views of the servers: no nav link or Latest row, but My Media tiles.
+    pub views: Vec<Media>,
+    /// The ids of the libraries in the order the servers listed them (views included): My Media's order without a saved one.
+    pub lib_order: Vec<String>,
     /// Epoch of the libraries request the `latest` rows belong to.
     pub latest_epoch: u64,
     /// Settings: continue watching, next up, latest.
@@ -286,6 +290,8 @@ impl Home {
             resume_e: vec![],
             nextup_e: vec![],
             latest: vec![],
+            views: vec![],
+            lib_order: vec![],
             latest_epoch: 0,
             show,
             row: 1,
@@ -335,9 +341,21 @@ impl Home {
     /// Server UI: the libraries as tiles, in the user's order without the hidden ones.
     fn tiles(&self) -> Vec<&Media> {
         match &self.server {
-            Some(ui) => ui.tiles(self.latest.iter().map(|r| &r.lib).collect(), |m| {
-                m.id.as_str()
-            }),
+            Some(ui) => {
+                let mut libs: Vec<&Media> = self
+                    .latest
+                    .iter()
+                    .map(|r| &r.lib)
+                    .chain(&self.views)
+                    .collect();
+                libs.sort_by_key(|m| {
+                    self.lib_order
+                        .iter()
+                        .position(|i| *i == m.id)
+                        .unwrap_or(usize::MAX)
+                });
+                ui.tiles(libs, |m| m.id.as_str())
+            }
             None => vec![],
         }
     }
@@ -520,7 +538,11 @@ impl App {
     /// Fetch Home: libraries (header links, Latest rows), continue watching and next up, each from
     /// every online source at once.
     pub(super) fn load_home(&mut self, pid: u64) -> Task<Message> {
-        let (fan, t1) = self.fan(pid, FanKind::Libs, |b| async move { b.libraries().await });
+        let (fan, t1) = self.fan(
+            pid,
+            FanKind::Libs,
+            |b| async move { b.libraries_all().await },
+        );
         let (rf, t2) = self.fan(pid, FanKind::Resume, |b| async move { b.resume().await });
         let (nf, t3) = self.fan(pid, FanKind::NextUp, |b| async move { b.next_up().await });
         let show = self.settings.home();
@@ -555,6 +577,14 @@ impl App {
         };
         match kind {
             FanKind::Libs => {
+                let listed: Vec<String> = r.iter().flatten().map(|m| m.id.clone()).collect();
+                let (views, r) = match r {
+                    Some(v) => {
+                        let (a, b) = v.into_iter().partition(nocturne_core::source::is_view);
+                        (a, Some(b))
+                    }
+                    None => (vec![], None),
+                };
                 if !p.fan.accept(epoch, origin, r.clone()) {
                     return Task::none(); // an older request, or a page that is gone
                 }
@@ -570,6 +600,13 @@ impl App {
                 crate::timing::shell_ready();
                 if let (Some(libs), Some(h)) = (r, p.home.as_mut()) {
                     h.latest_epoch = epoch;
+                    for id in listed {
+                        if !h.lib_order.contains(&id) {
+                            h.lib_order.push(id);
+                        }
+                    }
+                    h.views.retain(|m| m.origin != origin);
+                    h.views.extend(views);
                     for lib in libs {
                         if let Some(b) = self.catalog.backend(origin).cloned() {
                             let (l2, id) = (lib.clone(), lib.id.clone());

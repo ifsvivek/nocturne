@@ -427,7 +427,11 @@ impl<M> Styled<'_, M> {
                     let mut opened: Vec<Rectangle> = vec![];
                     for &k in kids {
                         let kr = tr(s.rects[k], Point::new(o.x + child_sh.0, o.y + child_sh.1));
-                        let above = opened.iter().any(|l| l.intersects(&kr));
+                        // Boxes that only touch (fractional layout) do not overlap.
+                        let above = opened.iter().any(|l| {
+                            l.intersection(&kr)
+                                .is_some_and(|i| i.width > 0.5 && i.height > 0.5)
+                        });
                         if above {
                             r.with_layer(clip, |r| {
                                 self.paint(
@@ -561,7 +565,13 @@ impl<M> Styled<'_, M> {
             );
         }
         let layers = eff.bg.as_ref().unwrap_or(&c.bg);
-        for f in layers.iter().rev() {
+        // Layers written above a loaded picture are drawn after it (`paint_pic`).
+        let above = if bg_pic(s, n).is_some() {
+            c.pic_above.min(layers.len())
+        } else {
+            0
+        };
+        for f in layers[above..].iter().rev() {
             if let Some(bg) = gradient_bg(f, rect.width, rect.height, opacity) {
                 r.fill_quad(
                     Quad {
@@ -699,6 +709,8 @@ impl<M> Styled<'_, M> {
                 (z.width as f32, z.height as f32)
             }
         };
+        let layers = s.eff(n).bg.clone();
+        let layers = layers.as_ref().unwrap_or(&c.bg);
         for [x, y, w, h] in paint::pic_rects(&p, rect.width, rect.height, iw, ih) {
             let at = Rectangle::new(Point::new(rect.x + x, rect.y + y), Size::new(w, h));
             match &pic.data {
@@ -715,6 +727,22 @@ impl<M> Styled<'_, M> {
                     at,
                     vis,
                 ),
+            }
+        }
+        for f in layers[..c.pic_above.min(layers.len())].iter().rev() {
+            if let Some(bg) = gradient_bg(f, rect.width, rect.height, opacity) {
+                r.fill_quad(
+                    Quad {
+                        bounds: rect,
+                        border: Border {
+                            radius: radius(c.radius),
+                            ..Border::default()
+                        },
+                        shadow: Shadow::default(),
+                        snap: false,
+                    },
+                    bg,
+                );
             }
         }
     }

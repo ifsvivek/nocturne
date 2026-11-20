@@ -4,6 +4,7 @@
 # usage: scripts/theme-conformance.sh [--bin PATH-TO-NOCTURNE-DEBUG-BINARY] [--hidden] [--default] [--no-report] [theme-name ...]
 #   --default adds a run with no theme (the server's own look, name "default"); --no-report leaves docs/dev/THEME_CONFORMANCE.md alone.
 #   NOCTURNE_CONF_DIR, NOCTURNE_CONF_OUT, NOCTURNE_CONF_HS, NOCTURNE_CONF_PORT and NOCTURNE_CONF_CHROME_PORT move the throwaway server, the captures, the headless session and the ports (several runs side by side).
+#   NOCTURNE_CONF_SCREENS="home" limits the screens (default "home movies movie series"); each NOCTURNE launch logs to app-<screen>.log next to its capture.
 #   no names = every active theme of awesome-jellyfin THEMES.md (fetched at run time); --hidden adds the "hidden pending v12" ones.
 # Everything lives under /tmp (server data $CONF, captures $OUT). No theme CSS is stored anywhere: only the @import line.
 # Safety: the server is a throwaway on loopback, data under /tmp; branding is written only after the guard below passes.
@@ -111,7 +112,7 @@ app_shot() { # screen keys out.png [report.json]
   rm -f "$out"
   [[ -n $rep ]] && { rm -f "$rep"; keys="${keys:+$keys,}theme-report@11000"; }
   HS_NAME=$HS timeout 60 "$HERE/headless-session.sh" run env NOCTURNE_KEYS="$keys" NOCTURNE_THEME_REPORT="${rep:-/dev/null}" NOCTURNE_SNAP="$out" NOCTURNE_SNAP_AFTER_MS="${SNAP_MS:-12500}" \
-    "$HERE/run-isolated.sh" --keep "$HS" "$BIN" >"$OUT/app.log" 2>&1 &
+    "$HERE/run-isolated.sh" --keep "$HS" "$BIN" >"${out%.png}.log" 2>&1 &
   local pid=$!
   for _ in $(seq 50); do [[ -s $out ]] && break; sleep 1; done
   sleep 1; kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
@@ -132,6 +133,7 @@ for name in "${LIST[@]}"; do
     imp=$(jq -r --arg n "$name" '.[]|select(.name==$n)|.import_url // empty' "$OUT/themes.json")
     [[ -n $imp ]] || { echo "== $name: no resolvable @import, skipped"; continue; }
     css="@import url(\"$imp\");"
+    while read -r x; do [[ -n $x ]] && css+=" @import url(\"$x\");"; done < <(jq -r --arg n "$name" '.[]|select(.name==$n)|.extra_imports[]?' "$OUT/themes.json")
   fi
   echo "== $name  ($imp)"
   guard
@@ -140,9 +142,9 @@ for name in "${LIST[@]}"; do
   python3 -I "$HERE/theme-conformance.py" web --url "$URL" --user demo --pw-file "$JF/demo-password" --out "$d" \
     --chrome "$(command -v google-chrome-stable)" --ids "$CONF/ids.json" --profile "$CONF/chrome-profile" --pidfile "$PIDS_CHROME" --chrome-port "$CHROME_PORT"
   rm -rf "$CONF/chrome-profile"; rm -f "$PIDS_CHROME"
-  for scr in home movies movie series; do app_shot "$scr" "${KEYS[$scr]}" "$d/app-$scr.png" "$([[ $scr == home ]] && echo "$d/report.json")"; done
-  python3 -I "$HERE/theme-conformance.py" score "$d" >"$d/scores.line"
-  python3 -I "$HERE/theme-conformance.py" sheet "$d"
+  for scr in ${NOCTURNE_CONF_SCREENS:-home movies movie series}; do app_shot "$scr" "${KEYS[$scr]}" "$d/app-$scr.png" "$([[ $scr == home ]] && echo "$d/report.json")"; done
+  python3 -I "$HERE/theme-conformance.py" score "$d" >"$d/scores.line" || true
+  python3 -I "$HERE/theme-conformance.py" sheet "$d" || true
   [[ -s $d/report.json ]] || echo '{}' >"$d/report.json"
   jq -n --arg n "$name" --arg u "$imp" --slurpfile s "$d/scores.json" --slurpfile r "$d/report.json" '{name:$n,import:$u,scores:$s[0],report:$r[0]}' >"$d/result.json"
 done

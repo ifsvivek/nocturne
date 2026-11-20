@@ -103,6 +103,14 @@ impl Backend {
         }
     }
 
+    /// Like [`Self::libraries`], with the Collections and Playlists views kept.
+    pub async fn libraries_all(&self) -> Result<Vec<Media>, Failed> {
+        match self {
+            Self::Jellyfin(s) => s.libraries_all().await,
+            Self::Local(l) => l.libraries().await,
+        }
+    }
+
     /// Server UI data; a local source has none.
     pub async fn server_ui(&self) -> Result<crate::server_ui::ServerUi, Failed> {
         match self {
