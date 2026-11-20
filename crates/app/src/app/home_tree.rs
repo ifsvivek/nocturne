@@ -267,7 +267,7 @@ impl App {
         let col = tree.doc.add(body, "div.hero-col");
         let d = &mut tree.doc;
         let tag = d.add(col, "div.hero-tag");
-        d.text(tag, &format!("0x00 \u{b7} {}", m.kind_label()));
+        d.text(tag, &h.hero_tag(m));
         let chips = d.add(col, "div.hero-chips");
         // Each chip carries its text twice: tracked capitals (the default look) and plain (for themes that set the facts as a line of text).
         let chip = |d: &mut Doc, s: &str, kind: &str, accent: bool| {
