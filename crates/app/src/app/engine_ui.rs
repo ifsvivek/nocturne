@@ -938,7 +938,11 @@ impl App {
                     })
                 }
             },
-            StyledEvent::SafeMode => self.safe_theme(),
+            // `Message::Eng` does not mark the scenes stale: the open Theme Studio's preview must drop its rules too.
+            StyledEvent::SafeMode => {
+                self.eng.dirty = true;
+                self.safe_theme()
+            }
             StyledEvent::Frame(now) => {
                 if let (Some(h), _) = self.eng.host(w) {
                     h.scene.tick(now);
