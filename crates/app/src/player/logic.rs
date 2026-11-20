@@ -17,6 +17,15 @@ pub fn open_fill(loaded: bool, buffered_secs: f64) -> f32 {
     (0.3 + 0.7 * (buffered_secs / READY_AHEAD).clamp(0.0, 1.0)) as f32
 }
 
+/// An item that has not opened after this long is given up on (a source that accepts the connection
+/// and never answers, or a stuck video engine) instead of showing "Opening" forever.
+pub const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Has opening taken too long? Only an item that never loaded can time out.
+pub fn open_timed_out(loaded: bool, since_start: Duration) -> bool {
+    !loaded && since_start > OPEN_TIMEOUT
+}
+
 /// Mid-playback stall fill 0..=1 from mpv's `cache-buffering-state` (percent).
 pub fn stall_fill(percent: Option<f64>) -> f32 {
     percent.map_or(0.0, |p| (p / 100.0).clamp(0.0, 1.0) as f32)
@@ -83,6 +92,18 @@ pub fn parse_input(s: &str) -> Option<(&str, Point)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opening_gives_up_only_before_the_file_loads() {
+        let s = Duration::from_secs;
+        assert!(!open_timed_out(false, OPEN_TIMEOUT));
+        assert!(open_timed_out(false, OPEN_TIMEOUT + s(1)));
+        assert!(
+            !open_timed_out(true, s(3600)),
+            "a long film is not an open timeout"
+        );
+        assert!(!open_timed_out(false, s(5)));
+    }
 
     #[test]
     fn opening_fill_follows_the_cache() {

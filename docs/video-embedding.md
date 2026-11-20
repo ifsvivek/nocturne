@@ -42,6 +42,10 @@ Release build, 1280x720 floating window, 10 s average, looping clips, `ao=null`.
 
 In-window costs about the same as the external mpv process. Decoded frames stay in GPU memory (no CPU copy). Stability: 20/20 start / stop cycles for 1080p H.264 and for 4K HEVC in both teardown orders, 25 random resizes and three fullscreen toggles while playing, 10/10 clean quits during playback. Under Iced the app was re-verified: `hwdec-current` is `nvdec` for H.264 1080p and HEVC 10-bit with 0 dropped frames, and 25 open / close cycles showed no leak.
 
+## A stuck mpv core must not freeze the app
+
+Every synchronous libmpv call (`mpv_command`, `mpv_get_property`, `mpv_set_property`) is dispatched to mpv's core thread and waits for it. That thread can block for good inside an audio driver: with no usable audio server, `pw_thread_loop_stop` in the PipeWire output never returned when a video was closed right after opening (gdb: the UI thread in `mpv_get_property` from the player tick, the `core` thread in `pw_thread_loop_stop`; about 1 in 10 to 30 open/close cycles in a headless session without audio, identical code in 0.5.1). The UI thread therefore never calls libmpv directly: `EmbeddedPlayer::call` runs each call on a worker thread, waits 300 ms and fails at once while an earlier call is still running; the event thread reports `Event::Failed` when one call has run for 15 s. `Drop` waits at most about a second for each thread and for `mpv_terminate_destroy` (on a reaper thread), then leaves the stuck ones behind and sets `nocturne_player::left_behind()`; `main` ends the process with `_exit` in that case so exit handlers cannot wait on them. The player page gives up on an item that has not loaded after 30 s. Debug builds: `NOCTURNE_MPV_STALL_AFTER_MS=n` simulates a stuck core.
+
 ## Alternatives that were rejected
 
 - **Software render into a UI image per frame**: about 29% of a core for 1080p and 115% for 4K just to download and convert, plus roughly 1 GB/s of texture uploads for 4K; no HDR path.

@@ -11,6 +11,8 @@
 //!
 //! Env override: `NOCTURNE_VO` picks the windowed video output (default `gpu-next`).
 
+#[cfg(target_os = "linux")]
+mod calls;
 mod deps;
 #[cfg(target_os = "linux")]
 mod embedded;
@@ -23,6 +25,20 @@ mod mpv_ffi;
 mod surface;
 pub use deps::{install_hint, install_hint_for, libmpv_available, mpv_binary_available};
 pub use embedded::{EmbeddedPlayer, colour_management_available};
+
+static LEFT_BEHIND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A teardown gave up waiting on a stuck mpv thread and left it running: the process must end with
+/// `_exit` (libmpv's and the audio driver's exit handlers could wait on the same stuck thread).
+pub fn left_behind() -> bool {
+    LEFT_BEHIND.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn mark_left_behind() {
+    eprintln!("video: a stuck mpv thread was left behind at teardown");
+    LEFT_BEHIND.store(true, std::sync::atomic::Ordering::SeqCst);
+}
 #[cfg(target_os = "linux")]
 pub use embedded::{Geometry, geometry};
 pub use external::Player;

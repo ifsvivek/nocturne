@@ -6,15 +6,17 @@
 //! thread owns the EGL context + mpv render context; one event thread feeds `State`/`Event`.
 //! Teardown order (see `Drop`) is load-bearing; see docs/video-embedding.md.
 
+use crate::calls::{Kind, Runner, Written};
 use crate::mpv_ffi::{Ev, Mpv, PropData, RenderCtx, UPDATE_FRAME};
 use crate::{Buffering, Error, Event, Result, State, e};
 use std::ffi::{c_char, c_int, c_void};
+use std::mem::ManuallyDrop;
 use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::*};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use wayland_backend::client::{Backend, ObjectId};
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
@@ -72,8 +74,21 @@ delegate_noop!(St: ignore WlRegion);
 delegate_noop!(St: ignore WpViewporter);
 delegate_noop!(St: ignore WpViewport);
 
+/// How long the UI thread waits for one mpv call. A healthy core answers in microseconds; the core
+/// thread can block for good inside a driver (a PipeWire `pw_thread_loop_stop` that never returns when
+/// the audio server is gone), and every synchronous libmpv call then waits for it.
+const CALL_WAIT: Duration = Duration::from_millis(300);
+/// A call that has not returned after this long means the core is stuck: the page is told so.
+const STUCK_AFTER: Duration = Duration::from_secs(15);
+/// Teardown waits at most this long for each thread and for `mpv_terminate_destroy`; whatever is
+/// still stuck is left behind (see [`crate::left_behind`]).
+const TEARDOWN_WAIT: Duration = Duration::from_millis(1200);
+
 struct Shared {
     stop: AtomicBool,
+    /// The call worker (`crate::calls`): the UI thread's only way into libmpv.
+    calls: Runner,
+    stuck: AtomicBool,
     dirty: Mutex<bool>,
     cv: Condvar,
     w: AtomicI32, // physical pixels
@@ -132,7 +147,7 @@ pub fn geometry(x: f32, y: f32, w: f32, h: f32, scale: f32) -> Geometry {
 
 pub struct EmbeddedPlayer {
     // Drop order is explicit in `Drop`; field order only matters for the leftovers.
-    mpv: Arc<Mpv>,
+    mpv: ManuallyDrop<Arc<Mpv>>,
     shared: Arc<Shared>,
     thread: Option<JoinHandle<()>>,
     events_thread: Option<JoinHandle<()>>,
@@ -196,8 +211,18 @@ impl EmbeddedPlayer {
             let (w0, h0) = (640, 360);
             let egl_win = WlEglSurface::new(surface.id(), w0, h0).map_err(e)?;
 
+            // Debug builds only (QA): `NOCTURNE_MPV_STALL_AFTER_MS=n` makes the core look stuck from n ms on.
+            #[cfg(debug_assertions)]
+            let stall = std::env::var("NOCTURNE_MPV_STALL_AFTER_MS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(|ms| Instant::now() + Duration::from_millis(ms));
+            #[cfg(not(debug_assertions))]
+            let stall = None;
             let shared = Arc::new(Shared {
                 stop: AtomicBool::new(false),
+                calls: Runner::new(stall),
+                stuck: AtomicBool::new(false),
                 dirty: Mutex::new(true),
                 cv: Condvar::new(),
                 w: AtomicI32::new(w0),
@@ -273,7 +298,7 @@ impl EmbeddedPlayer {
                 .spawn(move || event_loop(mpv3, st3, etx, sh3))
                 .map_err(e)?;
             Ok(Self {
-                mpv,
+                mpv: ManuallyDrop::new(mpv),
                 shared,
                 thread: Some(thread),
                 events_thread: Some(events_thread),
@@ -318,15 +343,50 @@ impl EmbeddedPlayer {
         &self.rx
     }
 
+    /// A write (command or property set) on the call worker: always queued in order, even while the
+    /// core is busy. The result is returned only when the worker was idle and answered in time;
+    /// otherwise `None` (the write runs when the core frees).
+    fn submit(
+        &self,
+        kind: Kind,
+        f: impl FnOnce(&Mpv) -> std::result::Result<(), String> + Send + 'static,
+    ) -> Option<std::result::Result<(), String>> {
+        let m = Arc::clone(&self.mpv);
+        match self.shared.calls.write(kind, CALL_WAIT, move || f(&m)) {
+            Written::Done(r) => Some(r),
+            Written::Queued => None,
+        }
+    }
+
+    fn put(
+        &self,
+        kind: Kind,
+        f: impl FnOnce(&Mpv) -> std::result::Result<(), String> + Send + 'static,
+    ) -> Result<()> {
+        self.submit(kind, f).unwrap_or(Ok(())).map_err(e)
+    }
+
+    fn cmd(&self, kind: Kind, name: &str, args: &[&str]) -> Result<()> {
+        let (name, args): (String, Vec<String>) =
+            (name.into(), args.iter().map(|a| a.to_string()).collect());
+        self.put(kind, move |m| {
+            let a: Vec<&str> = args.iter().map(String::as_str).collect();
+            m.command(&name, &a)
+        })
+    }
+
     /// Same contract as [`crate::Player::load`]: each of `headers` is a full header line, appended to
     /// the `http-header-fields` list (`change-list` appends verbatim, no splitting on ',').
     pub fn load(&self, url: &str, headers: &[&str]) -> Result<()> {
-        let c = |n: &str, a: &[&str]| self.mpv.command(n, a).map_err(e);
-        c("change-list", &["http-header-fields", "clr", ""])?;
-        for h in headers {
-            c("change-list", &["http-header-fields", "append", h])?;
-        }
-        c("loadfile", &[url, "replace"])
+        let (url, headers): (String, Vec<String>) =
+            (url.into(), headers.iter().map(|h| h.to_string()).collect());
+        self.put(Kind::Keep, move |m| {
+            m.command("change-list", &["http-header-fields", "clr", ""])?;
+            for h in &headers {
+                m.command("change-list", &["http-header-fields", "append", h])?;
+            }
+            m.command("loadfile", &[&url, "replace"])
+        })
     }
 
     pub fn play(&self) -> Result<()> {
@@ -337,42 +397,45 @@ impl EmbeddedPlayer {
         self.set_paused(true)
     }
 
+    /// mpv flips the flag itself: reading it first would see nothing while a write is queued and pause again.
     pub fn toggle(&self) -> Result<()> {
-        self.set_paused(!self.state().paused)
+        self.cmd(Kind::Keep, "cycle", &["pause"])
     }
 
     pub fn seek_to(&self, secs: f64) -> Result<()> {
-        self.mpv
-            .command("seek", &[&secs.to_string(), "absolute"])
-            .map_err(e)
+        self.cmd(Kind::Droppable, "seek", &[&secs.to_string(), "absolute"])
     }
 
     pub fn seek_by(&self, secs: f64) -> Result<()> {
-        self.mpv
-            .command("seek", &[&secs.to_string(), "relative"])
-            .map_err(e)
+        self.cmd(Kind::Droppable, "seek", &[&secs.to_string(), "relative"])
     }
 
     /// 0..=130 (mpv's range); values outside are clamped.
     pub fn set_volume(&self, vol: f64) -> Result<()> {
-        self.mpv
-            .set_double("volume", vol.clamp(0.0, 130.0))
-            .map_err(e)
+        let v = vol.clamp(0.0, 130.0);
+        self.put(Kind::Droppable, move |m| m.set_double("volume", v))
     }
 
     pub fn stop(&self) -> Result<()> {
-        self.mpv.command("stop", &[]).map_err(e)
+        self.cmd(Kind::Keep, "stop", &[])
     }
 
     /// Any mpv command, e.g. `command(&["set", "speed", "1.5"])`.
     pub fn command(&self, args: &[&str]) -> Result<()> {
         let (name, rest) = args.split_first().ok_or_else(|| e("empty command"))?;
-        self.mpv.command(name, rest).map_err(e)
+        self.cmd(Kind::Keep, name, rest)
     }
 
-    /// Reads one mpv property as JSON, same shape as the child-process player. `None` when unavailable.
+    /// Reads one mpv property as JSON, same shape as the child-process player. `None` when unavailable
+    /// (or when the core is busy: the caller asks again on its next tick).
     pub fn prop(&self, name: &str) -> Option<serde_json::Value> {
-        let s = self.mpv.get_string(name).ok()?;
+        let name = name.to_string();
+        let m = Arc::clone(&self.mpv);
+        let s = self
+            .shared
+            .calls
+            .read(CALL_WAIT, move || m.get_string(&name))?
+            .ok()?;
         Some(match s.as_str() {
             "yes" => true.into(),
             "no" => false.into(),
@@ -386,37 +449,77 @@ impl EmbeddedPlayer {
     }
 
     fn set_paused(&self, p: bool) -> Result<()> {
-        self.mpv.set_flag("pause", p).map_err(e)
+        self.put(Kind::Keep, move |m| m.set_flag("pause", p))
     }
 }
 
 impl Drop for EmbeddedPlayer {
     fn drop(&mut self) {
-        // 1. stop the render + event threads; the render thread frees the mpv render ctx, EGL
-        //    surface/ctx and wl_egl_window (GL context still current while mpv frees its objects).
+        // Nothing here may wait on mpv for long: a stuck core would freeze the app and make it ignore
+        // SIGTERM. Whatever does not finish in time is left behind and the process ends without it.
         // `stop` first: frees the decoder/hwdec while the GL context and window are still alive. Without
         // it, freeing the render context hangs intermittently when the compositor is closing the window.
-        let _ = self.mpv.command("stop", &[]);
+        let stopped = matches!(
+            self.submit(Kind::Keep, |m| m.command("stop", &[])),
+            Some(Ok(()))
+        );
         self.shared.stop.store(true, SeqCst);
         self.shared.poke();
+        self.shared.calls.close(); // drops what is still queued; the worker ends after its current call
+        let wait = if stopped {
+            TEARDOWN_WAIT
+        } else {
+            TEARDOWN_WAIT / 4
+        };
+        // 1. the render thread frees the mpv render ctx, EGL surface/ctx and wl_egl_window (GL context
+        //    still current while mpv frees its objects); the event thread just ends.
+        let mut clean = true;
+        let deadline = Instant::now() + wait;
         for t in [self.thread.take(), self.events_thread.take()]
             .into_iter()
             .flatten()
         {
-            let _ = t.join();
+            while !t.is_finished() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            if t.is_finished() {
+                let _ = t.join();
+            } else {
+                clean = false;
+            }
         }
-        // 2. only now may the Wayland objects go (viewport, subsurface, surface), parent untouched
-        self.viewport.destroy();
-        self.sub.destroy();
-        self.surface.destroy();
-        let _ = self.conn.flush();
-        // 3. `self.mpv` (last Arc) drops after this fn returns -> mpv_terminate_destroy.
+        // 2. only now may the Wayland objects go (viewport, subsurface, surface), parent untouched.
+        //    A render thread still stuck in mpv may still use them: leave them alone then.
+        if clean {
+            self.viewport.destroy();
+            self.sub.destroy();
+            self.surface.destroy();
+            let _ = self.conn.flush();
+        }
+        // 3. the last `Arc<Mpv>` runs `mpv_terminate_destroy`, which waits for the core: do it on a
+        //    thread of its own and wait for it only a little.
+        let mpv = unsafe { ManuallyDrop::take(&mut self.mpv) };
+        let (done_tx, done_rx) = channel::<()>();
+        let reaper = std::thread::Builder::new()
+            .name("mpv-reaper".into())
+            .spawn(move || {
+                drop(mpv);
+                let _ = done_tx.send(());
+            });
+        let reaped = reaper.is_ok() && done_rx.recv_timeout(wait).is_ok();
+        if !(clean && reaped) || self.shared.calls.running_since().is_some() {
+            crate::mark_left_behind();
+        }
     }
 }
 
 /// Mirrors `Player`'s IPC reader: property changes -> `State`, edges -> `Event`.
 fn event_loop(mpv: Arc<Mpv>, state: Arc<Mutex<State>>, tx: Sender<Event>, sh: Arc<Shared>) {
     while !sh.stop.load(SeqCst) {
+        let since = sh.calls.running_since();
+        if since.is_some_and(|t| t.elapsed() > STUCK_AFTER) && !sh.stuck.swap(true, SeqCst) {
+            let _ = tx.send(Event::Failed("the video engine stopped responding".into()));
+        }
         let out = match mpv.wait_event(0.05) {
             Ev::None => continue,
             Ev::Failed(er) => Some(Event::Failed(er)),

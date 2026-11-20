@@ -180,7 +180,7 @@ impl App {
             self.settings.hdr = m;
             self.settings.save();
         }
-        if let Some(Outcome::Closed { failed }) =
+        if let Some(Outcome::Closed { failed, why }) =
             self.player.as_mut().and_then(|p| p.take_outcome())
         {
             if let Some(q) = self.player.as_ref().and_then(|p| p.music_snapshot()) {
@@ -189,7 +189,10 @@ impl App {
             self.player = None;
             self.sp.player_closed();
             if failed {
-                self.toast("This couldn't be played.");
+                match why {
+                    Some(w) => self.toast(format!("Couldn't start playback: {w}.")),
+                    None => self.toast("This couldn't be played."),
+                }
             }
             // The server has the final report shortly after; then Home's rows have moved.
             tasks.push(after(Duration::from_millis(900), Message::RefreshResume));
