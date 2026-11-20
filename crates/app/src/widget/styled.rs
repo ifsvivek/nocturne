@@ -1562,13 +1562,17 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
                     return layout::Node::new(Size::ZERO);
                 }
                 let [x, y, w, h] = scene.screen_rect(n);
-                el.as_widget_mut()
-                    .layout(
-                        t,
-                        renderer,
-                        &layout::Limits::new(Size::ZERO, Size::new(w, h)),
-                    )
-                    .move_to(Point::new(x, y))
+                let node = el.as_widget_mut().layout(
+                    t,
+                    renderer,
+                    &layout::Limits::new(Size::ZERO, Size::new(w, h)),
+                );
+                // A widget smaller than its box (a 32 px avatar in a 40 px round box) sits in the middle, as a flex-centred child would; one that fills it is unaffected.
+                let s = node.size();
+                node.move_to(Point::new(
+                    x + ((w - s.width) / 2.0).max(0.0),
+                    y + ((h - s.height) / 2.0).max(0.0),
+                ))
             })
             .collect();
         layout::Node::with_children(size, nodes)

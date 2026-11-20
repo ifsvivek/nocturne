@@ -318,7 +318,7 @@ pub enum Op {
     BoxSizing(BoxSizing),
     /// Which sides (top, right, bottom, left) get this colour.
     BorderColor([bool; 4], Option<Color>),
-    Radius([Option<f32>; 4]),
+    Radius([Option<Len>; 4]),
     FlexDir(FlexDirection),
     FlexWrap(FlexWrap),
     Grow(f32),
@@ -746,34 +746,32 @@ fn border_ops(v: &str, mask: [bool; 4]) -> Result<Vec<Op>, Issue> {
     Ok(ops)
 }
 
-fn radius(v: &str) -> Result<[Option<f32>; 4], Issue> {
+fn radius(v: &str) -> Result<[Option<Len>; 4], Issue> {
     if v.contains('/') {
         return bad("elliptical radii (`/`) are not supported");
     }
-    let a: Vec<f32> = split_top(v, None)
+    let a: Vec<Len> = split_top(v, None)
         .into_iter()
         .map(|t| match t.strip_suffix('%') {
             // A percentage radius is shape-relative; 50% (a circle or a pill) is the case worth supporting.
-            Some(n) if n.trim().parse::<f32>().is_ok_and(|n| n >= 50.0) => Ok(9999.0),
+            Some(n) if n.trim().parse::<f32>().is_ok_and(|n| n >= 50.0) => Ok(Len::Px(9999.0)),
             Some(_) => bad(format!(
                 "`{t}`: only 50% or more is supported as a radius percentage"
             )),
             None => match len(t)? {
-                Len::Px(px) => Ok(px.max(0.0)),
-                Len::Em(e) => Ok((e * 16.0).max(0.0)),
-                Len::Rem(r) => Ok((r * 16.0).max(0.0)),
+                l @ (Len::Px(_) | Len::Em(_) | Len::Rem(_)) => Ok(l),
                 _ => bad(format!("`{t}` is not a radius")),
             },
         })
         .collect::<Result<_, _>>()?;
     let [tl, tr, br, bl] = match a.as_slice() {
-        [x] => [*x; 4],
-        [a, b] => [*a, *b, *a, *b],
-        [a, b, c] => [*a, *b, *c, *b],
-        [a, b, c, d] => [*a, *b, *c, *d],
+        [x] => [x, x, x, x],
+        [a, b] => [a, b, a, b],
+        [a, b, c] => [a, b, c, b],
+        [a, b, c, d] => [a, b, c, d],
         _ => return bad(format!("`{v}`: expected 1 to 4 values")),
     };
-    Ok([Some(tl), Some(tr), Some(br), Some(bl)])
+    Ok([tl, tr, br, bl].map(|l| Some(l.clone())))
 }
 
 fn overflow1(v: &str) -> Result<Overflow, Issue> {
@@ -1290,8 +1288,8 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
         | "border-top-right-radius"
         | "border-bottom-right-radius"
         | "border-bottom-left-radius" => {
-            let r = radius(v.split_whitespace().next().unwrap_or(v))?[0];
-            let mut a = [None; 4];
+            let [r, ..] = radius(v.split_whitespace().next().unwrap_or(v))?;
+            let mut a: [Option<Len>; 4] = [None, None, None, None];
             let idx = match name {
                 "border-top-left-radius" => 0,
                 "border-top-right-radius" => 1,
@@ -2061,7 +2059,7 @@ impl Op {
             Op::Radius(r) => {
                 for (i, v) in r.iter().enumerate() {
                     if let Some(v) = v {
-                        c.radius[i] = *v;
+                        c.radius[i] = v.px(font, cx).unwrap_or(0.0).max(0.0);
                     }
                 }
             }
