@@ -30,6 +30,8 @@ type El<'a> = Element<'a, Message>;
 
 /// `State::applied` while the safe look is on.
 const SAFE: u64 = u64::MAX;
+/// The text under "How themes work".
+const HOW: &str = "A theme is a CSS file: colours, corner radii, fonts and layout. Only what NOCTURNE understands is used; everything else is listed in the report. A theme's @import stylesheets and fonts are fetched over https when Settings > Themes > Fetch theme imports is on. Pasting or importing a theme previews it everywhere until you press Keep or Revert. If a theme makes the app hard to use, press Ctrl+Shift+0 or start with NOCTURNE_SAFE_THEME=1 to get the built-in look back.";
 /// Warnings shown in the list (the summary line counts all of them).
 const SHOWN: usize = 80;
 /// Why Download and Refresh are off: the setting means the app fetches no theme files at all.
@@ -77,6 +79,10 @@ pub enum Msg {
     ConfirmDelete,
     /// Next theme for that server: global, then each saved theme.
     Cycle(SourceId),
+    /// Show or hide the "How themes work" text under the header.
+    How,
+    /// The report panel's tab: `false` this theme, `true` server branding.
+    ReportTab(bool),
 }
 
 pub struct State {
@@ -107,6 +113,10 @@ pub struct State {
     resolving: HashSet<String>,
     /// Fonts already handed to Iced (address and weight).
     fonts_loaded: HashSet<String>,
+    /// "How themes work" is open.
+    how: bool,
+    /// The report panel shows the servers' branding and plugin stylesheets.
+    brand_tab: bool,
 }
 
 impl Default for State {
@@ -131,6 +141,8 @@ impl Default for State {
             fetching: false,
             resolving: HashSet::new(),
             fonts_loaded: HashSet::new(),
+            how: false,
+            brand_tab: false,
         }
     }
 }
@@ -732,6 +744,8 @@ impl App {
                 self.th.applied = None;
                 return self.themes_msg(Msg::Pick(None));
             }
+            Msg::How => self.th.how ^= true,
+            Msg::ReportTab(b) => self.th.brand_tab = b,
             Msg::Cycle(src) => {
                 let mut order = vec![None];
                 order.extend(self.themes.themes.iter().map(|t| Some(t.id)));
@@ -752,14 +766,63 @@ impl App {
     pub(super) fn themes_page(&self) -> El<'_> {
         let head = section(
             "Themes",
-            "Colours, corner radii, fonts and layout from a CSS file. Only what NOCTURNE understands is used; everything else is listed below. A theme's @import stylesheets and fonts are fetched over https when Settings > Themes > Fetch theme imports is on. Pasting or importing a theme previews it everywhere until you press Keep or Revert. If a theme makes the app hard to use, press Ctrl+Shift+0 or start with NOCTURNE_SAFE_THEME=1 to get the built-in look back.",
+            "Colours, corner radii, fonts and layout from a CSS file.",
             "Esc to go back".into(),
         );
-        let body = row![self.theme_list(), self.theme_editor()]
+        let how = container(
+            column![
+                action_button(
+                    if self.th.how {
+                        "Hide how themes work"
+                    } else {
+                        "How themes work"
+                    },
+                    false,
+                    false,
+                    false,
+                    false,
+                    Message::Themes(Msg::How)
+                ),
+                if self.th.how {
+                    container(
+                        text(HOW)
+                            .size(t::BODY)
+                            .line_height(1.55)
+                            .color(t::text_secondary()),
+                    )
+                    .max_width(760)
+                } else {
+                    container(space())
+                },
+            ]
+            .spacing(t::S2),
+        )
+        .padding([0.0, t::page_pad()]);
+        // Narrow windows stack the lists above the editor; a short one scrolls the page and gives the editor and the report fixed heights.
+        let narrow = self.win.width < 700.0;
+        let short = narrow || self.win.height < 760.0;
+        let body: El<'_> = if narrow {
+            column![self.theme_list(None, 170.0.into()), self.theme_editor(true)]
+                .spacing(t::S4)
+                .into()
+        } else if short {
+            row![
+                self.theme_list(Some(260.0), 560.0.into()),
+                self.theme_editor(true)
+            ]
             .spacing(t::S6)
-            .height(Length::Fill);
-        column![
-            container(head).padding(Padding {
+            .into()
+        } else {
+            row![
+                self.theme_list(Some(300.0), Length::Fill),
+                self.theme_editor(false)
+            ]
+            .spacing(t::S6)
+            .height(Length::Fill)
+            .into()
+        };
+        let page = column![
+            container(column![head, how].spacing(t::S3)).padding(Padding {
                 top: t::header_h() + t::S6,
                 ..Padding::ZERO
             }),
@@ -770,13 +833,20 @@ impl App {
                     left: t::page_pad(),
                     right: t::page_pad(),
                 })
-                .height(Length::Fill),
-        ]
-        .height(Length::Fill)
-        .into()
+                .height(if short { Length::Shrink } else { Length::Fill }),
+        ];
+        if short {
+            scroll(page)
+                .style(style::scroll)
+                .height(Length::Fill)
+                .into()
+        } else {
+            page.height(Length::Fill).into()
+        }
     }
 
-    fn theme_list(&self) -> El<'_> {
+    /// The theme lists (built-in, examples, saved, per server); `size` is the column's width, or its height when the page is stacked.
+    fn theme_list(&self, width: Option<f32>, height: Length) -> El<'_> {
         let th = &self.th;
         let global = self.themes.global;
         let entry = |label: String, on: bool, tag: &'static str, m: Msg| -> El<'_> {
@@ -915,69 +985,14 @@ impl App {
                 );
             }
         }
-        // Branding CSS of servers in Server UI mode: applied automatically, listed here with what
-        // could not be mapped. ponytail: parsed while drawing (milliseconds, this page only).
-        let branded: Vec<_> = self
-            .catalog
-            .slots
-            .iter()
-            .filter_map(|s| Some((s, self.themes.branding_of(s.id)?)))
-            .collect();
-        if !branded.is_empty() {
-            col = col.push(rule()).push(
-                text(tracked("Server branding"))
-                    .shaping(text::Shaping::Advanced)
-                    .size(t::CONTROL_TEXT)
-                    .font(t::bold())
-                    .color(t::text_secondary()),
-            );
-            col = col.push(
-                text("The look a server's administrator set, used while that server's UI is chosen in Settings > Sources. A theme you pick for the server above wins over it.")
-                    .size(t::CAPTION)
-                    .color(t::text_tertiary()),
-            );
-            for (s, css) in branded {
-                // Jellyfin layout mode reads the branding with the engine, so report what the engine did.
-                if let Some(lines) = self.branding_engine_lines(css) {
-                    col = col.push(
-                        text(format!("{}: {}", s.profile.label, lines[0]))
-                            .size(t::CAPTION)
-                            .color(t::text_secondary()),
-                    );
-                    for l in &lines[1..] {
-                        col = col.push(text(l.clone()).size(t::CAPTION).color(t::text_tertiary()));
-                    }
-                    continue;
-                }
-                let line = match self.themes.parse_text(css) {
-                    Ok(p) => format!(
-                        "{}: {} applied, {} not understood",
-                        s.profile.label,
-                        p.theme.count() + p.layout.count(),
-                        p.warnings.len() + p.dropped_warnings
-                    ),
-                    Err(e) => format!("{}: {e}", s.profile.label),
-                };
-                col = col.push(text(line).size(t::CAPTION).color(t::text_secondary()));
-                if let Ok(p) = self.themes.parse_text(css) {
-                    for w in p.warnings.iter().take(5) {
-                        col = col.push(
-                            text(w.to_string())
-                                .size(t::CAPTION)
-                                .color(t::text_tertiary()),
-                        );
-                    }
-                }
-            }
-        }
         scroll(col)
             .style(style::scroll)
-            .width(300)
-            .height(Length::Fill)
+            .width(width.map_or(Length::Fill, Length::Fixed))
+            .height(height)
             .into()
     }
 
-    fn theme_editor(&self) -> El<'_> {
+    fn theme_editor(&self, compact: bool) -> El<'_> {
         let th = &self.th;
         let msg = |m: Msg| Message::Themes(m);
         let field =
@@ -994,7 +1009,11 @@ impl App {
             .font(t::MONO)
             .size(t::CONTROL_TEXT)
             .padding(t::S3)
-            .height(Length::Fill)
+            .height(if compact {
+                Length::Fixed(240.0)
+            } else {
+                Length::FillPortion(5)
+            })
             .style(|_, st| {
                 let ring = match st {
                     text_editor::Status::Focused { .. } => t::accent(),
@@ -1165,33 +1184,176 @@ impl App {
                 t::text_secondary()
             }));
         }
-        col = col.push(self.theme_report()).push(acts);
+        col = col.push(self.report_panel(compact)).push(acts);
         col.width(Length::Fill).height(Length::Fill).into()
     }
 
-    /// The engine's reading of a server's branding (imports inlined, no Jellyfin translation: the classes are native in layout mode): first the summary, then what it skipped. `None` without the engine.
+    /// What the engine made of one server's start-page stylesheets and branding (imports inlined, no Jellyfin translation: the classes are native in layout mode), grouped for the Server branding tab.
     #[cfg(feature = "theme-engine")]
-    fn branding_engine_lines(&self, css: &str) -> Option<Vec<String>> {
+    fn brand_report(&self, id: SourceId) -> Option<BrandReport> {
         if !self.eng.enabled {
             return None;
         }
-        let text = self
-            .themes
-            .resolved_for(css)
-            .map_or(css, |r| r.css.as_str());
-        let sheet = nocturne_style::Sheet::parse(text);
-        let n = sheet.rules.len();
-        let skipped = sheet.report.failures();
-        let mut v = vec![format!(
-            "{n} rules read by the theme engine, {skipped} skipped"
-        )];
-        v.extend(sheet.report.lines());
-        Some(v)
+        let read = |css: &str| {
+            let text = self
+                .themes
+                .resolved_for(css)
+                .map_or(css, |r| r.css.as_str());
+            nocturne_style::Sheet::parse(text)
+        };
+        let mut rep = nocturne_style::Report::default();
+        let mut lines = vec![];
+        let mut groups = vec![];
+        if let Some(p) = self.server_ui.get(&id).and_then(|u| u.plugins.clone()) {
+            if p.loaded > 0 || !p.skipped.is_empty() {
+                let sheet = read(&p.css);
+                lines.push(format!(
+                    "{} stylesheets from the server's web client (plugins), {} rules read by the engine, {} skipped",
+                    p.loaded,
+                    sheet.rules.len(),
+                    p.skipped.len()
+                ));
+                rep.merge(&sheet.report);
+            }
+            if p.scripts > 0 {
+                lines.push(format!("{} scripts not run (desktop app)", p.scripts));
+            }
+            if !p.skipped.is_empty() {
+                groups.push(("stylesheets skipped".to_string(), p.skipped.clone()));
+            }
+        }
+        if let Some(css) = self.themes.branding_of(id) {
+            let sheet = read(css);
+            lines.push(format!(
+                "Branding CSS: {} rules read by the engine, {} skipped",
+                sheet.rules.len(),
+                sheet.report.failures()
+            ));
+            rep.merge(&sheet.report);
+        }
+        for (k, g) in &rep.groups {
+            let mut items = g.examples.clone();
+            if g.count > items.len() {
+                items.push(format!("and {} more", g.count - items.len()));
+            }
+            groups.push((format!("{} {}", g.count, k.label()), items));
+        }
+        (!lines.is_empty() || !groups.is_empty()).then_some(BrandReport { lines, groups })
     }
 
     #[cfg(not(feature = "theme-engine"))]
-    fn branding_engine_lines(&self, _: &str) -> Option<Vec<String>> {
-        None
+    fn brand_report(&self, id: SourceId) -> Option<BrandReport> {
+        let css = self.themes.branding_of(id)?;
+        let p = self.themes.parse_text(css).ok()?;
+        Some(BrandReport {
+            lines: vec![format!(
+                "{} applied, {} not understood",
+                p.theme.count() + p.layout.count(),
+                p.warnings.len() + p.dropped_warnings
+            )],
+            groups: vec![(
+                "not understood".into(),
+                p.warnings.iter().take(5).map(|w| w.to_string()).collect(),
+            )],
+        })
+    }
+
+    /// The report area: tabs "This theme" and "Server branding" over one scrollable panel.
+    fn report_panel(&self, compact: bool) -> El<'_> {
+        let on = self.th.brand_tab;
+        let tab = |label: &str, brand: bool| {
+            action_button(
+                label,
+                on == brand,
+                false,
+                false,
+                false,
+                Message::Themes(Msg::ReportTab(brand)),
+            )
+        };
+        let body: El<'_> = if on {
+            self.branding_tab()
+        } else {
+            self.theme_report()
+        };
+        column![
+            row![tab("This theme", false), tab("Server branding", true)].spacing(t::S2),
+            container(
+                scroll(container(body).padding(Padding {
+                    right: t::S3,
+                    ..Padding::ZERO
+                }))
+                .style(style::scroll)
+                .width(Length::Fill)
+                .height(Length::Fill)
+            )
+            .style(style::panel)
+            .padding(t::S3)
+            .width(Length::Fill)
+            .height(Length::Fill),
+        ]
+        .spacing(t::S2)
+        .height(if compact {
+            Length::Fixed(260.0)
+        } else {
+            Length::FillPortion(4)
+        })
+        .into()
+    }
+
+    /// Per server: what its start page and administrator added to its look, grouped by kind with one item per line.
+    fn branding_tab(&self) -> El<'_> {
+        let mut col = column![
+            text("The look a server's own web client and administrator set, used while that server's UI is chosen in Settings > Sources. A theme you pick for the server wins over it.")
+                .size(t::CAPTION)
+                .color(t::text_tertiary())
+        ]
+        .spacing(t::S2);
+        let mut any = false;
+        for s in &self.catalog.slots {
+            let Some(r) = self.brand_report(s.id) else {
+                continue;
+            };
+            any = true;
+            col = col.push(rule()).push(
+                text(s.profile.label.clone())
+                    .size(t::CONTROL_TEXT)
+                    .font(t::semibold()),
+            );
+            for l in r.lines {
+                col = col.push(text(l).size(t::CAPTION).color(t::text()));
+            }
+            for (h, items) in r.groups {
+                col = col.push(
+                    text(tracked(&h))
+                        .shaping(text::Shaping::Advanced)
+                        .size(t::CAPTION)
+                        .font(t::bold())
+                        .color(t::text_secondary()),
+                );
+                for i in items {
+                    col = col.push(
+                        row![
+                            text("\u{b7}").size(t::CAPTION).color(t::text_tertiary()),
+                            text(i)
+                                .font(t::MONO)
+                                .size(t::CAPTION)
+                                .color(t::text_secondary())
+                                .width(Length::Fill),
+                        ]
+                        .spacing(t::S2),
+                    );
+                }
+            }
+        }
+        if !any {
+            col = col.push(
+                text("No server has branding or plugin stylesheets to report.")
+                    .size(t::CAPTION)
+                    .color(t::text_secondary()),
+            );
+        }
+        col.width(Length::Fill).into()
     }
 
     /// What the engine skipped in the text being edited, when the engine reads it (the marker or its vocabulary) and is running.
@@ -1225,7 +1387,10 @@ impl App {
             return if self.th.fetching {
                 fetching
             } else {
-                space().into()
+                text("Paste, type or import a theme to see what the app understood.")
+                    .size(t::CAPTION)
+                    .color(t::text_tertiary())
+                    .into()
             };
         };
         let mut lines: Vec<El<'_>> = vec![];
@@ -1321,16 +1486,14 @@ impl App {
                 .into(),
             );
         }
-        container(scroll(column(lines).spacing(2).padding(Padding {
-            right: t::S3,
-            ..Padding::ZERO
-        })))
-        .style(style::panel)
-        .padding(t::S2)
-        .height(150)
-        .width(Length::Fill)
-        .into()
+        column(lines).spacing(2).into()
     }
+}
+
+/// One server's branding and plugin-stylesheet report: summary lines, then groups of (heading, items).
+struct BrandReport {
+    lines: Vec<String>,
+    groups: Vec<(String, Vec<String>)>,
 }
 
 /// Read a stylesheet from disk, UTF-8 only, at most [`MAX_BYTES`].
