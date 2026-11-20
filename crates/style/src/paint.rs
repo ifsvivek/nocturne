@@ -869,6 +869,17 @@ mod pic_tests {
     }
 
     #[test]
+    fn counts_layers_over_the_picture_and_skips_radial_ones() {
+        assert_eq!(
+            pic_above("linear-gradient(red, blue), url(x.png) no-repeat"),
+            1
+        );
+        assert_eq!(pic_above("url(x.png), linear-gradient(red, blue)"), 0);
+        let l = layers("radial-gradient(circle at 50% 42%, red, blue), repeating-linear-gradient(135deg, red 0, blue 4px), #101010").unwrap();
+        assert_eq!(l.len(), 1);
+    }
+
+    #[test]
     fn places_and_tiles() {
         let mut p = pic("url(x.png) 100% 0 / 50px auto no-repeat").unwrap();
         // 100 x 50 image shown 50 wide: 25 high, flush right and top.

@@ -5,6 +5,8 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 ## [Unreleased]
 
 ### Added
+- Jellyfin layout mode draws the pictures a stylesheet names with `url()`: background images with `background-size`, `-position` and `-repeat` (gradients written above a picture paint over it), `content: url()` on the header logo, themed tile pictures and inline SVG; the server's own address may be http or on the LAN, any other host needs https, a public address and remote styles on. Unsupported gradients (radial, conic, repeating) are skipped instead of dropping the whole declaration.
+- Jellyfin layout Home: the Collections and Playlists libraries are My Media tiles in the server's order, and tiles without a picture get the web client's colour class, icon and a theme's own tile picture.
 - Jellyfin layout mode (preview, `theme-engine` feature): when a source uses a server's UI and the server has its web client, Home, the header, the library and the item page are built with jellyfin-web's own page structure and styled with the server's own stylesheets (fetched from the server, cached, never bundled), then its branding CSS and your theme, so Jellyfin web themes look as they do in the browser. The engine learned `rem` from the root font, floats, absolute boxes against positioned ancestors, `inherit` and more.
 - Theme Studio (Themes > Open Studio): pick any element of the live Home, header, library and search screens and change it with colour, size, spacing, shape, shadow, accent bar, typography, layout and hover controls ("this element only" or "all like this"), with undo and redo, a CSS tab that stays in sync both ways, starters, save, apply globally or per server, and export as `.css`.
 - Update now for pacman, apt and dnf installs: when PackageKit is available the update banner can refresh and update only the `nocturne` package through the desktop's normal authentication prompt, then offer Restart; the command stays visible if it is refused or fails.
@@ -24,6 +26,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Debug builds can write what the active theme did (tokens applied, not applied by kind, imports fetched, fonts loaded) as JSON with `NOCTURNE_THEME_REPORT=<file>` and the `theme-report@<ms>` key hook; `scripts/theme-conformance.sh` fills its applied / not applied column from it.
 
 ### Fixed
+- Engine: boxes that only touch (fractional layout) were treated as overlapping and one of them was drawn beneath the page, so a card could vanish; the harness loads Catppuccin with its flavour palette.
 - The built-in Marquee and Classic starters no longer make the theme engine warn about `display: carousel` and `content: server`; they are accepted as the layout layer's words.
 - `scripts/headless-parity.sh` captured the thumb view at a random moment (the `v` key raced the page load); the debug hook `view-thumb` waits for the library page and sets the view explicitly, and `PARITY_ONLY=<text>` runs a subset.
 - Home rows now ask the server for each item's overview and genres, so the hero shows the description; long wrapped text in the theme engine is no longer dropped when the renderer breaks one line more than the measure did.
