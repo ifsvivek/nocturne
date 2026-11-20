@@ -26,3 +26,5 @@ secrets/
 
 # generated pacman repository (scripts/publish-repo.sh); binaries never in git
 /website/static/repo/
+__pycache__/
+*.pyc

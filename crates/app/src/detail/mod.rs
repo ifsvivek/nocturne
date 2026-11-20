@@ -45,6 +45,8 @@ mod detail_tree;
 #[cfg(feature = "theme-engine")]
 mod engine;
 mod geom;
+#[cfg(feature = "theme-engine")]
+mod jf_detail;
 pub mod model;
 mod overlays;
 mod photo;
@@ -275,7 +277,15 @@ pub struct Detail {
     /// The Theme Studio's marks and pick state for the scene (set by the app while the Studio is open).
     #[cfg(feature = "theme-engine")]
     pub studio: Option<crate::widget::styled::Probe>,
+    /// Jellyfin layout mode: the server's base sheet and the branding and theme text over it (`None`: NOCTURNE's own page).
+    #[cfg(feature = "theme-engine")]
+    jf: Option<(std::sync::Arc<String>, String)>,
 }
+
+/// Jellyfin layout mode is on for the page in view: set by the app before a detail page opens, so that the poster the layout shows is requested with the first batch.
+#[cfg(feature = "theme-engine")]
+pub(crate) static JF_MODE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 pub fn pic_key(m: &Media, art: Art, w: u32) -> String {
     let extra = if art == Art::Chapter {
@@ -336,6 +346,7 @@ impl Detail {
             eng: engine::enabled().then(|| Box::new(engine::Host::new())),
             #[cfg(feature = "theme-engine")]
             studio: None,
+            jf: None,
         };
         let t = d.load();
         #[cfg(feature = "theme-engine")]
@@ -680,7 +691,12 @@ impl Detail {
         if m.logo.is_some() {
             wants.push((m.clone(), Art::Logo, 800));
         }
-        if geom::about_poster(&m) {
+        // Jellyfin layout mode shows the poster of every item beside the title.
+        #[cfg(feature = "theme-engine")]
+        let jf = JF_MODE.load(Ordering::Relaxed) || self.jf.is_some();
+        #[cfg(not(feature = "theme-engine"))]
+        let jf = false;
+        if geom::about_poster(&m) || jf {
             wants.push((m.clone(), Art::Poster, 480));
         }
         if let Some(p) = &self.photo {

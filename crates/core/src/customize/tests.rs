@@ -344,7 +344,7 @@ fn oversize_input_is_rejected() {
     );
     assert!(parse(&"/".repeat(MAX_BYTES)).is_ok());
     assert_eq!(parse_bytes(&[0xff, 0xfe]), Err(Error::NotUtf8));
-    assert!(Error::TooLarge { bytes: 9 }.to_string().contains("262144"));
+    assert!(Error::TooLarge { bytes: 9 }.to_string().contains("1048576"));
 }
 
 #[test]

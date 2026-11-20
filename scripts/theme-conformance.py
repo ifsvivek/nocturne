@@ -262,6 +262,37 @@ def cmd_score(a):
     print(json.dumps(res))
 
 
+def cmd_sheet(a):
+    """sheet.png of one theme: a row per screen, the original left and NOCTURNE right (the four pairs stacked)."""
+    from PIL import Image
+    pairs = [Image.open(f"{a.dir}/pair-{s}.png") for s in SCREENS if os.path.exists(f"{a.dir}/pair-{s}.png")]
+    if not pairs:
+        return
+    sheet = Image.new("RGB", (pairs[0].width, sum(p.height for p in pairs)), (24, 24, 24))
+    y = 0
+    for p in pairs:
+        sheet.paste(p, (0, y))
+        y += p.height
+    sheet.save(f"{a.dir}/sheet.png")
+
+
+def cmd_all(a):
+    """all.png: every theme's sheet scaled down, side by side in a grid, with the theme name."""
+    from PIL import Image, ImageDraw
+    sheets = sorted(f for f in (os.path.join(a.out, d, "sheet.png") for d in os.listdir(a.out)) if os.path.exists(f))
+    if not sheets:
+        return
+    cols, tw = 4, 960
+    th = round(tw * Image.open(sheets[0]).height / Image.open(sheets[0]).width)
+    rows = -(-len(sheets) // cols)
+    out = Image.new("RGB", (cols * tw, rows * (th + 16)), (24, 24, 24))
+    for i, f in enumerate(sheets):
+        x, y = (i % cols) * tw, (i // cols) * (th + 16)
+        ImageDraw.Draw(out).text((x + 4, y + 2), os.path.basename(os.path.dirname(f)), fill=(230, 230, 230))
+        out.paste(Image.open(f).convert("RGB").resize((tw, th), Image.LANCZOS), (x, y + 16))
+    out.save(f"{a.out}/all.png")
+
+
 def cmd_report(a):
     """Rewrite the generated block of the doc: table from $OUT/*/result.json; per-theme differences from $OUT/notes.json if present."""
     themes = {t["name"]: t for t in json.load(open(f"{a.out}/themes.json"))}
@@ -308,6 +339,8 @@ def main():
         s.add_argument("--" + k, required=True)
     s.add_argument("--chrome-port", type=int, required=True); s.set_defaults(f=cmd_web)
     s = sp.add_parser("score"); s.add_argument("dir"); s.set_defaults(f=cmd_score)
+    s = sp.add_parser("sheet"); s.add_argument("dir"); s.set_defaults(f=cmd_sheet)
+    s = sp.add_parser("all"); s.add_argument("out"); s.set_defaults(f=cmd_all)
     s = sp.add_parser("report")
     for k in ("out", "doc", "commit", "jf"):
         s.add_argument("--" + k, required=True)

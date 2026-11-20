@@ -54,8 +54,13 @@ pub struct Computed {
     pub z: i32,
     /// `position: fixed`: laid out against the window, painted at a fixed place on the screen while the page scrolls.
     pub fixed: bool,
+    /// `position` other than `static`: the box absolute descendants are placed against.
+    pub positioned: bool,
     /// Background layers, topmost first.
     pub bg: Rc<[Fill]>,
+    /// The parts `bg` is made of, so that `background-color` and `background-image` set theirs without resetting the other: the image and gradient layers, and the colour layer.
+    pub bg_img: Rc<[Fill]>,
+    pub bg_col: Option<Fill>,
     /// Border colours: top, right, bottom, left.
     pub border_color: [Color; 4],
     /// Corner radii: top-left, top-right, bottom-right, bottom-left.
@@ -107,7 +112,10 @@ impl Computed {
             order: 0,
             z: 0,
             fixed: false,
+            positioned: false,
             bg: Rc::from(Vec::new()),
+            bg_img: Rc::from(Vec::new()),
+            bg_col: None,
             border_color: [Color::rgba(255, 255, 255, 40); 4],
             radius: [0.0; 4],
             shadows: Rc::from(Vec::new()),
@@ -170,6 +178,8 @@ impl Computed {
 pub struct Ctx {
     pub vw: f32,
     pub vh: f32,
+    /// The root element's font size: what `rem` means (16 until the root's own style is known).
+    pub rem: f32,
 }
 
 /// A length as written; resolved against the element's font size and the window when applied.
@@ -179,6 +189,8 @@ pub enum Len {
     Px(f32),
     Pct(f32),
     Em(f32),
+    /// `rem`: a multiple of the root element's font size.
+    Rem(f32),
     Vw(f32),
     Vh(f32),
     Vmin(f32),
@@ -201,6 +213,7 @@ impl Len {
         Some(clean(match self {
             Len::Px(p) => *p,
             Len::Em(e) => e * font,
+            Len::Rem(r) => r * cx.rem,
             Len::Vw(v) => v * cx.vw / 100.0,
             Len::Vh(v) => v * cx.vh / 100.0,
             Len::Vmin(v) => v * cx.vw.min(cx.vh) / 100.0,
@@ -247,7 +260,7 @@ impl Len {
 
     pub fn is_viewport(&self) -> bool {
         match self {
-            Len::Vw(_) | Len::Vh(_) | Len::Vmin(_) | Len::Vmax(_) => true,
+            Len::Vw(_) | Len::Vh(_) | Len::Vmin(_) | Len::Vmax(_) | Len::Rem(_) => true,
             Len::Expr(e, _) => e.uses_viewport(),
             _ => false,
         }
@@ -260,7 +273,13 @@ type Sides = [Option<Len>; 4];
 #[derive(Clone, Debug, PartialEq)]
 pub enum Op {
     Display(Display),
-    Position(Position, bool),
+    /// The position, `fixed`, and whether it is anything but `static`.
+    Position(Position, bool, bool),
+    /// `inherit` of one of the inherited properties: the parent's value (named by the property).
+    Inherit(&'static str),
+    /// `float` and `clear`: Taffy's block layout floats boxes against the line boxes of their siblings (there is no inline text to wrap, so the boxes after a float flow beside it only as blocks do).
+    Float(taffy::style::Float),
+    Clear(taffy::style::Clear),
     Inset(Sides),
     Margin(Sides),
     Padding(Sides),
@@ -297,6 +316,9 @@ pub enum Op {
     Order(i32),
     Z(i32),
     Bg(Rc<[Fill]>),
+    /// `background-color` alone / `background-image` alone: the other part stays.
+    BgColor(Option<Fill>),
+    BgImage(Rc<[Fill]>),
     Color(Color),
     Opacity(f32),
     Shadows(Rc<[Shadow]>),
@@ -398,7 +420,7 @@ fn units(v: &str, cx: Ctx, font: f32) -> String {
                 "vw" => Some(k * cx.vw / 100.0),
                 "vmin" => Some(k * cx.vw.min(cx.vh) / 100.0),
                 "vmax" => Some(k * cx.vw.max(cx.vh) / 100.0),
-                "rem" => Some(k * 16.0),
+                "rem" => Some(k * cx.rem),
                 "em" => Some(k * font),
                 "pt" => Some(k * 4.0 / 3.0),
                 _ => None,
@@ -433,6 +455,7 @@ fn context_dependent(v: &str) -> bool {
         Ctx {
             vw: 100.0,
             vh: 100.0,
+            rem: 10.0,
         },
         10.0,
     );
@@ -441,6 +464,7 @@ fn context_dependent(v: &str) -> bool {
         Ctx {
             vw: 700.0,
             vh: 300.0,
+            rem: 30.0,
         },
         30.0,
     );
@@ -543,7 +567,7 @@ pub fn len(v: &str) -> Result<Len, Issue> {
         "" if k == 0.0 => Len::Px(0.0),
         "%" => Len::Pct(k),
         "em" => Len::Em(k),
-        "rem" => Len::Px(k * 16.0),
+        "rem" => Len::Rem(k),
         "ch" => Len::Em(k * 0.5),
         "pt" => Len::Px(k * 4.0 / 3.0),
         "vw" => Len::Vw(k),
@@ -702,6 +726,7 @@ fn radius(v: &str) -> Result<[Option<f32>; 4], Issue> {
             None => match len(t)? {
                 Len::Px(px) => Ok(px.max(0.0)),
                 Len::Em(e) => Ok((e * 16.0).max(0.0)),
+                Len::Rem(r) => Ok((r * 16.0).max(0.0)),
                 _ => bad(format!("`{t}` is not a radius")),
             },
         })
@@ -859,6 +884,14 @@ fn tracks(v: &str) -> Result<Vec<GridTemplateComponent<String>>, Issue> {
 
 /// Properties that are valid and mean nothing in a desktop app.
 const NO_EFFECT: &[&str] = &[
+    "clip",
+    "border-fit",
+    "-webkit-border-fit",
+    "-ms-overflow-style",
+    "-ms-user-select",
+    "-moz-user-select",
+    "-webkit-user-select",
+    "-webkit-text-size-adjust",
     "-webkit-tap-highlight-color",
     "color-scheme",
     "touch-action",
@@ -956,6 +989,19 @@ const WEBKIT_ALIASES: &[&str] = &[
     "box-sizing",
     "text-decoration",
     "order",
+    "flex-flow",
+    "align-content",
+    "animation",
+    "animation-name",
+    "animation-duration",
+    "animation-delay",
+    "animation-iteration-count",
+    "animation-timing-function",
+    "animation-fill-mode",
+    "user-select",
+    "appearance",
+    "text-size-adjust",
+    "overflow-style",
 ];
 
 /// Valid CSS that the engine plans to draw but does not yet.
@@ -983,8 +1029,6 @@ const PLANNED: &[&str] = &[
     "grid-template",
     "text-wrap",
     "vertical-align",
-    "float",
-    "clear",
     "columns",
     "column-count",
 ];
@@ -1010,11 +1054,39 @@ fn logical_sides(name: &str) -> Option<(&str, [usize; 2], bool)> {
 /// Compile one declaration (the value must not contain `var()`).
 pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
     // Vendor-prefixed spellings of properties that are standard here.
-    let name = match name.strip_prefix("-webkit-") {
+    let name = match ["-webkit-", "-moz-", "-ms-"]
+        .iter()
+        .find_map(|pre| name.strip_prefix(pre))
+    {
         Some(n) if WEBKIT_ALIASES.contains(&n) => n,
         _ => name,
     };
     let v = value.trim();
+    // CSS-wide keywords: `inherit` (and `unset`, which is `inherit` for the inherited properties) takes the parent's value; on a property that is not inherited and not tracked here it is silently dropped.
+    if matches!(v, "inherit" | "unset") {
+        let kind: Option<&'static str> = match name {
+            "color" => Some("color"),
+            "font-size" => Some("font-size"),
+            "font-weight" => Some("font-weight"),
+            "font-style" => Some("font-style"),
+            "font-family" => Some("font-family"),
+            "line-height" => Some("line-height"),
+            "letter-spacing" => Some("letter-spacing"),
+            "text-align" => Some("text-align"),
+            "text-transform" => Some("text-transform"),
+            _ => None,
+        };
+        return Ok(match kind {
+            Some(k) => Outcome::Ops(vec![Op::Inherit(k)]),
+            None => Outcome::NoEffect,
+        });
+    }
+    // Prefixed values of the flex displays.
+    let v = match v {
+        "-webkit-flex" | "-ms-flexbox" => "flex",
+        "-webkit-inline-flex" | "-ms-inline-flexbox" => "inline-flex",
+        _ => v,
+    };
     if let Some((base, [a, b], single)) = logical_sides(name) {
         let auto = base != "padding";
         let l = if single {
@@ -1051,12 +1123,15 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
             "inline-grid" => Display::Grid,
             _ => p(v)?,
         })),
+        "float" => one(Op::Float(p(v)?)),
+        "clear" => one(Op::Clear(p(v)?)),
         "position" => one(Op::Position(
             match v {
                 "fixed" | "sticky" => Position::Absolute,
                 _ => p(v)?,
             },
             v == "fixed",
+            v != "static",
         )),
         "top" => one(Op::Inset(one_side(v, true, 0)?)),
         "right" => one(Op::Inset(one_side(v, true, 1)?)),
@@ -1242,6 +1317,7 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
                     Ctx {
                         vw: 1000.0,
                         vh: 1000.0,
+                        rem: 16.0,
                     },
                     16.0,
                 ))?;
@@ -1249,18 +1325,44 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
             } else {
                 one(Op::Tracks(
                     cols,
-                    tracks(&units(v, Ctx { vw: 0.0, vh: 0.0 }, 16.0))?,
+                    tracks(&units(
+                        v,
+                        Ctx {
+                            vw: 0.0,
+                            vh: 0.0,
+                            rem: 16.0,
+                        },
+                        16.0,
+                    ))?,
                 ))
             }
         }
         "grid-template-areas" => one(Op::Areas(areas(v)?)),
         "grid-auto-columns" => one(Op::AutoTracks(
             true,
-            p::<GridAutoTracks>(&units(v, Ctx { vw: 0.0, vh: 0.0 }, 16.0))?.0,
+            p::<GridAutoTracks>(&units(
+                v,
+                Ctx {
+                    vw: 0.0,
+                    vh: 0.0,
+                    rem: 16.0,
+                },
+                16.0,
+            ))?
+            .0,
         )),
         "grid-auto-rows" => one(Op::AutoTracks(
             false,
-            p::<GridAutoTracks>(&units(v, Ctx { vw: 0.0, vh: 0.0 }, 16.0))?.0,
+            p::<GridAutoTracks>(&units(
+                v,
+                Ctx {
+                    vw: 0.0,
+                    vh: 0.0,
+                    rem: 16.0,
+                },
+                16.0,
+            ))?
+            .0,
         )),
         "grid-auto-flow" => one(Op::AutoFlow(p(v)?)),
         "grid-column" | "grid-row" => {
@@ -1317,9 +1419,14 @@ pub fn compile(name: &str, value: &str) -> Result<Outcome, Issue> {
         } else {
             p::<i32>(v)?.clamp(-1000, 1000)
         })),
-        "background" | "background-color" | "background-image" => {
-            one(Op::Bg(paint::layers(v).or_else(bad)?.into()))
-        }
+        "background" => one(Op::Bg(paint::layers(v).or_else(bad)?.into())),
+        "background-color" => one(Op::BgColor(
+            paint::layers(v)
+                .or_else(bad)?
+                .into_iter()
+                .find(|f| matches!(f, Fill::Solid(_))),
+        )),
+        "background-image" => one(Op::BgImage(paint::layers(v).or_else(bad)?.into())),
         "color" => one(Op::Color(color(v)?)),
         "opacity" => one(Op::Opacity(
             match v.strip_suffix('%') {
@@ -1747,14 +1854,29 @@ impl Op {
         }
     }
 
-    pub fn apply(&self, c: &mut Computed, cx: Ctx) {
+    pub fn apply(&self, c: &mut Computed, cx: Ctx, base: &Computed) {
         let font = c.font_size;
         let st = &mut c.layout;
         match self {
             Op::Display(d) => st.display = *d,
-            Op::Position(pos, fixed) => {
+            Op::Float(f) => st.float = *f,
+            Op::Clear(k) => st.clear = *k,
+            Op::Inherit(k) => match *k {
+                "color" => c.color = base.color,
+                "font-size" => c.font_size = base.font_size,
+                "font-weight" => c.weight = base.weight,
+                "font-style" => c.italic = base.italic,
+                "font-family" => c.family = base.family.clone(),
+                "line-height" => c.line_height = base.line_height,
+                "letter-spacing" => c.letter_spacing = base.letter_spacing,
+                "text-align" => c.align = base.align,
+                "text-transform" => c.text_transform = base.text_transform,
+                _ => {}
+            },
+            Op::Position(pos, fixed, positioned) => {
                 st.position = *pos;
                 c.fixed = *fixed;
+                c.positioned = *positioned;
             }
             Op::Inset(s) => set_sides(&mut st.inset, s, font, cx),
             Op::Margin(s) => set_sides(&mut st.margin, s, font, cx),
@@ -1877,7 +1999,24 @@ impl Op {
             }
             Op::Order(o) => c.order = *o,
             Op::Z(z) => c.z = *z,
-            Op::Bg(b) => c.bg = b.clone(),
+            Op::Bg(b) => {
+                // The shorthand resets everything: a trailing solid layer is the colour.
+                let mut v: Vec<Fill> = b.to_vec();
+                c.bg_col = match v.last() {
+                    Some(Fill::Solid(_)) => v.pop(),
+                    _ => None,
+                };
+                c.bg_img = v.into();
+                c.bg = b.clone();
+            }
+            Op::BgColor(col) => {
+                c.bg_col = col.clone();
+                c.bg = c.bg_img.iter().cloned().chain(c.bg_col.clone()).collect();
+            }
+            Op::BgImage(img) => {
+                c.bg_img = img.clone();
+                c.bg = c.bg_img.iter().cloned().chain(c.bg_col.clone()).collect();
+            }
             Op::Color(col) => c.color = *col,
             Op::Opacity(o) => c.opacity = *o,
             Op::Shadows(s) => c.shadows = s.clone(),

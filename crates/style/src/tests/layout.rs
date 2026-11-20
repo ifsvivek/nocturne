@@ -471,3 +471,103 @@ fn font_shorthand() {
     let s = scene(&d, ".a { font: 500 16px Inter }", (800.0, 600.0));
     assert_eq!((s.style(a).font_size, s.style(a).weight), (16.0, 500));
 }
+
+#[test]
+fn html_and_body_at_a_hundred_percent_fill_the_window() {
+    // jellyfin-web: `html, body { height: 100%; margin: 0 }`, a page that is `position: absolute` inside, `rem` from the root's `font-size: 93%`.
+    let mut d = Doc::new("html");
+    let body = d.add(0, "body");
+    let main = d.add(body, "div.m");
+    let s = scene(
+        &d,
+        "html, body { height: 100%; margin: 0; padding: 0 } html { font-size: 93% } .m { height: 10rem }",
+        (800.0, 600.0),
+    );
+    assert_eq!(r(&s, body)[3], 600.0);
+    assert_eq!(r(&s, main)[3], 160.0 * 0.93);
+}
+
+#[test]
+fn an_absolute_box_is_placed_against_its_nearest_positioned_ancestor() {
+    // jellyfin-web: `.mainAnimatedPage { position: absolute; top/right/bottom/left: 0 }` under static wrappers fills the window.
+    let mut d = Doc::new("html");
+    let wrap = d.add(0, "div.w");
+    let page = d.add(wrap, "div.p");
+    let inner = d.add(page, "div.i");
+    let s = scene(
+        &d,
+        ".w { height: 0; padding-top: 50px } .p { position: absolute; top: 0; right: 0; bottom: 0; left: 0 } .i { position: absolute; top: 10px; left: 10px; width: 5px; height: 5px }",
+        (800.0, 600.0),
+    );
+    assert_eq!(r(&s, page), [0.0, 0.0, 800.0, 600.0]);
+    assert_eq!(
+        r(&s, inner),
+        [10.0, 10.0, 5.0, 5.0],
+        "the page is positioned: its child is placed against it"
+    );
+}
+
+#[test]
+fn jellyfin_web_page_padding_rules_apply() {
+    // `!important` padding in a media block, a `:not()` on the same element, `em` of the page's own font size, an absolute page with `contain` and vendor-prefixed flex.
+    let mut d = Doc::new("html");
+    let page = d.add(0, "div.page.libraryPage");
+    let inner = d.add(page, "div.in");
+    let s = scene(
+        &d,
+        ".page { bottom: 0; contain: layout style size; left: 0; position: absolute; right: 0; top: 0 } .libraryPage { padding-top: 7em !important } @media (min-width:100em){.libraryPage:not(.noSecondaryNavPage){padding-top:4.6em!important}} .in { height: 10px } html { font-size: 93% } .page { display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column }",
+        (2000.0, 600.0),
+    );
+    assert_eq!(r(&s, inner)[1], 4.6 * 14.88);
+}
+
+/// Needs a jellyfin-web install: `JFWEB=/usr/share/jellyfin/web cargo test -p nocturne-style jf_real -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn jf_real_css_home_page() {
+    let dir = std::env::var("JFWEB").expect("JFWEB");
+    let mut css = String::new();
+    for e in std::fs::read_dir(&dir).unwrap() {
+        let p = e.unwrap().path();
+        let n = p.file_name().unwrap().to_string_lossy().to_string();
+        if n.starts_with("main.jellyfin.") && n.ends_with(".css") {
+            css += &std::fs::read_to_string(&p).unwrap();
+        }
+    }
+    css += &std::fs::read_to_string(format!("{dir}/themes/dark/theme.css")).unwrap();
+    let mut d = Doc::new("html");
+    d.attr(0, "dir", "ltr");
+    d.nodes[0].classes.push("layout-desktop".into());
+    let body = d.add(0, "body");
+    let main = d.add(body, "main");
+    let skin = d.add(main, "div.skinBody");
+    let page = d.add(skin, "div.page.mainAnimatedPage.homePage.libraryPage.allLibraryPage.pageWithAbsoluteTabs.withTabs");
+    let tab = d.add(page, "div.tabContent.pageTabContent.is-active");
+    let h = d.add(tab, "h2.sectionTitle.sectionTitle-cards.padded-left");
+    d.text(h, "x");
+    let s = scene(&d, &css, (1920.0, 1080.0));
+    for n in [body, main, skin, page, tab, h] {
+        eprintln!(
+            "{} {:?} pad {:?}",
+            s.doc.describe(n),
+            s.rects[n],
+            s.style(n).layout.padding
+        );
+    }
+    for l in s.warnings().lines() {
+        eprintln!("{l}");
+    }
+}
+
+#[test]
+fn a_var_with_a_fallback_after_a_plain_declaration_paints() {
+    let mut d = Doc::new("html");
+    let b = d.add(0, "body");
+    let s = scene(
+        &d,
+        "html { background-color: #101010; background-color: var(--jf-palette-background-default, #101010); background-image: none; background-image: var(--jf-palette-background-defaultImage, none) } body { background-color: transparent !important }",
+        (200.0, 100.0),
+    );
+    assert_eq!(s.style(0).bg.len(), 1, "the root's colour is painted");
+    let _ = b;
+}

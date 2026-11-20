@@ -31,7 +31,7 @@ pub struct DTree {
 }
 
 impl DTree {
-    fn new(kind: &str) -> Self {
+    pub(super) fn new(kind: &str) -> Self {
         let mut doc = Doc::new("page");
         doc.attr(0, "data-screen", "detail");
         doc.attr(
@@ -53,14 +53,26 @@ impl DTree {
         }
     }
 
-    fn cell(&mut self, n: Id, rc: (DRow, usize)) {
+    pub(super) fn cell(&mut self, n: Id, rc: (DRow, usize)) {
         self.cells.insert(n, rc);
         self.by_cell.insert(rc, n);
         self.doc.focusable(n);
     }
 
     /// An `<img>` node of `class` under `parent` for `h`, `None` when the picture is not usable.
-    fn pic(&mut self, parent: Id, class: &str, h: &Handle) -> Id {
+    pub(super) fn pic(&mut self, parent: Id, class: &str, h: &Handle) -> Id {
+        self.pic_inner(parent, class, h)
+    }
+
+    /// Register a decoded picture for a node of a card built elsewhere; returns its id in the widget's image table.
+    pub(super) fn reg(&mut self, h: &Handle) -> u32 {
+        let id = self.next_image;
+        self.next_image += 1;
+        self.images.insert(id, h.clone());
+        id
+    }
+
+    fn pic_inner(&mut self, parent: Id, class: &str, h: &Handle) -> Id {
         let id = self.next_image;
         self.next_image += 1;
         self.images.insert(id, h.clone());

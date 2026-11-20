@@ -12,7 +12,7 @@ fn deep(n: usize) -> Doc {
 
 #[test]
 fn oversized_stylesheet_is_refused_whole() {
-    let big = format!(".a {{ width: 1px }}{}", " ".repeat(300 * 1024));
+    let big = format!(".a {{ width: 1px }}{}", " ".repeat(1100 * 1024));
     let sheet = Sheet::parse(&big);
     assert_eq!(sheet.rule_count(), 0);
     assert_eq!(sheet.report.count(Kind::Limit), 1);
@@ -20,7 +20,7 @@ fn oversized_stylesheet_is_refused_whole() {
 
 #[test]
 fn too_many_rules_are_cut_off() {
-    let css: String = (0..6_000)
+    let css: String = (0..22_000)
         .map(|i| format!(".c{i} {{ width: 1px }}\n"))
         .collect();
     let sheet = Sheet::parse(&css);

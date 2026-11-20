@@ -34,6 +34,7 @@ pub fn icon<'a>(name: &str, size: f32, color: Color) -> svg::Svg<'a> {
         "music" => include_bytes!("../../assets/icons/music.svg"),
         "people" => include_bytes!("../../assets/icons/people.svg"),
         "queue" => include_bytes!("../../assets/icons/queue.svg"),
+        "search" => include_bytes!("../../assets/icons/search.svg"),
         _ => include_bytes!("../../assets/icons/stop.svg"),
     };
     svg(svg::Handle::from_memory(bytes))

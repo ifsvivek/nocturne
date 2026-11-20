@@ -11,4 +11,4 @@ rust-version.workspace = true
 [dependencies]
 nocturne-core = { path = "../core" }
 # No default features: no float layout, no calc, no flexbox balance. `parse` reads CSS values into Taffy styles (cssparser, MPL-2.0).
-taffy = { version = "0.15.1", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "block_layout", "content_size", "parse"] }
+taffy = { version = "0.15.1", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "block_layout", "float_layout", "content_size", "parse"] }

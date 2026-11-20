@@ -292,7 +292,7 @@ async fn cycles_depth_count_and_unbalanced() {
 
 #[tokio::test]
 async fn size_limits_content_type_and_odd_statements() {
-    let big = format!(".x {{ a: b }} /*{}*/", "x".repeat(MAX_BYTES));
+    let big = format!(".x {{ a: b }} /*{}*/", "x".repeat(256 * 1024));
     let part = format!(".y {{ a: b }} /*{}*/", "y".repeat(250_000));
     let s = serve(|_| {
         vec![
