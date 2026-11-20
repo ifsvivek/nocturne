@@ -36,6 +36,9 @@ const LIST_ROW_H: f32 = 64.0;
 const NAME_ROW_H: f32 = 56.0;
 /// Rows built beyond each edge of the viewport.
 const OVERSCAN: usize = 2;
+/// Items either side of the rows in view whose decoded pictures the engine's grid keeps.
+#[cfg(feature = "theme-engine")]
+const TRIM_KEEP: usize = 120;
 /// What sits above the grid panel (header, title, tabs, toolbar): the viewport guess before the
 /// first scroll event reports the real one.
 const CHROME_H: f32 = 330.0;
@@ -606,10 +609,14 @@ impl App {
         } else {
             m.w as u32
         };
+        #[cfg(feature = "theme-engine")]
+        let seen = range.clone();
         let wants: Vec<Want> = range
             .filter_map(|i| br.item(i))
             .map(|(m, _)| (m.clone(), art, draw_w))
             .collect();
+        #[cfg(feature = "theme-engine")]
+        self.eng_trim_pics(seen.start.saturating_sub(TRIM_KEEP)..seen.end + TRIM_KEEP);
         let mut tasks: Vec<Task<Message>> = pages
             .into_iter()
             .map(|pg| self.browse_page(pid, pg))

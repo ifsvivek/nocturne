@@ -29,6 +29,7 @@ use app::App;
 use iced::{Color, Size, window};
 
 fn main() -> std::process::ExitCode {
+    platform::tune_allocator();
     // winit would panic (backtrace and all) without a Wayland server: say it plainly instead.
     if let Some(msg) = platform::session_problem() {
         eprintln!("{msg}");

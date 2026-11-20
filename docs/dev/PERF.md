@@ -109,3 +109,33 @@ Method: debug build, headless session (`HS_NAME=idle`), the demo server in devel
 With the hero on, the only wake-ups are the slide changes (one per interval, 10 s by default) and the 380 ms crossfade they start. Playback keeps its own 200 ms player tick (a visible progress bar). A window that just received a message still ticks for 15 s, so measure after that.
 
 On a `fast-release` build (hero off, 30 s window after settling): Home and Library use 1 CPU tick (10 ms) of the whole process in 30 s, i.e. about 0.03 % of a core. The old always-on tick cannot be measured on that profile (`NOCTURNE_TICK_ALWAYS` is debug only); the 0.5.2 table above shows 46 to 52 % of a core idle on Home with the software renderer at 6 draws a second. `scripts/headless-parity.sh`: keys-2 and keys-5 differ by 0.3 % and 0.03 % of pixels with this change and also with `NOCTURNE_TICK_ALWAYS=1` (old behaviour), so they are not caused by it.
+
+## Memory with a 5,000-item library (QA 0.5.2 M3), 2026-11-20
+
+QA saw 920 to 950 MiB RSS while browsing a 5,012-item local library, against 325 MiB idle Home. Method: `fast-release`, headless sway at 1920x1080 (software GL, so GPU textures are process memory too), `RssAnon`/`RssFile`/`VmHWM` from `/proc/<pid>/status`, a local folder of 3,000 movies and 200 shows of 10 episodes (5,000 empty files named by the usual rules), scripted browsing (open the library, 120 page-downs, every tab and view, End/Home, twice). Scripts are throwaway, in `/tmp`.
+
+First, what the library itself costs (no artwork; the numbers are RSS after the run):
+
+| Build | Idle onboarding | After browsing | Peak |
+|---|---|---|---|
+| Engine on | 372 MiB | 398 MiB | 398 |
+| `NOCTURNE_ENGINE_UI=0` | 368 | 330 | 386 |
+| `--no-default-features` | 369 | 388 | 388 |
+| Engine on plus a throwaway server (dev token) | 376 | 473 | 473 |
+
+So 3,000 to 5,000 items without pictures cost about 25 MiB over idle, the engine about 12 MiB over the hand-written screens at the peak, and a server's pictures about 75 MiB. The `RssFile` part (about 160 MiB) is Mesa's software renderer and the libraries mapped in this session; on a GPU session it is mostly not there. None of this reproduces 600 MiB, which points at pictures: the QA library did not have artwork on the local items but the servers did, and the memory crept.
+
+With artwork (a `poster.jpg` of 1000x1500 beside each of the 3,000 movies) the same run before the fix:
+
+| | Idle onboarding | Library opened | After 120 page-downs | After the run | Peak |
+|---|---|---|---|---|---|
+| Before | 445 MiB | 566 | 589 | 692 | 692 |
+| Allocator tuned | 369 | 411 | 515 | 537 | 570 |
+| Allocator tuned and far pictures released | 369 | 409 | 444 | 424 | 457 |
+
+Causes, in order of size:
+
+1. glibc malloc. Pictures are decoded on worker threads (a 1000x1500 source is a 6 MiB RGBA buffer, freed after the shrink). glibc keeps one arena per thread and raises its mmap threshold to the largest block freed, so those buffers stay resident as free heap: about 150 MiB after opening one library, and the idle baseline carried 70 MiB (445 to 369) of the same from the renderer's startup. `platform::tune_allocator` sets one arena and fixed 1 MiB mmap and trim thresholds (`mallopt`, glibc only, before any thread starts; `MALLOC_ARENA_MAX` in the environment wins). Probed first with the environment variables: `MALLOC_ARENA_MAX=1` plus a 1 MB trim threshold gave 414 to 436 MiB after the run, `MALLOC_MMAP_THRESHOLD_=1048576` alone 463.
+2. The engine's library grid kept every card's decoded picture for as long as the page lived (the card, the scene's picture table and the in-memory cache all hold the handle), so scrolling a long library added about 0.2 MiB per card shown. `eng_trim_pics` (called from `browse_visible`) drops the pictures of cards more than 120 items from the rows in view; a card that comes back is fetched again from the disk cache like a new one (checked by scrolling away and back: the pictures return).
+
+Floor: with software GL the process is about 370 MiB at the onboarding screen (190 MiB anonymous), so "within 150 MiB of idle" holds for browsing a 5,000-item library with or without pictures: +25 MiB without pictures, +55 to +75 MiB with a screenful of pictures and the lookahead held. The idle Home figure of 325 MiB in this table's earlier columns was a different session (hardware GL); compare within a session only. Not measured: a real GPU session, the QA's two servers, and the stuck player (libmpv loaded, which QA saw add about 20 MiB over its last samples).
