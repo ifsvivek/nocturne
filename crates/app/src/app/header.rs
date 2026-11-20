@@ -311,7 +311,8 @@ impl App {
 
     /// Breadcrumbs for deep pages: Home > ... > current; every crumb but the last goes back to it.
     pub(super) fn crumbs(&self) -> Option<El<'_>> {
-        let n = self.stack.len();
+        let trail = trail(&self.stack);
+        let n = trail.len();
         if n < 3 {
             return None;
         }
@@ -328,8 +329,10 @@ impl App {
         } else {
             (0..n).collect()
         };
+        // `shown` indexes the trail; the stack index is what a click goes back to.
+        let shown: Vec<(usize, usize)> = shown.into_iter().map(|k| (k, trail[k])).collect();
         let mut r = row![].spacing(t::S2).align_y(Alignment::Center);
-        for (k, i) in shown.into_iter().enumerate() {
+        for (k, (ti, i)) in shown.into_iter().enumerate() {
             if k > 0 {
                 r = r.push(mono(if elided && k == 1 {
                     "\u{2026}  \u{203A}"
@@ -337,7 +340,7 @@ impl App {
                     "\u{203A}"
                 }));
             }
-            let last = i == n - 1;
+            let last = ti == n - 1;
             let label = text(title(&self.stack[i]))
                 .size(t::CAPTION)
                 .wrapping(text::Wrapping::None);
@@ -782,4 +785,26 @@ mod tests {
         assert_eq!(nav_more(300.0, 400.0, 1000.0), (true, true));
         assert_eq!(nav_more(600.0, 400.0, 1000.0), (true, false));
     }
+}
+
+/// The stack indices the breadcrumb shows: the logical path, not the raw history. A detail page opened from search or a card while another detail page was open has that page beneath it, but it is not its parent; only a show (or season) above its episode is.
+fn trail(stack: &[super::Page]) -> Vec<usize> {
+    let parent_of = |a: &nocturne_core::source::Media, b: &nocturne_core::source::Media| {
+        b.series_id.as_deref() == Some(a.id.as_str())
+            || (a.kind == nocturne_core::source::Kind::Season
+                && a.series_id.is_some()
+                && a.series_id == b.series_id)
+    };
+    (0..stack.len())
+        .filter(|&i| {
+            let p = &stack[i];
+            if p.view != View::Detail || i + 1 == stack.len() {
+                return true;
+            }
+            match (&p.media, stack[i + 1].media.as_ref()) {
+                (Some(a), Some(b)) if stack[i + 1].view == View::Detail => parent_of(a, b),
+                _ => true,
+            }
+        })
+        .collect()
 }
