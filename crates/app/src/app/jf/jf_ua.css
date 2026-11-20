@@ -67,6 +67,7 @@ main.MuiBox-root { display: block; position: relative; flex: 1 1 auto; }
 .MuiToggleButtonGroup-grouped.Mui-selected { background-color: rgba(255,255,255,0.16); }
 
 .jfContain { object-fit: contain !important; }
+.detailLogo > .jfLogo { display: block; width: 100%; height: 100%; object-fit: contain; }
 .jf-comma { margin-right: 0.25em; }
 .detailsGroupItem > .focuscontainer-x { display: flex; flex-wrap: wrap; }
 .detailsGroupItem > .focuscontainer-x > span { margin-right: 0.3em; }

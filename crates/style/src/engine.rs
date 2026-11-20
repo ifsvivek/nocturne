@@ -16,8 +16,8 @@ use std::time::Duration;
 pub const SAFE_ENV: &str = "NOCTURNE_SAFE_THEME";
 /// The app's safe-look chord (the same key as the Themes page); the paint widget reports it before any slot sees the key.
 pub const SAFE_CHORD: &str = "Ctrl+Shift+0";
-/// Default time budget of one styling pass.
-pub const DEFAULT_BUDGET: Duration = Duration::from_millis(50);
+/// Default time budget of one styling pass. Measured on an optimised build the heaviest Jellyfin themes need up to about 40 ms per pass (debug builds are several times slower), so anything under 300 ms must never trip the guard.
+pub const DEFAULT_BUDGET: Duration = Duration::from_millis(300);
 /// Consecutive overruns after which the user sheet is switched off.
 pub const MAX_OVERRUNS: u8 = 3;
 
@@ -163,10 +163,22 @@ impl Engine {
                 )
             }) {
                 Ok(Ok(s)) => {
-                    if s.timing.cascade + s.timing.layout > self.budget {
+                    let took = s.timing.cascade + s.timing.layout;
+                    if std::env::var_os("NOCTURNE_ENGINE_TIMING").is_some() {
+                        eprintln!(
+                            "engine: apply {} ms (budget {} ms)",
+                            took.as_millis(),
+                            self.budget.as_millis()
+                        );
+                    }
+                    if took > self.budget {
                         // Built, but slow: kept for now; repeated slowness switches the theme off.
                         self.overruns += 1;
-                        self.notices.push("the theme is slow to apply".into());
+                        self.notices.push(format!(
+                            "the theme is slow to apply ({} ms, budget {} ms)",
+                            took.as_millis(),
+                            self.budget.as_millis()
+                        ));
                         if self.overruns >= MAX_OVERRUNS {
                             self.switch_off();
                         }

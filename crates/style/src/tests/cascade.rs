@@ -510,3 +510,14 @@ fn browser_only_properties_are_silent_no_ops() {
     assert_eq!(r.failures(), 0, "{:?}", r.lines());
     assert_eq!(r.count(Kind::NoEffect), 14);
 }
+
+#[test]
+fn content_attr_reads_the_owners_attribute() {
+    let mut d = Doc::new("page");
+    let a = d.add(0, "button.p");
+    d.attr(a, "title", "Resume");
+    let b = d.add(0, "button.p");
+    let s = scene(&d, ".p::after { content: attr(title) }", (400.0, 300.0));
+    assert!(s.doc.nodes[a].after.is_some(), "the label is generated");
+    assert!(s.doc.nodes[b].after.is_none(), "no title, no label");
+}

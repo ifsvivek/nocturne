@@ -308,7 +308,14 @@ fn compound_matches(c: &Compound, cx: &mut MatchCx, n: Id) -> bool {
         return false;
     }
     for a in &c.attrs {
-        let Some((_, val)) = node.attrs.iter().find(|(k, _)| *k == a.name) else {
+        // `class` is not stored as an attribute: `[class*="x"]` and `[class^="x"]` read the class list as written (space separated).
+        let joined;
+        let val = if a.name == "class" {
+            joined = node.classes.join(" ");
+            &joined
+        } else if let Some((_, val)) = node.attrs.iter().find(|(k, _)| *k == a.name) {
+            val
+        } else {
             return false;
         };
         if !attr_ok(a, val) {

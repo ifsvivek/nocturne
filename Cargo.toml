@@ -36,3 +36,8 @@ inherits = "release"
 lto = "thin"
 codegen-units = 16
 incremental = false
+
+# Theme conformance runs: optimised code (so the engine's time budget is judged fairly) with the debug-only snapshot and key hooks.
+[profile.conformance]
+inherits = "fast-release"
+debug-assertions = true

@@ -12,6 +12,39 @@ pub enum StopPos {
     Frac(f32),
     /// Length along the gradient line; resolved against the box at paint time.
     Px(f32),
+    /// `vw`/`vh` lengths: turned into `Px` when the style is computed (the window is known then).
+    Vw(f32),
+    Vh(f32),
+}
+
+impl StopPos {
+    fn at(self, vw: f32, vh: f32) -> Self {
+        match self {
+            Self::Vw(v) => Self::Px(v * vw / 100.0),
+            Self::Vh(v) => Self::Px(v * vh / 100.0),
+            o => o,
+        }
+    }
+}
+
+/// The fills with their `vw`/`vh` stop positions in pixels for a window of `vw` x `vh`.
+pub fn at_viewport(fills: &[Fill], vw: f32, vh: f32) -> Vec<Fill> {
+    fills
+        .iter()
+        .map(|f| match f {
+            Fill::Linear { angle, stops } if f.uses_viewport() => Fill::Linear {
+                angle: *angle,
+                stops: stops
+                    .iter()
+                    .map(|s| Stop {
+                        pos: s.pos.map(|p| p.at(vw, vh)),
+                        ..*s
+                    })
+                    .collect(),
+            },
+            o => o.clone(),
+        })
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -30,6 +63,12 @@ pub enum Fill {
     },
 }
 
+impl Fill {
+    pub fn uses_viewport(&self) -> bool {
+        matches!(self, Fill::Linear { stops, .. } if stops.iter().any(|s| matches!(s.pos, Some(StopPos::Vw(_) | StopPos::Vh(_)))))
+    }
+}
+
 fn num(s: &str) -> Option<f32> {
     let s = s.trim();
     s.parse::<f32>().ok().filter(|v| v.is_finite())
@@ -41,6 +80,12 @@ fn pos(t: &str) -> Result<StopPos, String> {
     }
     if let Some(p) = t.strip_suffix("px").and_then(num) {
         return Ok(StopPos::Px(p));
+    }
+    if let Some(p) = t.strip_suffix("vh").and_then(num) {
+        return Ok(StopPos::Vh(p));
+    }
+    if let Some(p) = t.strip_suffix("vw").and_then(num) {
+        return Ok(StopPos::Vw(p));
     }
     if t == "0" {
         return Ok(StopPos::Px(0.0));
@@ -102,11 +147,20 @@ fn gradient(args: &str) -> Result<Fill, String> {
         parts.remove(0);
     }
     let mut stops: Vec<Stop> = vec![];
+    // A colour hint (`a, 17vh, b`) moves the middle of the transition; Iced has no such stop, so it becomes a stop at that position with the middle colour (the curve through the same midpoint, drawn linearly on both sides).
+    let mut hints: Vec<(usize, StopPos)> = vec![];
     for p in parts {
         let toks = split_top(p, None);
         let first = toks.first().ok_or("empty gradient stop")?;
         let Ok(c) = value::color(first) else {
-            return Err("colour hints in gradients are not supported".into());
+            match (toks.len(), pos(first)) {
+                (1, Ok(h)) if !stops.is_empty() => {
+                    hints.push((stops.len(), h));
+                    continue;
+                }
+                (1, Err(e)) => return Err(e),
+                _ => return Err("colour hints in gradients are not supported".into()),
+            }
         };
         // `color 0% 58%` is two stops of the same colour.
         match toks.len() {
@@ -124,6 +178,25 @@ fn gradient(args: &str) -> Result<Fill, String> {
             }
             _ => return Err(format!("`{p}` is not a gradient stop")),
         }
+    }
+    for (at, h) in hints.into_iter().rev() {
+        let (Some(a), Some(b)) = (stops.get(at - 1), stops.get(at)) else {
+            return Err("a colour hint needs a stop on both sides".into());
+        };
+        let mid = |x: u8, y: u8| ((x as u16 + y as u16) / 2) as u8;
+        let color = Color::rgba(
+            mid(a.color.r, b.color.r),
+            mid(a.color.g, b.color.g),
+            mid(a.color.b, b.color.b),
+            mid(a.color.a, b.color.a),
+        );
+        stops.insert(
+            at,
+            Stop {
+                color,
+                pos: Some(h),
+            },
+        );
     }
     if stops.len() < 2 {
         return Err("a gradient needs at least two stops".into());
@@ -512,6 +585,7 @@ pub fn resolve(fill: &Fill, w: f32, h: f32) -> Option<Resolved> {
             s.pos.map(|q| match q {
                 StopPos::Frac(f) => f,
                 StopPos::Px(px) => px / len,
+                StopPos::Vw(_) | StopPos::Vh(_) => 0.0,
             })
         })
         .collect();
@@ -894,6 +968,27 @@ mod pic_tests {
         assert!(pic("linear-gradient(red, blue)").is_none());
         let d = pic("url(data:image/svg+xml,%3Csvg viewBox='0 0 1 1'/%3E)").unwrap();
         assert!(d.url.starts_with("data:image/svg+xml,"));
+    }
+
+    #[test]
+    fn colour_hints_and_viewport_stops_are_kept() {
+        let l = layers("linear-gradient(180deg, transparent, 17vh, #102030 50vh)").unwrap();
+        let Fill::Linear { stops, .. } = &l[0] else {
+            panic!()
+        };
+        assert_eq!(stops.len(), 3, "the hint became a stop");
+        assert_eq!(stops[1].pos, Some(StopPos::Vh(17.0)));
+        assert_eq!(
+            layers("linear-gradient(0deg,#111827,45%,rgba(17,24,39,.25))")
+                .unwrap()
+                .len(),
+            1
+        );
+        let p = at_viewport(&l, 1000.0, 1000.0);
+        let Fill::Linear { stops, .. } = &p[0] else {
+            panic!()
+        };
+        assert_eq!(stops[2].pos, Some(StopPos::Px(500.0)));
     }
 
     #[test]
