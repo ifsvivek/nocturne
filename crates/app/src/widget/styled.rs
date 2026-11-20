@@ -1487,19 +1487,22 @@ impl<M: Clone> Widget<M, iced::Theme, iced::Renderer> for Styled<'_, M> {
             (Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)), Some(p))
                 if !captured =>
             {
-                self.bars(st.hover, None).into_iter().chain(self.page_bar()).find_map(|bar| {
-                    let t = bar.thumb;
-                    Rectangle::new(
-                        Point::new(t.x - 4.0, t.y - 4.0),
-                        Size::new(t.width + 8.0, t.height + 8.0),
-                    )
-                    .contains(p)
-                    .then_some((
-                        bar.node,
-                        bar.vertical,
-                        if bar.vertical { p.y } else { p.x },
-                    ))
-                })
+                self.bars(st.hover, None)
+                    .into_iter()
+                    .chain(self.page_bar())
+                    .find_map(|bar| {
+                        let t = bar.thumb;
+                        Rectangle::new(
+                            Point::new(t.x - 4.0, t.y - 4.0),
+                            Size::new(t.width + 8.0, t.height + 8.0),
+                        )
+                        .contains(p)
+                        .then_some((
+                            bar.node,
+                            bar.vertical,
+                            if bar.vertical { p.y } else { p.x },
+                        ))
+                    })
             }
             _ => None,
         };

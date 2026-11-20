@@ -41,3 +41,22 @@ Method: engine debug build at 1600x900 in a headless sway session, throwaway Jel
 - Right-click, double-click and tooltips: the tooltip test failed to stay open because the player bar hides while the pointer rests, and no right-click or double-click target was exercised.
 - The 5,000-item library scroll was not run (the demo library has 12 movies and a local source of that size was not built).
 - Player Space on a clean state and fullscreen.
+
+## Fixed in 0.5.2 (re-run with the real virtual pointer)
+
+Tooling: `tools/headless-pointer` has `wheel <dx> <dy>` (discrete notches) and `drag <x1> <y1> <x2> <y2>` (press, 20 motion steps, release); `scripts/headless-session.sh pointer` passes them through. Same method as above: engine debug build, 1600x900, demo library.
+
+| # | Finding | Result | Notes |
+|---|---|---|---|
+| 1 | Library wheel | PASS | Root cause: the header scene's widget took every wheel event wherever the pointer was (no bounds check), so the page below never saw it. The wheel is now taken only over the widget's own bounds (regression test `a_wheel_below_the_widget_is_not_taken`). Wheel over the Movies grid scrolls to the third row. |
+| 2 | Detail page does not scroll | PASS | Same cause. Wheel scrolls to Cast & crew and More like this; dragging the page scrollbar thumb now works (the page's own bar was not draggable, only `data-scrollbar` containers were). Page Down and End on the detail page do nothing in the legacy build either (an Iced scrollable has no key scrolling), so they were not added. |
+| 3 | Classic row arrows | PASS | The arrows sent `HomeStripPage`, which scrolls an Iced scrollable that the engine does not have; the engine now scrolls the scene's strip (clicking next on "Latest in Movies" reaches the ninth title). |
+| 4 | Search Down / hover | PASS | `Message::Eng` does not mark the scenes stale, so the key moved the selection in the app but the tree was never rebuilt; Down twice now highlights the third result. Hover on a result does show the row highlight (pixel (12,14,22) to (21,22,31), the same 4 % white wash as the legacy `GLASS`); the report could not be reproduced for hover. |
+| 5 | Header hover sticks | PASS | Hovering a header link on Home also moved the keyboard focus onto it (row 0 cell), and `:focus` is styled like `:hover`. The pointer no longer parks focus on the header row. The legacy build clears it. |
+| 6 | Header backdrop | PASS (Home) | Home's header gets a second fill layer once the page has scrolled (hidden at the top, so the top of Home is unchanged; a transparent header such as Glass stays transparent). Other pages' header is the same 90 % fill as the legacy build, whose detail page shows the same faint bleed. |
+| 7 | Header item lit without hover | PASS | The Smart slot used "a library or a smart collection is current" for its lit state; it now lights only for a smart collection (Libraries only for a library), as the hand-written links do. |
+| 8 | Hero rotates in the Studio | PASS | New `Pauses::studio` reason (unit test extended). |
+| 9 | Studio text colour, safe look | PASS | The colour edit works (scripted `color Color #ff0000` on `span.button-label` turns Play red); the earlier miss was the rotating hero replacing the picked slide. Ctrl+Shift+0 with the Studio open reset only the app state, not the scenes (the chord arrives as `Message::Eng`, which does not mark them stale); after the fix the open preview drops the red at once. |
+| 10 | 500 px header | PASS | Below 640 px wide the brand is dropped so the link strip keeps room (500 px: "Home Movies >" then Search). The legacy build still overlaps "Home" with the chevron at 500 px. |
+| 12 | Breadcrumb of an episode opened from search | NOT FIXED | The trail is the navigation history (Home, the page the search was started from, the item) in both builds, by design; a show path would need the series page pushed first, which is a navigation-model change. |
+| 11 | RSS and black frame | NO LEAK | Fast-release build, 20 open/close cycles of the player in a headless sway (software GL): 389 MB at start, 611 after the first (libmpv and GL load), 730 after 3, 789 after 15 and flat for the next 5. The step and plateau are the allocator's high-water mark, not growth per cycle. The demo clip stayed on "Opening" in this environment, so decoding was not part of the measurement. Six captures at 1 s steps after Play showed no black frame (mean brightness constant); one frame before the first video frame is the transparent hole by design, not reproduced. |
