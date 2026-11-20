@@ -149,7 +149,8 @@ fn run(url: &str, st: &Stats, b: Buffering, pre: &[(&str, &str)]) -> Report {
         .map(|n| {
             (
                 n.to_string(),
-                p.prop_blocking(n, std::time::Duration::from_millis(500))
+                // 5 s: the first read can come before a slow CI runner's mpv answers (500 ms failed on macOS).
+                p.prop_blocking(n, std::time::Duration::from_secs(5))
                     .and_then(|v| v.as_f64())
                     .unwrap_or(-1.0),
             )
