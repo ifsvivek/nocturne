@@ -211,7 +211,8 @@ impl App {
                 .height(Length::Shrink);
             page = page.push(container(column![cell, rule()]).padding([0.0, t::page_pad()]));
         }
-        scroll(page.padding(Padding {
+        // A readable measure: label and control stay within reach of each other on a wide window.
+        scroll(page.max_width(1280.0).padding(Padding {
             top: t::header_h() + t::S8,
             bottom: t::S8,
             ..Padding::ZERO
