@@ -297,7 +297,6 @@ pub struct App {
     player: Option<Player>,
     search: Option<Box<search::SearchUi>>,
     lib_menu: bool,
-    grain: Handle,
     dots: Handle,
     glow: Handle,
     win: Size,
@@ -442,7 +441,6 @@ impl App {
             player: None,
             search: None,
             lib_menu: false,
-            grain: tex::grain(),
             dots: tex::dots(),
             glow: tex::glow(),
             win: Size::new(1280.0, 800.0),
@@ -2197,7 +2195,6 @@ impl App {
                 layer(&self.glow, 1.0),
                 layer(&self.dots, 0.09),
                 o.view(Instant::now()).map(Message::Onboarding),
-                layer(&self.grain, 0.02),
             ];
             if let Some((n, _)) = &self.note {
                 layers.push(
@@ -2307,7 +2304,7 @@ impl App {
                 .opacity(o)
                 .into()
         };
-        // Jellyfin layout mode paints the server's own page (the engine draws its background): no glow, dots or grain of NOCTURNE's.
+        // Jellyfin layout mode paints the server's own page (the engine draws its background): no glow or dots of NOCTURNE's.
         #[cfg(feature = "theme-engine")]
         let plain = self.jf_base().is_some();
         #[cfg(not(feature = "theme-engine"))]
@@ -2361,9 +2358,6 @@ impl App {
         self.extras_layers(&mut layers);
         if let Some(p) = &self.preview {
             layers.push(p.view(Instant::now(), crate::motion::reduced(), self.win));
-        }
-        if !plain {
-            layers.push(layer(&self.grain, 0.02));
         }
         if self.menu && ready {
             layers.push(self.account_menu());

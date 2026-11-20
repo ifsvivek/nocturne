@@ -1,4 +1,4 @@
-//! Account screens in the app's design language: centred panel on the grain/glow backdrop,
+//! Account screens in the app's design language: centred panel on the glow backdrop,
 //! hairline fields, mono annotations, one primary action per screen.
 use super::state::*;
 use super::{Accounts, Dialog, DlgKind, Msg, Where};

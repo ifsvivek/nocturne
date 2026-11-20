@@ -49,18 +49,3 @@ pub fn glow() -> Handle {
     }
     Handle::from_rgba(W, H, buf)
 }
-
-/// Procedural film grain: zero-mean black/white speckle.
-pub fn grain() -> Handle {
-    const N: u32 = 512;
-    let mut s = 0x9E37_79B9_7F4A_7C15u64;
-    let mut buf = Vec::with_capacity((N * N * 4) as usize);
-    for _ in 0..N * N {
-        s ^= s << 13;
-        s ^= s >> 7;
-        s ^= s << 17;
-        let v = if s & 1 == 0 { 255 } else { 0 };
-        buf.extend_from_slice(&[v, v, v, ((s >> 8) & 0xff) as u8]);
-    }
-    Handle::from_rgba(N, N, buf)
-}
