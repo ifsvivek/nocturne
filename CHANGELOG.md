@@ -38,6 +38,14 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Debug builds can write what the active theme did (tokens applied, not applied by kind, imports fetched, fonts loaded) as JSON with `NOCTURNE_THEME_REPORT=<file>` and the `theme-report@<ms>` key hook; `scripts/theme-conformance.sh` fills its applied / not applied column from it.
 
 ### Fixed
+- Player: the next-episode card says "Next episode in 9 s" (it had no unit), the end time follows the title and status ("clip  Ends at 7:37 PM"), and the buffered range of the seek bar is a thinner, lighter line so it no longer reads as playback progress next to the elapsed time.
+- One clock formatter: the player's "Ends at", the item page's "Ends at" and the episode cards' "ends" all follow the system locale's 12 or 24 hour style (read from `nl_langinfo`; other platforms keep 12 hour), where the player showed 24 hour and the pages 12 hour.
+- Player menus: the audio menu marks the playing track (a lone track was never marked), and the Settings button, which also holds Quality, shows a gear instead of a sun that looked like brightness.
+- Home's hero eyebrow reads "01 / 05 · Movie" (the slide among the carousel's, or just the kind) instead of the "0x00 · movie" index.
+- Season tabs read "Season 1 · 4 episodes" (the real episode count, asked for with `ChildCount`) instead of a bare number after the name; without a count they say "· N unwatched".
+- Settings rows keep a readable width (1280 px) so a label and its control are no longer a screen apart; the account menu's greyed items say "Needs server changes on" under the label, and its header shows the source's name instead of its address.
+- The header lights no link on Settings, Sources or Themes (it kept Home or Movies lit).
+- Jellyfin layout mode: a stylesheet's `background-size` in `em` is honoured (`auto 1.2em`), which draws the critic rating's tomato at icon size instead of a stretched red block; "Sort: Name ↑" stays on one line; the library tile's icon is the web client's 5 em.
 - A server whose branding CSS is non-empty now uses its own look (Jellyfin layout mode) by default and servers without branding keep NOCTURNE's; the choice in Settings > Sources > UI is stored even when it is NOCTURNE, so only "never chosen" gets the default, and the row says so ("default: this server's look, it has a custom theme"). "All sources" that was never chosen follows the look chosen for the first server, which the All row explains.
 - "UI: <other server>" now shows in the server's own view and in "All sources": the other server's base stylesheet and branding apply to the items of the source it was chosen for.
 - Settings > Themes > Server branding reports what the theme engine read and skipped for each server (the same grouping as a pasted engine sheet) instead of the old translator's "not understood" counts and its `@media` warning.
