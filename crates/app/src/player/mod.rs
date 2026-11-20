@@ -81,7 +81,11 @@ pub struct PlayerCtx {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     /// Playback is over; the root leaves the page.
-    Closed { failed: bool },
+    /// `why`: what to tell the user when it failed, if known (shown after "Couldn't start playback: ").
+    Closed {
+        failed: bool,
+        why: Option<&'static str>,
+    },
 }
 
 #[derive(Clone)]
@@ -268,6 +272,8 @@ pub struct Player {
     events: Vec<PlayEvent>,
     closed: bool,
     outcome: Option<Outcome>,
+    /// Why the page is failing, when it is more than "could not be played".
+    fail_why: Option<&'static str>,
     /// SyncPlay: transport controls become requests to the group (`outbox`) and the group's
     /// commands are applied through the `group_*` methods.
     pub group: bool,
@@ -410,6 +416,7 @@ impl Player {
             events: vec![],
             closed: false,
             outcome: None,
+            fail_why: None,
             group: group.is_some(),
             outbox: vec![],
             ready_due: None,
@@ -2351,7 +2358,8 @@ impl Player {
             return Task::none();
         }
         self.shutdown();
-        self.outcome = Some(Outcome::Closed { failed });
+        let why = self.fail_why.take();
+        self.outcome = Some(Outcome::Closed { failed, why });
         match (self.win_id, self.fs_from_video && self.fullscreen) {
             (Some(id), true) => window::set_mode(id, window::Mode::Windowed),
             _ => Task::none(),
@@ -2417,7 +2425,12 @@ impl Player {
         for ev in p.events().try_iter() {
             match ev {
                 Event::Loaded => loaded_now = true,
-                Event::Failed(_) => failed = true,
+                Event::Failed(m) => {
+                    failed = true;
+                    if m.contains("stopped responding") {
+                        self.fail_why = Some("the video engine stopped responding");
+                    }
+                }
                 Event::Closed => gone = true,
                 Event::Tracks => tracks = true,
                 Event::Input(s) => input.push(s),
@@ -2431,6 +2444,10 @@ impl Player {
         let st = p.state();
         self.volume = st.volume;
         failed |= !self.loaded && st.idle && self.started.elapsed() > Duration::from_secs(5);
+        if logic::open_timed_out(self.loaded, self.started.elapsed()) {
+            failed = true;
+            self.fail_why = Some("no answer after 30 seconds");
+        }
         self.ended = st.eof;
         self.state = Some(st);
         for s in input {

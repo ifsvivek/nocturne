@@ -37,6 +37,12 @@ fn main() -> std::process::ExitCode {
     // The UI loop and every guard (single-instance lock, player) are gone when `run` returns; only then can the
     // updated binary take over.
     let result = run();
+    // A stuck mpv thread was left behind (docs/video-embedding.md): ending the process normally could wait on it.
+    #[cfg(unix)]
+    if nocturne_player::left_behind() {
+        // SAFETY: nothing else is left to run; the window, the single-instance lock and the settings are done.
+        unsafe { libc::_exit(if result.is_ok() { 0 } else { 1 }) };
+    }
     if let Some(e) = nocturne_core::update_install::restart_if_requested() {
         eprintln!("NOCTURNE could not restart after the update: {e}");
     }

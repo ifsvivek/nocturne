@@ -294,7 +294,7 @@ impl Preview {
             eprintln!("PREVIEW remember hdr={m:?}");
         }
         match self.player.take_outcome() {
-            Some(Outcome::Closed { failed }) => {
+            Some(Outcome::Closed { failed, .. }) => {
                 eprintln!("PREVIEW closed failed={failed} rss_kb={}", rss_kb());
                 if self.cycles > 0 {
                     // `NOCTURNE_PREVIEW_CYCLES=n`: open the page again n more times (leak check).
@@ -333,6 +333,8 @@ impl Preview {
             iced::keyboard::listen()
                 .filter_map(|e| keys::from_event(&e).map(|k| M::P(Msg::Key(k)))),
             window::close_requests().map(|_| M::Close),
+            // SIGTERM, like the app's own tick (QA of the exit path).
+            Subscription::run(crate::redraw::wakes).map(|_| M::Close),
             if std::env::var_os("NOCTURNE_PREVIEW_PROBE").is_some() {
                 iced::time::every(Duration::from_secs(1)).map(|_| M::Probe)
             } else {

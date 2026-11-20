@@ -256,7 +256,7 @@ impl Preview {
 
     fn after_player(&mut self, t: Task<player::Msg>) -> Task<M> {
         if let Some(p) = &mut self.player
-            && let Some(player::Outcome::Closed { failed }) = p.take_outcome()
+            && let Some(player::Outcome::Closed { failed, .. }) = p.take_outcome()
         {
             eprintln!("SP player closed failed={failed}");
             self.player = None;
