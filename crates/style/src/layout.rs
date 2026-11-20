@@ -428,15 +428,18 @@ impl Scene {
         st
     }
 
-    /// Text of its own next to in-flow `::before`/`::after` boxes (an absolutely positioned one does not take part).
+    /// Text of its own that is a flex item in its own right: next to in-flow `::before`/`::after` boxes (an absolutely positioned one does not take part), or in a flex or grid container, where the browser wraps it in an anonymous item that `justify-content`/`align-items` place (the centred number in a round badge).
     fn has_own_run(&self, i: Id) -> bool {
         let n = &self.doc.nodes[i];
         n.text.is_some()
             && n.children.is_empty()
-            && [n.before, n.after].into_iter().flatten().any(|g| {
+            && (matches!(
+                self.st.styles[i].layout.display,
+                Display::Flex | Display::Grid
+            ) || [n.before, n.after].into_iter().flatten().any(|g| {
                 self.st.styles[g].layout.position != Position::Absolute
                     && self.st.styles[g].layout.display != Display::None
-            })
+            }))
     }
 
     fn build_kids(&mut self) {

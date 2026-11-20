@@ -661,3 +661,19 @@ fn important_font_size_sizes_the_icon_box_in_em() {
     assert_eq!((ri[2], ri[3]), (25.6, 25.6));
     assert!((rl[0] - ri[2] - 6.4).abs() < 0.1, "{ri:?} {rl:?}");
 }
+
+/// The number in a round badge: the text of a flex container is an item of its own, placed by `justify-content` and `align-items`.
+#[test]
+fn flex_container_text_is_centred() {
+    let mut d = Doc::new("page");
+    let b = d.add(0, "div.indicator");
+    d.text(b, "12");
+    let s = scene(
+        &d,
+        ".indicator{display:flex;align-items:center;justify-content:center;height:40px;width:40px}",
+        (400.0, 300.0),
+    );
+    let i = s.insets[b];
+    assert!(i[0] > 1.0 && (i[0] - i[2]).abs() < 0.5, "{i:?}");
+    assert!(i[1] > 1.0 && (i[1] - i[3]).abs() < 0.5, "{i:?}");
+}
