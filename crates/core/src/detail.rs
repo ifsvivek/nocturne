@@ -244,15 +244,24 @@ pub fn stars(rating: f32) -> (u8, bool, u8) {
     (full, half, 5 - full - half as u8)
 }
 
-/// "Ends at 9:35 PM" given the local time of day in minutes and the runtime.
+/// "9:35 PM" (or "21:35") given the local time of day in minutes and the runtime.
 pub fn ends_at(now_min: u32, runtime_min: u32) -> String {
-    let t = (now_min + runtime_min) % (24 * 60);
-    let (h, m) = (t / 60, t % 60);
-    format!(
-        "{}:{m:02} {}",
-        if h % 12 == 0 { 12 } else { h % 12 },
-        if h < 12 { "AM" } else { "PM" }
-    )
+    crate::video::clock_text(now_min + runtime_min)
+}
+
+/// A season tab: "Season 1 \u{b7} 5 episodes", with a check once everything is watched; without an episode count the unwatched count stands in.
+pub fn season_tab_label(title: &str, episodes: Option<u32>, unplayed: Option<u32>) -> String {
+    let mut s = title.to_string();
+    match (episodes, unplayed) {
+        (Some(1), _) => s += " \u{b7} 1 episode",
+        (Some(n), _) => s += &format!(" \u{b7} {n} episodes"),
+        (None, Some(n)) if n > 0 => s += &format!(" \u{b7} {n} unwatched"),
+        _ => {}
+    }
+    if unplayed == Some(0) {
+        s += " \u{2713}";
+    }
+    s
 }
 
 /// Local minutes since midnight.
@@ -274,11 +283,26 @@ mod tests {
     }
 
     #[test]
+    fn season_tabs_show_the_episode_count_once() {
+        assert_eq!(
+            season_tab_label("Season 1", Some(5), Some(3)),
+            "Season 1 \u{b7} 5 episodes"
+        );
+        assert_eq!(
+            season_tab_label("Season 2", Some(1), Some(0)),
+            "Season 2 \u{b7} 1 episode \u{2713}"
+        );
+        assert_eq!(
+            season_tab_label("Specials", None, Some(2)),
+            "Specials \u{b7} 2 unwatched"
+        );
+        assert_eq!(season_tab_label("Season 3", None, None), "Season 3");
+    }
+
+    #[test]
     fn end_time_wraps_midnight() {
-        assert_eq!(ends_at(20 * 60, 95), "9:35 PM");
-        assert_eq!(ends_at(23 * 60 + 30, 90), "1:00 AM");
-        assert_eq!(ends_at(0, 0), "12:00 AM");
-        assert_eq!(ends_at(12 * 60, 5), "12:05 PM");
+        assert_eq!(ends_at(23 * 60 + 30, 90), crate::video::clock_text(60));
+        assert_eq!(ends_at(0, 0), crate::video::clock_text(0));
     }
 
     #[test]
