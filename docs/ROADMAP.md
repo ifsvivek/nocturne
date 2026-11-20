@@ -51,8 +51,25 @@ From the maintainer's brief ([dev/V06_BRIEF.md](dev/V06_BRIEF.md)); not started,
 
 - **Seerr requests** inside the app (request movies and shows, see Requested / Pending / Available; the request is a write to the Seerr server, so it will sit behind its own explicit setting and the user's Seerr permissions). Downloading stays in the user's own stack.
 - **Play and save links with yt-dlp**: play a pasted video link in the player (mpv's yt-dlp hook), and optionally save it into a local folder through the downloads queue (off by default). `yt-dlp` stays an optional, never-bundled dependency.
-- **Native flex/grid layout engine for themes** (stage 2): each screen becomes a tree of NOCTURNE components laid out natively so a stylesheet can rearrange whole screens. Researched on a branch, not released; still no web view, HTML or arbitrary elements. May move to 0.7 if it is too large.
+- **Player choice**: keep in-window libmpv as the default and add an external player (VLC, mpv, IINA on macOS, MPC-HC on Windows, detected automatically) that opens the stream in that player; progress is tracked where the player allows it (VLC through its control interface). A built-in choice, not an add-on.
+- **Themes gallery** on the Themes page: NOCTURNE themes and community Jellyfin themes with previews and one-click install, on top of paste-and-test, preview and Keep / Revert; respects the remote CSS switch. Themes live as folders in this repository (`themes/`): anyone can open a pull request, the maintainer merges, and the gallery index ships with the website.
 - Evaluate Flatpak (sandbox permissions for GPU, Wayland, keyring and local folders), and the path from the Windows and macOS previews to signed installers once real-machine testing exists.
+
+## Then: 0.7, add-ons
+
+Add-ons in the style of media-center add-on catalogs: an add-on is a web address that answers a few JSON requests (manifest, catalogs, item details, streams, subtitles). No add-on code runs inside NOCTURNE; it only reads data, as it reads a Jellyfin server.
+
+- An add-on is another source next to local folders and servers: its catalogs become Home rows, its items get detail pages, its streams play in the player.
+- An Add-ons page: installed add-ons with switches and what each provides, add by URL, and a curated catalog read from an index on the website.
+- Add-ons can be written in any language and hosted anywhere (also on the same machine); remote add-ons over https only, with the same size and time limits as theme fetching.
+- The spec, a small SDK, examples and the catalog index live in this repository (`addons/`): pull requests welcome, the maintainer merges. Only add-ons for sources the user is entitled to (own media, public-domain catalogs, trailers, subtitles) are listed.
+
+## Then: 0.8, gateway
+
+`nocturne-gateway`: an optional companion service (in this workspace, off by default) that merges all of a user's servers, local folders and add-ons into one catalog and serves it at one address speaking the subset of the Jellyfin API that the official Jellyfin phone and TV apps need, so they can connect to it as one server; streams are passed through from the item's own server.
+
+- Its own sign-in, local network (or a private overlay network) only, read-only toward the servers it merges unless the user turns writes on.
+- It holds sign-ins for every merged server, so it gets a security review before release.
 
 ## Then: compatibility and correctness
 
