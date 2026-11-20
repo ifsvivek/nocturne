@@ -31,7 +31,7 @@
 
 /* Rating, year, runtime and certification on one line; the genres under it. */
 .detail-chips { flex-direction: column; align-items: flex-start; gap: 6px; }
-.detail-rating, .detail-cert { display: flex; }
+.detail-rating, .detail-cert, .detail-year, .detail-runtime, .detail-genres { display: flex; }
 .detail-meta .chip, .detail-genres .chip { height: 22px; padding: 0; border-width: 0; background: transparent; color: var(--nocturne-text); font-family: inherit; font-size: 15px; gap: 10px; }
 .detail-genres .chip { color: var(--nocturne-text-secondary); font-size: 14px; }
 .detail-meta .chip:not(.detail-kind) + .chip::before, .detail-genres .chip + .chip::before { content: "\00b7"; color: var(--nocturne-text-tertiary); }

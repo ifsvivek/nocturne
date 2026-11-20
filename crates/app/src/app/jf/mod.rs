@@ -13,7 +13,11 @@ pub(crate) const UA: &str = include_str!("jf_ua.css");
 
 impl App {
     /// The base stylesheet of the server whose UI is in use for what is on screen, when the layout mode applies (the server has its web client).
+    /// None under the safe look: it is the built-in NOCTURNE look everywhere, so a server's own layout is dropped for as long as it is on (leaving it brings the server look back).
     pub(super) fn jf_base(&self) -> Option<Arc<String>> {
+        if self.th.safe {
+            return None;
+        }
         let ui = self.theme_ui()?;
         let web = self.server_ui.get(&ui)?.web_css.clone()?;
         // Debug builds: `NOCTURNE_JF_BASE=<file>` stands in for the fetched sheet (bisecting what an engine gap does to a page).

@@ -564,13 +564,10 @@ impl Detail {
         }
     }
 
+    /// The tagline and the metadata table. The overview is the hero's (once), the rating, year and runtime are the facts line's, the genres are the tags': the table keeps what appears nowhere else.
     fn about_nodes(&self, t_: &mut DTree, f: &Full) {
         let m = &self.media;
-        let w = self.win.width;
-        let h = geom::about_h(m, f, w);
         let band = t_.doc.add(0, "div.detail-about");
-        // The hand-written page lays this band out to an estimate of its text height: never shorter, grows with the real text.
-        t_.doc.inline(band, &format!("min-height: {}", px(h)));
         if geom::about_poster(m) {
             let p = t_.doc.add(band, "div.detail-poster");
             self.tile_nodes(
@@ -588,20 +585,7 @@ impl Detail {
             let n = t_.doc.add(left, "div.detail-tagline");
             t_.doc.text(n, tag);
         }
-        let overview = m
-            .overview
-            .clone()
-            .unwrap_or_else(|| "No description available.".into());
-        let n = t_.doc.add(left, "div.detail-text.detail-about-text");
-        t_.doc.text(n, &overview);
-        let ty = t::typo(
-            &t::parts(Some(nocturne_core::customize::Page::Detail), None).detail_text,
-            t::BODY_LG,
-            iced::font::Weight::Normal,
-        )
-        .with_line(1.6);
-        t_.doc.inline(n, &ty.css());
-        let right = t_.doc.add(band, "div.detail-facts-table");
+        let right = t_.doc.add(left, "div.detail-facts-table");
         for (k, v) in geom::facts(m, f) {
             let r = t_.doc.add(right, "div.detail-fact");
             let kk = t_.doc.add(r, "div.detail-fact-key");

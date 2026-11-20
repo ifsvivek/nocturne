@@ -38,6 +38,15 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Debug builds can write what the active theme did (tokens applied, not applied by kind, imports fetched, fonts loaded) as JSON with `NOCTURNE_THEME_REPORT=<file>` and the `theme-report@<ms>` key hook; `scripts/theme-conformance.sh` fills its applied / not applied column from it.
 
 ### Fixed
+- Clicking a My Media tile in a server's own look no longer crashes: the paint widget kept hover, press and drag node numbers across a page swap and indexed the smaller new page with them; they are now dropped when the page is replaced.
+- Safe look (Ctrl+Shift+0) is the built-in NOCTURNE look on every page, including pages in a server's own look (the server's layout is dropped while it is on), instead of changing only the header and leaving a broken library behind.
+- The Admin link in the header opens Admin from Settings, Themes and Sources (they were drawn over it), and those pages no longer show a leftover browsing breadcrumb.
+- The header's brand names the server whose look is shown (else the one picked in the source filter), not the last server signed in.
+- The breadcrumb strip is opaque, so buttons and text scrolling under it on a detail page no longer show through.
+- The breadcrumb shows the logical path: a detail page opened from search over another detail page no longer names that page as its parent (a show above its episode still does).
+- The item page shows each fact once: the overview only in the hero, the details table without rating and genres (and in the left column, not far right), no hero copy of year, runtime and genres in the default look, and no stray section counts. The NOCTURNE look's detail layout changed on purpose; Glass needs `.detail-year, .detail-runtime, .detail-genres { display: flex }` to keep its meta line (Spotlight has it).
+- Server look, My Media: each tile names its server when several are shown, and the row has the strip scrollbar and arrows.
+- A settings file that cannot be read (a duplicate key from a hand edit) is no longer silently reset: a copy is kept as `settings.toml.bad-<time>`, repeated keys are repaired (the last value wins), and a notice names the copy.
 - A server whose branding CSS is non-empty now uses its own look (Jellyfin layout mode) by default and servers without branding keep NOCTURNE's; the choice in Settings > Sources > UI is stored even when it is NOCTURNE, so only "never chosen" gets the default, and the row says so ("default: this server's look, it has a custom theme"). "All sources" that was never chosen follows the look chosen for the first server, which the All row explains.
 - "UI: <other server>" now shows in the server's own view and in "All sources": the other server's base stylesheet and branding apply to the items of the source it was chosen for.
 - Settings > Themes > Server branding reports what the theme engine read and skipped for each server (the same grouping as a pasted engine sheet) instead of the old translator's "not understood" counts and its `@media` warning.
