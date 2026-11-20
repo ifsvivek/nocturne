@@ -310,7 +310,7 @@ fn prune(dir: &Path) {
 }
 
 /// Append `text`, with the relative `url(...)` of its declarations made absolute against the stylesheet they came from (the engine fetches pictures by full address; an `@import`ed file's own base is lost once it is inlined).
-fn push_abs(out: &mut String, text: &[char], base: Option<&Url>) {
+pub(crate) fn push_abs(out: &mut String, text: &[char], base: Option<&Url>) {
     let s: String = text.iter().collect();
     let Some(base) = base else {
         out.push_str(&s);
@@ -351,7 +351,7 @@ fn push_abs(out: &mut String, text: &[char], base: Option<&Url>) {
 
 // ---- scanning --------------------------------------------------------------------------------
 
-enum Item {
+pub(crate) enum Item {
     Import {
         start: usize,
         end: usize,
@@ -474,7 +474,7 @@ fn parse_import(c: &[char], at: usize) -> Option<(usize, String, String)> {
     Some(((k + 1).min(c.len()), url, cond.trim().to_string()))
 }
 
-fn scan(c: &[char]) -> Vec<Item> {
+pub(crate) fn scan(c: &[char]) -> Vec<Item> {
     let (mut out, mut i, mut depth) = (vec![], 0usize, 0i32);
     while i < c.len() {
         match c[i] {

@@ -153,6 +153,8 @@ pub struct ServerUi {
     pub web_css: Option<std::sync::Arc<String>>,
     /// The icon font of that web client (`family`, ttf bytes), registered with the text shaper so ligature text draws icons.
     pub web_font: Option<(String, std::sync::Arc<Vec<u8>>)>,
+    /// The stylesheets the server's start page adds (plugins): applied after the web client's own, before the branding.
+    pub plugins: Option<std::sync::Arc<crate::webcss::Plugins>>,
 }
 
 impl ServerUi {
@@ -168,6 +170,7 @@ impl ServerUi {
             disclaimer: text(&branding.login_disclaimer),
             web_css: None,
             web_font: None,
+            plugins: None,
         }
     }
 
@@ -445,6 +448,7 @@ impl ServerUi {
             disclaimer: self.disclaimer.clone(),
             web_css: self.web_css.clone(),
             web_font: self.web_font.clone(),
+            plugins: self.plugins.clone(),
             ..Default::default()
         }
     }
@@ -635,6 +639,7 @@ mod tests {
             disclaimer: Some("d".into()),
             web_css: None,
             web_font: None,
+            plugins: None,
         };
         let loaded = HashMap::from([(a, ui.clone())]);
         let libs = || ["x", "y", "z"].map(String::from).to_vec();

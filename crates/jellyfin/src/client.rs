@@ -104,7 +104,7 @@ impl ItemsQuery {
 #[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,
-    base: Url,
+    pub(crate) base: Url,
     token: String,
     device_id: String,
     health: Arc<AtomicU8>,

@@ -30,6 +30,16 @@ impl App {
         Some(web)
     }
 
+    /// The plugin stylesheets of the server whose UI is in use, when it has a web client and any.
+    pub(super) fn jf_plugins(
+        &self,
+        ui: Option<nocturne_core::source::SourceId>,
+    ) -> Option<Arc<nocturne_core::webcss::Plugins>> {
+        let u = self.server_ui.get(&ui?)?;
+        u.web_css.as_ref()?;
+        u.plugins.clone().filter(|p| !p.css.trim().is_empty())
+    }
+
     /// The file name of the web client's own logo (`icon-transparent.<hash>.png`), as its stylesheet names it.
     pub(super) fn jf_logo(&self) -> Option<String> {
         let css = self.jf_base()?;
@@ -56,6 +66,11 @@ impl App {
             out += &format!(
                 ".MuiToolbar-root .MuiButton-startIcon img.jf-brand {{ content: url(\"{l}\"); height: 24px; width: auto; }}\n"
             );
+        }
+        // What the server's start page adds (plugins), as a browser applies it: after the web client's own sheets, before the branding that jellyfin-web adds at run time.
+        if let Some(p) = self.jf_plugins(ui) {
+            out += &resolved(&p.css);
+            out.push('\n');
         }
         if let Some(b) = ui.and_then(|u| self.themes.branding_of(u)) {
             out += &resolved(b);

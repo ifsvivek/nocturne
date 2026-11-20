@@ -552,6 +552,7 @@ impl Source {
                 if let Some(w) = crate::webcss::fetch(&self.client, &self.scope).await {
                     ui.web_css = Some(w.css.into());
                     ui.web_font = w.font.map(|(f, b)| (f, b.into()));
+                    ui.plugins = w.plugins.map(Into::into);
                 }
                 Ok(ui)
             }

@@ -59,7 +59,10 @@ launch() {
   </LocalNetworkAddresses>
 </NetworkConfiguration>
 XML
-  setsid nohup jellyfin --nowebclient --nonetchange --service \
+  # NOCTURNE_JF_TEST_WEBDIR=<copy of the web client under /tmp>: serve it (to test what a start page adds); default is no web client.
+  local web=(--nowebclient)
+  [[ -n ${NOCTURNE_JF_TEST_WEBDIR:-} ]] && case "$(realpath -m "$NOCTURNE_JF_TEST_WEBDIR")" in /tmp/?*) web=(--webdir "$NOCTURNE_JF_TEST_WEBDIR");; *) echo "refusing: web dir must be under /tmp" >&2; exit 1;; esac
+  setsid nohup jellyfin "${web[@]}" --nonetchange --service \
     --datadir "$T/data" --configdir "$T/config" --cachedir "$T/cache" --logdir "$T/log" \
     --ffmpeg "$(command -v ffmpeg)" >"$T/stdout.log" 2>&1 </dev/null &
   echo $! >"$PIDF"
