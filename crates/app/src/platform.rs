@@ -79,13 +79,12 @@ pub fn window_settings() -> window::settings::PlatformSpecific {
     window::settings::PlatformSpecific::default()
 }
 
-/// glibc's malloc keeps one arena per thread and raises its mmap threshold to the largest block freed, so the decode buffers of the image workers (several MiB each, freed at once) stay resident: a library of 3,000 posters grew the process by about 250 MiB more than the pictures it kept, and the idle baseline carried 70 MiB of the same. One arena and fixed 1 MiB mmap and trim thresholds return big blocks to the system at once (docs/dev/PERF.md). Call before any thread starts; an explicit `MALLOC_ARENA_MAX` wins.
+/// glibc's malloc keeps one arena per thread and raises its mmap threshold to the largest block freed, so the decode buffers of the image workers (several MiB each, freed at once) stay resident: a library of 3,000 posters grew the process by about 250 MiB more than the pictures it kept, and the idle baseline carried 70 MiB of the same. Fixed 1 MiB mmap and trim thresholds return big blocks to the system at once (docs/dev/PERF.md). The arena count stays glibc's default: one arena would make libmpv's decoder threads, which run in this process, share one allocator lock. Call before any thread starts; an explicit `MALLOC_MMAP_THRESHOLD_` wins.
 pub fn tune_allocator() {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
-    if std::env::var_os("MALLOC_ARENA_MAX").is_none() {
+    if std::env::var_os("MALLOC_MMAP_THRESHOLD_").is_none() {
         // SAFETY: mallopt only sets allocator parameters; no thread has started yet.
         unsafe {
-            libc::mallopt(libc::M_ARENA_MAX, 1);
             libc::mallopt(libc::M_TRIM_THRESHOLD, 1 << 20);
             libc::mallopt(libc::M_MMAP_THRESHOLD, 1 << 20);
         }
