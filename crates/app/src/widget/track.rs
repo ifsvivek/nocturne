@@ -190,10 +190,11 @@ impl<M> Widget<M, iced::Theme, iced::Renderer> for Track<'_, M> {
             quad(
                 fx,
                 b.width * (self.cache - self.frac),
-                y,
-                th,
+                y + th * 0.25,
+                th * 0.5,
+                // Buffered range: a thinner, lighter line so it never reads as playback progress.
                 Color {
-                    a: 0.2,
+                    a: 0.35,
                     ..Color::WHITE
                 },
                 false,

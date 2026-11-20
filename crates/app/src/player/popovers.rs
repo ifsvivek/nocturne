@@ -457,12 +457,12 @@ pub fn floaters(p: &Player, shown: bool) -> Vec<Element<'_, Msg>> {
     }
     if let Some((title, left)) = p.next_card() {
         let label = match left {
-            Some(n) => format!("Next episode in {n}"),
+            Some(n) => format!("Next episode in {n} s"),
             None => "Next episode".into(),
         };
         let body = panel(
             column![
-                mono(label.to_uppercase()),
+                mono(label),
                 text(title)
                     .size(13)
                     .font(t::semibold())

@@ -431,6 +431,24 @@ impl Home {
             .or_else(|| self.newest())
     }
 
+    /// The hero's eyebrow: "01 / 05 \u{b7} Episode" while the carousel shows this slide, else just the kind.
+    pub fn hero_tag(&self, m: &Media) -> String {
+        let kind = m.kind_label();
+        let mut c = kind.chars();
+        let kind: String = c
+            .next()
+            .map(|f| f.to_uppercase().chain(c).collect())
+            .unwrap_or_default();
+        match self.slides.get(self.carousel.index()) {
+            Some(s) if self.slides.len() > 1 && s.id == m.id => format!(
+                "{:02} / {:02} \u{b7} {kind}",
+                self.carousel.index() + 1,
+                self.slides.len()
+            ),
+            _ => kind,
+        }
+    }
+
     /// The first item of the first Latest row: today's hero when nothing is focused.
     fn newest(&self) -> Option<&Media> {
         self.latest.iter().find_map(|r| r.items.items().first())
@@ -814,7 +832,7 @@ impl App {
         let hero: El = match hero_cfg(&hp, self.win.width, self.win.height) {
             Some((hh, banner)) => {
                 let inner: El = match h.hero() {
-                    Some(m) => self.hero_band(m, hh, hero_focus),
+                    Some(m) => self.hero_band(m, h.hero_tag(m), hh, hero_focus),
                     None => container(note(if h.loading() {
                         "Loading your library"
                     } else {
@@ -1026,7 +1044,7 @@ impl App {
     }
 
     /// Full-bleed hero: backdrop fills the width, scrims fade it into the page, text bottom-left.
-    fn hero_band<'a>(&'a self, m: &'a Media, h: f32, focus: Option<usize>) -> El<'a> {
+    fn hero_band<'a>(&'a self, m: &'a Media, tag: String, h: f32, focus: Option<usize>) -> El<'a> {
         let w = self.win.width;
         let art = if m.backdrop_tag.is_none() && m.kind == Kind::Episode {
             Art::Landscape
@@ -1093,13 +1111,9 @@ impl App {
             focus == Some(1),
             Message::Cell(At::Hero, CellAct::Open),
         ));
-        let mut col = column![
-            mono(format!("0x00 \u{b7} {}", m.kind_label())),
-            chips,
-            title_el
-        ]
-        .spacing(t::S4)
-        .align_x(Alignment::Start);
+        let mut col = column![mono(tag), chips, title_el]
+            .spacing(t::S4)
+            .align_x(Alignment::Start);
         if let Some(s) = season_line {
             col = col.push(s);
         }

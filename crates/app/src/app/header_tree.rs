@@ -182,7 +182,7 @@ impl App {
             .and_then(|p| p.media.as_ref())
             .map(|m| (m.origin, m.id.as_str()));
         let at_home = self.stack.len() <= 1;
-        let blur = self.admin_open;
+        let blur = self.off_nav();
         let nav_focus = self
             .stack
             .last()

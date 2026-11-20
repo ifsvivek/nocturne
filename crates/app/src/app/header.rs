@@ -50,6 +50,11 @@ pub(super) fn hist_button<'a>(
 }
 
 impl App {
+    /// A page that is not under any nav link (Admin, Settings, Sources, Themes) is showing: no link is lit.
+    pub(super) fn off_nav(&self) -> bool {
+        self.admin_open || self.settings_open || self.src_open || self.th.open
+    }
+
     pub(super) fn header(&self) -> El<'_> {
         let home = self.stack.first();
         let libs = home.map_or(&[][..], |h| h.libs.items());
@@ -59,7 +64,7 @@ impl App {
             .and_then(|p| p.media.as_ref())
             .map(|m| (m.origin, m.id.as_str()));
         let at_home = self.stack.len() <= 1;
-        let blur = self.admin_open;
+        let blur = self.off_nav();
         let nav_focus = self
             .stack
             .last()
@@ -397,6 +402,11 @@ impl App {
         let (name, server) = self
             .session()
             .map_or(none, |(u, s)| (s.user_name.clone(), u.clone()));
+        // The source's own name, not its address.
+        let server = self
+            .active
+            .and_then(|id| self.catalog.slot(id))
+            .map_or(server, |sl| sl.profile.label.clone());
         let who = row![
             avatar(
                 40.0,
@@ -444,7 +454,6 @@ impl App {
             if let Some(f) = face {
                 c = c.push(f);
             }
-            c = c.push(text(label).size(t::BODY));
             let gated = matches!(
                 act,
                 AcctAct::Password
@@ -453,6 +462,20 @@ impl App {
                     | AcctAct::RemoveImage
                     | AcctAct::Language
             ) && !writes;
+            c = c.push(if gated {
+                // Say why it is greyed: a caption under the label (the tooltip repeats where to switch it on).
+                Element::from(
+                    column![
+                        text(label).size(t::BODY),
+                        text("Needs server changes on")
+                            .size(t::CAPTION)
+                            .color(t::text_tertiary())
+                    ]
+                    .spacing(1),
+                )
+            } else {
+                text(label).size(t::BODY).into()
+            });
             let item = menu_row(c, i == self.menu_sel, gated, Message::MenuAct(act));
             items.push(if gated { tip(item, NEED_WRITES) } else { item });
         }

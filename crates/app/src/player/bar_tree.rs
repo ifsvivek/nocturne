@@ -174,14 +174,14 @@ impl Player {
             );
         }
         let info = tr.doc.add(row1, "div.player-info");
-        if let Some(e) = &f.ends {
-            let n = tr.doc.add(info, "div.player-ends");
-            tr.doc.text(n, e);
-        }
         let ti = tr.doc.add(info, "div.player-title");
         tr.doc.text(ti, &self.media.title);
         let st = tr.doc.add(info, "div.player-status");
         tr.doc.text(st, &f.status);
+        if let Some(e) = &f.ends {
+            let n = tr.doc.add(info, "div.player-ends");
+            tr.doc.text(n, e);
+        }
         let menus = tr.doc.add(row1, "div.player-menus");
         if !self.mini {
             let can_fav = self.can_favorite();

@@ -466,6 +466,8 @@ pub enum BgDim {
     Auto,
     Px(f32),
     Pct(f32),
+    /// `em` / `rem` of the element's own font size, resolved when the picture is placed (the font size may be set after the background).
+    Em(f32),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -508,6 +510,9 @@ fn bg_dim(t: &str) -> Option<BgDim> {
     if let Some(n) = t.strip_suffix("px") {
         return n.trim().parse().ok().map(BgDim::Px);
     }
+    if let Some(n) = t.strip_suffix("rem").or_else(|| t.strip_suffix("em")) {
+        return n.trim().parse().ok().map(BgDim::Em);
+    }
     (t == "0").then_some(BgDim::Px(0.0))
 }
 
@@ -523,7 +528,7 @@ pub fn bg_pos(toks: &[&str]) -> Option<BgPos> {
             _ => match bg_dim(t)? {
                 BgDim::Pct(p) => Some((p / 100.0, 0.0)),
                 BgDim::Px(p) => Some((0.0, p)),
-                BgDim::Auto => None,
+                BgDim::Auto | BgDim::Em(_) => None,
             },
         }
     };
@@ -643,7 +648,7 @@ pub fn pic(v: &str) -> Option<Pic> {
 }
 
 /// Where a picture of `iw` x `ih` is drawn in a box of `bw` x `bh` (relative to the box; callers clip to it): one rectangle, or the tiles that cover the box (at most 400).
-pub fn pic_rects(p: &Pic, bw: f32, bh: f32, iw: f32, ih: f32) -> Vec<[f32; 4]> {
+pub fn pic_rects(p: &Pic, bw: f32, bh: f32, iw: f32, ih: f32, em: f32) -> Vec<[f32; 4]> {
     if iw <= 0.0 || ih <= 0.0 || bw <= 0.0 || bh <= 0.0 {
         return vec![];
     }
@@ -651,6 +656,7 @@ pub fn pic_rects(p: &Pic, bw: f32, bh: f32, iw: f32, ih: f32) -> Vec<[f32; 4]> {
         BgDim::Auto => None,
         BgDim::Px(p) => Some(p),
         BgDim::Pct(p) => Some(b * p / 100.0),
+        BgDim::Em(e) => Some(e * em),
     };
     let (w, h) = match p.size {
         BgSize::Auto => (iw, ih),
@@ -1426,19 +1432,26 @@ mod pic_tests {
         let mut p = pic("url(x.png) 100% 0 / 50px auto no-repeat").unwrap();
         // 100 x 50 image shown 50 wide: 25 high, flush right and top.
         assert_eq!(
-            pic_rects(&p, 200.0, 100.0, 100.0, 50.0),
+            pic_rects(&p, 200.0, 100.0, 100.0, 50.0, 16.0),
             vec![[150.0, 0.0, 50.0, 25.0]]
         );
         p.size = BgSize::Cover;
         p.pos = bg_pos(&["center"]).unwrap();
         assert_eq!(
-            pic_rects(&p, 200.0, 200.0, 100.0, 50.0),
+            pic_rects(&p, 200.0, 200.0, 100.0, 50.0, 16.0),
             vec![[-100.0, 0.0, 400.0, 200.0]]
         );
         p.size = BgSize::Auto;
         p.repeat = (true, false);
         p.pos = BG_POS0;
-        assert_eq!(pic_rects(&p, 100.0, 50.0, 50.0, 50.0).len(), 2);
+        assert_eq!(pic_rects(&p, 100.0, 50.0, 50.0, 50.0, 16.0).len(), 2);
+        // `auto 1.2em` (the critic-rating icon): 1.2 of the element's font size high.
+        p.size = bg_size(&["auto", "1.2em"]).unwrap();
+        p.repeat = (false, false);
+        assert_eq!(
+            pic_rects(&p, 40.0, 20.0, 50.0, 50.0, 10.0),
+            vec![[0.0, 0.0, 12.0, 12.0]]
+        );
     }
 
     #[test]

@@ -55,6 +55,14 @@ NOCTURNE now draws its main screens with its own CSS theme engine, can show a Je
 - `sources.toml` is version 2: the per-server Server UI switch is now `ui_from = "self"` (migrated automatically).
 
 ### Fixed
+- Player: the next-episode card says "Next episode in 9 s" (it had no unit), the end time follows the title and status ("clip  Ends at 7:37 PM"), and the buffered range of the seek bar is a thinner, lighter line so it no longer reads as playback progress next to the elapsed time.
+- One clock formatter: the player's "Ends at", the item page's "Ends at" and the episode cards' "ends" all follow the system locale's 12 or 24 hour style (read from `nl_langinfo`; other platforms keep 12 hour), where the player showed 24 hour and the pages 12 hour.
+- Player menus: the audio menu marks the playing track (a lone track was never marked), and the Settings button, which also holds Quality, shows a gear instead of a sun that looked like brightness.
+- Home's hero eyebrow reads "01 / 05 · Movie" (the slide among the carousel's, or just the kind) instead of the "0x00 · movie" index.
+- Season tabs read "Season 1 · 4 episodes" (the real episode count, asked for with `ChildCount`) instead of a bare number after the name; without a count they say "· N unwatched".
+- Settings rows keep a readable width (1280 px) so a label and its control are no longer a screen apart; the account menu's greyed items say "Needs server changes on" under the label, and its header shows the source's name instead of its address.
+- The header lights no link on Settings, Sources or Themes (it kept Home or Movies lit).
+- Jellyfin layout mode: a stylesheet's `background-size` in `em` is honoured (`auto 1.2em`), which draws the critic rating's tomato at icon size instead of a stretched red block; "Sort: Name ↑" stays on one line; the library tile's icon is the web client's 5 em.
 - Clicking a My Media tile in a server's own look no longer crashes: the paint widget kept hover, press and drag node numbers across a page swap and indexed the smaller new page with them; they are now dropped when the page is replaced.
 - Safe look (Ctrl+Shift+0) is the built-in NOCTURNE look on every page, including pages in a server's own look (the server's layout is dropped while it is on), instead of changing only the header and leaving a broken library behind.
 - The Admin link in the header opens Admin from Settings, Themes and Sources (they were drawn over it), and those pages no longer show a leftover browsing breadcrumb.

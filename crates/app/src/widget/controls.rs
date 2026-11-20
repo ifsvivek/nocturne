@@ -340,7 +340,8 @@ pub fn action_button<'a, M: Clone + 'a>(
     };
     Press::new(mid(text(label.to_string())
         .size(t::CAPTION + 1.0)
-        .font(t::semibold())))
+        .font(t::semibold())
+        .wrapping(iced::widget::text::Wrapping::None)))
     .height(32)
     .padding([0.0, t::S3])
     .on_press(on_press)
