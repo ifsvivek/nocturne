@@ -4,6 +4,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Changed
+- The theme engine is on by default: Home, the header, Library, Search, the item page and the player's controls are element trees styled by the stylesheet (the look is unchanged with no theme). It is the `theme-engine` cargo feature, now a default feature of `nocturne-app`; `cargo build --no-default-features` builds the hand-written screens only, and `NOCTURNE_ENGINE_UI=0` shows them at run time for this release.
+
 ### Added
 - Theme engine: `radial-gradient()`, `repeating-linear-gradient()` and `repeating-radial-gradient()` are drawn (Iced only draws linear ones): each is rasterised once per box size into a cached picture layer in the right stacking order, never per frame (conic gradients are still skipped). `@keyframes` with `animation` (and its longhands) animate opacity, transform and colour; frames are requested only while something runs, endless animations at 30 per second, none with reduced motion, and never on an essential control. `filter: brightness()` dims an element (a theme's backdrop dimming), and `initial`/`unset` put the default back (ElegantFin's `margin-top: unset` had left the item ribbon about 100 px too high).
 - Jellyfin layout mode: Home and library pages have the page-sized `.backgroundContainer` themes tint (Jellyfish's teal), Continue Watching and Next Up carry the attributes themes use to lay them out (Zombie's big card with small ones), and the item page keeps a hidden previous page as the web client does.

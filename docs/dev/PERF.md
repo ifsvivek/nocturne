@@ -70,3 +70,18 @@ The +2.1 MiB is the 0.4 features (online metadata clients, downloads, Trakt, rem
 ## Build cost, 2026-11-18 (lean profiles, shared cache)
 
 Clean `cargo build -p nocturne-app` (dev), 16 cores, machine shared with other builds: before 158 s and 5.3 GB target, after (`debug = "line-tables-only"`, `debug = false` for dependencies) 67 s and 2.6 GB. `fast-release` (thin LTO, 16 codegen units) clean: 181 s on the busy machine (135 s quiet, see PACKAGING.md), 46 MB binary; fat-LTO `release` clean, no sccache, Wayland-only iced (2026-11-18): 6 min 0 s (the run began with another build finishing, load 6.5 falling to 1.7, so a fully quiet run may be somewhat faster), 33.0 MB; `fast-release` on the same machine 2 min 52 s, 46.6 MB (a load spike from outside the run appeared at its end). A second worktree with sccache and `SCCACHE_BASEDIRS`: 92 % hits, dev build 67 s to 41 s (32 s fully warm). Container packaging: first run (image, rustup, 15.5 min compile on 6 niced CPUs over a slow link) then a repeat `package.sh deb` in 10 s and the rpm from the same binary installs on `fedora:latest` with no missing libraries.
+
+## 0.5.2 theme engine on by default, 2026-11-20
+
+Two fat-LTO `release` builds of the same commit (`main` at the theme fidelity round 3 merge), one with the old default (hand-written screens, no `nocturne-style`) and one with the `theme-engine` feature on (the new default). Run-time rows: the invisible sway session (`HS_NAME=prep`, 1600x900, no GPU, so the software renderer), dev-token mode against a throwaway demo server on loopback, Home loaded, throwaway XDG dirs, 10 s settle then 10 s of CPU; `NOCTURNE_TIMING=1` "first frame" for the cold start. The machine was shared with other builds and servers, so the timings are noisy (a single run varied by more than the difference); `scripts/perf.sh` was not used because it opens windows on the real desktop and needs `hyprctl`.
+
+| Metric | Engine off | Engine on | Change |
+|---|---|---|---|
+| Binary | 36139648 B (34.47 MiB) | 39076928 B (37.27 MiB) | +2.80 MiB (+8 %) |
+| Needed shared libraries (`ldd`) | same list | same list | no new run-time library |
+| Idle Home RSS (2 runs each) | 311.8 / 312.2 MiB | 326.0 / 324.6 / 325.6 MiB | +13 MiB |
+| Idle Home CPU over 10 s (one core, software renderer) | 48.0 / 46.1 % | 52.4 / 47.3 / 50.1 % | no clear change |
+| Cold start to first frame | 816 / 773 ms | 782 / 928 / 1417 ms | within noise |
+| Engine on, `NOCTURNE_ENGINE_UI=0` (fallback) | | RSS 324 to 326 MiB, first frame 1.9 to 2.4 s (noisy) | the fallback runs |
+
+The +2.8 MiB is the engine crate with Taffy and `cssparser`, the default stylesheets and the engine screens (two crates under MPL-2.0 are new in the notices: `cssparser`, `dtoa-short`). The idle CPU of about 50 % appears in both builds in the GPU-less session (software rendering of an animating Home), so it is not caused by the engine; confirm on a real GPU session before quoting an idle CPU. The package builds and the Windows/macOS cross checks could not run (no container daemon), see the 0.5.2 release notes.
