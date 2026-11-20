@@ -605,6 +605,8 @@ impl App {
         #[cfg(feature = "theme-engine")]
         let t0 = self.eng.stats.then(std::time::Instant::now);
         let task = self.update_inner(msg);
+        #[cfg(feature = "theme-engine")]
+        self.studio_ext_sync();
         let ui = self.sync_ui();
         let theme = self.sync_theme();
         #[cfg(feature = "theme-engine")]
@@ -967,6 +969,22 @@ impl App {
             }
             Message::OpenSources => self.open_sources(),
             Message::Themes(m) => self.themes_msg(m),
+            Message::DebugView(v, tries) => {
+                let ready = self
+                    .stack
+                    .last()
+                    .filter(|p| p.view == View::Grid)
+                    .filter(|p| p.br.as_deref().is_some_and(|b| !Self::browse_loading(b)))
+                    .map(|p| p.pid);
+                match ready {
+                    Some(pid) => Task::done(Message::Browse(pid, browse::BMsg::View(v))),
+                    None if tries > 0 => crate::task::after(
+                        std::time::Duration::from_millis(250),
+                        Message::DebugView(v, tries - 1),
+                    ),
+                    None => Task::none(),
+                }
+            }
             Message::Snapped(shot, n) => {
                 crate::snap::save(&shot, n);
                 Task::none()
@@ -2169,6 +2187,15 @@ impl App {
             }
             if let Some(h) = self.hints() {
                 layers.push(h);
+            }
+            #[cfg(feature = "theme-engine")]
+            if self.studio.open {
+                // The panel sits beside the player: the video hole is laid out narrower and its bounds follow.
+                return iced::widget::row![
+                    Element::from(Stack::with_children(layers)),
+                    self.studio_panel()
+                ]
+                .into();
             }
             return Stack::with_children(layers).into();
         }
