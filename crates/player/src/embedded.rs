@@ -397,8 +397,9 @@ impl EmbeddedPlayer {
         self.set_paused(true)
     }
 
+    /// mpv flips the flag itself: reading it first would see nothing while a write is queued and pause again.
     pub fn toggle(&self) -> Result<()> {
-        self.set_paused(!self.state().paused)
+        self.cmd(Kind::Keep, "cycle", &["pause"])
     }
 
     pub fn seek_to(&self, secs: f64) -> Result<()> {
