@@ -223,7 +223,8 @@ impl Client {
             &["Shows", series_id, "Seasons"],
             &[
                 ("userId", user_id.to_string()),
-                ("fields", ID_FIELDS.into()),
+                // ChildCount: the episode count of each season tab.
+                ("fields", "ProviderIds,ChildCount".into()),
             ],
         )
         .await

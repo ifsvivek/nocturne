@@ -517,13 +517,8 @@ impl Detail {
             let shape = self.shape();
             let on_tabs = shape.current(&self.focus) == DRow::Seasons;
             for (i, s) in self.seasons.items().iter().enumerate() {
-                let n = match s.unplayed {
-                    Some(0) => " \u{2713}".to_string(),
-                    Some(n) => format!("  {n}"),
-                    None => String::new(),
-                };
                 let t = tab(
-                    &format!("{}{n}", s.title),
+                    &detail::season_tab_label(&s.title, s.child_count, s.unplayed),
                     i == self.focus.season,
                     Msg::SeasonTab(i),
                 );

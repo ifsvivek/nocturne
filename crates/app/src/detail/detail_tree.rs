@@ -694,11 +694,6 @@ impl Detail {
             let tabs_box = t_.doc.add(head, "div.detail-tabs-box");
             let tabs = t_.doc.add(tabs_box, "div.detail-tabs");
             for (i, s) in self.seasons.items().iter().enumerate() {
-                let n = match s.unplayed {
-                    Some(0) => " \u{2713}".to_string(),
-                    Some(n) => format!("\u{a0}\u{a0}{n}"),
-                    None => String::new(),
-                };
                 let tab = t_.doc.add(
                     tabs,
                     if i == self.focus.season {
@@ -708,7 +703,10 @@ impl Detail {
                     },
                 );
                 let l = t_.doc.add(tab, "span.tab-label");
-                t_.doc.text(l, &format!("{}{n}", s.title));
+                t_.doc.text(
+                    l,
+                    &detail::season_tab_label(&s.title, s.child_count, s.unplayed),
+                );
                 t_.acts.insert(tab, Msg::SeasonTab(i));
                 t_.cell(tab, (DRow::Seasons, i));
             }
