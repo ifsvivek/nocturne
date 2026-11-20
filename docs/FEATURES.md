@@ -1,110 +1,111 @@
 # Features
 
-What NOCTURNE does as of 0.5.1 (2026-11-19); entries tagged (0.4) or (0.5) say which release added them. `[x]` implemented, `[~]` partial, `[ ]` not implemented. Verification tags on 0.4 items: *verified* (run against a real or throwaway server / real data), *mock-tested* (unit tests and loopback mocks only), *needs hardware / account* (cannot be checked here). Verification detail per feature is in [QA_REPORT.md](QA_REPORT.md); remaining work is in [ROADMAP.md](ROADMAP.md). Which features change data on your server is in [WRITES.md](WRITES.md).
+What NOCTURNE does today. Items marked (partial) work with the limits stated; items under Not implemented do not exist yet. How each feature was checked is in [QA_REPORT.md](QA_REPORT.md), planned work is in [ROADMAP.md](ROADMAP.md), and which features change data on a server is in [WRITES.md](WRITES.md).
 
-## Sources: local folders and several servers
-- [x] First-run setup flow (5 steps fresh, 2 for upgraders): Local library, Connect to a server, or Both; Settings > Run setup again
-- [x] Single instance: a second launch raises the running window
-- [x] Several Jellyfin servers at once, each with its own account; a source that is signed out or offline never blocks the others (quiet banner, retry with backoff)
-- [x] Settings > Sources: status, sign in again, rescan, enable / disable, priority order, remove (says what is deleted)
-- [x] One unified library: Home, browse and search merge sources; a header filter narrows to one source; small source marks on cells and detail pages
-- [x] Duplicates shown once when provider ids (IMDb / TMDB / TVDB) or series id + season + episode agree; title alone never merges
-- [x] Versions and sources picker on the detail page: a server's own versions plus copies in other sources, with "Always prefer this source"
-- [x] Local folders: add by portal chooser or typed path, scan with live progress and cancel, availability of unplugged drives, counts
-- [x] Local metadata from names, `.nfo`, sidecar art and `ffprobe` (if installed); Unmatched list with manual match; your files are never modified
-- [x] Local playback with resume position and watched state kept in NOCTURNE's own data
-- [x] (0.4) Online details for local media, opt-in per source: TMDB (your own key), TVmaze, MusicBrainz + Cover Art Archive; unclear matches listed, never guessed; provider credits shown ([METADATA.md](METADATA.md)). Live-tested with TMDB; MusicBrainz and TVmaze against mocks
-- [x] (0.4) Subtitle download for local files (OpenSubtitles, your own key, opt-in), stored in NOCTURNE's folder. Search live-tested; actual download needs an OpenSubtitles login and is mock-tested
-- [x] (0.4) Offline copies: "Download to this computer" for a server movie, episode, season or show; GET only, resumable, shows up as a second local source. Verified on a throwaway server; exFAT/FAT targets and servers that deny downloads untested live
-- [x] (0.4) Smart collections: saved rules (watched state, genres, years, rating, added within N days, resolution, runtime, sources) over every source; local only. Unit-tested; resolution rules apply to servers only
-- [x] (0.4) One watched state across sources (opt-in, write-gated), matched by provider ids only. Verified on a throwaway server with a local copy of the same title (setting off: nothing follows; on with server changes: the server copy follows; on without: only local copies; unrelated titles never touched). Not yet tried with two real servers
-- [x] (0.4) Optional extra HTTP header per server (keyring). Verified on a throwaway server
-- [x] (0.5) Server UI per server (Settings > Sources > Layout): Home in the server's own section order with a My media row and the server's library order and hidden libraries, and the server's branding CSS as that server's theme layer; a home-sections editor (reorder, on / off) that writes back only the `homesection` entries, behind server changes. Verified on a throwaway server (layout, editor with writes off and on, reload); not tried against a server with custom branding CSS or Live TV. Not shown natively: Live TV and recordings rows, audio and book continue rows, web-client plugins
+## Sources
 
-## Accounts and connection
-- [x] Sign in with username and password, Quick Connect, sign out, change own password
-- [x] Sessions stored in the system keyring (Secret Service), one per server account; restored on launch
-- [x] Server address entry with validation, remembered servers, forget server
-- [x] Session-ended handling (401 returns to sign-in), offline banner with retry
-- [~] Developer API-key mode via environment variables (a transient read-only source, never saved; all writes refused; `.env` is read by debug builds only)
-- [x] Watch together (SyncPlay): list, create, join and leave groups on the server; play, pause, seek, stop and next stay in step across members (clock sync, drift correction, Ready / Buffering handshake). `g` or the account menu; works with the embedded and the external mpv player. Needs server changes on. See [syncplay.md](syncplay.md)
-- [x] Authorize another device with Quick Connect; Your devices (read only list of this account's sessions)
-- [x] Switch between remembered accounts of a server without a password (tokens in the keyring, `accounts.toml` holds names and the public profile-image tag, never a token); the profile picture shows in the header avatar, the account menu, the switcher and the Admin Users list; add another account; own profile image set / remove; display language (the `language` entry other Jellyfin apps share). Sign out forgets the account
-- [x] Profile picker ("Who's watching?") at launch when the server has two or more remembered accounts: round profile tiles with picture or initial, Add profile tile, mouse / arrows / Enter, local sign-in with the stored token (a rejected token opens the sign-in form with the name filled in); "Use as default profile" skips it at the next launches; account menu "Switch profile" and a Settings "Default profile" drop-down; the default is a name marker in `accounts.toml`, cleared when that account is removed; no server writes, not shown in developer-token mode or with a single account
+- First-run setup: local library, server, or both. It can be repeated from Settings > Run setup again.
+- One window: starting NOCTURNE again raises the running one.
+- Several Jellyfin servers at once, each with its own account. A source that is signed out or offline never blocks the others; a quiet banner shows it and the app retries with backoff.
+- Settings > Sources: status, sign in again, rescan, enable or disable, priority order, remove (it says what is deleted).
+- One catalog: Home, browsing and search merge all sources. A header filter narrows to one source, and small marks show where an item lives.
+- Duplicates appear once when provider ids (IMDb, TMDB, TVDB) agree, or when series id, season and episode agree. Title alone never merges.
+- A versions and sources picker on the detail page lists a server's own versions and the copies in other sources, with "Always prefer this source".
+- Server UI per server (Settings > Sources > UI): Home in that server's own section order with its My media row, library order and hidden libraries, and its branding CSS as that server's theme layer. A home sections editor can reorder and switch sections; it writes back only the home section entries and needs server changes on. Live TV and recordings rows, audio and book continue rows and web-client plugins are not shown.
+- An optional extra HTTP header per server, stored in the keyring.
+
+## Local library
+
+- Add folders with the portal chooser or a typed path. Scans show progress and can be cancelled; unplugged drives show as unavailable.
+- Metadata comes from file names, `.nfo` files, sidecar artwork, and `ffprobe` when it is installed. Unmatched files are listed and can be matched by hand.
+- Online details are opt-in per source: TMDB (your own key), TVmaze, and MusicBrainz with Cover Art Archive. Unclear matches are listed, never guessed ([METADATA.md](METADATA.md)).
+- Subtitle download from OpenSubtitles (your own key, opt-in), stored in NOCTURNE's folder.
+- Offline copies: download a server movie, episode, season or show to this computer. Downloads are resumable and appear as a second local source.
+- Smart collections: saved rules over every source (watched state, genres, years, rating, added within N days, resolution, runtime, sources). Resolution rules apply to servers only.
+- Resume position and watched state for local files are kept in NOCTURNE's own data. Your files are never modified, moved or deleted.
+- Optional shared watched state across sources, matched by provider ids only and write-gated.
 
 ## Browsing
-- [x] Home banner data (0.5.2, UI in progress): slides from continue watching, next up, latest and favourites without duplicates, auto-advance with pause rules, logo art (server and local sidecar), expandable descriptions, skeleton loading states; Settings > Home banner. Unit-tested; the Glass theme draws it
-- [x] Home: hero, Continue Watching, Next Up, latest per library
-- [x] (0.4) Latest rows include new episodes of existing shows; Play on a show card starts the next unwatched episode; "Included in" collections on movie and show pages (Jellyfin 12+)
-- [x] Library views: paged virtualised grid, sort, filters, A-Z jump, poster / thumb / list views
-- [x] Genres, Studios, Years, Tags tabs; Collections, Playlists, Favourites pages (read only)
-- [x] Search (Ctrl+K or /), grouped results, recent searches
-- [x] Detail pages: movies, series (logo hero, season tabs, episode card grid), episodes, people
-- [x] Cast, similar items, extras, media info, ratings, chapters, More menu
-- [x] Remote images with blurhash placeholders and a size-capped disk cache
-- [x] Breadcrumbs, back / forward, Esc / Backspace navigation
-- [~] Photos: viewer with prev / next and zoom; folders open as grids
-- [~] Music: browsable; a session music queue (Play next, Add to queue from albums, tracks and playlists; reorder, remove, shuffle, repeat in the player queue panel). No album-art queue view
-- [ ] Books and audiobooks: detail page only, not playable
-- [ ] HDR filter (the server exposes none)
+
+- Home with a hero carousel, Continue Watching, Next Up and latest rows per library. Latest rows include new episodes of existing shows, and Play on a show card starts the next unwatched episode.
+- Library views with a paged grid, sort, filters, A-Z jump and poster, thumb or list layout.
+- Genres, Studios, Years and Tags tabs; Collections, Playlists and Favourites pages.
+- Search with Ctrl+K or `/`: grouped results and recent searches.
+- Detail pages for movies, series (logo hero, season tabs, episode grid), episodes and people, with cast, similar items, extras, media info, ratings, chapters and "Included in" collections.
+- Images use blurhash placeholders and a size-capped disk cache.
+- Breadcrumbs, back and forward, Esc and Backspace.
+- Photos (partial): viewer with previous, next and zoom; folders open as grids.
+- Music (partial): browsable, with a queue (Play next, Add to queue, reorder, remove, shuffle, repeat). There is no album-art queue view.
 
 ## Playback
-- [x] In-window GPU video through libmpv with hardware decoding (Wayland); external mpv window as a fallback. Linux is Wayland-only (X11 sessions are refused with a message)
-- [x] libmpv is loaded at run time: without it the app still starts and falls back to the `mpv` program or shows what to install
-- [x] Player loading overlay (Stremio-style: backdrop, logo filling with the buffer) when a stream opens, a lighter version on stalls
-- [~] HDR video is tone-mapped to SDR in the window. (0.4) HDR pop-out window (mpv `gpu-next`, fullscreen, driven from the app) with an Ask / SDR / Pop-out setting: needs HDR hardware, **no HDR display has been tested** ([HDR.md](HDR.md))
-- [x] (0.4) Secondary subtitle; audio and subtitle language remembered per show across restarts (local file, "Original audio" option); player menus by keyboard (T, V, O, Q). Built and unit-tested; not checked against a long real series
-- [x] (0.4) Truthful playback reports (play method, media source, session id), visible notice on failure, final "stopped" retried once
-- [x] (0.4) Trakt (opt-in, one-click connect with the built-in client id; your own Trakt app stays an advanced option): scrobble and watched-history import. Verified live against a real Trakt account (2026-11-17): browser sign-in with PKCE through the local redirect `http://127.0.0.1:38917/callback`, username, history read, scrobble start/stop ([TRAKT.md](TRAKT.md))
-- [~] (0.4) Remote control from other Jellyfin apps (opt-in, needs server changes on). Verified on a throwaway 12.x server: the session shows as controllable, and Play, Pause, Unpause, Seek, Next and Stop sent through the server's API took effect; with the setting off the session is not controllable. Not yet tried from a phone app ([WRITES.md](WRITES.md))
-- [~] (0.4) Couch mode: 10-foot layout, keyboard / remote-key navigation, gamepad (`gilrs`). Layout and key paths checked; **no real gamepad or TV tested**
-- [x] Seek bar with chapters and trickplay hover thumbnails, volume, fullscreen, mini player
-- [x] Audio and subtitle menus, subtitle styling and delay, audio delay, speed, aspect and picture controls
-- [x] Skip intro / credits, next-episode autoplay, queue panel
-- [x] Quality selector with transcode fallback, playback info overlay, key help overlay, context menu, screenshot
-- [x] MPRIS media controls and idle inhibit
-- [x] Resume position; progress, watched and favourite sync (needs server changes on, see WRITES.md)
-- [x] Network buffering watermarks ([buffering.md](buffering.md))
-- [x] Playlists you own: create (N on the Playlists page), add from any item or album (More), remove and reorder entries (x, [ ], ]), rename, delete (typed name); collections stay read only
-- [x] Music queue: queue panel (u) with reorder, remove, shuffle and repeat; kept for the session and started from the account menu
+
+- Video plays inside the app window through libmpv with hardware decoding on Wayland. An external mpv window is the fallback.
+- libmpv is loaded at run time. Without it the app still starts, falls back to the `mpv` program, or says what to install.
+- A loading overlay fills as the stream buffers.
+- HDR video is tone-mapped to SDR in the window. An HDR pop-out window (mpv `gpu-next`, fullscreen) has an Ask, SDR or Pop-out setting. It needs HDR hardware and has not been tested on an HDR display ([HDR.md](HDR.md)).
+- Seek bar with chapters and trickplay thumbnails, volume, fullscreen and a mini player.
+- Audio and subtitle menus with delay and styling, a secondary subtitle, speed, aspect and picture controls. Audio and subtitle language are remembered per show. Menus open from the keyboard (T, V, O, Q).
+- Skip intro and credits, next-episode autoplay, a queue panel, a quality selector with transcode fallback, a playback info overlay, a key help overlay, a context menu and screenshots.
+- MPRIS media controls and idle inhibit on Linux.
+- Resume position, and progress, watched and favourite sync (needs server changes on).
+- Playback reports state the real play method and media source, show a notice on failure, and retry the final "stopped" once.
+- Network buffering watermarks ([buffering.md](buffering.md)).
+- Trakt (opt-in): one-click connect, scrobbling and watched-history import ([TRAKT.md](TRAKT.md)).
+- Remote control from other Jellyfin apps (partial): opt-in, needs server changes on. Checked against a throwaway server, not from a phone app.
+- Couch mode (partial): a 10-foot layout with keyboard, remote-key and gamepad navigation. It has not been tried with a real gamepad or TV.
+
+## Accounts
+
+- Sign in with username and password or Quick Connect; sign out; change your own password.
+- Authorize another device with Quick Connect; a read-only list of this account's devices.
+- Tokens are stored in the system keyring, one per server account, and restored on launch.
+- Switch between remembered accounts of a server without a password. A "Who's watching?" picker appears at launch when a server has two or more, and a default profile can skip it.
+- Own profile image, display language, add account, forget account.
+- Watch together (SyncPlay): create, join and leave groups; play, pause, seek, stop and next stay in step across members. Press `g`. Needs server changes on ([syncplay.md](syncplay.md)).
+- Playlists you own: create, add items or albums, remove, reorder, rename and delete. Collections are read only.
+- A developer API-key mode through environment variables adds a transient source that is never saved and refuses all writes.
+
+## Themes and settings
+
+- Themes are CSS, imported by pasting, from a file or from an address. They set colours, radii, window background and fonts, and style layout on named parts: cards, rows, Home sections and hero, header, buttons and the player bar. No browser engine is used and nothing from a theme is executed.
+- Built-in NOCTURNE and Glass themes, and Marquee, Feed and Classic examples. Themes apply globally or per server, with a 15 second preview.
+- Theme Studio (Themes > Open Studio): pick any element of the live screens, edit it with grouped controls ("this element only" or "all like this"), undo and redo, edit raw CSS in sync, start from a gallery, save as a named theme, and export a `.css` file. It covers Home, the header, Library, Search, the detail page and the player's controls.
+- Themes follow `@import` and load web fonts (https only, with size, time and count limits). A Settings switch turns all downloading off.
+- Jellyfin layout mode draws Home, the header, the library and the item page with the server's own stylesheets, so a server's web theme looks as it does in the browser.
+- Safe look: Ctrl+Shift+0, or starting with `NOCTURNE_SAFE_THEME=1`, restores the built-in look. `NOCTURNE_ENGINE_UI=0` shows the hand-written screens instead of the theme engine.
+- Settings cover server changes, progress sync, buffering, grid density, home sections, home banner, language preferences, and reduce motion (follows the desktop).
+- Real text editing in every field: selection with mouse and keyboard, copy, cut and paste.
+
+## Admin
+
+Administrator accounts only. The admin screens are view-only while server changes are off, and every write goes through a confirmation dialog.
+
+- Dashboard, activity, devices, sessions, logs, backups (list) and plugins (view).
+- Users: create, disable, delete, admin flag, password reset. Access and limits per user: library access, feature switches, parental rating, tags, bitrate and session limits, sign-in lockout, profile image.
+- Libraries: add, rename, remove, scan, folders, real-time monitor, trickplay and chapter images, NFO saving, embedded titles, providers (order and on or off per library and item type), refresh interval.
+- Scheduled tasks: run, stop, and edit triggers.
+- Trickplay, General, Metadata, Resume and Streaming settings. Transcoding shows its settings and edits three fields.
+- Branding: login message, custom CSS, splash screen.
+- Networking (safe subset): ports, bind addresses, LAN networks, remote access, UPnP, discovery, IPv4 and IPv6, with typed confirmation and a lock-out warning. Base URL, HTTPS and certificates, proxies and IP filters are view only.
+- Plugins: enable, disable, uninstall, install from the catalog; takes effect after a restart. Plugin repositories: add, enable, disable, remove.
+- API keys: create and delete. Server restart.
 
 ## Updates
 
-- At most one check a day (setting `check_updates`, on by default) tells you when a newer version exists. Package-managed installs show the command (`sudo pacman -Syu`, `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade`) and never touch themselves; where PackageKit is running (most desktops) the banner also has Update now, which asks PackageKit to update only the `nocturne` package (the desktop's own password prompt appears; NOCTURNE never runs sudo or sees a password), then offers Restart. If it is refused or fails the message says why and the command stays.
-- Per-user installs (the tarball installed with `PREFIX=~/.local` or into any directory you can write, the Windows installer, macOS app in a folder you can write) update in the app: Download and install, then Restart to update (macOS installs from a `.tar.gz` of the app bundle that ships next to the `.dmg`). The download is checked against the announced size, its sha256 and an ed25519 signature made with the NOCTURNE update key before anything is replaced; if any step fails the current version stays as it was. Verified by unit and integration tests and against a local server; not yet exercised end to end from a published release (the macOS `.tar.gz` path is untested on a Mac).
+- At most one check a day (setting `check_updates`, on by default).
+- Package-managed installs (pacman, apt, dnf) show the update command. Where PackageKit is running, the banner also offers Update now, which updates only the `nocturne` package through the desktop's own password prompt, then offers Restart. NOCTURNE never runs sudo or sees a password.
+- Per-user installs (the tarball in a directory you can write, the Windows installer, the macOS app in a writable folder) download, verify and replace themselves, then ask for a restart. The download is checked against its announced size, sha256 and an ed25519 signature before anything is replaced; if any step fails, the current version stays.
 
-## Settings
-- [x] (0.5) Real text editing in every text field (mouse and Shift+arrow selection, double-click a word, Ctrl+A / C / X / V; password fields cannot be copied or cut). Checked with real keystrokes in a headless Wayland session for the connect form; the sign-in form and pointer-only actions were not driven
-- [x] Settings screen: server-changes master switch, progress sync, buffering, grid density, home sections, language preferences, reduce motion (follows the desktop by default)
-- [x] Themes (Settings > Themes): colours, corner radii, window background and font family from imported CSS, global with an optional per-server override, 15 second preview. Layout CSS on named parts (cards, rows, Home sections and hero, header, buttons, player bar) with built-in Marquee, Feed and Classic examples (Classic: the web-home layout with round count badges, progress bars, row arrows and a header with icons); density, type size (whole-UI zoom) and backdrop blur (blurhash stand-in) are applied approximately; the font applies from the next launch. Unit-tested and checked in the app on a local library; not tried against a real Jellyfin theme from the web or two servers at once ([CUSTOMIZATION_PLAN.md](dev/CUSTOMIZATION_PLAN.md))
-- [x] (0.5.2) Theme Studio (Themes > Open Studio; the engine is the default `theme-engine` feature, `NOCTURNE_ENGINE_UI=0` falls back to the hand-written screens): pick any element of the live engine screens (outline with tag and classes, click or Enter, arrows for parent, child and siblings), change it with grouped controls (colours with alpha and hex, size and spacing, shape, shadow, typography with installed fonts, layout, hover), "this element only" or "all like this", per-scope reset, undo/redo, a raw CSS tab that stays in sync both ways, a starters gallery (Spotlight, Marquee, Feed, Classic), save as a named theme, apply globally or per server, export a `.css` file. Safe look and the essential floor still apply ([CUSTOMIZATION_PLAN.md](dev/CUSTOMIZATION_PLAN.md) section 17)
-- [ ] Subtitle appearance presets
+## Platform and accessibility
 
-## Admin (administrator accounts only)
-- [x] Dashboard, activity, devices, sessions, logs, plugins (view), backups (list)
-- [x] Users: create, disable, delete, admin flag, password reset
-- [x] Libraries: list, scan; add, remove, add / remove folders; toggle real-time monitor, trickplay and chapter images, NFO saving, embedded titles, internet providers; automatic refresh interval
-- [x] Scheduled tasks: run, stop; triggers (daily, weekly, interval, on startup): add, edit, delete
-- [x] Trickplay settings: interval, widths, tile size, quality, threads, scan behaviour, priority, hardware flags
-- [x] Branding: login message, custom CSS, splash screen
-- [x] Networking (safe subset): ports, bind addresses, LAN networks, remote access, UPnP, discovery, IPv4 / IPv6; typed confirmation and a lock-out warning on every change; base URL, HTTPS and certificates, proxies and IP filters stay view only
-- [x] Plugins: enable, disable, uninstall (installed from outside), install from the catalog; takes effect after a restart (bundled plugins cannot be changed)
-- [x] General, Metadata, Resume, Streaming settings (editable); Transcoding (view, three editable fields)
-- [x] API keys: create and delete; server restart
-- [x] Every write behind a confirmation dialog; view only while server changes are off
-- [x] Plugin repositories: list, add, enable, disable, remove (adding one warns that plugins run with full server access)
-- [x] Libraries: rename; Providers page with the metadata and image fetchers the server offers per library and item type (order, on / off), local metadata readers, and what the server lacks (subtitle, lyric and segment providers shown read only); refresh schedule shown (metadata refresh days per library, the server-wide scan task's triggers). A library's type cannot be changed
-- [x] Access and limits per user: library access, feature switches (remote access, playback, transcoding, remuxing, downloads, deletion, collections, subtitles, public sharing, hidden), maximum parental rating, blocked and allowed tags, remote bitrate limit, session limit, failed-sign-in lockout, profile image upload / remove, display preferences (read only). Jellyfin has no password length or expiry rules, so none are offered
+- Responsive full-window layout, keyboard-first navigation, and loading, empty and error states. `?` shows the shortcuts.
+- Settings are TOML under `$XDG_CONFIG_HOME/nocturne/` with no secrets on disk.
+- Linux is Wayland-only. On an X11-only session NOCTURNE says so and exits.
+- Packages: pacman, apt and dnf repositories, a tarball and an Arch PKGBUILD. Windows and macOS are unsigned previews. See [PLATFORMS.md](PLATFORMS.md).
+- Accessibility (partial): keyboard navigation and visible focus work; screen-reader support is limited by what Iced exposes.
 
-## Planned later
-Live TV / DVR, DLNA (browse and renderer), being a cast target for Jellyfin apps, gapless music playback: 0.9 in [ROADMAP.md](ROADMAP.md).
+## Not implemented
 
-## Platform and quality
-- [x] Full-window responsive layout, keyboard-first navigation, loading / empty / error states
-- [x] Settings in TOML under `$XDG_CONFIG_HOME/nocturne/`, no secrets on disk
-- [x] Tarball and Arch PKGBUILD packaging, desktop entry, icon, AppStream metadata; the tarball installer installs missing runtime libraries
-- [x] Keyboard shortcut reference: `?` on any browsing screen (the player has its own `?` with playback keys)
-- [~] (0.4, repositories 0.5) .deb and .rpm packages, published as signed apt and dnf repositories next to the pacman one (`https://nocturne.ifsvivek.in/repo`): built and install-tested in clean Debian, Ubuntu and Fedora containers; not run on a bare-metal Debian / Fedora install. On Ubuntu 24.04 (libmpv 0.37) video plays in an external mpv window. AppImage is experimental (a best-effort CI job, 107 MB, libmpv / glibc conflicts, not recommended); Flatpak to be evaluated ([PLATFORMS.md](PLATFORMS.md))
-- [~] (0.5) Windows (x64) setup.exe and zip, macOS (Apple Silicon) .dmg: unsigned previews on the GitHub release, built and smoke-tested in CI (and the Windows installer under wine), never run on a real PC or Mac; playback uses the external mpv window, no media keys; the system warns about an unknown publisher on first start ([PLATFORMS.md](PLATFORMS.md))
-- [x] (0.5) Linux is Wayland-only: on an X11-only session NOCTURNE prints that X11 is not supported and exits (verified)
-- [~] Accessibility: keyboard navigation and visible focus on controls yes; screen-reader support is limited by what Iced exposes today
+- Live TV and DVR, DLNA, being a cast target, gapless music: planned for 0.9 ([ROADMAP.md](ROADMAP.md)).
+- Playable books and audiobooks (detail page only).
+- An HDR filter (servers expose none) and subtitle appearance presets.

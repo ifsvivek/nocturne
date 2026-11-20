@@ -1,10 +1,12 @@
 # Platforms, packaging and footprint
 
-Status (0.5.1, 2026-11-19): **Linux x86_64, Wayland only, is the supported platform**, with signed pacman, apt and dnf repositories at `https://nocturne.ifsvivek.in/repo` and a tarball; Arch is the primary test target. Windows (x64) and macOS (Apple Silicon) are **unsigned previews** attached to the GitHub release, built and smoke-tested on GitHub's runners and never run on a real PC or Mac. Nothing here may degrade playback quality, stability or security.
+**Linux x86_64 under Wayland is the supported platform**, with signed pacman, apt and dnf repositories at `https://nocturne.ifsvivek.in/repo` and a tarball. Arch is the primary test target. Windows (x64) and macOS (Apple Silicon) are **unsigned previews** attached to the GitHub release; they have been tried on a real Windows PC and a Mac. X11, Homebrew packaging and Windows and macOS code signing are not planned. Nothing here may degrade playback quality, stability or security.
 
-## Platform seams (keep everything platform-specific behind these; `#[cfg(target_os = ...)]` only inside them)
+## Platform seams
 
-Implemented state (0.5.1): Linux is built, run and tested. Windows and macOS have code behind these seams, compile checks (`scripts/check-cross.sh`) and native CI builds with a smoke test (`platforms.yml`, called by `release.yml` on a version tag; [PACKAGING.md](PACKAGING.md)) that produce the Windows setup.exe and zip and the macOS .dmg plus the `.tar.gz` the in-app updater installs; none of it has been run on real hardware. Their in-app updates, like everything else there, are untested on a real machine. Windows: the whole app compiles (`x86_64-pc-windows-gnu`). macOS: only `nocturne-player` and `nocturne-local` can be checked on Linux; everything that depends on reqwest (jellyfin*, session, core, app) is blocked by `aws-lc-sys`, which compiles C against the Apple SDK's libc headers, so the macOS paths in those crates are **written, not built** until a real Mac is available.
+Keep everything platform-specific behind these seams; `#[cfg(target_os = ...)]` appears only inside them.
+
+Linux is built, run and tested. Windows and macOS have code behind each seam, compile checks (`scripts/check-cross.sh`) and native CI builds with a smoke test (`platforms.yml`, called by `release.yml` on a version tag; [PACKAGING.md](PACKAGING.md)) that produce the Windows setup.exe and zip and the macOS .dmg plus the `.tar.gz` the in-app updater installs. The whole app compiles for Windows (`x86_64-pc-windows-gnu`). On Linux only `nocturne-player` and `nocturne-local` can be checked for macOS: everything that depends on reqwest is blocked by `aws-lc-sys`, which compiles C against the Apple SDK headers, so those macOS paths are written but only built in CI and on a Mac.
 
 | Concern | Linux | macOS | Windows |
 |---|---|---|---|
@@ -23,7 +25,7 @@ Implemented state (0.5.1): Linux is built, run and tested. Windows and macOS hav
 
 One path helper: `nocturne_session::paths` (re-exported as `nocturne_core::paths`), pure `resolve(os, kind, env)` unit-tested for all three OSes. Code layout: `crates/player` keeps the per-OS IPC, the Windows child window (`surface.rs`) and libmpv loading; `platform.rs` and `single.rs` in the UI crate hold signals, window-handle extraction and the single-instance guard; `crates/session` picks the keyring backend by target.
 
-Tried on a real Windows PC and a Mac by the maintainer (2026-11-19): they install and work. Windows (0.5.2, written and cross-checked, not yet run on a real PC): the picture plays in a child window of the app window (`VideoSurface`, `--wid`), see [video-embedding.md](video-embedding.md); macOS still plays in mpv's own window. Remaining for macOS/Windows: code signing, macOS in-window video, media keys / now playing, reduced-motion detection, file picker and keyring behaviour verified on real machines, code signing (the previews are unsigned, so SmartScreen and Gatekeeper warn on first start).
+Windows plays the picture in a child window of the app window (`VideoSurface`, `--wid`; see [video-embedding.md](video-embedding.md)) and falls back to mpv's own window. macOS plays in mpv's own window. Still open on both: in-window video on macOS, media keys and now playing, reduced-motion detection, and file picker and keyring behaviour checked on more machines. Because the previews are unsigned, SmartScreen and Gatekeeper warn on first start.
 
 ## Packages
 
@@ -34,9 +36,9 @@ Tried on a real Windows PC and a Mac by the maintainer (2026-11-19): they instal
 | `.deb` (Debian 13, Ubuntu 24.04+) | shipping; signed apt repository (`/repo/deb`); install-tested in clean containers | `Depends: libmpv2` (Ubuntu 24.04's 0.37 plays in an external mpv window) |
 | `.rpm` (Fedora) | shipping; signed dnf repository (`/repo/rpm`); install-tested in a clean container | `Requires: mpv-libs` (RPM Fusion) |
 | AppImage | experimental: a best-effort job in `release.yml`, not recommended or supported (large; libmpv and glibc conflicts, see PACKAGING.md) | bundled |
-| Windows `.exe` setup + portable `.zip` | unsigned preview on the GitHub release; per-user install; built and smoke-tested in CI, wine-tested, tried on a real PC by the maintainer | bundles a pinned `mpv.exe` (drawn into a child window of the app, or its own window as the fallback) |
-| macOS `.dmg` (Apple Silicon) + `.tar.gz` | unsigned preview on the GitHub release (ad-hoc signed bundle: right-click > Open); built and smoke-tested in CI, never run on a real Mac; the `.tar.gz` is what the in-app updater installs | bundled libmpv + mpv (dylibbundler) |
-| Flatpak | being evaluated | n/a |
+| Windows `.exe` setup + portable `.zip` | unsigned preview on the GitHub release; per-user install; built and smoke-tested in CI, tried on a real PC | bundles a pinned `mpv.exe` (drawn into a child window of the app, or its own window as the fallback) |
+| macOS `.dmg` (Apple Silicon) + `.tar.gz` | unsigned preview on the GitHub release (ad-hoc signed bundle: right-click > Open); built and smoke-tested in CI, tried on a Mac; the `.tar.gz` is what the in-app updater installs | bundled libmpv + mpv (dylibbundler) |
+| Flatpak | under evaluation | n/a |
 
 Linux packages are built from one binary compiled in a `debian:stable` container. On a version tag `release.yml` builds every format on GitHub-hosted runners and drafts a release; the pacman, apt and dnf repositories and the update artifacts are signed on the maintainer's machine, never in CI ([PACKAGING.md](PACKAGING.md)). Verification is reported per target as built / installed / run / not tested.
 
@@ -44,8 +46,8 @@ Updates: package-managed installs update through the package manager; per-user i
 
 ## Footprint budget and measurements
 
-Track per release in `docs/dev/PERF.md` (script: `scripts/perf.sh`): release binary size, tarball and package size, installed size, cold start to first frame, idle RSS and idle CPU on the sign-in screen and on a loaded home page (demo library), RSS after browsing 500 items, CPU during 1080p playback (embedded, hwdec on). Baseline = 0.2.0 (the earlier GPUI interface) measured before the cut-over; the Iced build must not regress without a written reason.
+Track per release in `docs/dev/PERF.md` (script: `scripts/perf.sh`): release binary size, tarball and package size, installed size, cold start to first frame, idle RSS and idle CPU on the sign-in screen and on a loaded home page (demo library), RSS after browsing 500 items, CPU during 1080p playback (embedded, hwdec on). The Iced build must not regress against the recorded baseline without a written reason.
 
-0.5.2 (theme engine on by default): release binary 34.47 MiB without the engine, 37.27 MiB with it (+2.8 MiB), idle Home RSS about +13 MiB, no new run-time library, start and idle CPU unchanged within noise ([PERF.md](dev/PERF.md)). Build without the engine with `cargo build --no-default-features -p nocturne-app` (the app's only feature is `theme-engine`); select the hand-written screens at run time with `NOCTURNE_ENGINE_UI=0`. The engine is pure Rust with no OS-specific code, so the Windows and macOS builds take it unchanged.
+The theme engine adds about 2.8 MiB to the release binary (34.47 MiB without it, 37.27 MiB with it) and about 13 MiB of idle Home RSS, with no new run-time library and start and idle CPU unchanged within noise ([PERF.md](dev/PERF.md)). Build without it with `cargo build --no-default-features -p nocturne-app`; select the hand-written screens at run time with `NOCTURNE_ENGINE_UI=0`. The engine is pure Rust with no OS-specific code.
 
 Rules: no polling where an event exists (frames subscription only while animating; timers only while a page needs them); one image cache (memory LRU over the disk LRU, decoded handles reused); lazy creation of clients, player and index; release profile stays `lto = "fat"`, `codegen-units = 1`, `strip = true`, `panic = "unwind"`.
