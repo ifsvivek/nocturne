@@ -256,8 +256,14 @@ impl App {
         match b.content {
             Some(BrandContent::User) => self.session().map_or(app, |(_, s)| s.user_name.clone()),
             Some(BrandContent::App) => app,
+            // The server whose look is shown, else the one selected in the filter, else the last signed-in one.
             _ => self
-                .active
+                .theme_ui()
+                .or(match self.filter {
+                    nocturne_core::sources::SourceFilter::One(id) => Some(id),
+                    nocturne_core::sources::SourceFilter::All => None,
+                })
+                .or(self.active)
                 .map(|id| self.label_of(id))
                 .filter(|l| !l.is_empty())
                 .or_else(|| {
