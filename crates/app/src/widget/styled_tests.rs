@@ -372,3 +372,25 @@ fn an_element_with_a_title_names_itself_to_the_tooltip() {
     assert_eq!(w.tip_of(Some(plain)), None);
     assert_eq!(w.tip_of(None), None);
 }
+
+#[test]
+fn a_wheel_below_the_widget_is_not_taken() {
+    // A header strip above a page: the wheel over the page below belongs to the page, not to the strip.
+    let _g = serial();
+    let s = scene(CSS);
+    for (y, reported) in [(100.0, true), (400.0, false)] {
+        let strip: Element<'_, T> = iced::widget::container(view(&s, "")).height(200).into();
+        let below: Element<'_, T> = iced::widget::container(iced::widget::space())
+            .height(300)
+            .into();
+        let mut sim = Simulator::new(iced::widget::column![strip, below]);
+        sim.point_at(Point::new(50.0, y));
+        sim.simulate([Event::Mouse(mouse::Event::WheelScrolled {
+            delta: mouse::ScrollDelta::Pixels { x: 0.0, y: -30.0 },
+        })]);
+        let got = sim
+            .into_messages()
+            .any(|m| matches!(m, T::Ev(StyledEvent::Wheel { .. })));
+        assert_eq!(got, reported, "wheel at y {y}");
+    }
+}
