@@ -332,7 +332,7 @@ fn jf_root_doc(t_: &mut DTree) -> Id {
     );
     d.attr(0, "data-theme", "dark");
     d.attr(0, "dir", "ltr");
-    let body = d.add(0, "body.libraryDocument.withSectionTabs");
+    let body = d.add(0, "body.libraryDocument");
     d.attr(body, "dir", "ltr");
     let root = d.add(body, "div.jf-react");
     d.set_id(root, "reactRoot");

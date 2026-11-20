@@ -1910,6 +1910,7 @@ impl Op {
         let any = |s: &Sides| s.iter().flatten().any(|l| l.is_viewport());
         match self {
             Op::Inset(s) | Op::Margin(s) | Op::Padding(s) | Op::BorderWidth(s) => any(s),
+            Op::Bg(f) | Op::BgImage(f) => f.iter().any(paint::Fill::uses_viewport),
             Op::Size(_, l) | Op::Basis(l) | Op::FontSize(l, _) => l.is_viewport(),
             Op::Gap(a, b) => {
                 a.as_ref().is_some_and(Len::is_viewport) || b.as_ref().is_some_and(Len::is_viewport)
@@ -2069,6 +2070,11 @@ impl Op {
             Op::Z(z) => c.z = *z,
             Op::Bg(b) => {
                 // The shorthand resets everything: a trailing solid layer is the colour.
+                let b: std::rc::Rc<[Fill]> = if b.iter().any(Fill::uses_viewport) {
+                    paint::at_viewport(b, cx.vw, cx.vh).into()
+                } else {
+                    b.clone()
+                };
                 let mut v: Vec<Fill> = b.to_vec();
                 c.bg_col = match v.last() {
                     Some(Fill::Solid(_)) => v.pop(),
@@ -2087,7 +2093,11 @@ impl Op {
                 c.bg = c.bg_img.iter().cloned().chain(c.bg_col.clone()).collect();
             }
             Op::BgImage(img) => {
-                c.bg_img = img.clone();
+                c.bg_img = if img.iter().any(Fill::uses_viewport) {
+                    paint::at_viewport(img, cx.vw, cx.vh).into()
+                } else {
+                    img.clone()
+                };
                 c.bg = c.bg_img.iter().cloned().chain(c.bg_col.clone()).collect();
             }
             Op::Color(col) => c.color = *col,
