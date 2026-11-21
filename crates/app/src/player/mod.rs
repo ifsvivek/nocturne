@@ -48,7 +48,9 @@ use nocturne_core::video::{
     self, Aspect, AutoHide, MenuAct, Playback, PlayerHooks, PlayerPrefs, Pop, Repeat, Settings,
 };
 use nocturne_jellyfin as jf;
-use nocturne_player::{Buffering, EmbeddedPlayer, Event, Options, Player as ExternalPlayer};
+use nocturne_player::{
+    Buffering, EmbeddedPlayer, Event, Options, Player as ExternalPlayer, VlcPlayer,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -190,6 +192,8 @@ pub struct Player {
     /// The target of the current item as the backend resolved it.
     target: Option<PlayTarget>,
     pub embed: bool,
+    /// VLC's own window (Settings > Player), driven over its HTTP interface.
+    vlc: bool,
     pub video: bool,
     /// No mpv at all: the message to show (install hint).
     pub problem: Option<String>,
@@ -312,8 +316,22 @@ impl Player {
 
     fn build(ctx: PlayerCtx, group: Option<f64>) -> (Self, Task<Msg>) {
         let env = std::env::var("NOCTURNE_VIDEO").ok();
-        let embed =
-            video::choose(env.as_deref(), crate::platform::can_embed()) == video::Choice::Embedded;
+        let vlc_ok = match &ctx.target {
+            PlayTarget::Url { url, headers } => {
+                let h: Vec<&str> = headers.iter().map(String::as_str).collect();
+                nocturne_player::vlc_url(url, &h).is_ok()
+            }
+            PlayTarget::File(_) => true,
+        };
+        let (choice, notice) = video::choose_player(
+            ctx.prefs.player,
+            env.as_deref(),
+            crate::platform::can_embed(),
+            video::Installed::detect(),
+            vlc_ok,
+        );
+        let embed = choice == video::Choice::Embedded;
+        let vlc = choice == video::Choice::Vlc;
         let now = Instant::now();
         let media = ctx.media.clone();
         let mut queue = ctx.queue.clone();
@@ -341,6 +359,7 @@ impl Player {
             pending: None,
             target: Some(target),
             embed,
+            vlc,
             video: embed,
             problem: None,
             win_id: None,
@@ -435,6 +454,9 @@ impl Player {
             subs_retry: None,
             ctx,
         };
+        if let Some(n) = notice {
+            me.toast(n);
+        }
         let first = me.begin(media, true);
         (me, Task::batch([window::oldest().map(Msg::Window), first]))
     }
@@ -577,6 +599,16 @@ impl Player {
             return;
         }
         self.handles = Some(h);
+        if self.vlc {
+            match VlcPlayer::new() {
+                Ok(p) => self.playback = Some(Playback::Vlc(p)),
+                Err(e) => {
+                    eprintln!("video: VLC could not start ({e}), using the mpv window");
+                    self.vlc = false;
+                    self.toast("VLC could not be started, using the mpv window.");
+                }
+            }
+        }
         if let (true, Handles::Win32 { hwnd }) = (self.embed, h) {
             self.make_surface_backend(hwnd);
         } else if let (true, Handles::Wayland { display, surface }) = (self.embed, h) {

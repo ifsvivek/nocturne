@@ -2,6 +2,7 @@
 //! catalog: `NOCTURNE_PREVIEW=player NOCTURNE_PREVIEW_FILE=/tmp/clip.mp4` plays a local file
 //! (`PlayTarget::File`); `NOCTURNE_PREVIEW_URL=<stream url>` plays a stream from a throwaway
 //! server (a `NOCTURNE_PREVIEW_HEADER="Authorization: ..."` line is sent with it).
+//! `NOCTURNE_PREVIEW_PLAYER=vlc|mpv` picks the player like Settings > Player.
 //! `NOCTURNE_PREVIEW_SECOND` adds a second queue entry (a file) for the queue panel.
 //! `NOCTURNE_PREVIEW_PROMPT=1` offers a resume prompt, `NOCTURNE_PREVIEW_QUIT_AFTER_MS` closes
 //! the page after a delay (the exit path, for open/close cycling).
@@ -35,6 +36,16 @@ struct Preview {
     player: Player,
     win: Option<window::Id>,
     cycles: u32,
+}
+
+/// `NOCTURNE_PREVIEW_PLAYER=vlc|mpv`: the Settings > Player choice.
+fn pref() -> nocturne_core::video::PlayerPref {
+    use nocturne_core::video::PlayerPref as P;
+    match std::env::var("NOCTURNE_PREVIEW_PLAYER").as_deref() {
+        Ok("vlc") => P::Vlc,
+        Ok("mpv") => P::Mpv,
+        _ => P::InWindow,
+    }
 }
 
 fn media(name: &str) -> Media {
@@ -92,7 +103,10 @@ fn server_ctx() -> Option<PlayerCtx> {
             source_id: None,
             resume: None,
             hooks: None,
-            prefs: PlayerPrefs::default(),
+            prefs: PlayerPrefs {
+                player: pref(),
+                ..Default::default()
+            },
             buffering: Buffering::default(),
         })
     })
@@ -135,6 +149,7 @@ fn ctx() -> Option<PlayerCtx> {
         backends: vec![],
         hooks: None,
         prefs: PlayerPrefs {
+            player: pref(),
             hdr: match env("NOCTURNE_PREVIEW_HDR").as_deref() {
                 Some("window") => HdrMode::Window,
                 Some("popout") => HdrMode::Popout,

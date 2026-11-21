@@ -1,6 +1,7 @@
 //! Playback seam (embedded libmpv vs child-process mpv) and the pure logic of the player page:
 //! backend choice, control auto-hide, key map. No UI framework, so it is unit-tested without a window.
-use nocturne_player::{EmbeddedPlayer, Event, Player, Result, State};
+use nocturne_player::{EmbeddedPlayer, Event, Player, Result, State, VlcPlayer};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
@@ -24,6 +25,7 @@ pub struct PlayerPrefs {
     pub auto_skip_intro: bool,
     pub autoplay_next: bool,
     pub hdr: crate::hdr::HdrMode,
+    pub player: PlayerPref,
 }
 
 /// Account-layer hooks, supplied through `PlayerCtx { hooks, prefs }`. The player page calls ONLY
@@ -57,7 +59,10 @@ pub const HIDE_AFTER: Duration = Duration::from_secs(3);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Choice {
     Embedded,
+    /// mpv's own window (a child process).
     External,
+    /// VLC's own window, controlled over its HTTP interface.
+    Vlc,
 }
 
 /// `NOCTURNE_VIDEO=external|embedded` forces a backend; otherwise embed whenever we are on Wayland.
@@ -68,6 +73,78 @@ pub fn choose(env: Option<&str>, wayland: bool) -> Choice {
         Some("embedded") => Choice::Embedded,
         _ if wayland => Choice::Embedded,
         _ => Choice::External,
+    }
+}
+
+/// Settings > Playback > Player: where the picture is shown.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerPref {
+    #[default]
+    InWindow,
+    Vlc,
+    Mpv,
+}
+
+impl PlayerPref {
+    pub fn label(self) -> &'static str {
+        match self {
+            PlayerPref::InWindow => "In-window",
+            PlayerPref::Vlc => "VLC",
+            PlayerPref::Mpv => "mpv window",
+        }
+    }
+}
+
+/// Which external players are installed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Installed {
+    pub vlc: bool,
+    pub mpv: bool,
+}
+
+impl Installed {
+    pub fn detect() -> Self {
+        Self {
+            vlc: nocturne_player::vlc_available(),
+            mpv: nocturne_player::mpv_binary_available(),
+        }
+    }
+    /// The choices the Settings row offers: in-window always, the others only when installed.
+    pub fn options(self) -> Vec<PlayerPref> {
+        let mut v = vec![PlayerPref::InWindow];
+        v.extend(self.vlc.then_some(PlayerPref::Vlc));
+        v.extend(self.mpv.then_some(PlayerPref::Mpv));
+        v
+    }
+}
+
+/// The backend for a new playback and, when the setting could not be honoured, one line to tell
+/// the user. `NOCTURNE_VIDEO` (`env`) wins over the setting. `vlc_ok`: VLC can send what the
+/// stream needs (it cannot send extra request headers).
+pub fn choose_player(
+    pref: PlayerPref,
+    env: Option<&str>,
+    wayland: bool,
+    have: Installed,
+    vlc_ok: bool,
+) -> (Choice, Option<&'static str>) {
+    let window = choose(env, wayland);
+    if matches!(env, Some("external" | "embedded")) {
+        return (window, None);
+    }
+    match pref {
+        PlayerPref::InWindow => (window, None),
+        PlayerPref::Vlc if have.vlc && vlc_ok => (Choice::Vlc, None),
+        PlayerPref::Vlc if have.vlc => (
+            window,
+            Some("VLC cannot play this server's stream, using the in-window player."),
+        ),
+        PlayerPref::Mpv if have.mpv => (Choice::External, None),
+        _ => (
+            window,
+            Some("The chosen player is not installed, using the in-window player."),
+        ),
     }
 }
 
@@ -177,6 +254,7 @@ pub fn bump_volume(cur: f64, d: f64) -> f64 {
 pub enum Playback {
     Embedded(Box<EmbeddedPlayer>),
     External(Player),
+    Vlc(VlcPlayer),
 }
 
 macro_rules! both {
@@ -184,6 +262,7 @@ macro_rules! both {
         match $s {
             Playback::Embedded($p) => $e,
             Playback::External($p) => $e,
+            Playback::Vlc($p) => $e,
         }
     };
 }
@@ -1027,6 +1106,51 @@ mod tests {
         assert_eq!(choose(Some("external"), true), External);
         assert_eq!(choose(Some("embedded"), false), Embedded);
         assert_eq!(choose(Some("junk"), true), Embedded);
+    }
+
+    #[test]
+    fn player_setting_choice() {
+        use Choice::*;
+        use PlayerPref as P;
+        let all = Installed {
+            vlc: true,
+            mpv: true,
+        };
+        let none = Installed {
+            vlc: false,
+            mpv: false,
+        };
+        let pick = |p, env, have, ok| choose_player(p, env, true, have, ok);
+        assert_eq!(pick(P::InWindow, None, all, true), (Embedded, None));
+        assert_eq!(pick(P::Vlc, None, all, true), (Vlc, None));
+        assert_eq!(pick(P::Mpv, None, all, true), (External, None));
+        // The environment variable wins over the setting, silently.
+        assert_eq!(pick(P::Vlc, Some("embedded"), all, true), (Embedded, None));
+        assert_eq!(pick(P::Mpv, Some("external"), none, true), (External, None));
+        assert_eq!(
+            pick(P::InWindow, Some("external"), all, true),
+            (External, None)
+        );
+        // A player that is gone: in-window, with a notice.
+        let (c, note) = pick(P::Vlc, None, none, true);
+        assert_eq!((c, note.is_some()), (Embedded, true));
+        let (c, note) = pick(P::Mpv, None, none, true);
+        assert_eq!((c, note.is_some()), (Embedded, true));
+        // VLC installed but the stream needs headers it cannot send.
+        let (c, note) = pick(P::Vlc, None, all, false);
+        assert_eq!((c, note.is_some()), (Embedded, true));
+        // No Wayland: the fallback window is mpv's.
+        assert_eq!(choose_player(P::Vlc, None, false, none, true).0, External);
+    }
+
+    #[test]
+    fn only_installed_players_are_offered() {
+        use PlayerPref as P;
+        let have = |vlc, mpv| Installed { vlc, mpv }.options();
+        assert_eq!(have(false, false), [P::InWindow]);
+        assert_eq!(have(true, false), [P::InWindow, P::Vlc]);
+        assert_eq!(have(false, true), [P::InWindow, P::Mpv]);
+        assert_eq!(have(true, true), [P::InWindow, P::Vlc, P::Mpv]);
     }
 
     #[test]
