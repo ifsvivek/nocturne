@@ -290,8 +290,9 @@ impl App {
             let pic_box = tree.doc.add(a, "div.calendar-pic");
             let shown = e.series.as_ref();
             let pic = shown.map_or(Pic::Missing, |m| self.pic(m, Art::Poster, 200));
+            // Until the poster is in (or when there is none) the letter stands in, so no entry shows an empty slot.
             match (&pic, shown) {
-                (Pic::Missing, _) | (_, None) => {
+                (Pic::Missing | Pic::Loading, _) | (_, None) => {
                     let init = crate::widget::text::initial(&e.show);
                     if !init.is_empty() {
                         let n = tree.doc.add(pic_box, "div.card-initial");

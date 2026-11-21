@@ -364,7 +364,7 @@ impl App {
                                     "Ships with NOCTURNE."
                                 }
                                 .into(),
-                                Some(if on { "APPLIED" } else { "BUILT-IN" }),
+                                (!on).then_some("BUILT-IN"),
                                 vec![act],
                             ),
                         );
@@ -608,8 +608,9 @@ impl App {
                 msg(GMsg::Edit(s.id)),
             ));
         }
+        // An applied theme says so once, in the action slot.
         let status = if applied {
-            Some("APPLIED")
+            None
         } else if installed && !current {
             Some("UPDATE")
         } else if installed {

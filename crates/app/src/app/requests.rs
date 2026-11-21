@@ -362,6 +362,7 @@ impl App {
             Msg::Open => self.rq_open_dialog(),
             Msg::Close => {
                 self.rq.dlg = None;
+                self.rq.ask = None;
                 Task::none()
             }
             Msg::Url(s) => self.rq_field(|d| d.url = s),
