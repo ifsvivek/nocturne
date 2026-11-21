@@ -29,9 +29,9 @@ docs/screenshots/player.webp     In-window playback with the controls shown
 docs/screenshots/themes.webp     Settings > Themes with the built-in themes
 docs/screenshots/studio.webp     Theme Studio with an element picked on Home
 docs/screenshots/server-look.webp  Home drawn in a server's own look (Jellyfin layout mode)
-docs/screenshots/calendar.webp   Calendar, week view, with entries marked On your server, Airing soon and Not on your servers (make-demo-library.sh build --upcoming) (to be captured)
-docs/screenshots/requests.webp   The Requests page, with a Request dialog over Search (throwaway Seerr, scripts/test-seerr.sh) (to be captured)
-docs/screenshots/gallery.webp    Settings > Themes, Gallery view with the Official cards (to be captured)
+docs/screenshots/calendar.webp   Calendar, week view, with entries marked On your server, Airing soon and Not on your servers (make-demo-library.sh build --upcoming)
+docs/screenshots/requests.webp   The Requests page (throwaway Seerr, scripts/test-seerr.sh)
+docs/screenshots/gallery.webp    Settings > Themes, Gallery view with the Official cards
 -->
 
 | | |
