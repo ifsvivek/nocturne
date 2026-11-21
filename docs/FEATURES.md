@@ -51,6 +51,7 @@ What NOCTURNE does today. Items marked (partial) work with the limits stated; it
 - Resume position, and progress, watched and favourite sync (needs server changes on).
 - Playback reports state the real play method and media source, show a notice on failure, and retry the final "stopped" once.
 - Network buffering watermarks ([buffering.md](buffering.md)).
+- Seerr requests (opt-in): sign in to your Seerr server, request movies and shows that are not in your library from Search (seasons for shows), follow and cancel them on the Requests page; see [WRITES.md](WRITES.md).
 - Trakt (opt-in): one-click connect, scrobbling and watched-history import ([TRAKT.md](TRAKT.md)).
 - Remote control from other Jellyfin apps (partial): opt-in, needs server changes on. Checked against a throwaway server, not from a phone app.
 - Couch mode (partial): a 10-foot layout with keyboard, remote-key and gamepad navigation. It has not been tried with a real gamepad or TV.

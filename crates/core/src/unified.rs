@@ -93,6 +93,8 @@ pub enum Link {
     /// The Calendar page (added by the UI, never by [`links`]).
     Calendar,
     Admin,
+    /// The Seerr Requests page (added by the UI, after the other links, only when Seerr is signed in).
+    Requests,
 }
 
 /// The header links. One source: Home, its libraries, the globals (as always). Several: Home, the

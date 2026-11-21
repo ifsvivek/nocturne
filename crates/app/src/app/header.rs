@@ -52,7 +52,11 @@ pub(super) fn hist_button<'a>(
 impl App {
     /// A page that is not under any nav link (Admin, Settings, Sources, Themes) is showing: no link is lit.
     pub(super) fn off_nav(&self) -> bool {
-        self.admin_open || self.settings_open || self.src_open || self.th.open
+        self.admin_open
+            || self.settings_open
+            || self.src_open
+            || self.th.open
+            || self.rq.page_open()
     }
 
     pub(super) fn header(&self) -> El<'_> {
@@ -137,6 +141,13 @@ impl App {
                     self.admin_open,
                     focused,
                     Message::OpenAdmin,
+                ),
+                Link::Requests => nav_link_icon(
+                    "Requests",
+                    ico(&link),
+                    self.rq.page_open(),
+                    focused,
+                    Message::Requests(super::requests::Msg::PageOpen),
                 ),
             });
         }
@@ -550,6 +561,7 @@ pub(super) fn link_icon(l: &Link, libs: &[nocturne_core::source::Media]) -> Opti
         Link::Global(_) => "heart",
         Link::Calendar => "calendar",
         Link::Admin => "gear",
+        Link::Requests => "queue",
         Link::Libraries | Link::Smart => return None,
     })
 }
@@ -604,6 +616,7 @@ impl App {
             Link::Smart => "Smart \u{25BE}".into(),
             Link::Calendar => "Calendar".into(),
             Link::Admin => "Admin".into(),
+            Link::Requests => "Requests".into(),
         }
     }
 
@@ -737,6 +750,9 @@ impl App {
             .position(|l| matches!(l, Link::Admin))
             .unwrap_or(v.len());
         v.insert(at, Link::Calendar);
+        if self.rq.signed_in() {
+            v.push(Link::Requests);
+        }
         v
     }
 

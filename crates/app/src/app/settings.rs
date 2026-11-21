@@ -237,6 +237,9 @@ impl App {
                 Message::SetRow(i),
             );
         }
+        if i == s::SEERR_ROW {
+            return value_chip(&self.rq_chip_label(), false, on, false, Message::SetRow(i));
+        }
         let Some((labels, cur)) = self.settings.choices(i) else {
             return switch(value == "On", on, Message::SetRow(i));
         };
@@ -376,6 +379,9 @@ impl App {
         self.settings_sel = i;
         if i == s::TRAKT_ROW {
             return self.trakt_msg(super::trakt::Msg::Open);
+        }
+        if i == s::SEERR_ROW {
+            return self.rq_msg(super::requests::Msg::Open);
         }
         let Some((labels, cur)) = self.settings.choices(i) else {
             return self.cycle_setting(i, 1);

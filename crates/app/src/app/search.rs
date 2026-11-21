@@ -50,13 +50,20 @@ pub struct SearchUi {
     pub s: Search,
     pub recent_sel: usize,
     /// Epoch of the request whose answers are being collected.
-    req: u64,
+    pub(super) req: u64,
     pending: usize,
     failed: usize,
     answers: Vec<(SourceId, Vec<Media>)>,
     /// How many sources have a copy of each hit.
     pub(super) copies: HashMap<(SourceId, String), usize>,
     off: f32,
+}
+
+impl SearchUi {
+    /// Is `epoch` the request the overlay is collecting answers for (Seerr's share of it)?
+    pub(super) fn is_request(&self, epoch: u64) -> bool {
+        self.req == epoch
+    }
 }
 
 /// Rows above hit `i` in the list: one group heading per group up to and including its own.
@@ -68,7 +75,8 @@ fn headings_before(s: &Search, i: usize) -> usize {
             return n + 1;
         }
     }
-    0
+    // Past the catalog's own groups: the Seerr group's heading.
+    s.results.len() + 1
 }
 
 impl App {
@@ -115,17 +123,23 @@ impl App {
                         ui.s.failed(epoch);
                     }
                 }
-                Task::batch(slots.into_iter().map(|(origin, b)| {
-                    let (term, q2) = (q.clone(), q.clone());
-                    run(async move { b.search(&term).await.ok() }, move |r| {
-                        Message::Search(SMsg::Ans {
-                            epoch,
-                            q: q2,
-                            origin,
-                            r,
+                let seerr = self.rq_search(q.clone(), epoch);
+                Task::batch(
+                    slots
+                        .into_iter()
+                        .map(|(origin, b)| {
+                            let (term, q2) = (q.clone(), q.clone());
+                            run(async move { b.search(&term).await.ok() }, move |r| {
+                                Message::Search(SMsg::Ans {
+                                    epoch,
+                                    q: q2,
+                                    origin,
+                                    r,
+                                })
+                            })
                         })
-                    })
-                }))
+                        .chain([seerr]),
+                )
             }
             SMsg::Ans {
                 epoch,
@@ -188,6 +202,19 @@ impl App {
                 Task::batch([t, operation::move_cursor_to_end(Id::from(INPUT_ID))])
             }
             SMsg::Pick(i) => {
+                // Rows past the catalog's own are Seerr's ("Request").
+                let n_core = self.search.as_ref().map_or(0, |u| u.s.flat().len());
+                if i >= n_core {
+                    let Some(t) = self
+                        .rq_rows()
+                        .get(i - n_core)
+                        .and_then(|h| Self::rq_target_of(h))
+                    else {
+                        return Task::none();
+                    };
+                    self.search = None;
+                    return self.rq_msg(super::requests::Msg::Ask(Box::new(t)));
+                }
                 let Some(ui) = self.search.take() else {
                     return Task::none();
                 };
@@ -205,6 +232,7 @@ impl App {
     /// Keys while the overlay is open (typing goes to the text input, not here).
     pub(super) fn search_key(&mut self, key: &str) -> Task<Message> {
         let n_recent = self.settings.recent_searches.len();
+        let n_seerr = self.rq_rows().len();
         let Some(ui) = self.search.as_mut() else {
             return Task::none();
         };
@@ -221,7 +249,13 @@ impl App {
                     ui.recent_sel = (ui.recent_sel as i32 + d).rem_euclid(n) as usize;
                     return Task::none();
                 }
-                ui.s.step(d);
+                if n_seerr > 0 {
+                    // The Seerr rows follow the catalog's own in one list.
+                    let n = (ui.s.flat().len() + n_seerr) as i32;
+                    ui.s.sel = (ui.s.sel as i32 + d).rem_euclid(n) as usize;
+                } else {
+                    ui.s.step(d);
+                }
                 let top = headings_before(&ui.s, ui.s.sel) as f32 * HEAD_H
                     + ui.s.sel as f32 * ROW_H
                     - HEAD_H;
@@ -298,7 +332,9 @@ impl App {
                 "Search couldn't reach your sources. Keep typing to try again.",
             ));
         } else if s.empty() {
-            list = list.push(note("No results. Try fewer or different words."));
+            if self.rq_rows().is_empty() {
+                list = list.push(note("No results. Try fewer or different words."));
+            }
         } else if s.results.is_empty() {
             list = list.push(note(if s.loading { "Searching" } else { "" }));
         }
@@ -353,6 +389,9 @@ impl App {
                 ));
             }
         }
+        for el in self.rq_search_group(flat, s.sel) {
+            list = list.push(el);
+        }
         let input = self.search_input();
         let head = container(
             row![
@@ -405,7 +444,7 @@ impl App {
     }
 }
 
-fn hit_row<'a>(content: El<'a>, on: bool, m: Message) -> El<'a> {
+pub(super) fn hit_row<'a>(content: El<'a>, on: bool, m: Message) -> El<'a> {
     Press::new(content)
         .width(Length::Fill)
         .padding([t::S2, t::S4])

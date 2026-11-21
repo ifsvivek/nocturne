@@ -292,6 +292,11 @@ impl App {
                     Some(Message::Calendar(super::calendar::Msg::Open)),
                 ),
                 Link::Admin => ("Admin".into(), self.admin_open, Some(Message::OpenAdmin)),
+                Link::Requests => (
+                    "Requests".into(),
+                    self.rq.page_open(),
+                    Some(Message::Requests(super::requests::Msg::PageOpen)),
+                ),
                 Link::Libraries | Link::Smart => (String::new(), false, None),
             };
             let d = &mut tree.doc;

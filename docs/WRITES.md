@@ -8,6 +8,7 @@ By default NOCTURNE only reads. One setting, **Settings > Allow NOCTURNE to chan
 | Report playback progress (Continue Watching follows you) | yes | **Sync watch progress** on |
 | Mark watched / unwatched (card chip, detail button, `w`) | yes | |
 | Same watched state on the title's copies on other servers (`sync_watched`, default off) | yes | **Keep watched status in step across sources** on. Each copy is written only on its own server with that server's own account; resume positions of copies also need **Sync watch progress**. Local copies follow without the master switch. Details below |
+| Seerr requests: send a request for a movie or show, cancel your own pending one (`seerr_requests`, default off) | no: the request goes to your Seerr server, never to a media server | a Seerr sign-in (Settings > Requests), a confirmation dialog for each send and each cancel. Developer API-key mode (`NOCTURNE_SEERR_KEY`) is read only. Search, details and the Requests page read only and work with the switch off once signed in. The session cookie is in the keyring; the password is dropped after sign-in |
 | Trakt: scrobble, history import (`trakt_scrobble`, `trakt_history`, default off) | no for Trakt itself; yes to mark imported items watched on a server | your own Trakt app, connected in its dialog. Nothing is written to a server unless server changes are on; imported state is never copied on to other sources |
 | Favourite (card chip, detail button, player heart, `f`) | yes | |
 | Change own password | yes | the current password |
@@ -42,7 +43,7 @@ By default NOCTURNE only reads. One setting, **Settings > Allow NOCTURNE to chan
 - `downloads.json`: the offline-copy queue (the files themselves go to the folder you chose)
 - `preferred.json`: source preference per title
 - `$XDG_CONFIG_HOME/nocturne/`: `settings.toml`, `sources.toml`, `themes.toml` (saved themes: CSS text and the per-server assignment), `accounts.toml`, `servers.toml` (no secrets)
-- keyring: server tokens, the per-server extra header value, TMDB / OpenSubtitles keys and logins, the Trakt client id and tokens
+- keyring: the Seerr session cookie (`seerr:<address>`), server tokens, the per-server extra header value, TMDB / OpenSubtitles keys and logins, the Trakt client id and tokens
 
 Local media files are never modified, moved, renamed or deleted by NOCTURNE, whatever the setting says; scanning only reads.
 

@@ -8,6 +8,7 @@ can be tested without one.
 |---|---|---|
 | `crates/jellyfin` | Async read-only Jellyfin client: libraries, items, images, stream URLs, `Config`. GET only, enforced by `tests/readonly.rs` | never |
 | `crates/jellyfin-user` | User-scope calls: login, Quick Connect, logout, playback reporting, played / favourite, own password, own profile image, display language, own playlists, SyncPlay (REST, WebSocket, clock sync, state machine) | yes, user scope |
+| `crates/seerr` | Seerr client: sign-in (Quick Connect, password), search, details, quota, own requests; create and cancel a request only with a `RequestConfirmed` (all in `write.rs`); `guard::SeerrTestGuard` for live tests. Never talks to a media server | no (Seerr only) |
 | `crates/jellyfin-admin` | Admin reads and writes. Destructive calls need a `Confirmed` token; live tests guarded by `TestServerGuard` | yes, admin |
 | `crates/session` | Tokens in the system keyring (Secret Service), one per server account; server and account names on disk; atomic writes | n/a |
 | `crates/player` | playback: `EmbeddedPlayer` (libmpv in a Wayland subsurface), `Player` (mpv child process over JSON IPC) and `VlcPlayer` (VLC child process over its loopback HTTP interface, `vlc.rs`). libmpv is `dlopen`ed (`mpv_ffi.rs`); `deps.rs` probes libmpv and the mpv binary and builds the install hint. No UI or Jellyfin dependencies | n/a |

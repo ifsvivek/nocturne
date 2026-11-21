@@ -30,6 +30,7 @@ nocturne-jellyfin = { path = "../jellyfin" }
 nocturne-jellyfin-admin = { path = "../jellyfin-admin" }
 nocturne-jellyfin-user = { path = "../jellyfin-user" }
 nocturne-session = { path = "../session" }
+nocturne-seerr = { path = "../seerr" }
 nocturne-player = { path = "../player" }
 # The element-tree theme engine, behind the `theme-engine` feature.
 nocturne-style = { path = "../style", optional = true }

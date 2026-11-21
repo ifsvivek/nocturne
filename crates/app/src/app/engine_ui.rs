@@ -280,6 +280,7 @@ impl App {
             && !self.th.open
             && !self.src_open
             && !self.settings_open
+            && !self.rq.page_open()
             && self.adm.is_none()
             && self.player.is_none()
             && self.ob.is_none()

@@ -324,4 +324,6 @@ pub enum Message {
     Noop,
     /// The Calendar page.
     Calendar(super::calendar::Msg),
+    /// Seerr: sign-in, the Request dialog, the Requests page.
+    Requests(super::requests::Msg),
 }

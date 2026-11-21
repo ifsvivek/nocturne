@@ -60,7 +60,9 @@ impl App {
                 "Search couldn't reach your sources. Keep typing to try again.",
             );
         } else if s.empty() {
-            note(d, "No results. Try fewer or different words.");
+            if self.rq_rows().is_empty() {
+                note(d, "No results. Try fewer or different words.");
+            }
         } else if s.results.is_empty() {
             note(d, if s.loading { "Searching" } else { "" });
         }
@@ -119,6 +121,46 @@ impl App {
                 }
                 hits.push((row, Message::Search(SMsg::Pick(i))));
             }
+        }
+        // Titles Seerr knows that are not in the catalog: the "Request" group, selected after the catalog's own hits.
+        let rows = self.rq_rows();
+        if !rows.is_empty() {
+            let gh = tree.doc.add(list, "div.hit-group");
+            tree.doc.text(gh, &tracked("Request"));
+        }
+        for (n, h) in rows.into_iter().enumerate() {
+            let Some((target, line)) = self.rq_hit_line(h) else {
+                continue;
+            };
+            let row = tree.doc.add(list, "a.hit");
+            tree.doc.focusable(row);
+            let pic_box = tree.doc.add(row, "div.hit-pic");
+            let pic = self.rq_pic(h.poster_path.as_deref());
+            match &pic {
+                Pic::Ready(hd) | Pic::Blur(hd) => {
+                    let id = tree.pic(None, &pic);
+                    let img = tree.doc.add(pic_box, "img.card-img");
+                    let (w, h) = dims(hd);
+                    tree.doc.image(img, id, w, h);
+                }
+                _ => {
+                    let init = crate::widget::text::initial(&target.title);
+                    if !init.is_empty() {
+                        let nn = tree.doc.add(pic_box, "div.card-initial");
+                        let g = tree.doc.add(nn, "span.card-initial-glyph");
+                        tree.doc.text(g, &init);
+                    }
+                }
+            }
+            let text = tree.doc.add(row, "div.hit-text");
+            let title = tree.doc.add(text, "div.hit-title");
+            tree.doc.text(title, &target.title);
+            let meta = tree.doc.add(text, "div.hit-meta");
+            tree.doc.text(meta, &line);
+            if flat + n == s.sel {
+                sel = Some(row);
+            }
+            hits.push((row, Message::Search(SMsg::Pick(flat + n))));
         }
         // The hairline frame lies over the content and takes no room (as the hand-written panel's border).
         tree.doc.add(panel, "div.search-frame");

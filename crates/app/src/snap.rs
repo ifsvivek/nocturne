@@ -81,6 +81,35 @@ pub fn on_boot() -> Task<Message> {
                 .map(|i| Message::Src(crate::app::message::SrcAct::SecShift(i, 1))),
             "sec-save" => Some(Message::Src(crate::app::message::SrcAct::SecSave)),
             "open-trakt" => Some(Message::Trakt(crate::app::trakt::Msg::Open)),
+            // Seerr QA against the throwaway server: `open-seerr` (Settings > Seerr server), `seerr-fill` (form from
+            // `NOCTURNE_SEERR_URL` / `_USER` / `_PASS`), `seerr-signin`, `seerr-signout`, `seerr-close`, `open-requests`,
+            // `seerr-ask-movie-348` / `seerr-ask-tv-1396` (the Request dialog), `seerr-tick-<season>`, `seerr-confirm`,
+            // `seerr-cancel-<id>` then `seerr-cancel-yes`.
+            "open-seerr" => Some(Message::Requests(crate::app::requests::Msg::Open)),
+            "seerr-fill" => Some(Message::Requests(crate::app::requests::Msg::Fill)),
+            "seerr-signin" => Some(Message::Requests(crate::app::requests::Msg::SignIn)),
+            "seerr-signout" => Some(Message::Requests(crate::app::requests::Msg::SignOut)),
+            "seerr-close" => Some(Message::Requests(crate::app::requests::Msg::Close)),
+            "open-requests" => Some(Message::Requests(crate::app::requests::Msg::PageOpen)),
+            "seerr-confirm" => Some(Message::Requests(crate::app::requests::Msg::Confirm)),
+            "seerr-cancel-yes" => Some(Message::Requests(crate::app::requests::Msg::CancelYes)),
+            n if n.starts_with("seerr-tick-") => n[11..]
+                .parse()
+                .ok()
+                .map(|i| Message::Requests(crate::app::requests::Msg::Tick(i))),
+            n if n.starts_with("seerr-cancel-") => n[13..]
+                .parse()
+                .ok()
+                .map(|i| Message::Requests(crate::app::requests::Msg::Cancel(i))),
+            n if n.starts_with("seerr-ask-") => {
+                let (k, id) = n[10..].split_once('-')?;
+                Some(crate::app::requests::ask(
+                    nocturne_seerr::Kind::parse(k)?,
+                    id.parse().ok()?,
+                    String::new(),
+                    None,
+                ))
+            }
             // `open-global-0`: the header's n-th merged link (Movies, Shows, ...).
             "view-poster" | "view-thumb" | "view-list" => {
                 use nocturne_core::libview::ViewKind as V;
