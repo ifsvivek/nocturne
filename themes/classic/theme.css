@@ -1,0 +1,122 @@
+/* Classic: inspired by the familiar server web layout. A slim dark-blue header with the server name, library links with small icons and icon buttons on the right; wide library tiles with the name over the image; 16:9 thumbnails with a thin progress bar and a centred two-line caption; 2:3 posters with a round unplayed count; arrows at the right of each row title. Flat navy colours and 4 px corners. Combine with the Server UI settings (section order, My media) for the closest match. */
+:root {
+  --nocturne-background: #0b1724;
+  --nocturne-surface: #112238;
+  --nocturne-raised: #183049;
+  --nocturne-header: #0f2236;
+  --nocturne-text: #f2f5f8;
+  --nocturne-text-secondary: #aab5c1;
+  --nocturne-text-tertiary: #8794a3;
+  --nocturne-accent: #00a4dc;
+  --nocturne-accent-hover: #33b9e8;
+  --nocturne-accent-text: #5cc8ee;
+  --nocturne-on-accent: #ffffff;
+  --nocturne-radius-card: 4px;
+  --nocturne-radius-small: 4px;
+  --nocturne-radius-panel: 4px;
+}
+
+.header {
+  height: 56px;
+  position: static;
+  --header-align: left;
+  --header-link-icons: on;
+}
+
+.header-brand {
+  content: server;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.header-link {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.header-icons {
+  display: flex;
+}
+
+.hero {
+  --hero-style: none;
+}
+
+.row {
+  display: carousel;
+  gap: 12px;
+  --row-frame: none;
+}
+
+.row-title {
+  font-size: 22px;
+  font-weight: 500;
+  --row-details: off;
+}
+
+.row-arrows {
+  display: flex;
+  font-size: 26px;
+  color: #f2f5f8;
+}
+
+.page-home .card {
+  aspect-ratio: 16 / 9;
+  width: 300px;
+  --title-position: below;
+  transition-duration: 120ms;
+}
+
+.section-latest .card {
+  aspect-ratio: 2 / 3;
+  width: 170px;
+}
+
+.card:hover {
+  transform: scale(1.03);
+}
+
+.card-image {
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.card-subtitle {
+  --episode-format: short;
+  font-size: 13px;
+  color: #aab5c1;
+  text-align: center;
+}
+
+.card-meta {
+  font-size: 13px;
+  color: #aab5c1;
+  text-align: center;
+}
+
+.card-badge {
+  --badge-position: top-right;
+  background: #00a4dc;
+  color: #ffffff;
+  font-size: 13px;
+  border-radius: 12px;
+}
+
+.card-progress {
+  --progress-position: inside-bottom;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.25);
+  color: #00a4dc;
+}
+
+.library-tile {
+  --tile-label: overlay-center;
+  font-size: 26px;
+  font-weight: 600;
+}

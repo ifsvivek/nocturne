@@ -1,0 +1,6 @@
+name = "Glass"
+author = "NOCTURNE"
+licence = "GPL-3.0-or-later"
+description = "A black canvas under a floating glass header pill, a full-bleed hero with the title as logo art, glass buttons and squircle cards."
+kind = "official"
+min_version = "0.5.2"

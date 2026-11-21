@@ -1,0 +1,6 @@
+name = "Marquee"
+author = "NOCTURNE"
+licence = "GPL-3.0-or-later"
+description = "A dark, cinematic look: a full-bleed billboard under a see-through header, carousels of 16:9 thumbnails that grow on hover, a red accent."
+kind = "official"
+min_version = "0.5.2"

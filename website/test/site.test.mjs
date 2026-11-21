@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { before, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -168,7 +169,7 @@ test("required copy, no JS, no inline style", () => {
   // One self-hosted font, preloaded, and the stylesheet points at the same hashed file.
   const font = h.match(/<link rel="preload" href="([^"]+\.woff2)" as="font"/)?.[1];
   assert.ok(font && existsSync(join(off, font)), "preloaded font file");
-  assert.ok(files(off).filter((f) => f.endsWith(".css")).some((f) => readFileSync(f, "utf8").includes(font)), "css uses the preloaded font");
+  assert.ok(files(off).filter((f) => f.endsWith(".css") && !f.startsWith(join(off, "themes/"))).some((f) => readFileSync(f, "utf8").includes(font)), "css uses the preloaded font");
 });
 
 test("no external origins except upstream credit links", () => {
@@ -200,7 +201,7 @@ test("_headers carries the strict CSP and no-transform", () => {
 });
 
 test("size budget", () => {
-  const css = files(off).filter((f) => f.endsWith(".css"));
+  const css = files(off).filter((f) => f.endsWith(".css") && !f.startsWith(join(off, "themes/")));
   assert.equal(css.length, 1, "one stylesheet");
   const total = [join(off, "index.html"), ...css].reduce((n, f) => n + gzipSync(readFileSync(f)).length, 0);
   assert.ok(total <= 60 * 1024, `home html+css gzip ${total}`);
@@ -236,4 +237,26 @@ test("images: every srcset file exists, 16:9 stills at high resolution, no upsca
   assert.equal(imgs.filter((i) => /fetchpriority="high"/.test(i)).length, 1);
   assert.equal(imgs.filter((i) => /loading="lazy"/.test(i)).length, imgs.length - 1);
   for (const f of ["picker-crop", "settings-dropdown", "account-menu", "first-run", "sources", "local-folders", "loading", "alternates-crop"]) assert.ok(imgs.some((i) => new RegExp(`${f}-\\d+\\.`).test(i)), f);
+});
+
+test("themes gallery: the index is valid and every file is served and matches its checksum", () => {
+  const idx = JSON.parse(read(on, "themes/index.json"));
+  assert.equal(idx.version, 1);
+  assert.ok(idx.themes.length >= 7);
+  const ids = new Set();
+  for (const t of idx.themes) {
+    assert.match(t.id, /^[a-z0-9][a-z0-9-]{0,39}$/);
+    assert.ok(!ids.has(t.id), `duplicate ${t.id}`); ids.add(t.id);
+    for (const k of ["name", "description", "author", "licence", "min_version"]) assert.ok(t[k] && typeof t[k] === "string", `${t.id} ${k}`);
+    assert.ok(["official", "community"].includes(t.kind), t.id);
+    // Relative addresses on the site's own host: the app refuses anything else.
+    assert.equal(t.css, `${t.id}/theme.css`); assert.equal(t.preview, `${t.id}/preview.webp`);
+    const css = readFileSync(join(on, "themes", t.css));
+    assert.equal(createHash("sha256").update(css).digest("hex"), t.sha256, t.id);
+    assert.equal(css.length, t.size); assert.ok(css.length <= 256 * 1024);
+    const prev = readFileSync(join(on, "themes", t.preview));
+    assert.ok(prev.length < 150 * 1024, `${t.id} preview is ${prev.length} bytes`);
+    assert.equal(prev.subarray(0, 4).toString(), "RIFF"); assert.equal(prev.subarray(8, 12).toString(), "WEBP");
+  }
+  assert.ok(idx.themes.filter((t) => t.kind === "official").length >= 7);
 });

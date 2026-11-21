@@ -1,0 +1,17 @@
+/* High contrast: pure black, white text and a yellow accent. Every text colour keeps a contrast of at least 11:1 on the background, surface and raised colours; corners are square so edges stay easy to see. */
+:root {
+  --nocturne-background: #000000;
+  --nocturne-surface: #0a0a0a;
+  --nocturne-raised: #141414;
+  --nocturne-header: #000000;
+  --nocturne-text: #ffffff;
+  --nocturne-text-secondary: #e6e6e6;
+  --nocturne-text-tertiary: #cccccc;
+  --nocturne-accent: #ffd60a;
+  --nocturne-accent-hover: #ffe45c;
+  --nocturne-accent-text: #ffd60a;
+  --nocturne-on-accent: #000000;
+  --nocturne-radius-card: 2px;
+  --nocturne-radius-small: 2px;
+  --nocturne-radius-panel: 2px;
+}

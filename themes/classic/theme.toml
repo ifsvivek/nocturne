@@ -1,0 +1,6 @@
+name = "Classic"
+author = "NOCTURNE"
+licence = "GPL-3.0-or-later"
+description = "The familiar server web layout: slim navy header, wide library tiles, 16:9 thumbnails with captions, flat 4 px corners."
+kind = "official"
+min_version = "0.5.2"

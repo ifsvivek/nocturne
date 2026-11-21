@@ -1,0 +1,68 @@
+/* Spotlight: a full-bleed backdrop under a floating rounded header, the logo as the title, one line of rating, year, runtime and certification, the genres, an overview that clamps to three lines and opens on click, light pill buttons with glass secondaries, round icon buttons, and section titles with an accent bar. Pure CSS on the engine vocabulary: the classes and data attributes the tree builders emit (`.detail-*`, `.button`, `.section-title`, `.round`, `.player-btn`, `.header-bar`). */
+:root {
+  --nocturne-frame: #050507;
+  --nocturne-surface: #0b0b10;
+  --nocturne-raised: #15151c;
+  --nocturne-text: #f4f4f7;
+  --nocturne-text-secondary: #c2c2cc;
+  --nocturne-text-tertiary: #9494a2;
+  --nocturne-accent: #7c9cff;
+  --nocturne-accent-hover: #9bb3ff;
+  --nocturne-accent-text: #a9bcff;
+  --nocturne-accent-tint: rgba(124, 156, 255, 0.14);
+  --nocturne-on-accent: #0b0b10;
+  --nocturne-r-card: 10px;
+}
+
+/* A floating rounded header over the page. */
+.header { height: 76px; background: transparent; padding: 10px 0 0; }
+.header-rule { display: none; }
+.header-bar { margin: 0 32px; padding: 0 20px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 28px; background: rgba(18, 18, 24, 0.72); }
+
+/* The backdrop runs under the header; the title block sits low on it. */
+.detail-top { height: 0; }
+.detail-scrim-side { background: linear-gradient(90deg, rgba(5, 5, 7, 0.86) 0%, rgba(5, 5, 7, 0) 62%); }
+.detail-scrim-foot { background: linear-gradient(180deg, rgba(5, 5, 7, 0) 40%, #050507 100%); }
+.detail-body { padding: 0 0 56px 64px; }
+.detail-col { gap: 14px; }
+.detail-eyebrow, .detail-kind, .detail-mark { display: none; }
+.detail-logo { height: 120px; }
+.detail-title { font-size: 56px; }
+
+/* Rating, year, runtime and certification on one line; the genres under it. */
+.detail-chips { flex-direction: column; align-items: flex-start; gap: 6px; }
+.detail-rating, .detail-cert, .detail-year, .detail-runtime, .detail-genres { display: flex; }
+.detail-meta .chip, .detail-genres .chip { height: 22px; padding: 0; border-width: 0; background: transparent; color: var(--nocturne-text); font-family: inherit; font-size: 15px; gap: 10px; }
+.detail-genres .chip { color: var(--nocturne-text-secondary); font-size: 14px; }
+.detail-meta .chip:not(.detail-kind) + .chip::before, .detail-genres .chip + .chip::before { content: "\00b7"; color: var(--nocturne-text-tertiary); }
+.detail-cert { padding: 0 8px; border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 4px; }
+
+/* The overview: three lines, then more. */
+.detail-summary { max-width: 640px; height: auto; color: rgba(255, 255, 255, 0.84); font-size: 16px; line-height: 1.55; -webkit-line-clamp: 3; }
+.detail-summary[data-expanded="true"] { -webkit-line-clamp: none; }
+.detail-more { display: block; }
+
+/* Pill buttons: light primary, glass secondary. */
+.detail-actions { gap: 10px; }
+.detail-actions .button { height: 46px; padding: 0 22px; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 23px; background: rgba(255, 255, 255, 0.12); color: var(--nocturne-text); font-weight: 600; }
+.detail-actions .button:hover { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.28); }
+.detail-actions .button:focus { background: rgba(255, 255, 255, 0.24); border-color: #ffffff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.22); }
+.detail-actions .button.button-primary { background: #f4f4f7; border-color: #f4f4f7; color: #0b0b10; }
+.detail-actions .button.button-primary:hover, .detail-actions .button.button-primary:focus { background: #ffffff; }
+
+/* Round icon buttons. */
+.round { width: 30px; height: 30px; border-radius: 15px; background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.14); }
+.player-btn { height: 38px; width: 38px; border-radius: 19px; background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.14); }
+.player-btn.labeled { width: 60px; }
+.player-btn.primary { background: #f4f4f7; border-color: #f4f4f7; }
+
+/* Section titles with an accent bar. */
+.section-title { display: flex; flex-direction: row; align-items: center; gap: 12px; font-size: 24px; }
+.section-title::before { content: ""; width: 4px; height: 24px; border-radius: 2px; background: var(--nocturne-accent); }
+.section-text { font-size: 14px; }
+.poster-art, .episode-thumb, .entry-still { border-radius: 10px; }
+
+/* Placeholders while a strip loads. */
+.section-skeleton { display: flex; }
+.skeleton-row { display: flex; flex-direction: row; gap: 14px; padding: 0 var(--nocturne-page-pad); }
+.skeleton { height: 100%; background: rgba(255, 255, 255, 0.06); }
