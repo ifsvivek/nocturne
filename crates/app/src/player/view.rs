@@ -40,9 +40,13 @@ impl Player {
         } else if !self.video && self.playback.is_some() && self.problem.is_none() {
             layers.push(
                 container(
-                    text("Playing in the mpv window")
-                        .size(t::BODY)
-                        .color(t::text_secondary()),
+                    text(if self.vlc {
+                        "Playing in the VLC window"
+                    } else {
+                        "Playing in the mpv window"
+                    })
+                    .size(t::BODY)
+                    .color(t::text_secondary()),
                 )
                 .center(Length::Fill)
                 .into(),

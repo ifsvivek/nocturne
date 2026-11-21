@@ -39,7 +39,7 @@ What NOCTURNE does today. Items marked (partial) work with the limits stated; it
 
 ## Playback
 
-- Video plays inside the app window through libmpv with hardware decoding on Wayland. An external mpv window is the fallback.
+- Video plays inside the app window through libmpv with hardware decoding on Wayland. An external mpv window is the fallback. Settings > Player can send video to VLC or to mpv's own window instead (each only when installed); VLC is controlled over a loopback interface with a random password, keeps resume, progress and Trakt, and has no subtitle or audio menus of its own in the app.
 - libmpv is loaded at run time. Without it the app still starts, falls back to the `mpv` program, or says what to install.
 - A loading overlay fills as the stream buffers.
 - HDR video is tone-mapped to SDR in the window. An HDR pop-out window (mpv `gpu-next`, fullscreen) has an Ask, SDR or Pop-out setting. It needs HDR hardware and has not been tested on an HDR display ([HDR.md](HDR.md)).

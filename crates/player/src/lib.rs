@@ -23,6 +23,7 @@ mod external;
 mod ipc;
 mod mpv_ffi;
 mod surface;
+mod vlc;
 pub use deps::{install_hint, install_hint_for, libmpv_available, mpv_binary_available};
 pub use embedded::{EmbeddedPlayer, colour_management_available};
 
@@ -43,6 +44,7 @@ pub(crate) fn mark_left_behind() {
 pub use embedded::{Geometry, geometry};
 pub use external::Player;
 pub use surface::VideoSurface;
+pub use vlc::{VlcPlayer, vlc_available, vlc_url};
 
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
@@ -51,6 +53,8 @@ use std::sync::{Mutex, MutexGuard};
 pub enum Error {
     #[error("mpv: {0}")]
     Mpv(String),
+    #[error("VLC: {0}")]
+    Vlc(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

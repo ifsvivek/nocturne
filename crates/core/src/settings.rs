@@ -3,7 +3,7 @@
 //! older or half-written file still loads.
 use crate::hdr::HdrMode;
 use crate::libview::LibPrefs;
-use crate::video::{LANGUAGES, PlayerPrefs, SubMode, language};
+use crate::video::{Installed, LANGUAGES, PlayerPref, PlayerPrefs, SubMode, language};
 use nocturne_player::Buffering;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -161,6 +161,8 @@ pub struct Settings {
     pub autoplay_next: bool,
     /// What to do when an HDR video starts (docs/HDR.md).
     pub hdr: HdrMode,
+    /// Where video is shown: in the window, or in VLC / mpv's own window (installed ones only).
+    pub player: PlayerPref,
     /// Network read-ahead: fill to `buffer_ahead_secs`, refill once below `buffer_refill_secs`,
     /// never hold more than `buffer_max_mb` MiB in RAM.
     pub buffer_ahead_secs: u32,
@@ -204,6 +206,7 @@ impl Default for Settings {
             auto_skip_intro: false,
             autoplay_next: true,
             hdr: HdrMode::Ask,
+            player: PlayerPref::InWindow,
             buffer_ahead_secs: 300,
             buffer_refill_secs: 120,
             buffer_max_mb: 1536,
@@ -268,7 +271,7 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 28;
+pub const ROWS: usize = 29;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
 pub const PROFILE_ROW: usize = 22;
@@ -288,6 +291,9 @@ pub const HERO_AUTOPLAY_ROW: usize = 26;
 /// The "Banner interval" row.
 pub const HERO_INTERVAL_ROW: usize = 27;
 
+/// The "Video player" row.
+pub const PLAYER_ROW: usize = 28;
+
 /// The "Trakt account" row: not a toggle, it opens the connect dialog.
 pub const TRAKT_ROW: usize = 19;
 
@@ -306,6 +312,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         24 => Some("Updates"),
         25 => Some("Themes"),
         26 => Some("Home banner"),
+        PLAYER_ROW => Some("Video player"),
         _ => None,
     }
 }
@@ -532,6 +539,11 @@ impl Settings {
                 "How long each banner title stays before the next one.",
                 fmt_secs(self.hero_interval_secs),
             ),
+            r(
+                "Player",
+                "Where video plays. In-window is the default. VLC and mpv window open that program's own window and are offered only when installed; NOCTURNE keeps your place, progress and the controls it can. A source that needs extra request headers plays in-window. NOCTURNE_VIDEO overrides this.",
+                self.player.label().into(),
+            ),
         ]
     }
 
@@ -579,6 +591,13 @@ impl Settings {
                 MOTION.iter().position(|(m, _)| *m == self.reduce_motion)?,
             ),
             HERO_INTERVAL_ROW => nums(&HERO_S, self.hero_interval_secs, fmt_secs),
+            PLAYER_ROW => {
+                let o = self.player_options();
+                (
+                    o.iter().map(|p| p.label().to_string()).collect(),
+                    o.iter().position(|p| *p == self.player)?,
+                )
+            }
             COUCH_ROW => (
                 COUCH.iter().map(|(_, n)| n.to_string()).collect(),
                 COUCH.iter().position(|(m, _)| *m == self.couch)?,
@@ -616,6 +635,13 @@ impl Settings {
                     HERO_S.get(idx).copied().unwrap_or(self.hero_interval_secs)
             }
             COUCH_ROW => self.couch = COUCH.get(idx).map_or(self.couch, |(m, _)| *m),
+            PLAYER_ROW => {
+                self.player = self
+                    .player_options()
+                    .get(idx)
+                    .copied()
+                    .unwrap_or(self.player)
+            }
             _ => {}
         }
     }
@@ -680,8 +706,23 @@ impl Settings {
                 let i = (i.unwrap_or(0) as i32 + d).rem_euclid(COUCH.len() as i32) as usize;
                 self.couch = COUCH[i].0;
             }
+            PLAYER_ROW => {
+                let o = self.player_options();
+                let i = o.iter().position(|p| *p == self.player).unwrap_or(0) as i32;
+                self.player = o[(i + d).rem_euclid(o.len() as i32) as usize];
+            }
             _ => {}
         }
+    }
+
+    /// Players the row offers right now: the installed ones, plus the stored choice if its program
+    /// has gone (so the row still shows it; playing it falls back with a notice).
+    fn player_options(&self) -> Vec<PlayerPref> {
+        let mut o = Installed::detect().options();
+        if !o.contains(&self.player) {
+            o.push(self.player);
+        }
+        o
     }
 
     /// Home sections shown: continue watching, next up, latest.
@@ -702,6 +743,7 @@ impl Settings {
             auto_skip_intro: self.auto_skip_intro,
             autoplay_next: self.autoplay_next,
             hdr: self.hdr,
+            player: self.player,
         }
     }
 
@@ -1203,13 +1245,47 @@ mod tests {
     }
 
     #[test]
+    fn player_row_cycles_installed_players_and_persists() {
+        let mut s = Settings::default();
+        assert_eq!(s.player, PlayerPref::InWindow);
+        assert_eq!(s.rows()[PLAYER_ROW].label, "Player");
+        assert_eq!(s.rows()[PLAYER_ROW].value, "In-window");
+        assert_eq!(s.rows().len(), ROWS);
+        let have = Installed::detect().options();
+        // Cycling only ever lands on an installed player and wraps around.
+        for _ in 0..have.len() + 1 {
+            s.cycle(PLAYER_ROW, 1);
+            assert!(have.contains(&s.player));
+        }
+        let (labels, at) = s.choices(PLAYER_ROW).unwrap();
+        assert_eq!(labels.len(), have.len());
+        assert_eq!(labels[at], s.player.label());
+        s.choose(PLAYER_ROW, 99); // out of range: no change
+        s.choose(PLAYER_ROW, 0);
+        assert_eq!(s.player, PlayerPref::InWindow);
+        // A stored choice whose program is gone is still shown (and plays with a notice).
+        s.player = PlayerPref::Mpv;
+        assert!(
+            s.choices(PLAYER_ROW)
+                .unwrap()
+                .0
+                .contains(&"mpv window".to_string())
+        );
+        assert_eq!(s.prefs().player, PlayerPref::Mpv);
+        let text = toml::to_string(&s).unwrap();
+        assert!(text.contains("player = \"mpv\""));
+        let old: Settings = toml::from_str("version = 2\n").unwrap();
+        assert_eq!(old.player, PlayerPref::InWindow);
+    }
+
+    #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24, 25 and 26.
+        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24, 25, 26 and 28.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
         assert_eq!(scroll_child(11), 15);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 12);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 13);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));
         assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));

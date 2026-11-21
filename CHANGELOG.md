@@ -4,6 +4,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Added
+- Choose where video plays: Settings > Video player > Player offers In-window (the default), VLC and an mpv window, each only when installed. VLC is driven over a loopback-only control interface protected by a random password, so your place, progress sync, Trakt scrobbling and Stop work as with the other players; subtitle and audio menus are not available in VLC (use VLC's own). A stream that needs extra request headers plays in-window. `NOCTURNE_VIDEO` still overrides the setting, and a player that is no longer installed falls back to the in-window one with a one-line notice.
+
 ## [0.5.2] - 2026-11-20
 
 NOCTURNE now draws its main screens with its own CSS theme engine, can show a Jellyfin server in that server's own look, and lets you build themes inside the app.
