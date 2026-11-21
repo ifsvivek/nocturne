@@ -37,6 +37,8 @@ pub enum HRow {
     Hero,
     Resume,
     NextUp,
+    /// "Coming this week": upcoming episodes from the servers (the Calendar setting).
+    Coming,
     Latest(usize),
     /// Server UI: the "My media" library tiles.
     Tiles,
@@ -45,7 +47,10 @@ pub enum HRow {
 impl HRow {
     /// Landscape cards (16:9) instead of posters.
     pub fn wide(self) -> bool {
-        matches!(self, Self::Resume | Self::NextUp | Self::Tiles)
+        matches!(
+            self,
+            Self::Resume | Self::NextUp | Self::Coming | Self::Tiles
+        )
     }
 }
 
@@ -53,7 +58,8 @@ impl HRow {
 pub fn section_of(k: HRow) -> Option<cz::Section> {
     match k {
         HRow::Resume => Some(cz::Section::Resume),
-        HRow::NextUp => Some(cz::Section::NextUp),
+        // Themes style and order it with Next up, right after which it is placed.
+        HRow::NextUp | HRow::Coming => Some(cz::Section::NextUp),
         HRow::Latest(_) => Some(cz::Section::Latest),
         _ => None,
     }
@@ -230,7 +236,7 @@ impl Geos {
     pub fn of(&self, k: HRow) -> &Geo {
         &self.0[match k {
             HRow::Resume => 0,
-            HRow::NextUp => 1,
+            HRow::NextUp | HRow::Coming => 1,
             HRow::Tiles => 3,
             _ => 2,
         }]
@@ -259,6 +265,10 @@ pub struct Home {
     pub nextup: Fanout,
     pub resume_e: Vec<Entry>,
     pub nextup_e: Vec<Entry>,
+    /// "Coming this week": the answers, the merged entries (oldest air date first) and whether the setting is on.
+    pub coming: Fanout,
+    pub coming_e: Vec<Entry>,
+    pub show_coming: bool,
     pub latest: Vec<LatestRow>,
     /// The Collections and Playlists views of the servers: no nav link or Latest row, but My Media tiles.
     pub views: Vec<Media>,
@@ -293,6 +303,9 @@ impl Home {
             nextup,
             resume_e: vec![],
             nextup_e: vec![],
+            coming: Fanout::default(),
+            coming_e: vec![],
+            show_coming: false,
             latest: vec![],
             views: vec![],
             lib_order: vec![],
@@ -390,6 +403,9 @@ impl Home {
         if self.show.1 && !self.nextup_e.is_empty() {
             v.push(HRow::NextUp);
         }
+        if self.show_coming && !self.coming_e.is_empty() {
+            v.push(HRow::Coming);
+        }
         if self.show.2 {
             v.extend(
                 self.latest
@@ -407,6 +423,7 @@ impl Home {
         match k {
             HRow::Resume => entries(&self.resume_e),
             HRow::NextUp => entries(&self.nextup_e),
+            HRow::Coming => entries(&self.coming_e),
             HRow::Tiles => self.tiles().into_iter().map(|m| (m, 1)).collect(),
             HRow::Latest(i) => self
                 .latest
@@ -421,7 +438,7 @@ impl Home {
     pub fn hero(&self) -> Option<&Media> {
         let lay = self.layout();
         let focused = match lay.get(self.row) {
-            Some(k @ (HRow::Resume | HRow::NextUp | HRow::Latest(_))) => {
+            Some(k @ (HRow::Resume | HRow::NextUp | HRow::Coming | HRow::Latest(_))) => {
                 self.items(*k).get(self.col).map(|(m, _)| *m)
             }
             _ => None,
@@ -567,6 +584,16 @@ impl App {
         );
         let (rf, t2) = self.fan(pid, FanKind::Resume, |b| async move { b.resume().await });
         let (nf, t3) = self.fan(pid, FanKind::NextUp, |b| async move { b.next_up().await });
+        let coming_on = self.settings.home_coming;
+        let (cf, t4) = if coming_on {
+            self.fan(pid, FanKind::Coming, |b| async move {
+                b.upcoming()
+                    .await
+                    .map(|v| nocturne_core::calendar::this_week(v))
+            })
+        } else {
+            (Fanout::default(), Task::none())
+        };
         let show = self.settings.home();
         let server = self.server_ui_now();
         if let Some(p) = self.page_mut(pid) {
@@ -577,10 +604,12 @@ impl App {
             };
             p.fan = fan;
             let mut home = Home::new(show, rf, nf);
+            home.coming = cf;
+            home.show_coming = coming_on;
             home.server = server;
             p.home = Some(Box::new(home));
         }
-        Task::batch([t1, t2, t3])
+        Task::batch([t1, t2, t3, t4])
     }
 
     /// An answer of one of Home's fan-outs.
@@ -650,14 +679,14 @@ impl App {
                     });
                 }
             }
-            FanKind::Resume | FanKind::NextUp => {
+            FanKind::Resume | FanKind::NextUp | FanKind::Coming => {
                 let Some(h) = p.home.as_mut() else {
                     return Task::none();
                 };
-                let fan = if kind == FanKind::Resume {
-                    &mut h.resume
-                } else {
-                    &mut h.nextup
+                let fan = match kind {
+                    FanKind::Resume => &mut h.resume,
+                    FanKind::NextUp => &mut h.nextup,
+                    _ => &mut h.coming,
                 };
                 if !fan.accept(epoch, origin, r) {
                     return Task::none();
@@ -741,6 +770,9 @@ impl App {
         if let Some(h) = self.stack.first_mut().and_then(|p| p.home.as_deref_mut()) {
             h.resume_e = h.resume.interleaved(&prio, prefs, series);
             h.nextup_e = h.nextup.interleaved(&prio, prefs, series);
+            h.coming_e = h.coming.interleaved(&prio, prefs, series);
+            h.coming_e
+                .sort_by(|a, b| a.primary.premiere.cmp(&b.primary.premiere));
         }
     }
 
@@ -882,6 +914,15 @@ impl App {
                     true,
                     false,
                 ),
+                HRow::Coming => (
+                    "Coming this week".to_string(),
+                    "Episodes airing in the next seven days.".to_string(),
+                    format!("{n} coming"),
+                    g.dims,
+                    g.art,
+                    false,
+                    false,
+                ),
                 HRow::Tiles => (
                     "My media".to_string(),
                     "Your libraries.".to_string(),
@@ -914,7 +955,7 @@ impl App {
                 }
                 _ => continue,
             };
-            let strip = self.strip(ri, &items, g, focus, play, loading);
+            let strip = self.strip(ri, &items, g, focus, play, loading, *k == HRow::Coming);
             page = page.push(strip_band(&title, &text_, meta, strip, g, ri));
         }
         // Sources that did not answer add nothing but a quiet line.
@@ -961,6 +1002,7 @@ impl App {
         focus: Option<usize>,
         play: bool,
         loading: bool,
+        coming: bool,
     ) -> El<'_> {
         let writes = self.hooks.can_write();
         let several = self.several_sources();
@@ -995,7 +1037,11 @@ impl App {
             let (title, meta) = if episode {
                 (
                     m.series_name.clone().unwrap_or_else(|| m.title.clone()),
-                    super::cells::episode_line(m, g.look.episode_format),
+                    if coming {
+                        super::cells::coming_line(m)
+                    } else {
+                        super::cells::episode_line(m, g.look.episode_format)
+                    },
                 )
             } else {
                 (m.title.clone(), super::cells::caption(m))
@@ -1281,7 +1327,9 @@ impl App {
                     return self.activate_link(links.get(col).copied());
                 }
                 HRow::Resume | HRow::NextUp => Some((At::Home(row, col), CellAct::Play)),
-                HRow::Latest(_) | HRow::Tiles => Some((At::Home(row, col), CellAct::Open)),
+                HRow::Latest(_) | HRow::Tiles | HRow::Coming => {
+                    Some((At::Home(row, col), CellAct::Open))
+                }
             };
             if let Some((at, a)) = act {
                 return self.update_cell(at, a);

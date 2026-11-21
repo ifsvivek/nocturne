@@ -169,6 +169,8 @@ pub struct Settings {
     pub home_resume: bool,
     pub home_next_up: bool,
     pub home_latest: bool,
+    /// A "Coming this week" row on Home: this week's upcoming episodes from the Calendar. Off by default so Home stays as it was.
+    pub home_coming: bool,
     pub density: Density,
     /// Disk image cache cap in MB.
     pub image_cache_mb: u32,
@@ -210,6 +212,7 @@ impl Default for Settings {
             home_resume: true,
             home_next_up: true,
             home_latest: true,
+            home_coming: false,
             density: Density::Comfortable,
             image_cache_mb: 512,
             reduce_motion: ReduceMotion::System,
@@ -268,7 +271,7 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 28;
+pub const ROWS: usize = 29;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
 pub const PROFILE_ROW: usize = 22;
@@ -288,6 +291,9 @@ pub const HERO_AUTOPLAY_ROW: usize = 26;
 /// The "Banner interval" row.
 pub const HERO_INTERVAL_ROW: usize = 27;
 
+/// The "Coming this week" Home row switch.
+pub const COMING_ROW: usize = 28;
+
 /// The "Trakt account" row: not a toggle, it opens the connect dialog.
 pub const TRAKT_ROW: usize = 19;
 
@@ -306,6 +312,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         24 => Some("Updates"),
         25 => Some("Themes"),
         26 => Some("Home banner"),
+        28 => Some("Calendar"),
         _ => None,
     }
 }
@@ -532,6 +539,11 @@ impl Settings {
                 "How long each banner title stays before the next one.",
                 fmt_secs(self.hero_interval_secs),
             ),
+            r(
+                "Coming this week on Home",
+                "Adds a row to Home with the episodes airing in the next seven days from your servers and, when Trakt is connected, your Trakt calendar. The Calendar page in the header is always there. Off by default.",
+                onoff(self.home_coming),
+            ),
         ]
     }
 
@@ -675,6 +687,7 @@ impl Settings {
             HERO_INTERVAL_ROW => {
                 self.hero_interval_secs = step(&HERO_S, self.hero_interval_secs, 2, d)
             }
+            COMING_ROW => self.home_coming ^= true,
             COUCH_ROW => {
                 let i = COUCH.iter().position(|(m, _)| *m == self.couch);
                 let i = (i.unwrap_or(0) as i32 + d).rem_euclid(COUCH.len() as i32) as usize;
@@ -873,6 +886,23 @@ mod tests {
         assert!(!s.sync_watched && !s.trakt_scrobble && !s.trakt_history);
         assert!(s.autoplay_next && !s.auto_skip_intro);
         assert_eq!(s.rows().len(), ROWS);
+    }
+
+    #[test]
+    fn coming_row_is_last_and_off_by_default() {
+        let mut s = Settings::default();
+        assert!(!s.home_coming);
+        assert_eq!(s.rows().len(), COMING_ROW + 1);
+        assert_eq!(s.rows()[COMING_ROW].value, "Off");
+        s.cycle(COMING_ROW, 1);
+        assert!(s.home_coming);
+        assert_eq!(head(COMING_ROW), Some("Calendar"));
+        // An older settings file has no such key and keeps Home as it was.
+        assert!(
+            !toml::from_str::<Settings>("version = 1")
+                .unwrap()
+                .home_coming
+        );
     }
 
     #[test]

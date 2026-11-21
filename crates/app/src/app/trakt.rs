@@ -118,6 +118,11 @@ impl State {
 }
 
 impl App {
+    /// The connected Trakt client, if the sign-in was already read (the Calendar loads its own when not).
+    pub(super) fn trakt_client(&self) -> Option<Arc<Trakt>> {
+        self.trakt.client.clone()
+    }
+
     pub(super) fn trakt_chip_label(&self) -> String {
         self.trakt.label()
     }

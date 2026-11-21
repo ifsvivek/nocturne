@@ -859,6 +859,31 @@ impl Source {
         self.media(self.client.next_up(&self.user, 12).await)
     }
 
+    /// Every series of this server's libraries with its provider ids and poster tag (pages of 500, at most 5000), to tell which Trakt shows the server has.
+    pub async fn series_list(&self) -> Result<Vec<Media>, Failed> {
+        let mut out = vec![];
+        for page in 0..10u32 {
+            let q = jf::ItemsQuery {
+                include_types: vec!["Series".into()],
+                recursive: true,
+                start_index: Some(page * 500),
+                limit: Some(500),
+                ..Default::default()
+            };
+            let r = self
+                .client
+                .items(&self.user, &q)
+                .await
+                .map_err(|_| Failed)?;
+            let n = r.items.len();
+            out.extend(r.items.iter().map(|i| Media::from_item_in(self.origin, i)));
+            if n < 500 {
+                break;
+            }
+        }
+        Ok(out)
+    }
+
     /// Episodes this user's server lists as upcoming (premiere from yesterday on), up to 300.
     pub async fn upcoming(&self) -> Result<Vec<crate::calendar::Upcoming>, Failed> {
         let mut out = vec![];

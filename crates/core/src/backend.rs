@@ -141,6 +141,14 @@ impl Backend {
         }
     }
 
+    /// All series (servers only), for matching the Trakt calendar.
+    pub async fn series_list(&self) -> Result<Vec<Media>, Failed> {
+        match self {
+            Self::Jellyfin(s) => s.series_list().await,
+            Self::Local(_) => Ok(vec![]),
+        }
+    }
+
     /// Upcoming episodes (servers only: a local library has no air dates to wait for).
     pub async fn upcoming(&self) -> Result<Vec<crate::calendar::Upcoming>, Failed> {
         match self {

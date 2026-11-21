@@ -277,10 +277,11 @@ fn provider(i: &Ids) -> ProviderIds {
     }
 }
 
-/// Merge every source's upcoming episodes (best source first) and the Trakt calendar into one list, oldest first. The same episode on several servers is one entry (shared series id plus season and episode number), the copy with a file wins; a Trakt episode a server already lists adds nothing but its air time. A Trakt episode of a show a server has is "airing soon", any other is "not on your servers".
+/// Merge every source's upcoming episodes (best source first) and the Trakt calendar into one list, oldest first. `shows` are the servers' series (their posters come along with a Trakt episode of a show a server has). The same episode on several servers is one entry (shared series id plus season and episode number), the copy with a file wins; a Trakt episode a server already lists adds nothing but its air time. A Trakt episode of a show a server has is "airing soon", any other is "not on your servers".
 pub fn build(
     servers: &[(SourceId, Vec<Upcoming>)],
     series: &SeriesIds,
+    shows: &[Media],
     trakt: &[Airing],
     off: &dyn Fn(i64) -> i64,
 ) -> Vec<Entry> {
@@ -338,6 +339,21 @@ pub fn build(
             continue;
         }
         let found = series.find(&ids);
+        // A show that also has upcoming episodes on a server brings its poster along.
+        let stub = found.as_ref().and_then(|(o, i)| {
+            shows
+                .iter()
+                .find(|s| s.origin == *o && s.id == *i)
+                .cloned()
+                .or_else(|| {
+                    out.iter().find_map(|(e, _)| {
+                        e.series
+                            .as_ref()
+                            .filter(|s| s.origin == *o && s.id == *i)
+                            .cloned()
+                    })
+                })
+        });
         out.push((
             Entry {
                 day,
@@ -352,16 +368,18 @@ pub fn build(
                     Status::NotOnServers
                 },
                 episode: None,
-                series: found.map(|(origin, id)| {
-                    Media::from_item_in(
-                        origin,
-                        &jf::Item {
-                            id,
-                            name: a.show.clone(),
-                            kind: "Series".into(),
-                            ..Default::default()
-                        },
-                    )
+                series: stub.or_else(|| {
+                    found.map(|(origin, id)| {
+                        Media::from_item_in(
+                            origin,
+                            &jf::Item {
+                                id,
+                                name: a.show.clone(),
+                                kind: "Series".into(),
+                                ..Default::default()
+                            },
+                        )
+                    })
                 }),
             },
             keys,
@@ -469,6 +487,34 @@ pub fn day_heading(d: Day, today: Day) -> String {
             format!("{}, {} {n}", weekday_name(d.weekday()), &month_name(m)[..3])
         }
     }
+}
+
+/// "Tomorrow", "Fri, Nov 27 · 8:00 PM": when an air time is, for a card.
+pub fn when(iso: &str, today: Day, off: &dyn Fn(i64) -> i64) -> Option<String> {
+    let (day, minute) = place(iso, off)?;
+    let head = day_heading(day, today);
+    Some(match minute {
+        Some(m) => format!("{head} \u{b7} {}", crate::video::clock_text(m)),
+        None => head,
+    })
+}
+
+/// The server episodes airing today or in the next six days, for Home's "Coming this week" row.
+pub fn this_week(v: Vec<Upcoming>) -> Vec<Media> {
+    this_week_at(v, today(), &local_offset)
+}
+
+pub fn this_week_at(v: Vec<Upcoming>, today: Day, off: &dyn Fn(i64) -> i64) -> Vec<Media> {
+    v.into_iter()
+        .filter(|u| {
+            u.media
+                .premiere
+                .as_deref()
+                .and_then(|p| place(p, off))
+                .is_some_and(|(d, _)| d >= today && d < today.plus(7))
+        })
+        .map(|u| u.media)
+        .collect()
 }
 
 /// The entries of `[start, end)`.
@@ -628,6 +674,7 @@ mod tests {
             ],
             &sid,
             &[],
+            &[],
             UTC,
         );
         assert_eq!(v.len(), 2);
@@ -648,6 +695,7 @@ mod tests {
             ],
             &SeriesIds::default(),
             &[],
+            &[],
             UTC,
         );
         assert_eq!(v.len(), 2);
@@ -666,7 +714,7 @@ mod tests {
             // A show no server has.
             airing(200, 3, 1, "2026-12-02T01:00:00Z"),
         ];
-        let v = build(&[(SourceId(1), vec![up(on, true)])], &sid, &trakt, UTC);
+        let v = build(&[(SourceId(1), vec![up(on, true)])], &sid, &[], &trakt, UTC);
         assert_eq!(v.len(), 3);
         assert_eq!(v[0].status, Status::OnServer);
         assert_eq!(v[0].minute, Some(21 * 60), "Trakt's time fills the date");
@@ -681,13 +729,39 @@ mod tests {
     }
 
     #[test]
+    fn a_show_without_upcoming_episodes_still_counts_as_on_a_server() {
+        // The server lists no upcoming episode of show 100, but has the series: its poster comes from the series list.
+        let mut sid = SeriesIds::default();
+        sid.set(SourceId(1), "a".into(), ids("100"));
+        let mut tags = std::collections::HashMap::new();
+        tags.insert("Primary".to_string(), "tag1".to_string());
+        let show = Media::from_item_in(
+            SourceId(1),
+            &jf::Item {
+                id: "a".into(),
+                name: "Show".into(),
+                kind: "Series".into(),
+                image_tags: tags,
+                ..Default::default()
+            },
+        );
+        let t = [airing(100, 2, 1, "2026-12-02T20:00:00Z")];
+        let v = build(&[], &sid, &[show], &t, UTC);
+        assert_eq!(v[0].status, Status::Soon);
+        assert_eq!(
+            v[0].series.as_ref().unwrap().poster_tag.as_deref(),
+            Some("tag1")
+        );
+    }
+
+    #[test]
     fn entries_sort_by_day_then_time_with_dates_first() {
         let t = [
             airing(1, 1, 1, "2026-12-01T20:00:00Z"),
             airing(2, 1, 1, "2026-12-01"),
             airing(3, 1, 1, "2026-11-30T23:00:00Z"),
         ];
-        let v = build(&[], &SeriesIds::default(), &t, UTC);
+        let v = build(&[], &SeriesIds::default(), &[], &t, UTC);
         let order: Vec<_> = v.iter().map(|e| (e.day.iso(), e.minute)).collect();
         assert_eq!(
             order,
@@ -734,6 +808,28 @@ mod tests {
     }
 
     #[test]
+    fn this_week_keeps_the_next_seven_days() {
+        let today = Day::from_ymd(2026, 12, 1);
+        let v = vec![
+            up(ep(1, "past", "a", 1, 1, "2026-11-30"), true),
+            up(ep(1, "now", "a", 1, 2, "2026-12-01"), true),
+            up(ep(1, "last", "a", 1, 3, "2026-12-07"), false),
+            up(ep(1, "later", "a", 1, 4, "2026-12-08"), false),
+        ];
+        let ids: Vec<_> = this_week_at(v, today, UTC)
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        assert_eq!(ids, ["now", "last"]);
+        assert_eq!(when("2026-12-02", today, UTC).as_deref(), Some("Tomorrow"));
+        assert!(
+            when("2026-12-02T20:00:00Z", today, UTC)
+                .unwrap()
+                .starts_with("Tomorrow \u{b7} ")
+        );
+    }
+
+    #[test]
     fn grouping_keeps_days_with_entries_inside_the_range() {
         let t = [
             airing(1, 1, 1, "2026-12-01"),
@@ -741,7 +837,7 @@ mod tests {
             airing(3, 1, 1, "2026-12-03"),
             airing(4, 1, 1, "2026-12-20"),
         ];
-        let v = build(&[], &SeriesIds::default(), &t, UTC);
+        let v = build(&[], &SeriesIds::default(), &[], &t, UTC);
         let g = by_day(&v, Day::from_ymd(2026, 12, 1), Day::from_ymd(2026, 12, 8));
         assert_eq!(g.len(), 2);
         assert_eq!(g[0].1.len(), 2);
