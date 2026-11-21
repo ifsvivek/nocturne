@@ -241,6 +241,11 @@
         <div class="rule pt-5"><dt class="role">{t}</dt><dd class="m-0 mt-3 text-ink-2">{d}</dd></div>
       {/each}
     </dl>
+    <div class="stagger wrap mt-14 grid gap-10 md:grid-cols-2">
+      <figure class="m-0"><Shot name="calendar" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Calendar, week view: on your server, airing soon and not on your servers.</figcaption></figure>
+      <figure class="m-0"><Shot name="requests" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Requests: what you asked your Seerr server for, and its status.</figcaption></figure>
+      <figure class="m-0 md:col-span-2 md:mx-auto md:w-1/2"><Shot name="gallery" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Themes gallery: official themes with a preview, one click to install.</figcaption></figure>
+    </div>
   </section>
   {/if}
 </div>

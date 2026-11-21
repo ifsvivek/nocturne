@@ -73,6 +73,9 @@ const ALT = {
   marquee: "Home with the Marquee theme: a full-bleed billboard under a see-through header, a red accent and wide thumbnails without captions",
   feed: "Home with the Feed theme: no billboard, Continue watching as a grid of thumbnails with the title and details below",
   "server-ui": "Home in a server's own look (Study, with its branding stylesheet) with only that server in the source filter: its My media tiles, Continue Watching, Next Up and Recently Added rows",
+  calendar: "The Calendar in week view: Night Shift Radio episodes marked On your server and Airing soon, and other shows marked Not on your servers, each with season, episode and air time",
+  requests: "The Requests page: three requested films, each with a poster, year, request date and an Approved tag, under tabs All, Pending, Approved, Available and Declined",
+  gallery: "Settings, Themes, Gallery view, Official tab: a grid of theme cards with previews, NOCTURNE applied and Classic, Daylight, Feed, Glass, High contrast, Marquee and Spotlight with Install buttons",
   "sections-crop": "Home of Living room: the server's home sections, each with On or Off and up and down arrows, view-only until server changes are on",
 };
 // Image props for one screenshot: src (largest), srcset, intrinsic size and alt, so layout never shifts.
