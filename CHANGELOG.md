@@ -4,6 +4,11 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Added
+- Calendar: a header link (or `c` on Home and library pages) opens month, week and agenda views of upcoming episodes. Each server's upcoming list is merged across servers, and with Trakt connected your Trakt calendar is added (read only). Entries show the show's poster, "S1·E5 Title" and the air time in your time zone and 12 or 24 hour style, marked "On your server" (play it now), "Airing soon" (a server has the show) or "Not on your servers" (Trakt only). Enter or a click plays an episode a server has or opens the show; arrows, Tab, PgUp, PgDn, `m` `w` `l` and `t` drive it from the keyboard. A server's own layout uses a plain list version of the page. The same episode on several servers is one entry (shared series id plus season and episode number).
+- Settings > Calendar > "Coming this week on Home" (off by default): a Home row of the episodes your servers list for the next seven days.
+- `scripts/make-demo-library.sh build --upcoming` adds a demo show whose episodes air in the next weeks, for Calendar screenshots.
+
 ## [0.5.2] - 2026-11-20
 
 NOCTURNE now draws its main screens with its own CSS theme engine, can show a Jellyfin server in that server's own look, and lets you build themes inside the app.

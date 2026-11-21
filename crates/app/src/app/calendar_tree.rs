@@ -24,7 +24,8 @@ const NARROW: f32 = 150.0;
 impl App {
     /// The page as a tree, or `None` when the Calendar is not in view.
     pub(super) fn calendar_tree(&self) -> Option<Tree> {
-        if !self.at_calendar() {
+        // In a server's own layout the page is the hand-written list (that layout has no stylesheet for it).
+        if !self.at_calendar() || self.jf_base().is_some() {
             return None;
         }
         let c = &self.cal;

@@ -587,9 +587,7 @@ impl App {
         let coming_on = self.settings.home_coming;
         let (cf, t4) = if coming_on {
             self.fan(pid, FanKind::Coming, |b| async move {
-                b.upcoming()
-                    .await
-                    .map(|v| nocturne_core::calendar::this_week(v))
+                b.upcoming().await.map(nocturne_core::calendar::this_week)
             })
         } else {
             (Fanout::default(), Task::none())

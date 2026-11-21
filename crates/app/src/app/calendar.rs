@@ -16,11 +16,7 @@ pub const MONTH_CAP_MIN: usize = 1;
 pub enum Msg {
     Open,
     /// One server's upcoming episodes and the provider ids of their series (`None`: it did not answer).
-    Server(
-        u64,
-        SourceId,
-        Option<(Vec<Upcoming>, Vec<(String, ProviderIds)>)>,
-    ),
+    Server(u64, SourceId, Option<ServerRead>),
     /// Trakt's calendar for the chunks starting at these days (`Ok(None)`: not connected).
     Trakt(u64, Vec<i64>, Result<Option<Vec<Airing>>, ()>),
     /// One server's series, once Trakt has answered (`None`: it did not).
@@ -31,6 +27,9 @@ pub enum Msg {
     /// The entry (or "+N more") with this index among the navigable items.
     Pick(usize),
 }
+
+/// One server's upcoming episodes and the provider ids of their series.
+pub type ServerRead = (Vec<Upcoming>, Vec<(String, ProviderIds)>);
 
 /// What the keyboard and a click can land on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -479,7 +478,7 @@ impl App {
 }
 
 impl App {
-    /// The hand-written page (no theme engine, or `NOCTURNE_ENGINE_UI=0`): the agenda as plain rows with the same controls.
+    /// The hand-written page (no theme engine, `NOCTURNE_ENGINE_UI=0` or a server's own layout): the agenda as plain rows with the same controls.
     pub(super) fn cal_fallback(&self) -> iced::Element<'_, Message> {
         use crate::style;
         use crate::theme as t;
@@ -490,33 +489,45 @@ impl App {
         let (s, e) = c.range();
         let mut bar = row![].spacing(t::S2).align_y(Alignment::Center);
         for v in cal::View::ALL {
-            bar = bar.push(pill_button(
-                v.label(),
-                v == c.view,
-                false,
-                Message::Calendar(Msg::View(v)),
-            ));
+            bar = bar.push(
+                container(pill_button(
+                    v.label(),
+                    v == c.view,
+                    false,
+                    Message::Calendar(Msg::View(v)),
+                ))
+                .width(110),
+            );
         }
         bar = bar
             .push(Space::new().width(t::S4))
-            .push(pill_button(
-                "\u{2039}",
-                false,
-                false,
-                Message::Calendar(Msg::Step(-1)),
-            ))
-            .push(pill_button(
-                "Today",
-                false,
-                false,
-                Message::Calendar(Msg::Today),
-            ))
-            .push(pill_button(
-                "\u{203A}",
-                false,
-                false,
-                Message::Calendar(Msg::Step(1)),
-            ));
+            .push(
+                container(pill_button(
+                    "\u{2039}",
+                    false,
+                    false,
+                    Message::Calendar(Msg::Step(-1)),
+                ))
+                .width(110),
+            )
+            .push(
+                container(pill_button(
+                    "Today",
+                    false,
+                    false,
+                    Message::Calendar(Msg::Today),
+                ))
+                .width(110),
+            )
+            .push(
+                container(pill_button(
+                    "\u{203A}",
+                    false,
+                    false,
+                    Message::Calendar(Msg::Step(1)),
+                ))
+                .width(110),
+            );
         let items = c.items(self.cal_cap());
         let mut list = column![].spacing(t::S2);
         let shown = cal::by_day(&c.entries, s, e);
@@ -564,6 +575,10 @@ impl App {
                 });
             }
         }
+        #[cfg(feature = "theme-engine")]
+        let top = self.eng_header_h();
+        #[cfg(not(feature = "theme-engine"))]
+        let top = t::header_h();
         container(
             column![
                 text("Calendar").size(t::HEADING).font(t::bold()),
@@ -572,12 +587,15 @@ impl App {
                     .color(t::text_secondary()),
                 bar,
                 mono("Arrows move, Enter opens, M W L views, PgUp PgDn period, T today"),
-                scrollable(list).style(style::scroll).height(Length::Fill),
+                scrollable(list.width(Length::Fill))
+                    .style(style::scroll)
+                    .width(Length::Fill)
+                    .height(Length::Fill),
             ]
             .spacing(t::S3),
         )
         .padding(iced::Padding {
-            top: t::header_h() + t::S8,
+            top: top + t::S8,
             left: t::page_pad(),
             right: t::page_pad(),
             bottom: t::S6,
