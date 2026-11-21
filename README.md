@@ -146,7 +146,7 @@ cargo build --release --locked      # stable Rust 1.89+; a clean release build t
 
 </details>
 
-Optional: VLC, if you want to play in it (Settings > Player). NOCTURNE detects it and never bundles it.
+Optional: VLC, if you want to play in it (Settings > Video player > Player). NOCTURNE detects it and never bundles it.
 
 Runtime needs: a Wayland session, a Vulkan driver, EGL, libmpv (or the `mpv` program), and a Secret Service provider (gnome-keyring, KWallet or KeePassXC) to remember sign-ins. Problems starting the app are covered in [docs/README.md](docs/README.md#troubleshooting).
 

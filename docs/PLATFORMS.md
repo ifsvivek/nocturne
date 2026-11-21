@@ -13,7 +13,7 @@ Linux is built, run and tested. Windows and macOS have code behind each seam, co
 | In-window video | libmpv GL render API in a Wayland subsurface. Linux is Wayland-only: X11 is not supported and the app exits with a message on an X11-only session. `crates/player/src/embedded.rs` | **external mpv window for now** (`embedded_stub.rs`: `EmbeddedPlayer` cannot be built, the app falls back). Native embedding: later (libmpv render API into a Metal/GL view) | same: external mpv window; native embedding later (libmpv render API / `wid` child window) |
 | External player IPC | unix socket | unix socket | named pipe `\\.\pipe\nocturne-mpv-<pid>-<n>` (reader polls `PeekNamedPipe`, see `crates/player/src/ipc.rs`) |
 | libmpv at runtime | distro package (dlopen `libmpv.so.2`) | dlopen `libmpv.2.dylib`: `Contents/Frameworks` next to the exe first, then default paths and Homebrew | dlopen `libmpv-2.dll` next to the exe first, then the DLL search path |
-| VLC (optional, never bundled) | `vlc` on `PATH` | `/Applications/VLC.app` | `VLC` under `Program Files` (also `Program Files (x86)`) or `PATH`; used only when chosen in Settings > Player |
+| VLC (optional, never bundled) | `vlc` on `PATH` | `/Applications/VLC.app` | `VLC` under `Program Files` (also `Program Files (x86)`) or `PATH`; used only when chosen in Settings > Video player > Player |
 | external `mpv` binary | `PATH` | next to the app, `PATH`, Homebrew prefixes | `mpv.exe` next to the app, then `PATH` (no console window) |
 | Credentials | Secret Service (`keyring`) | Keychain (`keyring` apple-native) | Credential Manager (`keyring` windows-native) |
 | Media keys / now playing | MPRIS + idle inhibit (zbus, `core/player_mpris/dbus.rs`) | none yet (no-op; MPNowPlayingInfoCenter later) | none yet (no-op; SMTC later) |
@@ -39,7 +39,7 @@ Windows plays the picture in a child window of the app window (`VideoSurface`, `
 | AppImage | experimental: a best-effort job in `release.yml`, not recommended or supported (large; libmpv and glibc conflicts, see PACKAGING.md) | bundled |
 | Windows `.exe` setup + portable `.zip` | unsigned preview on the GitHub release; per-user install; built and smoke-tested in CI, tried on a real PC | bundles a pinned `mpv.exe` (drawn into a child window of the app, or its own window as the fallback) |
 | macOS `.dmg` (Apple Silicon) + `.tar.gz` | unsigned preview on the GitHub release (ad-hoc signed bundle: right-click > Open); built and smoke-tested in CI, tried on a Mac; the `.tar.gz` is what the in-app updater installs | bundled libmpv + mpv (dylibbundler) |
-| Flatpak | under evaluation | n/a |
+| Flatpak | evaluated, not shipped ([dev/FLATPAK.md](dev/FLATPAK.md)) | n/a |
 
 Linux packages are built from one binary compiled in a `debian:stable` container. On a version tag `release.yml` builds every format on GitHub-hosted runners and drafts a release; the pacman, apt and dnf repositories and the update artifacts are signed on the maintainer's machine, never in CI ([PACKAGING.md](PACKAGING.md)). Verification is reported per target as built / installed / run / not tested.
 
