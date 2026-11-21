@@ -27,7 +27,6 @@
     ...(v060 ? [
       ["Can I request movies?", "Yes, if you run a Seerr server (Jellyseerr and Overseerr work too). Sign in to it in Settings, turn on Allow requests, and a title that is not in your library gets a Request button. The request goes to the Seerr server, not to a media server, and what happens next is up to Seerr. 4K requests are not offered yet."],
       ["Can I use VLC?", "Yes. If VLC is installed, Settings offers it as the player, next to the in-window player and an mpv window. NOCTURNE controls VLC over a local, password-protected interface, so your place, progress sync, Trakt and Stop keep working. VLC's own menus handle subtitles and audio."],
-      ["Can I play a YouTube link?", "A pasted address plays through yt-dlp, which supports YouTube and many other sites. It runs on your own computer, is optional and is never bundled with NOCTURNE. Make sure you have the right to watch what you open, and to keep what you save."],
     ] : []),
     ["Does it work with other media servers?", "Not yet. Jellyfin is the first server type; local folders need no server at all."],
   ];

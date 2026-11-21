@@ -146,7 +146,7 @@ test("0.5.2 copy appears only from 0.5.2, without a mark, and replaces the 0.5 c
 
 test("0.6.0 copy appears only from 0.6.0, without a mark", () => {
   const text = (d, f) => read(d, f).replace(/&#39;/g, "'").replace(/&amp;/g, "&");
-  const NEW = ["Calendar, requests and links", "Requests with Seerr", "Play a link", "Themes gallery", "Choose where video plays", "Can I request movies?", "Can I use VLC?", "Can I play a YouTube link?",
+  const NEW = ["Calendar and requests", "Requests with Seerr", "Themes gallery", "Choose where video plays", "Can I request movies?", "Can I use VLC?",
     "Flatpak is not available", "MPC-HC on Windows and IINA on macOS are not supported yet", "Requests for 4K versions", "A request goes only to your Seerr server"];
   for (const s of NEW) {
     assert.ok(text(v060, "index.html").includes(s), `0.6.0: ${s}`);

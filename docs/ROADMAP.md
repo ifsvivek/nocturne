@@ -50,7 +50,6 @@ Not yet verified (see [QA_REPORT.md](QA_REPORT.md) and [FEATURES.md](FEATURES.md
 - **Player choice**: Settings offers the in-window player (the default), VLC and an mpv window, each only when installed. VLC is controlled over a loopback interface with a random password, so resume, progress sync, Trakt and Stop keep working; its own menus handle subtitles and audio. MPC-HC on Windows and IINA on macOS are not supported yet.
 - **Calendar**: month, week and agenda views of upcoming episodes from each server (merged) and, with Trakt connected, your Trakt calendar; read only, with an optional "Coming this week" row on Home.
 - **Seerr requests**: request movies and shows that no source has, from Search and the Calendar, and follow them on a Requests page. A request goes to the Seerr server only, behind its own setting (off by default). 4K requests and Seerr's server, profile and folder choices are not offered ([SOURCES.md](SOURCES.md), [WRITES.md](WRITES.md)).
-- **Play and save links with yt-dlp**: a pasted video address plays in the player when yt-dlp is installed; Save to library (off by default) keeps a copy in a chosen local folder. yt-dlp stays optional and is never bundled.
 - **Themes gallery**: Settings > Themes opens on a Gallery with Official, Community and My themes, previews and one-click install checked against a sha256, from folders in this repository (`themes/`); the Editor keeps the lists and the CSS editor.
 - **Flatpak evaluated, not shipped** ([dev/FLATPAK.md](dev/FLATPAK.md)): worth doing after 0.6.0 as a Flathub app with a small sandbox (Wayland, GPU, network, audio, the Secret Service name, `xdg-videos` read-only), in-window playback with a bundled mpv, no host players (VLC is not reachable without a host-spawn permission that Flathub rejects), and the in-app updater switched off. About 3 to 5 working days to a first build plus review time.
 
@@ -140,6 +139,7 @@ Nothing is dropped for good. Earlier decisions to revisit when users ask for the
 
 - X11 sessions on Linux: NOCTURNE is Wayland-only since 0.5.
 - A Homebrew tap or cask.
+- Playing or saving video links with yt-dlp: it now needs a JavaScript runtime (Deno or Node) for YouTube and breaks whenever sites change (maintainer, 2026-11-21).
 - Code signing for Windows and macOS: the builds stay unsigned previews (the system warns on first start). Linux packages and the in-app updates stay signed with NOCTURNE's own keys.
 
 ## Upstream reports

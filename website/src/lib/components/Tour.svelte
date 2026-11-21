@@ -68,7 +68,6 @@
   const extras = [
     ["Calendar", "A header link, or the c key, opens month, week and agenda views of upcoming episodes. Each server's list is merged, and with Trakt connected your Trakt calendar is added. Every entry has the poster, season and episode, the title and the air time in your time zone, and says On your server, Airing soon or Not on your servers. Enter plays an episode a server has. Reading only; an optional row on Home shows the next seven days."],
     ["Requests with Seerr", "Sign in to your Seerr server (Jellyseerr and Overseerr work too) with your own server account. With Allow requests on, a title that is not in your library shows a Request button in Search and on the Calendar, with a season choice for shows, and a Requests page lists what you asked for and its status. A request goes to the Seerr server only, after a confirmation, and nothing is written to a media server. Off by default; NOCTURNE does not download anything itself."],
-    ["Play a link", "Paste a video address into Search and it plays in the player, through yt-dlp, for any site yt-dlp supports. yt-dlp runs on your computer, is optional and is not bundled; without it NOCTURNE shows the command to install it. A separate, off-by-default Save to library keeps a copy in a folder you choose. Save only what you have the right to keep."],
   ];
   const tick = (p) => (Array.isArray(p) ? p : [p, ""]);
   // Slot widths for the browser's srcset choice: full-bleed (max 1680), the 3:2 split in the 1200 wrap, two-up at 1520, one framed 1320.
@@ -235,7 +234,7 @@
 
   {#if v060}
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s10">
-    <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 11</span><h2 id="s10" class="scene-title">Calendar, requests and links</h2></header>
+    <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 11</span><h2 id="s10" class="scene-title">Calendar and requests</h2></header>
     <p class="subtitle">Three more ways to fill the evening, each optional and each off or empty until you use it.</p>
     <dl class="stagger mx-auto mt-14 grid w-[min(1000px,100%-40px)] gap-x-14 gap-y-10 md:grid-cols-2">
       {#each extras as [t, d]}

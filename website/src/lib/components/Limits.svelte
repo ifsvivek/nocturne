@@ -30,7 +30,7 @@
       "In-app updates have been tested against a local server, not yet from a published release. In-app update on macOS is planned; the macOS preview shows Download instead.",
     ]),
     ...(shipped("0.6.0") ? [
-      "Seerr requests, the Calendar and the player choice were tried against throwaway servers and a demo library, not against a long-running setup. Link playback and Save to library depend on yt-dlp, which sites change often.",
+      "Seerr requests, the Calendar and the player choice were tried against throwaway servers and a demo library, not against a long-running setup.",
     ] : []),
     "Couch mode has not been tried with a real gamepad or on a TV. Remote control was tried through the server, not yet from a phone app.",
     "The .deb and .rpm install from the apt and dnf repositories in clean containers, not yet on a full desktop install. On Ubuntu 24.04, video plays in an external mpv window.",
