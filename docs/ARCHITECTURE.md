@@ -94,6 +94,10 @@ All pure logic is in `crates/core`, with the UI glue in `crates/app/src/app/`.
 - Trakt ships a built-in public client id (PKCE, no secret); a user-supplied id still overrides it ([TRAKT.md](TRAKT.md)).
 - Release flow: `release.yml` builds every format on GitHub runners and drafts a release; repositories and update artifacts are signed locally ([PACKAGING.md](PACKAGING.md)). Contributor scripts: `scripts/headless-session.sh` and `scripts/headless-input-check.sh` ([CONTRIBUTING.md](../CONTRIBUTING.md)).
 
+## 0.6 modules
+
+- `calendar.rs` + `app/calendar.rs`, `app/calendar_tree.rs`: the Calendar. Pure part (`core/calendar.rs`): civil-day arithmetic, ISO air-time parsing with the zone as a parameter, merging of each server's upcoming episodes (`Backend::upcoming`, a GET of `/Shows/Upcoming`, servers only) and the Trakt calendar (`Trakt::calendar`, read only) into dated entries marked on your server / airing soon / not on your servers, month, week and agenda ranges. The page is `View::Calendar` with state in `App::cal`, drawn as an element tree through `Which::Page` (classes `.calendar`, `.calendar-day`, `.calendar-entry`, ...); a server's own layout and `NOCTURNE_ENGINE_UI=0` use a plain list page. Home's optional "Coming this week" row is `HRow::Coming`.
+
 ## Watch together (SyncPlay)
 
 `jellyfin-user/src/syncplay/` holds everything that is not UI: `model.rs` (typed messages), `time.rs` (clock offset), `engine.rs` (a pure state machine that takes `now` and returns what to do), `rest.rs` (calls; writes take `UserConfirmed`) and `ws.rs` (reqwest upgrade, tungstenite framing, reconnect with backoff). `core/syncplay.rs` has the pure app rules. The Iced side drains the socket channel on a short poll, shows the screen and the header pill, and applies the group's commands through methods that never route back into the group. While in a group the player pushes transport requests into an outbox instead of acting. SyncPlay acts on one chosen server. See [syncplay.md](syncplay.md).

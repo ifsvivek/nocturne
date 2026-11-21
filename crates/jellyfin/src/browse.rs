@@ -28,6 +28,8 @@ pub struct ItemExtra {
     pub local_trailer_count: Option<u32>,
     pub special_feature_count: Option<u32>,
     pub status: Option<String>,
+    /// "FileSystem" for a file on disk, "Virtual" for a missing episode (only when asked for).
+    pub location_type: Option<String>,
     /// Image type -> tag -> blurhash.
     pub image_blur_hashes: HashMap<String, HashMap<String, String>>,
     pub studios: Vec<NameId>,

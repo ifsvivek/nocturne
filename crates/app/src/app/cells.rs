@@ -17,6 +17,22 @@ pub fn caption(m: &Media) -> String {
         .join(" \u{b7} ")
 }
 
+/// The line under the show on a "Coming this week" card: when it airs, then "S1:E2".
+pub fn coming_line(m: &Media) -> String {
+    let when = m.premiere.as_deref().and_then(|p| {
+        nocturne_core::calendar::when(
+            p,
+            nocturne_core::calendar::today(),
+            &nocturne_core::calendar::local_offset,
+        )
+    });
+    [when.unwrap_or_default(), m.short_ep()]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
+}
+
 /// The line under an episode's series title on a landscape card: "S1:E2 · Name" as built in,
 /// "S1:E2 - Name" (`short`) or "Season 1, Episode 2 - Name" (`long`) when a theme asks.
 pub fn episode_line(m: &Media, fmt: Option<EpisodeFormat>) -> String {

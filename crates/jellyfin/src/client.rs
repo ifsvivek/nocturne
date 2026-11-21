@@ -286,6 +286,23 @@ impl Client {
             .await
     }
 
+    /// Episodes with a premiere date from yesterday on, oldest first (`GET /Shows/Upcoming`), one page. `LocationType` tells a file on disk from a missing (virtual) episode.
+    pub async fn upcoming(&self, user_id: &str, start: u32, limit: u32) -> Result<Items> {
+        self.get(
+            &["Shows", "Upcoming"],
+            &[
+                ("userId", user_id.to_string()),
+                ("startIndex", start.to_string()),
+                ("limit", limit.to_string()),
+                (
+                    "fields",
+                    "ProviderIds,Overview,PremiereDate,LocationType".into(),
+                ),
+            ],
+        )
+        .await
+    }
+
     /// The next unwatched episode of one series (`GET /Shows/NextUp?seriesId=`), at most one item.
     pub async fn series_next_up(&self, user_id: &str, series_id: &str) -> Result<Items> {
         let mut pairs = next_up_pairs(user_id, 1).to_vec();

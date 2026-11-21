@@ -43,6 +43,16 @@ impl SeriesIds {
         self.map.insert((origin, id), ids);
     }
 
+    /// A known series that shares a provider id with `ids` (lowest source and id first, so the answer is stable).
+    pub fn find(&self, ids: &ProviderIds) -> Option<(SourceId, String)> {
+        let want = id_keys("s", ids);
+        self.map
+            .iter()
+            .filter(|(_, v)| id_keys("s", v).iter().any(|k| want.contains(k)))
+            .map(|(k, _)| k.clone())
+            .min()
+    }
+
     pub fn get(&self, origin: SourceId, id: &str) -> Option<&ProviderIds> {
         self.map.get(&(origin, id.to_string()))
     }

@@ -23,6 +23,7 @@ Jellyfin layout mode is built (THEME_ENGINE_PLAN section 14; `app/jf`, `detail/j
 - Windows and macOS previews on real hardware (build, keyring, mpv IPC, paths, SmartScreen / Gatekeeper behaviour); signing certificates. Unreleased: Windows fixes from the first real-PC (VM) test: bundled fonts, non-blocking mpv IPC with a property cache, in-window video through a child window (all written and cross-checked, to be run on Windows).
 - Pointer-only theme actions (Keep, Reset, assigning a per-server theme by click), hover zoom with a real pointer; Server UI against a server with real branding CSS and with several servers; a theme from the Jellyfin web.
 - Carried from 0.4: HDR on an HDR display, couch mode with a real gamepad and on a TV, remote control from a phone app, the .deb and .rpm on full desktop installs; Flatpak is undecided.
+- Calendar (unreleased): verified on a throwaway demo server and a fake Trakt reply, not against a real Trakt account; in a server's own layout it shows the plain list page, not exercised against a live web client.
 - Live Trakt scrobble and import were verified in 0.4 against a real account; one-click connect with the built-in id is verified.
 
 ## Next: 0.6

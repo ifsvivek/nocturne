@@ -31,6 +31,7 @@ What NOCTURNE does today. Items marked (partial) work with the limits stated; it
 - Library views with a paged grid, sort, filters, A-Z jump and poster, thumb or list layout.
 - Genres, Studios, Years and Tags tabs; Collections, Playlists and Favourites pages.
 - Search with Ctrl+K or `/`: grouped results and recent searches.
+- Calendar (header link, or `c`): month, week and agenda views of upcoming episodes from every signed-in server and, when Trakt is connected, your Trakt calendar. Each entry has a poster, season and episode, title and the air time in your time zone; it is marked on your server (playable now), airing soon (a server has the show) or not on your servers (Trakt only), and Enter or a click plays it or opens the show. Weeks start on Monday. Servers only know the date for most episodes (shown without a time); a server lists upcoming episodes from yesterday on, so earlier days of the current month are empty. An optional Home row "Coming this week" (Settings, off by default) lists the next seven days from your servers. A server's own layout (Jellyfin layout mode) shows a plain list version of the page. Read only; a request button for shows you do not have comes with Seerr.
 - Detail pages for movies, series (logo hero, season tabs, episode grid), episodes and people, with cast, similar items, extras, media info, ratings, chapters and "Included in" collections.
 - Images use blurhash placeholders and a size-capped disk cache.
 - Breadcrumbs, back and forward, Esc and Backspace.
