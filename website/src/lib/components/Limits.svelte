@@ -6,7 +6,7 @@
       ? "A supported AppImage: the GitHub release has only an experimental one (about 107 MB, it bundles its own libraries; use the repositories where you can). Flatpak is not available: it was evaluated, and would not offer VLC from inside its sandbox"
       : "A supported AppImage: the GitHub release has only an experimental one (about 107 MB, it bundles its own libraries; use the repositories where you can). Flatpak is being evaluated",
     ...(shipped("0.6.0") ? [
-      "Other external players: VLC and mpv only for now; MPC-HC on Windows and IINA on macOS are not supported yet",
+      "Other external players: VLC and mpv only for now; MPC-HC for the Windows preview and IINA for the macOS preview are not supported yet",
       "Requests for 4K versions, and Seerr's server, profile and folder choices",
     ] : []),
     "X11 sessions: from 0.5, Linux needs Wayland",
