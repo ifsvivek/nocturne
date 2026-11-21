@@ -1,0 +1,5 @@
+{"pageInfo":{"pages":1,"pageSize":20,"results":3,"page":1},"results":[
+{"id":3,"type":"tv","status":1,"is4k":false,"createdAt":"2026-11-21T10:05:00.000Z","seasons":[{"seasonNumber":1,"status":1},{"seasonNumber":2,"status":1}],"media":{"tmdbId":1396,"mediaType":"tv","status":2}},
+{"id":2,"type":"movie","status":2,"is4k":false,"createdAt":"2026-11-21T10:00:00.000Z","seasons":[],"media":{"tmdbId":348,"mediaType":"movie","status":3}},
+{"id":1,"type":"movie","status":5,"is4k":false,"createdAt":"2026-11-20T09:00:00.000Z","seasons":[],"media":{"tmdbId":603,"mediaType":"movie","status":5}}
+]}

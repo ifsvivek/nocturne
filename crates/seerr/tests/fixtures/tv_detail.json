@@ -1,0 +1,6 @@
+{"id":1396,"name":"Breaking Bad","firstAirDate":"2008-01-20","overview":"A high school chemistry teacher.","posterPath":"/ggFHVNu6YYI5L9pCfOacjizRGt.jpg","numberOfSeasons":5,
+"seasons":[{"seasonNumber":0,"episodeCount":9},{"seasonNumber":1,"episodeCount":7},{"seasonNumber":2,"episodeCount":13},{"seasonNumber":3,"episodeCount":13},{"seasonNumber":4,"episodeCount":13}],
+"externalIds":{"imdbId":"tt0903747","tvdbId":81189},
+"mediaInfo":{"id":5,"tmdbId":1396,"status":4,"status4k":1,
+"requests":[{"id":4,"status":2,"is4k":false,"type":"tv","seasons":[{"seasonNumber":2,"status":2}]}],
+"seasons":[{"seasonNumber":1,"status":5},{"seasonNumber":2,"status":3}]}}
