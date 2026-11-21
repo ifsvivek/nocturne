@@ -232,6 +232,10 @@ impl VlcPlayer {
             "--no-one-instance",
             "--no-qt-privacy-ask",
             "--no-metadata-network-access",
+            // The stream URL carries the server token (`api_key`): never let VLC write it to its recent list, its resume list or its media library.
+            "--no-qt-recentplay",
+            "--qt-continue=0",
+            "--no-media-library",
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
