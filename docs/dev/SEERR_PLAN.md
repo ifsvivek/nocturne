@@ -139,3 +139,13 @@ Sign-in: Quick Connect first, username and password second, both producing the 3
 5. Should the user be able to cancel their own pending requests from NOCTURNE in 0.6.0 (a second write), or is that left to Seerr's web UI?
 6. Is the docker-based `scripts/test-seerr.sh` acceptable in the repository (needs Docker; skipped like the Jellyfin live tests when absent), and is `ghcr.io/seerr-team/seerr` pinned to a version tag the right image?
 7. Should 4K and the advanced options (server, profile, root folder) stay out of 0.6.0 entirely (4K cannot be live-tested without a 4K Radarr/Sonarr)?
+
+## Decisions (master, 2026-11-21, maintainer away; revisit on request)
+
+1. Search shows a "Request" group for titles found on Seerr but not in the catalog.
+2. Jellyfin accounts only in 0.6.0 (Quick Connect first, then username and password); local Seerr accounts later.
+3. One Seerr server.
+4. "Available" comes from the catalog by TMDB id first, Seerr's `mediaInfo.status` as the fallback.
+5. Cancelling your own pending request is in 0.6.0 (a write: confirmation dialog, `RequestConfirmed`).
+6. `scripts/test-seerr.sh` (Docker, loopback, data under /tmp) is fine in the repository.
+7. 4K and the advanced options (server, profile, root folder) stay out of 0.6.0.
