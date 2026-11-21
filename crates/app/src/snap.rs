@@ -61,7 +61,7 @@ pub fn on_boot() -> Task<Message> {
             // Theme Studio QA: runs the file in `NOCTURNE_STUDIO_SCRIPT` (see `app::studio::script_msgs`).
             #[cfg(feature = "theme-engine")]
             "studio-script" => Some(Message::Studio(crate::app::studio::Msg::Script)),
-            // Themes gallery QA: `gallery-official`, `gallery-community`, `gallery-mine`, `gallery-refresh`, `gallery-install-<id>`, `gallery-apply-<id>`.
+            // Themes gallery QA: `gallery-official`, `gallery-community`, `gallery-mine`, `gallery-refresh`, `gallery-view-editor`, `gallery-view-gallery`, `gallery-search-<text>`, `gallery-install-<id>`, `gallery-apply-<id>`.
             n if n.starts_with("gallery-") => {
                 use crate::app::themes_gallery::{GMsg, Tab};
                 let g = match &n[8..] {
@@ -69,6 +69,9 @@ pub fn on_boot() -> Task<Message> {
                     "community" => GMsg::Tab(Tab::Community),
                     "mine" => GMsg::Tab(Tab::Mine),
                     "refresh" => GMsg::Refresh,
+                    "view-editor" => GMsg::View(crate::app::themes_gallery::View::Editor),
+                    "view-gallery" => GMsg::View(crate::app::themes_gallery::View::Gallery),
+                    i if i.starts_with("search-") => GMsg::Search(i[7..].replace('_', " ")),
                     i if i.starts_with("install-") => GMsg::Install(i[8..].into()),
                     i if i.starts_with("apply-") => GMsg::Apply(i[6..].into()),
                     _ => return None,

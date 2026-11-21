@@ -514,7 +514,15 @@ impl App {
                 self.close_admin();
                 self.th.open = true;
                 let start = self.themes.global;
-                return self.themes_msg(Msg::Pick(start));
+                let pick = self.themes_msg(Msg::Pick(start));
+                let gal = if self.th.gal.index.is_none()
+                    && self.th.gal.tab != super::themes_gallery::Tab::Mine
+                {
+                    self.gallery_msg(super::themes_gallery::GMsg::Refresh)
+                } else {
+                    Task::none()
+                };
+                return Task::batch([pick, gal]);
             }
             Msg::Close => {
                 self.th.open = false;
@@ -829,8 +837,28 @@ impl App {
             .height(Length::Fill)
             .into()
         };
+        let gallery = self.th.gal.view == super::themes_gallery::View::Gallery;
+        let switch = container(self.themes_switch()).padding([0.0, t::page_pad()]);
+        if gallery {
+            return column![
+                container(column![head, how, switch].spacing(t::S3)).padding(Padding {
+                    top: t::header_h() + t::S6,
+                    ..Padding::ZERO
+                }),
+                container(self.gallery_page())
+                    .padding(Padding {
+                        top: t::S4,
+                        left: t::page_pad(),
+                        right: t::page_pad(),
+                        ..Padding::ZERO
+                    })
+                    .height(Length::Fill),
+            ]
+            .height(Length::Fill)
+            .into();
+        }
         let page = column![
-            container(column![head, how].spacing(t::S3)).padding(Padding {
+            container(column![head, how, switch].spacing(t::S3)).padding(Padding {
                 top: t::header_h() + t::S6,
                 ..Padding::ZERO
             }),
@@ -930,22 +958,7 @@ impl App {
                 Msg::Preset(i),
             ));
         }
-        if self.th.gal.tab != super::themes_gallery::Tab::Mine {
-            return scroll(
-                column![self.gallery_tabs(), self.gallery_cards()]
-                    .spacing(t::S3)
-                    .padding(Padding {
-                        right: t::S3,
-                        ..Padding::ZERO
-                    }),
-            )
-            .style(style::scroll)
-            .width(width.map_or(Length::Fill, Length::Fixed))
-            .height(height)
-            .into();
-        }
         let mut col = column![
-            self.gallery_tabs(),
             text(tracked("Built-in"))
                 .shaping(text::Shaping::Advanced)
                 .size(t::CONTROL_TEXT)
