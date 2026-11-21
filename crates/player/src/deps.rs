@@ -8,7 +8,7 @@ pub fn libmpv_available() -> Result<(), String> {
     crate::mpv_ffi::available()
 }
 
-fn is_executable(p: &Path) -> bool {
+pub(crate) fn is_executable(p: &Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
