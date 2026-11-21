@@ -26,6 +26,8 @@ pub enum Msg {
     Today,
     /// The entry (or "+N more") with this index among the navigable items.
     Pick(usize),
+    /// Open the Request dialog for the entry at this index of the entries.
+    Request(usize),
 }
 
 /// One server's upcoming episodes and the provider ids of their series.
@@ -236,7 +238,29 @@ impl App {
                 self.cal.sel = i;
                 self.cal_activate()
             }
+            Msg::Request(k) => match self.cal.entries.get(k).map(|e| (self.cal_ask(e), e)) {
+                Some((cal::Ask::Request(id), e)) => Task::done(super::requests::ask(
+                    nocturne_seerr::Kind::Tv,
+                    id,
+                    e.show.clone(),
+                    None,
+                )),
+                _ => Task::none(),
+            },
         }
+    }
+
+    /// What an entry offers: the Request action, the badge Seerr's state already gives, or nothing.
+    pub(super) fn cal_ask(&self, e: &Entry) -> cal::Ask {
+        let tv = nocturne_seerr::Kind::Tv;
+        let badge = e.tmdb.and_then(|id| {
+            let info = match self.rq.titles.get(&(tv, id)) {
+                Some(super::requests::Title::Ready(d, _)) => d.media_info.as_ref(),
+                _ => None,
+            };
+            self.rq_badge(tv, id, info)
+        });
+        e.ask(self.rq_can(tv), badge)
     }
 
     /// Show the page from today, and read every server's upcoming list.
@@ -387,7 +411,22 @@ impl App {
             .filter(|m| seen.insert((m.origin, m.id.clone())))
             .map(|m| (m, nocturne_core::source::Art::Poster, 200))
             .collect();
-        self.want(&wants)
+        // Once per show (cached by the requests state): what Seerr already says, for the badge.
+        let ids: HashSet<u64> = if self.requests_on() {
+            cal::within(&self.cal.entries, s, e)
+                .into_iter()
+                .filter(|x| x.status == Status::NotOnServers)
+                .filter_map(|x| x.tmdb)
+                .collect()
+        } else {
+            HashSet::new()
+        };
+        let mut tasks: Vec<_> = ids
+            .into_iter()
+            .map(|id| self.rq_want_title(nocturne_seerr::Kind::Tv, id))
+            .collect();
+        tasks.push(self.want(&wants));
+        iced::Task::batch(tasks)
     }
 
     /// Enter or a click on the selected item: play what a server has, open the show it will come to, or say that nothing here has it.
@@ -466,6 +505,10 @@ impl App {
                 Task::none()
             }
             "enter" => self.cal_activate(),
+            "r" if k.plain() => match items.get(self.cal.sel) {
+                Some(Item::Entry(i)) => self.cal_msg(Msg::Request(*i)),
+                _ => Task::none(),
+            },
             "pageup" | "[" => self.cal_msg(Msg::Step(-1)),
             "pagedown" | "]" => self.cal_msg(Msg::Step(1)),
             "t" if k.plain() => self.cal_msg(Msg::Today),
@@ -556,11 +599,16 @@ impl App {
                     .unwrap_or(0);
                 let at = items.iter().position(|it| *it == Item::Entry(k));
                 let line = format!(
-                    "{}  {}  {}  {}",
+                    "{}  {}  {}  {}{}",
                     x.time_text().unwrap_or_default(),
                     x.show,
                     x.code(),
-                    x.status.label()
+                    x.status.label(),
+                    match self.cal_ask(x) {
+                        cal::Ask::Request(_) => "  (R to request)".to_string(),
+                        cal::Ask::Known(b) => format!("  {}", b.label()),
+                        cal::Ask::Nothing => String::new(),
+                    }
                 );
                 let on = at == Some(c.sel);
                 let r = crate::widget::press::Press::new(text(line).size(t::BODY).color(if on {

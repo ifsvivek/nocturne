@@ -116,7 +116,11 @@ impl App {
         let hint = d.add(bar, "div.calendar-hint");
         d.text(
             hint,
-            "Arrows move \u{b7} Enter opens \u{b7} M W L views \u{b7} PgUp PgDn period \u{b7} T today",
+            if self.requests_on() {
+                "Arrows move \u{b7} Enter opens \u{b7} R requests \u{b7} M W L views \u{b7} PgUp PgDn period \u{b7} T today"
+            } else {
+                "Arrows move \u{b7} Enter opens \u{b7} M W L views \u{b7} PgUp PgDn period \u{b7} T today"
+            },
         );
         d.add(0, "div.rule");
         let body = d.add(0, "div.calendar-body");
@@ -190,13 +194,7 @@ impl App {
                                 pick(more, Item::More(day), &mut tree);
                                 break;
                             }
-                            let node = self.cal_entry(
-                                &mut tree,
-                                cellid,
-                                &c.entries[k],
-                                Mode::Month,
-                                cell_w,
-                            );
+                            let node = self.cal_entry(&mut tree, cellid, k, Mode::Month, cell_w);
                             pick(node, Item::Entry(k), &mut tree);
                         }
                     }
@@ -224,7 +222,7 @@ impl App {
                         &format!("{} {dn}", &cal::weekday_name(day.weekday())[..3]),
                     );
                     for k in (0..c.entries.len()).filter(|&k| c.entries[k].day == day) {
-                        let node = self.cal_entry(&mut tree, col, &c.entries[k], Mode::Week, col_w);
+                        let node = self.cal_entry(&mut tree, col, k, Mode::Week, col_w);
                         pick(node, Item::Entry(k), &mut tree);
                     }
                 }
@@ -248,7 +246,7 @@ impl App {
                             .iter()
                             .position(|x| std::ptr::eq(x, e))
                             .unwrap_or(0);
-                        let node = self.cal_entry(&mut tree, g, e, Mode::Agenda, inner);
+                        let node = self.cal_entry(&mut tree, g, k, Mode::Agenda, inner);
                         pick(node, Item::Entry(k), &mut tree);
                     }
                 }
@@ -266,7 +264,8 @@ impl App {
     }
 
     /// One episode: a poster, the show, the episode and the time, marked by status.
-    fn cal_entry(&self, tree: &mut Tree, parent: Id, e: &Entry, mode: Mode, w: f32) -> Id {
+    fn cal_entry(&self, tree: &mut Tree, parent: Id, k: usize, mode: Mode, w: f32) -> Id {
+        let e: &Entry = &self.cal.entries[k];
         let narrow = w < NARROW && mode != Mode::Agenda;
         let kind = match mode {
             Mode::Month => "month",
@@ -332,6 +331,20 @@ impl App {
             };
             let st = tree.doc.add(text, "div.calendar-state");
             tree.doc.text(st, &when);
+            // Month cells are too small for either; there the R key asks.
+            match self.cal_ask(e) {
+                cal::Ask::Request(_) if !narrow => {
+                    let b = tree.doc.add(a, "a.calendar-request");
+                    tree.doc.text(b, "Request");
+                    tree.doc.focusable(b);
+                    tree.act(b, Message::Calendar(Msg::Request(k)));
+                }
+                cal::Ask::Known(bg) => {
+                    let b = tree.doc.add(a, "span.calendar-badge");
+                    tree.doc.text(b, bg.label());
+                }
+                _ => {}
+            }
         }
         a
     }

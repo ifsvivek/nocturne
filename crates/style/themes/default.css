@@ -368,6 +368,9 @@ page { display: flex; flex-direction: column; background: var(--nocturne-bg, tra
 .calendar-show { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--nocturne-text); font-size: 13px; font-weight: 600; }
 .calendar-entry.status-elsewhere .calendar-show { color: var(--nocturne-text-secondary); }
 .calendar-meta, .calendar-state { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--nocturne-text-tertiary); font-family: monospace; font-size: 11px; }
+.calendar-request { flex: none; padding: 4px 12px; border: 1px solid var(--nocturne-accent); border-radius: 6px; color: var(--nocturne-accent-text); font-size: 12px; font-weight: 600; }
+.calendar-request:hover, .calendar-request:focus { background: var(--nocturne-accent-tint); }
+.calendar-badge { flex: none; padding: 3px 10px; border-radius: 10px; background: var(--nocturne-accent-tint); color: var(--nocturne-accent-text); font-size: 11px; font-weight: 600; }
 .calendar-more { flex: none; padding: 2px 6px; border-radius: 4px; color: var(--nocturne-text-secondary); font-family: monospace; font-size: 11px; }
 .calendar-more:hover, .calendar-more:focus { background: var(--nocturne-accent-tint); color: var(--nocturne-accent-text); }
 .calendar-weekview { flex-direction: row; border-left: 1px solid var(--nocturne-hairline); }

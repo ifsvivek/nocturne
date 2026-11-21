@@ -220,6 +220,36 @@ pub struct Entry {
     pub episode: Option<Media>,
     /// The server's series, to open the show (also carries the poster).
     pub series: Option<Media>,
+    /// The show's TMDB id when Trakt gave one (what Seerr is asked for); a server-only entry has none.
+    pub tmdb: Option<u64>,
+}
+
+/// What a Calendar entry offers about requesting its show.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ask {
+    Nothing,
+    /// A "Request" action for this TMDB id.
+    Request(u64),
+    /// Seerr already knows the show.
+    Known(crate::requests::Badge),
+}
+
+impl Entry {
+    /// Only a show no server has and whose TMDB id is known can be requested (a tvdb-only show is not looked up by title: that guess can pick the wrong show). `badge` is what Seerr already says about the show; a declined or failed request may be sent again.
+    pub fn ask(&self, requests_on: bool, badge: Option<crate::requests::Badge>) -> Ask {
+        use crate::requests::Badge;
+        let (Status::NotOnServers, Some(id)) = (self.status, self.tmdb) else {
+            return Ask::Nothing;
+        };
+        match badge {
+            Some(
+                b
+                @ (Badge::Requested | Badge::Approved | Badge::PartlyAvailable | Badge::Available),
+            ) => Ask::Known(b),
+            _ if requests_on => Ask::Request(id),
+            _ => Ask::Nothing,
+        }
+    }
 }
 
 impl Entry {
@@ -305,6 +335,7 @@ pub fn build(
             },
             episode: Some(m.clone()),
             series: u.series.clone(),
+            tmdb: None,
         };
         let keys = identity_keys(m, series);
         match out
@@ -368,6 +399,7 @@ pub fn build(
                     Status::NotOnServers
                 },
                 episode: None,
+                tmdb: a.ids.tmdb,
                 series: stub.or_else(|| {
                     found.map(|(origin, id)| {
                         Media::from_item_in(
@@ -572,6 +604,35 @@ mod tests {
             media: m,
             on_disk,
         }
+    }
+
+    #[test]
+    fn request_action_rules() {
+        use crate::requests::Badge;
+        let mut e = Entry {
+            day: Day(0),
+            minute: None,
+            show: "S".into(),
+            season: 1,
+            number: 1,
+            title: String::new(),
+            status: Status::NotOnServers,
+            episode: None,
+            series: None,
+            tmdb: Some(7),
+        };
+        assert_eq!(e.ask(true, None), Ask::Request(7));
+        assert_eq!(e.ask(false, None), Ask::Nothing);
+        assert_eq!(e.ask(true, Some(Badge::Declined)), Ask::Request(7));
+        assert_eq!(
+            e.ask(false, Some(Badge::Requested)),
+            Ask::Known(Badge::Requested)
+        );
+        e.tmdb = None;
+        assert_eq!(e.ask(true, None), Ask::Nothing);
+        e.tmdb = Some(7);
+        e.status = Status::Soon;
+        assert_eq!(e.ask(true, None), Ask::Nothing);
     }
 
     fn ids(tvdb: &str) -> ProviderIds {

@@ -1020,7 +1020,7 @@ impl App {
     }
 
     /// Fetch a title's details (name, year, poster) unless they are cached and fresh.
-    fn rq_want_title(&mut self, k: Kind, id: u64) -> Task<Message> {
+    pub(super) fn rq_want_title(&mut self, k: Kind, id: u64) -> Task<Message> {
         let Some(c) = self.rq.client.clone() else {
             return Task::none();
         };
