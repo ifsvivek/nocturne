@@ -223,6 +223,7 @@ impl VlcPlayer {
     /// `c` is VLC (or a stand-in in tests); the interface arguments are added here. The password
     /// is on the command line, as VLC offers no other way; it only opens a loopback port.
     fn start(mut c: Command, port: u16, pass: String) -> Result<Self> {
+        let private = privacy_flags(c.get_program());
         c.args([
             "--extraintf=http",
             "--http-host=127.0.0.1",
@@ -232,11 +233,9 @@ impl VlcPlayer {
             "--no-one-instance",
             "--no-qt-privacy-ask",
             "--no-metadata-network-access",
-            // The stream URL carries the server token (`api_key`): never let VLC write it to its recent list, its resume list or its media library.
-            "--no-qt-recentplay",
-            "--qt-continue=0",
-            "--no-media-library",
         ])
+        // The stream URL carries the server token (`api_key`): never let VLC write it to its recent list, its resume list or its media library.
+        .args(private)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -418,6 +417,39 @@ fn run(mut c: Command, http: Http, rx: Receiver<Cmd>, sh: &Shared) {
     }
     let _ = child.kill();
     let _ = child.wait();
+}
+
+/// The flags that keep the stream URL out of VLC's recent list, resume list and media library, limited to the ones this VLC knows: VLC refuses to start on an unknown option, and a VLC without its Qt interface or media library has no `qt-*` or `media-library` options (and keeps no such lists). Probed once per program with a run that quits at once.
+fn privacy_flags(program: &std::ffi::OsStr) -> Vec<&'static str> {
+    use std::sync::{Mutex, OnceLock};
+    static SEEN: OnceLock<Mutex<std::collections::HashMap<std::ffi::OsString, Vec<&'static str>>>> =
+        OnceLock::new();
+    let seen = SEEN.get_or_init(Default::default);
+    if let Some(v) = seen.lock().unwrap().get(program) {
+        return v.clone();
+    }
+    let accepts = |flags: &[&str]| {
+        Command::new(program)
+            .args(["--intf=dummy", "--no-one-instance"])
+            .args(flags)
+            .arg("vlc://quit")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    };
+    let mut out = vec![];
+    for group in [
+        &["--no-qt-recentplay", "--qt-continue=0"][..],
+        &["--no-media-library"][..],
+    ] {
+        if accepts(group) {
+            out.extend_from_slice(group);
+        }
+    }
+    seen.lock().unwrap().insert(program.to_owned(), out.clone());
+    out
 }
 
 #[cfg(test)]
