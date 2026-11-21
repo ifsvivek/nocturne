@@ -113,10 +113,10 @@ sudo dnf install nocturne
 <summary><strong>Other distributions</strong> (release tarball)</summary>
 
 ```sh
-curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.5.2/nocturne-0.5.2-x86_64-linux.tar.gz
-curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.5.2/nocturne-0.5.2-x86_64-linux.tar.gz.sha256
-sha256sum -c nocturne-0.5.2-x86_64-linux.tar.gz.sha256
-tar xf nocturne-0.5.2-x86_64-linux.tar.gz && cd nocturne-0.5.2-x86_64-linux
+curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.6.0/nocturne-0.6.0-x86_64-linux.tar.gz
+curl -LO https://github.com/ifsvivek/nocturne/releases/download/v0.6.0/nocturne-0.6.0-x86_64-linux.tar.gz.sha256
+sha256sum -c nocturne-0.6.0-x86_64-linux.tar.gz.sha256
+tar xf nocturne-0.6.0-x86_64-linux.tar.gz && cd nocturne-0.6.0-x86_64-linux
 sudo ./install.sh              # installs to /usr/local (PREFIX changes it); `sudo ./install.sh uninstall` removes it
 ```
 

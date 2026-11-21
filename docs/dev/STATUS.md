@@ -5,7 +5,7 @@ Maintainer working notes for the public tree. User-facing status is in
 
 ## Release state
 
-**0.5.2 is the latest release (2026-11-20)**: the theme engine on by default, servers in their own look, Theme Studio, Glass, Update now. Before it 0.5.1 and 0.5.0 (2026-11-19), 0.4.0 (2026-11-18) and 0.3.0. Published: GitHub release (tarball, .deb, .rpm, Windows setup.exe and zip, macOS .dmg and, from 0.5.1, the macOS `.tar.gz`, best-effort AppImage), signed pacman, apt and dnf repositories at `https://nocturne.ifsvivek.in/repo`, the website, and the signed update manifest. Contents: [CHANGELOG.md](../../CHANGELOG.md) `[0.5.0]` and `[0.5.1]`; per-feature status in [FEATURES.md](../FEATURES.md); the 0.5 QA pass in [QA_REPORT.md](../QA_REPORT.md). Release flow: [PACKAGING.md](../PACKAGING.md#releasing) (CI builds and drafts, the maintainer signs repositories and update artifacts locally). Gate: `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo deny`, secret scan of the tree and history).
+**0.6.0 is the latest release (2026-11-21)**: player choice (in-window, VLC, mpv window), Calendar, Seerr requests, the themes gallery. Before it 0.5.2 (2026-11-20; theme engine on by default, servers in their own look, Theme Studio, Glass, Update now), 0.5.1 and 0.5.0 (2026-11-19), 0.4.0 (2026-11-18) and 0.3.0. Published: GitHub release (tarball, .deb, .rpm, Windows setup.exe and zip, macOS .dmg and `.tar.gz`, best-effort AppImage), signed pacman, apt and dnf repositories at `https://nocturne.ifsvivek.in/repo`, the website, and the signed update manifest. Contents: [CHANGELOG.md](../../CHANGELOG.md); per-feature status in [FEATURES.md](../FEATURES.md). Release flow: [PACKAGING.md](../PACKAGING.md#releasing) (CI builds and drafts, the maintainer signs repositories and update artifacts locally). Gate: `scripts/ci-checks.sh` (fmt, clippy `-D warnings`, tests, `cargo deny`, secret scan of the tree and history).
 
 What 0.5 added: native CSS themes with layout on named parts (`crates/core/src/customize/`, Themes page in `crates/app/src/app/themes.rs`, Marquee and Feed examples, a theme per server); Server UI per server (`core/server_ui.rs`, `app/server_ui.rs`; home-sections editor behind `allow_server_writes`); in-app updates (`core/update.rs`, `core/update_install.rs`, signed with a separate ed25519 key); Linux Wayland-only; apt and dnf repositories; Windows and macOS previews; real text editing in every field; built-in Trakt client id; headless test-session scripts. 0.5.1: the macOS update tarball, theme import creating a new theme (`customize::import_name`), a steadier `scripts/headless-input-check.sh`.
 
@@ -26,9 +26,9 @@ Jellyfin layout mode is built (THEME_ENGINE_PLAN section 14; `app/jf`, `detail/j
 - Calendar (unreleased): verified on a throwaway demo server and a fake Trakt reply, not against a real Trakt account; in a server's own layout it shows the plain list page, not exercised against a live web client.
 - Live Trakt scrobble and import were verified in 0.4 against a real account; one-click connect with the built-in id is verified.
 
-## Next: 0.6
+## Next: 0.7
 
-Seerr requests and the native flex/grid theme engine (stage 2, researched on the branch `theme-engine-spike`, not released). Brief: [V06_BRIEF.md](V06_BRIEF.md); order and scope are the maintainer's call, nothing starts without a go-ahead. Small compatibility fixes listed in [ROADMAP.md](../ROADMAP.md) can go first.
+Add-ons (see [ROADMAP.md](../ROADMAP.md)); order and scope are the maintainer's call, nothing starts without a go-ahead. Small compatibility fixes listed in [ROADMAP.md](../ROADMAP.md) can go first.
 
 ## Debug hooks for QA
 

@@ -4,7 +4,7 @@
 %global __os_install_post %{nil}
 
 Name:           nocturne
-Version:        %{?pkgver}%{!?pkgver:0.5.2}
+Version:        %{?pkgver}%{!?pkgver:0.6.0}
 Release:        1%{?dist}
 Summary:        Native media center for local folders and Jellyfin servers
 License:        GPL-3.0-or-later

@@ -4,6 +4,22 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-21
+
+NOCTURNE can now play in VLC or an mpv window, shows what is airing next in a Calendar, sends requests to a Seerr server, and installs themes from a gallery.
+
+### Highlights
+- Choose where video plays: the in-window player, VLC or an mpv window, each offered only when installed. Resume, progress sync, Trakt and Stop keep working in all three.
+- Calendar: month, week and agenda views of upcoming episodes from every server and your Trakt calendar, marked On your server, Airing soon or Not on your servers, with an optional "Coming this week" row on Home.
+- Seerr requests: ask for movies and shows that no source has, from Search, item pages and the Calendar, and follow them on a Requests page. Off by default, confirmed every time, and nothing is written to a media server.
+- Themes gallery: Settings > Themes opens on a gallery of official and community themes with previews and one-click install, checked against a checksum. Two new official themes, Daylight (light) and High contrast.
+
+### Known limitations
+- MPC-HC on Windows and IINA on macOS are not offered yet. In VLC, subtitles and audio tracks are chosen in VLC's own menus.
+- One Seerr server; 4K requests and Seerr's server, profile and folder choices are not offered.
+- Flatpak was evaluated ([docs/dev/FLATPAK.md](docs/dev/FLATPAK.md)) but is not shipped.
+- Windows and macOS remain unsigned previews; macOS plays video in mpv's own window.
+
 ### Added
 - Choose where video plays: Settings > Video player > Player offers In-window (the default), VLC and an mpv window, each only when installed. VLC is driven over a loopback-only control interface protected by a random password, so your place, progress sync, Trakt scrobbling and Stop work as with the other players; subtitle and audio menus are not available in VLC (use VLC's own). A stream that needs extra request headers plays in-window. `NOCTURNE_VIDEO` still overrides the setting, and a player that is no longer installed falls back to the in-window one with a one-line notice.
 - Request movies and shows from a Seerr server (also Jellyseerr or Overseerr): Settings > Requests > Seerr server signs you in with your own Jellyfin account (Quick Connect, or username and password; only the session is kept, in the system keyring). With Allow requests on (off by default), Search shows a Request group for titles that are not in your library, with a dialog that lets you pick seasons for a show. A Requests page in the header lists your requests with their status and cancels your own pending ones after a confirmation, and a movie or show page shows its Seerr status. A request goes to the Seerr server only, never to a media server, and needs no server-changes switch. Tested against a throwaway Seerr only (`scripts/test-seerr.sh`).
