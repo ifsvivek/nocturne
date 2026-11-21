@@ -1040,3 +1040,110 @@ async fn google_variable_family_is_fetched_once_per_wanted_subset() {
     );
     assert!(r.notes[0].info && r.notes[0].reason.starts_with("Inter: 2 subset"));
 }
+
+// ---- the themes gallery ----------------------------------------------------------------------
+
+mod gallery_tests {
+    use super::super::gallery::{self, Entry};
+    use super::*;
+
+    const CSS: &str = ":root { --nocturne-accent: #123456; }";
+
+    fn sha(b: &[u8]) -> String {
+        Sha256::digest(b)
+            .iter()
+            .map(|x| format!("{x:02x}"))
+            .collect()
+    }
+
+    fn index(sha: &str) -> Route {
+        let doc = format!(
+            r#"{{"version":1,"themes":[
+            {{"id":"one","name":"One","description":"d","author":"a","licence":"MIT","kind":"official","min_version":"0.0.1","css":"one/theme.css","preview":"one/preview.webp","sha256":"{sha}"}},
+            {{"id":"Bad Id","name":"Bad","description":"d","author":"a","licence":"MIT","kind":"official","min_version":"0.0.1","css":"x","preview":"y","sha256":"{sha}"}}]}}"#
+        );
+        route("application/json", doc.into_bytes())
+    }
+
+    fn entry(sha: &str, css: &str) -> Entry {
+        Entry {
+            id: "one".into(),
+            name: "One".into(),
+            description: String::new(),
+            author: String::new(),
+            licence: "MIT".into(),
+            kind: "official".into(),
+            min_version: "0.0.1".into(),
+            css: css.into(),
+            preview: "one/preview.webp".into(),
+            sha256: sha.into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn index_lists_good_entries_and_off_means_no_request() {
+        let s = serve(|_| vec![("/t/index.json", index(&sha(CSS.as_bytes())))]).await;
+        let l = gallery::load_index(&s.u("/t/index.json"), true, true, true, false)
+            .await
+            .unwrap();
+        assert_eq!(l.entries.len(), 1, "the entry with a bad id is skipped");
+        assert!(l.entries[0].compatible());
+        let off = gallery::load_index(&s.u("/t/index.json"), true, false, true, false).await;
+        assert!(off.unwrap_err().contains("off"));
+        assert_eq!(s.hits("/t/index.json"), 1);
+        // Outside debug test runs only https is fetched.
+        assert!(
+            gallery::load_index("http://example.com/i.json", true, true, false, false)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn css_must_match_the_checksum_and_stay_on_the_index_host() {
+        let s = serve(|_| vec![("/t/one/theme.css", css(CSS))]).await;
+        let idx = s.u("/t/index.json");
+        let good = sha(CSS.as_bytes());
+        let ok = gallery::fetch_css(&idx, &entry(&good, "one/theme.css"), true, true).await;
+        assert_eq!(ok.unwrap(), CSS);
+        let bad =
+            gallery::fetch_css(&idx, &entry(&sha(b"other"), "one/theme.css"), true, true).await;
+        assert!(bad.unwrap_err().contains("checksum"));
+        let far = gallery::fetch_css(
+            &idx,
+            &entry(&good, "https://evil.example/t.css"),
+            true,
+            true,
+        )
+        .await;
+        assert!(far.unwrap_err().contains("another site"));
+        let off = gallery::fetch_css(&idx, &entry(&good, "one/theme.css"), false, true).await;
+        assert!(off.is_err());
+        assert_eq!(s.hits("/t/one/theme.css"), 2);
+    }
+
+    #[tokio::test]
+    async fn previews_must_be_pictures_and_unreachable_index_is_a_clear_error() {
+        let webp = b"RIFF\x04\0\0\0WEBPVP8 xxxxxxxx".to_vec();
+        let s = serve(|_| {
+            vec![
+                ("/t/one/preview.webp", route("image/webp", webp.clone())),
+                ("/t/one/theme.css", css("not a picture")),
+            ]
+        })
+        .await;
+        let idx = s.u("/t/index.json");
+        let e = entry(&"0".repeat(64), "one/theme.css");
+        let got = gallery::fetch_preview(&idx, &e, true, true, true, false).await;
+        assert_eq!(got.unwrap(), webp);
+        let mut text = e.clone();
+        text.preview = "one/theme.css".into();
+        assert!(
+            gallery::fetch_preview(&idx, &text, true, true, true, false)
+                .await
+                .is_err()
+        );
+        let gone = gallery::load_index(&idx, true, true, true, false).await;
+        assert!(gone.unwrap_err().contains("Could not reach"));
+    }
+}

@@ -21,6 +21,11 @@ pub struct Saved {
     /// Where it was imported from, kept for a manual "Refresh"; never fetched on its own.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// Installed from the themes gallery: its id there and the sha256 of the installed stylesheet, so a changed gallery entry shows "Update". Themes added by hand have none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gallery: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gallery_sha: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -141,8 +146,37 @@ impl Store {
             name: clean_name(name),
             css: css.into(),
             url,
+            ..Default::default()
         });
         id
+    }
+
+    /// Save a gallery theme: replaces the copy installed from the same gallery id (an update, keeping its id and where it is applied), else adds a new one.
+    pub fn install_gallery(&mut self, gid: &str, sha: &str, name: &str, css: &str) -> u32 {
+        let id = match self
+            .themes
+            .iter()
+            .position(|t| t.gallery.as_deref() == Some(gid))
+        {
+            Some(i) => {
+                let t = &mut self.themes[i];
+                t.css = css.into();
+                t.id
+            }
+            None => self.add(name, css, None),
+        };
+        if let Some(t) = self.themes.iter_mut().find(|t| t.id == id) {
+            t.gallery = Some(gid.into());
+            t.gallery_sha = Some(sha.into());
+        }
+        id
+    }
+
+    /// The saved theme installed from this gallery id.
+    pub fn from_gallery(&self, gid: &str) -> Option<&Saved> {
+        self.themes
+            .iter()
+            .find(|t| t.gallery.as_deref() == Some(gid))
     }
 
     /// Replace a theme's name, CSS and import URL; false when it is gone.
