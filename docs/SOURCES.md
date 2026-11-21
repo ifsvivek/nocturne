@@ -40,6 +40,10 @@ Catalog (core)                      one per process, owned by the UI root
 - **Persistence**: `$XDG_DATA_HOME/nocturne/local/index.json` (versioned schema with in-code migrations, atomic write) and `overrides.json` (user edits keyed by `LocalId`, never touched by scans); resume positions and played state for local items in `state.json`. ponytail: JSON in memory is fine to ~50k files; move to SQLite if libraries outgrow that.
 - **Playback**: the file path goes to the same player seam (`video.rs`) as a stream URL; no headers. Missing or unreadable files give a clear error on the detail page instead of starting the player.
 
+## Request services are not sources
+
+A Seerr server (also Jellyseerr or Overseerr) is a request service, not a source. It has no library in the catalog, adds nothing to Home, search results or duplicates, and has no slot in `Catalog`. It is configured in Settings > Requests, signs in with your own server account (the session cookie lives in the keyring), and is used only to ask for titles that no source has: the Request group in Search, the Request dialog and the Requests page. A request goes to the Seerr server alone, never to a media server, behind its own setting ([WRITES.md](WRITES.md)). Once Seerr's own stack has added the title to a server, it appears through that server like any other item.
+
 ## UI
 
 - First run (no profiles): a welcome screen with three choices: Local library, Connect to a server, Both.

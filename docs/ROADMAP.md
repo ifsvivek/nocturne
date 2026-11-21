@@ -1,6 +1,6 @@
 # Roadmap
 
-Everything NOCTURNE does not do yet, in the order it is likely to be built (as of 0.5.1), plus what is intentionally out of scope. What already works is in [FEATURES.md](FEATURES.md); verification status is in [QA_REPORT.md](QA_REPORT.md). No dates are promised. Priorities can change with user feedback and with what upstream Jellyfin changes.
+Everything NOCTURNE does not do yet, in the order it is likely to be built (as of 0.6.0), plus what is intentionally out of scope. What already works is in [FEATURES.md](FEATURES.md); verification status is in [QA_REPORT.md](QA_REPORT.md). No dates are promised. Priorities can change with user feedback and with what upstream Jellyfin changes.
 
 ## 0.2.x (earlier release; GPUI interface)
 
@@ -45,18 +45,15 @@ Dual (secondary) subtitles; audio and subtitle language remembered per show; tru
 
 Not yet verified (see [QA_REPORT.md](QA_REPORT.md) and [FEATURES.md](FEATURES.md)): the updater end to end from a published release, Windows and macOS on real machines, pointer-only theme actions, Server UI against a server with real branding CSS or several servers at once.
 
-## Next: 0.6
+## Shipped in 0.6.0
 
-From the maintainer's brief ([dev/V06_BRIEF.md](dev/V06_BRIEF.md)); not started, no dates.
+- **Player choice**: Settings offers the in-window player (the default), VLC and an mpv window, each only when installed. VLC is controlled over a loopback interface with a random password, so resume, progress sync, Trakt and Stop keep working; its own menus handle subtitles and audio. MPC-HC on Windows and IINA on macOS are not supported yet.
+- **Calendar**: month, week and agenda views of upcoming episodes from each server (merged) and, with Trakt connected, your Trakt calendar; read only, with an optional "Coming this week" row on Home.
+- **Seerr requests**: request movies and shows that no source has, from Search and the Calendar, and follow them on a Requests page. A request goes to the Seerr server only, behind its own setting (off by default). 4K requests and Seerr's server, profile and folder choices are not offered ([SOURCES.md](SOURCES.md), [WRITES.md](WRITES.md)).
+- **Themes gallery**: Settings > Themes opens on a Gallery with Official, Community and My themes, previews and one-click install checked against a sha256, from folders in this repository (`themes/`); the Editor keeps the lists and the CSS editor.
+- **Flatpak evaluated, not shipped** ([dev/FLATPAK.md](dev/FLATPAK.md)): worth doing after 0.6.0 as a Flathub app with a small sandbox (Wayland, GPU, network, audio, the Secret Service name, `xdg-videos` read-only), in-window playback with a bundled mpv, no host players (VLC is not reachable without a host-spawn permission that Flathub rejects), and the in-app updater switched off. About 3 to 5 working days to a first build plus review time.
 
-- **Seerr requests** inside the app (request movies and shows, see Requested / Pending / Available; the request is a write to the Seerr server, so it will sit behind its own explicit setting and the user's Seerr permissions). Downloading stays in the user's own stack.
-- **Calendar**: a page with upcoming episodes of ongoing shows, in month, week and agenda views, from each server's upcoming-episodes list (merged, read-only) and, when Trakt is connected, the Trakt calendar of the shows the user watches; each entry shows poster, season and episode, title and air time in the local timezone, marked on your server, airing soon, or not on your servers yet; a click opens the show or plays the episode, and with Seerr connected an entry not on any server offers Request. An optional "Coming this week" row on Home.
-- **Play and save links with yt-dlp**: play a pasted video link in the player (mpv's yt-dlp hook), and optionally save it into a local folder through the downloads queue (off by default). `yt-dlp` stays an optional, never-bundled dependency.
-- **Player choice**: keep in-window libmpv as the default and add an external player (VLC, mpv, IINA on macOS, MPC-HC on Windows, detected automatically) that opens the stream in that player; progress is tracked where the player allows it (VLC through its control interface). A built-in choice, not an add-on.
-- **Themes gallery** on the Themes page: NOCTURNE themes and community Jellyfin themes with previews and one-click install, on top of paste-and-test, preview and Keep / Revert; respects the remote CSS switch. Themes live as folders in this repository (`themes/`): anyone can open a pull request, the maintainer merges, and the gallery index ships with the website. The gallery is a curated list, not a gate: any theme can still be pasted, imported from a file or loaded from a URL, marked "not from the gallery".
-- Evaluate Flatpak (sandbox permissions for GPU, Wayland, keyring and local folders).
-
-## Then: 0.7, add-ons
+## Next: 0.7, add-ons
 
 Add-ons in the style of media-center add-on catalogs: an add-on is a web address that answers a few JSON requests (manifest, catalogs, item details, streams, subtitles). No add-on code runs inside NOCTURNE; it only reads data, as it reads a Jellyfin server.
 
@@ -111,7 +108,7 @@ A review of the Jellyfin ecosystem (server, web and other official clients: issu
 - Music: album-art views, a queue that survives closing the app, queue editing while browsing, multi-disc grouping
 - Collections: create, add, remove, reorder
 - Sharing playlists with other users
-- Flatpak (to be evaluated) and other distribution packages; the AppImage stays experimental (see [PACKAGING.md](PACKAGING.md))
+- Flatpak (evaluated, recommended after 0.6.0; see above) and other distribution packages; the AppImage stays experimental (see [PACKAGING.md](PACKAGING.md))
 
 **Accounts and settings**
 - A user picker on the sign-in screen (switching already works from the account menu)
@@ -142,6 +139,7 @@ Nothing is dropped for good. Earlier decisions to revisit when users ask for the
 
 - X11 sessions on Linux: NOCTURNE is Wayland-only since 0.5.
 - A Homebrew tap or cask.
+- Playing or saving video links with yt-dlp: it now needs a JavaScript runtime (Deno or Node) for YouTube and breaks whenever sites change (maintainer, 2026-11-21).
 - Code signing for Windows and macOS: the builds stay unsigned previews (the system warns on first start). Linux packages and the in-app updates stay signed with NOCTURNE's own keys.
 
 ## Upstream reports

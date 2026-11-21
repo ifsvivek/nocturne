@@ -28,7 +28,7 @@ Jellyfin layout mode is built (THEME_ENGINE_PLAN section 14; `app/jf`, `detail/j
 
 ## Next: 0.6
 
-Seerr requests, play and save links with yt-dlp, and the native flex/grid theme engine (stage 2, researched on the branch `theme-engine-spike`, not released). Brief: [V06_BRIEF.md](V06_BRIEF.md); order and scope are the maintainer's call, nothing starts without a go-ahead. Small compatibility fixes listed in [ROADMAP.md](../ROADMAP.md) can go first.
+Seerr requests and the native flex/grid theme engine (stage 2, researched on the branch `theme-engine-spike`, not released). Brief: [V06_BRIEF.md](V06_BRIEF.md); order and scope are the maintainer's call, nothing starts without a go-ahead. Small compatibility fixes listed in [ROADMAP.md](../ROADMAP.md) can go first.
 
 ## Debug hooks for QA
 

@@ -4,7 +4,7 @@ mod actions;
 mod browse;
 #[cfg(feature = "theme-engine")]
 mod browse_tree;
-mod calendar;
+pub(crate) mod calendar;
 #[cfg(feature = "theme-engine")]
 mod calendar_tree;
 mod cascade;

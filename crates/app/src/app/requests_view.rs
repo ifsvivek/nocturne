@@ -521,7 +521,7 @@ impl App {
                 }
             }
         }
-        scroll(page.max_width(1280.0).padding(Padding {
+        scroll(page.padding(Padding {
             top: t::header_h() + t::S8,
             bottom: t::S8,
             ..Padding::ZERO

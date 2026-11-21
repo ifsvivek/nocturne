@@ -4,7 +4,7 @@ Research only: nothing here ships. Facts about NOCTURNE come from this repositor
 
 ## Recommendation
 
-Worth doing, after 0.6.0, as a Flathub app with a deliberately small sandbox hole list: Wayland, GPU, network, audio, the Secret Service name and `xdg-videos` read-only. In-window playback only (bundled libmpv and mpv, no host players), the in-app updater and PackageKit "Update now" switched off, yt-dlp bundled. Effort: about 3 to 5 working days to a first working local build (manifest, cargo sources, mpv module, the `InstallKind::Flatpak` change, a QA pass on an Arch/GNOME and a KDE session with Intel/AMD and NVIDIA), plus 1 to 3 weeks of calendar time for Flathub review. Ongoing cost: each release needs a manifest bump (automatable with Flathub's bot), the mpv and yt-dlp modules need version bumps, and bug reports will arrive tagged "Flatpak".
+Worth doing, after 0.6.0, as a Flathub app with a deliberately small sandbox hole list: Wayland, GPU, network, audio, the Secret Service name and `xdg-videos` read-only. In-window playback only (bundled libmpv and mpv, no host players), the in-app updater and PackageKit "Update now" switched off. Effort: about 3 to 5 working days to a first working local build (manifest, cargo sources, mpv module, the `InstallKind::Flatpak` change, a QA pass on an Arch/GNOME and a KDE session with Intel/AMD and NVIDIA), plus 1 to 3 weeks of calendar time for Flathub review. Ongoing cost: each release needs a manifest bump (automatable with Flathub's bot), the mpv module needs version bumps, and bug reports will arrive tagged "Flatpak".
 
 Why it is worth it: it is the "any distribution" format PACKAGING.md already names as the better successor to the AppImage; the runtime supplies Mesa (EGL and Vulkan), Wayland libraries and glibc, so the "libmpv newer than the distribution carries" problem disappears; updates come from Flathub with no signing infrastructure of ours. Why it is not free: libmpv is not in the runtime and must be built as a module; the sandbox changes where settings and data live; and the app has three features that talk to the host (external players, PackageKit, the self-updater) that must be switched off or redesigned.
 
@@ -40,8 +40,6 @@ modules:
   - name: libplacebo               # mpv's renderer; see "libmpv in the sandbox"
     ...
   - name: mpv                      # libmpv.so.2 plus the mpv binary, built with -Dlibmpv=true -Dgpl=true
-    ...
-  - name: yt-dlp
     ...
   - name: nocturne
     buildsystem: simple
@@ -82,7 +80,7 @@ Two options:
 - `--filesystem=xdg-videos:ro` gives read-only access to `~/Videos` with no prompt, which suits the scanner (it never writes to media folders anyway) and the "Add a folder" flow for the default location. It is a normal, accepted permission. Music and Pictures are separate (`xdg-music:ro`, `xdg-pictures:ro`) and would be needed for the audio and photo libraries; the likely set is all three read-only. `--filesystem=home` or `host` will be refused or questioned at review.
 - The file chooser: `rfd` is built with the `xdg-portal` feature, so Choose folder already goes through the portal. In a sandbox the portal returns a path under `/run/user/<uid>/doc/<id>/<name>`, mounted through the document portal for this app only, and the choice persists across restarts (the portal remembers the grant). Plain `read_dir` and mpv's file access work on those paths. Two catches to test: the scanner's change watching (inotify) on a FUSE-backed document-portal mount may not deliver events, and `sources.toml` would store the portal path, so a folder chosen while the app was a native build has to be added again. A path outside the three XDG directories on another disk therefore works only through the portal, with no automatic access and no permission list to tell the user about.
 
-Recommended: ship the three XDG `:ro` permissions and rely on the portal for everything else. Save to library (yt-dlp downloads) needs a writable folder: that one must come from the portal (a folder picked with Choose folder is read-write), so the downloads queue should ask for its folder through the portal instead of assuming `~/Videos`.
+Recommended: ship the three XDG `:ro` permissions and rely on the portal for everything else.
 
 ## libmpv in the sandbox
 
@@ -92,10 +90,6 @@ The freedesktop runtime has FFmpeg but no mpv and no libplacebo. The design need
 
 Player choice offers VLC and an mpv window "only when installed". Inside the sandbox `vlc` is not found, so the VLC choice hides itself, and the "mpv window" would run the bundled mpv, which is a sandboxed child with the same GPU access: it works and costs nothing. Reaching a host VLC would need `flatpak-spawn --host`, which requires `--talk-name=org.freedesktop.Flatpak`: that permission lets the app run any command on the host outside the sandbox, which defeats the sandbox and which Flathub reviewers reject for ordinary apps. Do not do it. Recommendation: in-window and the bundled "mpv window" only; say in the Playback setting's help that VLC is not available in the Flatpak (a sandboxed VLC would be the `org.videolan.VLC` Flatpak, and nothing links the two without the host-spawn hole).
 
-## yt-dlp
-
-Not in the runtime, and not a Flathub extension. Options: bundle it as a module, or ask the user to install it on the host (invisible from the sandbox, so not an option). Bundle: yt-dlp is a Python program, the runtime has Python 3, and its release "binary" is a zipapp; a module that installs the pinned release file (checksum in the manifest, version bumped by Flathub's `x-checker-data` bot) is about 3 MB and licensed Unlicense. Sites change often, so a bundled yt-dlp goes stale between NOCTURNE releases: plan to bump the module on its own cadence, and show the version in the playback error ("update the Flatpak"). It also needs `ffmpeg`/`ffprobe` for merging formats and for saving files: the runtime ships them (verify the ffmpeg-full extension exposes the binaries on `PATH`, or call `/usr/bin/ffmpeg`). Recent yt-dlp releases want an external JavaScript runtime (Deno or Node) for some sites, YouTube first (verify the current requirement): not in the runtime; adding Deno costs tens of MB, so ship without and say which sites need it. The feature's "never bundled" rule in the 0.6 plan was about the release tarball and distribution packages (yt-dlp optional, the system's own); a Flatpak cannot use the system's, so bundling is the Flatpak exception and should be a decision of the maintainer's, taken with the "save only what you have the right to keep" note in the downloads UI.
-
 ## Updates
 
 - Flathub updates the app (`flatpak update`, GNOME Software, Discover). The in-app self-updater and PackageKit "Update now" must be off: PackageKit is not reachable (no talk-name for it, and it would update the host's packages, not the Flatpak), and the updater's `detect()` would see `/app/bin/nocturne`, call it `PerUser`, find the directory read-only and open the release page, which is the wrong advice. Add `InstallKind::Flatpak`, chosen when `/.flatpak-info` exists (or `FLATPAK_ID` is set), that never checks and shows "Updates come from Flathub" in Settings > Updates, next to `Dev`. A small, testable change in `crates/core/src/update.rs`.
@@ -104,7 +98,7 @@ Not in the runtime, and not a Flathub extension. Options: bundle it as a module,
 
 ## Size
 
-Estimates, not measurements. Per app: the binary is about 24 MB (release) in PACKAGING.md's figures, mpv and its libraries 10 to 20 MB, yt-dlp 3 MB, assets and icons small: roughly 40 to 55 MB installed, about 15 to 20 MB to download (Flatpak compresses with deltas). The runtime (`org.freedesktop.Platform`, a few hundred MB, shared with every other Flatpak) and the ffmpeg extension are downloaded once if not already present; a user who has no other Flatpak pays that on first install. The NVIDIA GL extension, if needed, is another 300 MB or so on the user's side. Compare the AppImage at 107 MB and the .deb at 9.4 MB.
+Estimates, not measurements. Per app: the binary is about 24 MB (release) in PACKAGING.md's figures, mpv and its libraries 10 to 20 MB, assets and icons small: roughly 40 to 55 MB installed, about 15 to 20 MB to download (Flatpak compresses with deltas). The runtime (`org.freedesktop.Platform`, a few hundred MB, shared with every other Flatpak) and the ffmpeg extension are downloaded once if not already present; a user who has no other Flatpak pays that on first install. The NVIDIA GL extension, if needed, is another 300 MB or so on the user's side. Compare the AppImage at 107 MB and the .deb at 9.4 MB.
 
 ## Flathub submission steps and policies
 
@@ -112,12 +106,11 @@ Estimates, not measurements. Per app: the binary is about 24 MB (release) in PAC
 2. Requirements the reviewers check: a valid AppStream file (`appstreamcli validate`, with a summary, description, screenshots, an OARS content rating, `<release>` entries, a licence `GPL-3.0-or-later`, project URLs, and `developer_name`); a `.desktop` file and icon named after the app id; build from source with no network at build time (that is the cargo sources file) and from tagged, pinned sources; permissions justified in the PR (each `finish-args` line above, especially `talk-name=org.freedesktop.secrets` and the three `xdg-*:ro` entries); no `--filesystem=host` or `home`, no `--talk-name=org.freedesktop.Flatpak`, no `--device=all` if `--device=dri` and `input` do; the app must be what it says (it is not endorsed by Jellyfin: the metainfo must keep "not affiliated"). Screenshots must be real and in a neutral setting: the website's demo-library captures qualify.
 3. Verification of the app id: for `io.github.ifsvivek.*` Flathub verifies through the GitHub account (a login-provider flow on the Flathub developer page); a domain-based id such as `in.ifsvivek.nocturne` would need a file on the domain. The `github.io` id already in the repository is the simple route.
 4. After the merge a repository `flathub/io.github.ifsvivek.nocturne` is created, with the maintainer as owner; the buildbot builds the stable branch; new releases are a pull request there (opened by Flathub's bot when `x-checker-data` is present on the git source).
-5. Policies to keep in mind: the licence of every bundled component must be redistributable (mpv GPL build with NOCTURNE GPL-3.0-or-later is fine, yt-dlp Unlicense, check libplacebo LGPL-2.1+); no proprietary codecs outside the runtime's extension; telemetry and update checks must be honest: NOCTURNE's update check (website manifest) must be off in Flatpak, as above; the Flathub terms ask for a way to report bugs, which the GitHub issue tracker is.
+5. Policies to keep in mind: the licence of every bundled component must be redistributable (mpv GPL build with NOCTURNE GPL-3.0-or-later is fine, check libplacebo LGPL-2.1+); no proprietary codecs outside the runtime's extension; telemetry and update checks must be honest: NOCTURNE's update check (website manifest) must be off in Flatpak, as above; the Flathub terms ask for a way to report bugs, which the GitHub issue tracker is.
 
 ## Work list if it goes ahead
 
 1. `InstallKind::Flatpak` and the Settings text (small, tested without a sandbox).
-2. Downloads and "Save to library" folder choice through the portal (depends on the yt-dlp worker's shape).
-3. Manifest, cargo sources, mpv and libplacebo modules (the bulk of the time), a local `flatpak-builder` run, the checks in `flatpak-builder-lint`.
-4. QA in the sandbox: embedded video on Wayland (Intel, AMD, NVIDIA), keyring on GNOME and KDE, portal folder chooser plus scanning, gamepad, a Jellyfin sign-in, yt-dlp, no PackageKit message.
-5. Metainfo additions (OARS, screenshots, releases) and the Flathub pull request.
+2. Manifest, cargo sources, mpv and libplacebo modules (the bulk of the time), a local `flatpak-builder` run, the checks in `flatpak-builder-lint`.
+3. QA in the sandbox: embedded video on Wayland (Intel, AMD, NVIDIA), keyring on GNOME and KDE, portal folder chooser plus scanning, gamepad, a Jellyfin sign-in, no PackageKit message.
+4. Metainfo additions (OARS, screenshots, releases) and the Flathub pull request.

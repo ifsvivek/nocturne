@@ -2,7 +2,13 @@
   import { VERSION, shipped } from "#lib/site.js";
   // From docs/ROADMAP.md and FEATURES.md: what 0.5.x does not do, and where it is still rough. Revisit at every release.
   const missing = [
-    "A supported AppImage: the GitHub release has only an experimental one (about 107 MB, it bundles its own libraries; use the repositories where you can). Flatpak is being evaluated",
+    shipped("0.6.0")
+      ? "A supported AppImage: the GitHub release has only an experimental one (about 107 MB, it bundles its own libraries; use the repositories where you can). Flatpak is not available: it was evaluated, and would not offer VLC from inside its sandbox"
+      : "A supported AppImage: the GitHub release has only an experimental one (about 107 MB, it bundles its own libraries; use the repositories where you can). Flatpak is being evaluated",
+    ...(shipped("0.6.0") ? [
+      "Other external players: VLC and mpv only for now; MPC-HC on Windows and IINA on macOS are not supported yet",
+      "Requests for 4K versions, and Seerr's server, profile and folder choices",
+    ] : []),
     "X11 sessions: from 0.5, Linux needs Wayland",
     "Servers other than Jellyfin",
     "Book reading and audiobook playback",
@@ -23,6 +29,9 @@
       "Server UI has not been tried with several servers at once or with a server's real branding CSS. Live TV and the audio and book continue rows are not shown.",
       "In-app updates have been tested against a local server, not yet from a published release. In-app update on macOS is planned; the macOS preview shows Download instead.",
     ]),
+    ...(shipped("0.6.0") ? [
+      "Seerr requests, the Calendar and the player choice were tried against throwaway servers and a demo library, not against a long-running setup.",
+    ] : []),
     "Couch mode has not been tried with a real gamepad or on a TV. Remote control was tried through the server, not yet from a phone app.",
     "The .deb and .rpm install from the apt and dnf repositories in clean containers, not yet on a full desktop install. On Ubuntu 24.04, video plays in an external mpv window.",
     "Copies without an IMDb, TMDB or TVDB id are not merged, so the same film can show twice rather than one being hidden by mistake.",

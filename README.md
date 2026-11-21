@@ -29,6 +29,9 @@ docs/screenshots/player.webp     In-window playback with the controls shown
 docs/screenshots/themes.webp     Settings > Themes with the built-in themes
 docs/screenshots/studio.webp     Theme Studio with an element picked on Home
 docs/screenshots/server-look.webp  Home drawn in a server's own look (Jellyfin layout mode)
+docs/screenshots/calendar.webp   Calendar, week view, with entries marked On your server, Airing soon and Not on your servers (make-demo-library.sh build --upcoming)
+docs/screenshots/requests.webp   The Requests page (throwaway Seerr, scripts/test-seerr.sh)
+docs/screenshots/gallery.webp    Settings > Themes, Gallery view with the Official cards
 -->
 
 | | |
@@ -43,8 +46,9 @@ Screenshots show a generated demo library, not personal media.
 
 - One library over local folders and any number of Jellyfin servers, each with its own account. A title found in several places appears once, with the other copies offered as versions and sources.
 - Local folders are scanned for names, `.nfo` files and sidecar artwork. Files are never modified, moved or deleted.
-- Video plays inside the app window through libmpv with hardware decoding. HDR video is tone-mapped to SDR, with an optional HDR pop-out window.
-- Themes are CSS, drawn by a native engine with no browser inside. Theme Studio edits any element of the live screens, and each server can use its own look.
+- Video plays inside the app window through libmpv with hardware decoding, or in VLC or an mpv window if you prefer. HDR video is tone-mapped to SDR, with an optional HDR pop-out window.
+- Themes are CSS, drawn by a native engine with no browser inside. A gallery installs the official ones in a click, Theme Studio edits any element of the live screens, and each server can use its own look.
+- A Calendar of upcoming episodes from your servers and Trakt, and optional requests to a Seerr server for titles you do not have yet.
 - Read-only by default: nothing on a server changes until you switch on server changes in Settings.
 - Signed pacman, apt and dnf repositories, and in-app updates for per-user installs.
 - Trakt scrobbling and history import, SyncPlay for watching together, and playlists, a music queue and offline copies.
@@ -141,6 +145,8 @@ cargo build --release --locked      # stable Rust 1.89+; a clean release build t
 ```
 
 </details>
+
+Optional: VLC, if you want to play in it (Settings > Video player > Player). NOCTURNE detects it and never bundles it.
 
 Runtime needs: a Wayland session, a Vulkan driver, EGL, libmpv (or the `mpv` program), and a Secret Service provider (gnome-keyring, KWallet or KeePassXC) to remember sign-ins. Problems starting the app are covered in [docs/README.md](docs/README.md#troubleshooting).
 
