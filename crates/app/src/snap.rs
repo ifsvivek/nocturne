@@ -24,6 +24,11 @@ pub fn on_boot() -> Task<Message> {
                 .parse()
                 .ok()
                 .map(|i| Message::Smart(crate::app::smart::Msg::Open(i))),
+            "open-calendar" => Some(Message::Calendar(crate::app::calendar::Msg::Open)),
+            "calendar-week" => Some(Message::Calendar(crate::app::calendar::Msg::View(
+                nocturne_core::calendar::View::Week,
+            ))),
+            "calendar-next" => Some(Message::Calendar(crate::app::calendar::Msg::Step(1))),
             "open-sources" => Some(Message::OpenSources),
             // The Themes page: open it, type the path in `NOCTURNE_THEME_FILE` into the file field,
             // import it, preview it, apply it.

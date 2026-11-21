@@ -14,6 +14,12 @@ use nocturne_core::customize::import::gallery::{self, Entry, Loaded};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+/// Home in the default look (1280 px, 33 kB), so the built-in card is not blank when the gallery is offline.
+fn default_preview() -> &'static Handle {
+    static H: std::sync::OnceLock<Handle> = std::sync::OnceLock::new();
+    H.get_or_init(|| Handle::from_bytes(&include_bytes!("../../assets/themes/nocturne.webp")[..]))
+}
+
 const SUBMIT_URL: &str = "https://github.com/ifsvivek/nocturne/blob/main/themes/README.md";
 /// Narrowest a gallery card gets: 4 per row at 1920 px, 2 at 1280, 1 at 900.
 const CARD_MIN: f32 = 430.0;
@@ -349,7 +355,7 @@ impl App {
                         cards.push(
                             self.card(
                                 cw,
-                                None,
+                                (b.id == "nocturne").then(default_preview),
                                 b.name,
                                 "NOCTURNE \u{b7} built in".into(),
                                 if b.css.is_empty() {
