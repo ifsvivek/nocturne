@@ -1034,6 +1034,11 @@ impl App {
         run(
             async move {
                 let _permit = FETCH.acquire().await.ok()?;
+                // A cold Seerr often fails its first lookup (it fetches from TMDB itself), so try once more.
+                if let Ok(d) = c.detail(k, id).await {
+                    return Some(Box::new(d));
+                }
+                tokio::time::sleep(Duration::from_secs(2)).await;
                 c.detail(k, id).await.ok().map(Box::new)
             },
             move |d| Message::Requests(Msg::Title(k, id, d)),
