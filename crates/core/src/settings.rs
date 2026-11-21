@@ -184,6 +184,22 @@ pub struct Settings {
     pub libs: BTreeMap<String, LibPrefs>,
     /// Most recent first.
     pub recent_searches: Vec<String>,
+    /// Titles can be requested from the Seerr server, and own pending requests cancelled. A request goes to Seerr only,
+    /// never to a media server, so this does not need `allow_server_writes`. Off by default. docs/WRITES.md.
+    pub seerr_requests: bool,
+    /// The one Seerr server and who is signed in there (the session cookie is in the keyring, never here).
+    pub seerr: SeerrCfg,
+}
+
+/// Non-secret state of the Seerr connection.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SeerrCfg {
+    pub url: String,
+    pub user_id: u64,
+    pub user_name: String,
+    /// Seerr's permission bit mask as of the last sign-in or refresh.
+    pub permissions: u64,
 }
 
 impl Default for Settings {
@@ -221,6 +237,8 @@ impl Default for Settings {
             couch: CouchMode::Off,
             libs: BTreeMap::new(),
             recent_searches: vec![],
+            seerr_requests: false,
+            seerr: SeerrCfg::default(),
         }
     }
 }
@@ -271,7 +289,7 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 29;
+pub const ROWS: usize = 31;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
 pub const PROFILE_ROW: usize = 22;
@@ -293,6 +311,11 @@ pub const HERO_INTERVAL_ROW: usize = 27;
 
 /// The "Video player" row.
 pub const PLAYER_ROW: usize = 28;
+/// The "Seerr server" row: not a toggle, it opens the sign-in dialog.
+pub const SEERR_ROW: usize = 29;
+
+/// The "Allow requests" row.
+pub const SEERR_ALLOW_ROW: usize = 30;
 
 /// The "Trakt account" row: not a toggle, it opens the connect dialog.
 pub const TRAKT_ROW: usize = 19;
@@ -313,6 +336,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         25 => Some("Themes"),
         26 => Some("Home banner"),
         PLAYER_ROW => Some("Video player"),
+        SEERR_ROW => Some("Requests"),
         _ => None,
     }
 }
@@ -544,6 +568,20 @@ impl Settings {
                 "Where video plays. In-window is the default. VLC and mpv window open that program's own window and are offered only when installed; NOCTURNE keeps your place, progress and the controls it can. A source that needs extra request headers plays in-window. NOCTURNE_VIDEO overrides this.",
                 self.player.label().into(),
             ),
+            r(
+                "Seerr server",
+                "Connect a Seerr (or Jellyseerr / Overseerr) server to request movies and shows that are not in your library. You sign in with your own Jellyfin account on that server: Quick Connect, or username and password. NOCTURNE keeps only the session in your system keyring, never the password.",
+                match (self.seerr.url.is_empty(), self.seerr.user_name.is_empty()) {
+                    (true, _) => "Not set up".into(),
+                    (false, true) => "Signed out".into(),
+                    (false, false) => self.seerr.user_name.clone(),
+                },
+            ),
+            r(
+                "Allow requests",
+                crate::requests::ALLOW_HINT,
+                onoff(self.seerr_requests),
+            ),
         ]
     }
 
@@ -711,6 +749,8 @@ impl Settings {
                 let i = o.iter().position(|p| *p == self.player).unwrap_or(0) as i32;
                 self.player = o[(i + d).rem_euclid(o.len() as i32) as usize];
             }
+            SEERR_ROW => {} // opens the Seerr dialog (the app handles it)
+            SEERR_ALLOW_ROW => self.seerr_requests ^= true,
             _ => {}
         }
     }
@@ -913,6 +953,7 @@ mod tests {
         let s = Settings::default();
         assert!(!s.allow_server_writes && !s.sync_progress && !s.remote_control);
         assert!(!s.sync_watched && !s.trakt_scrobble && !s.trakt_history);
+        assert!(!s.seerr_requests && s.seerr == SeerrCfg::default());
         assert!(s.autoplay_next && !s.auto_skip_intro);
         assert_eq!(s.rows().len(), ROWS);
     }
@@ -939,6 +980,43 @@ mod tests {
         assert!(s.sync_watched && s.trakt_scrobble && s.trakt_history);
         assert_eq!(s.rows()[PROFILE_ROW].label, "Default profile");
         assert_eq!(s.rows()[TRAKT_ROW].label, "Trakt account");
+    }
+
+    #[test]
+    fn seerr_rows_open_a_dialog_and_toggle_and_keep_no_secret() {
+        let mut s = Settings::default();
+        assert_eq!(s.rows()[SEERR_ROW].value, "Not set up");
+        assert_eq!(s.rows()[SEERR_ALLOW_ROW].value, "Off");
+        let before = s.clone();
+        s.cycle(SEERR_ROW, 1); // opens a dialog, changes nothing
+        assert_eq!(s, before);
+        s.cycle(SEERR_ALLOW_ROW, 1);
+        assert!(
+            s.seerr_requests && !s.allow_server_writes,
+            "its own switch, not the server-changes one"
+        );
+        s.seerr = SeerrCfg {
+            url: "https://seerr.example".into(),
+            user_id: 2,
+            user_name: "alice".into(),
+            permissions: 32,
+        };
+        assert_eq!(s.rows()[SEERR_ROW].value, "alice");
+        let d = dir("seerr");
+        let p = d.join("settings.toml");
+        s.save_to(&p).unwrap();
+        assert_eq!(Settings::load_from(&p), s);
+        let text = std::fs::read_to_string(&p).unwrap().to_lowercase();
+        assert!(
+            !text.contains("cookie") && !text.contains("password") && !text.contains("connect.sid")
+        );
+        std::fs::write(&p, "version = 3\n").unwrap();
+        assert_eq!(
+            Settings::load_from(&p).seerr,
+            SeerrCfg::default(),
+            "old files: not set up"
+        );
+        std::fs::remove_dir_all(d).unwrap();
     }
 
     #[test]
@@ -1280,12 +1358,12 @@ mod tests {
 
     #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24, 25, 26 and 28.
+        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24, 25, 26, 28 and 29.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
         assert_eq!(scroll_child(11), 15);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 13);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 14);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));
         assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));

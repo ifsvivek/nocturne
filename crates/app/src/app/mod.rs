@@ -36,6 +36,8 @@ mod pics;
 mod play;
 mod preview;
 mod remote;
+pub(crate) mod requests;
+mod requests_view;
 pub(crate) mod search;
 #[cfg(feature = "theme-engine")]
 mod search_tree;
@@ -269,6 +271,8 @@ pub struct App {
     folders: Option<folders::Folders>,
     online: online::State,
     trakt: trakt::State,
+    /// Seerr: sign-in, requests, the Requests page.
+    rq: requests::State,
     dl: downloads::State,
     smart: smart::State,
     setup: Option<FirstRun>,
@@ -419,6 +423,7 @@ impl App {
             folders: None,
             online: Default::default(),
             trakt: Default::default(),
+            rq: Default::default(),
             dl: downloads::State::new(&catalog::app_data_dir()),
             smart: smart::State::load(),
             setup: None,
@@ -1057,6 +1062,7 @@ impl App {
             Message::Folder(m) => self.folder_msg(m),
             Message::Online(m) => self.online_msg(m),
             Message::Trakt(m) => self.trakt_msg(m),
+            Message::Requests(m) => self.rq_msg(m),
             Message::Smart(m) => self.smart_msg(m),
             Message::Cascade(m) => self.cascade_msg(m),
             Message::Downloads(m) => self.dl_msg(m),
@@ -1196,7 +1202,7 @@ impl App {
             Message::DiskReady(d) => {
                 self.disk = d;
                 self.apply_disk();
-                self.trakt_load()
+                Task::batch([self.trakt_load(), self.rq_load()])
             }
             Message::Noop => Task::none(),
         }
@@ -1888,6 +1894,7 @@ impl App {
     /// Leave Admin (if open) before navigating elsewhere.
     fn close_admin(&mut self) {
         self.settings_open = false;
+        self.rq.page = None;
         self.src_open = false;
         self.th.open = false;
         self.menu = false;
@@ -2029,6 +2036,9 @@ impl App {
             }
             return Task::none();
         }
+        if let Some(t) = self.rq_key(key) {
+            return t;
+        }
         if self.settings_open {
             return self.settings_key(key);
         }
@@ -2149,6 +2159,7 @@ impl App {
             Some(Link::Global(i)) => self.update(Message::OpenGlobal(i)),
             Some(Link::Smart) => self.update(Message::Smart(smart::Msg::Menu)),
             Some(Link::Admin) => self.update(Message::OpenAdmin),
+            Some(Link::Requests) => self.update(Message::Requests(requests::Msg::PageOpen)),
             None => Task::none(),
         }
     }
@@ -2254,6 +2265,7 @@ impl App {
             Phase::Ready if self.th.open => self.themes_page(),
             Phase::Ready if self.src_open => self.sources_page(),
             Phase::Ready if self.settings_open => self.settings_page(),
+            Phase::Ready if self.rq.page_open() => self.requests_page(),
             Phase::Ready if self.adm.is_some() => match self.adm.as_deref() {
                 Some(a) => a.view().map(Message::Admin),
                 None => space().into(),
@@ -2344,6 +2356,7 @@ impl App {
             }
             if !self.admin_open
                 && !self.settings_open
+                && !self.rq.page_open()
                 && !self.th.open
                 && !self.src_open
                 && self.folders.is_none()
@@ -2358,6 +2371,9 @@ impl App {
             {
                 let pid = p.pid;
                 layers.push(d.view().map(move |m| Message::Detail(pid, m)));
+            }
+            if let Some(c) = self.rq_chip_view() {
+                layers.push(c);
             }
         }
         self.extras_layers(&mut layers);
@@ -2408,6 +2424,7 @@ impl App {
         if self.dl.visible() {
             layers.push(self.downloads_dialog());
         }
+        self.rq_layers(&mut layers);
         if self.smart.is_open() {
             layers.push(self.smart_dialog());
         }

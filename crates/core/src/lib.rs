@@ -31,6 +31,7 @@ pub mod player_mpris;
 pub mod profile;
 pub mod region;
 pub mod remote;
+pub mod requests;
 pub mod search;
 pub mod secret;
 pub mod server_ui;

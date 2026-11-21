@@ -321,4 +321,6 @@ pub enum Message {
     CloseOverlays,
     PageRetry,
     Noop,
+    /// Seerr: sign-in, the Request dialog, the Requests page.
+    Requests(super::requests::Msg),
 }

@@ -88,12 +88,16 @@ impl App {
         }
         d.subs_ok = self.subtitles_on(m.origin);
         d.dl_ok = matches!(self.catalog.backend(m.origin), Some(Backend::Jellyfin(_)));
-        let pid = self.push_page(View::Detail, Some(m));
+        let pid = self.push_page(View::Detail, Some(m.clone()));
         let Some(p) = self.page_mut(pid) else {
             return Task::none();
         };
         p.det = Some(Box::new(d));
-        Task::batch(tasks).map(move |m| Message::Detail(pid, m))
+        let seerr = self.rq_on_detail(pid, &m);
+        Task::batch([
+            Task::batch(tasks).map(move |m| Message::Detail(pid, m)),
+            seerr,
+        ])
     }
 
     pub(super) fn detail_msg(&mut self, pid: u64, msg: detail::Msg) -> Task<Message> {

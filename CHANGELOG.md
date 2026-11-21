@@ -6,6 +6,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 - Choose where video plays: Settings > Video player > Player offers In-window (the default), VLC and an mpv window, each only when installed. VLC is driven over a loopback-only control interface protected by a random password, so your place, progress sync, Trakt scrobbling and Stop work as with the other players; subtitle and audio menus are not available in VLC (use VLC's own). A stream that needs extra request headers plays in-window. `NOCTURNE_VIDEO` still overrides the setting, and a player that is no longer installed falls back to the in-window one with a one-line notice.
+- Request movies and shows from a Seerr server (also Jellyseerr or Overseerr): Settings > Requests > Seerr server signs you in with your own Jellyfin account (Quick Connect, or username and password; only the session is kept, in the system keyring). With Allow requests on (off by default), Search shows a Request group for titles that are not in your library, with a dialog that lets you pick seasons for a show. A Requests page in the header lists your requests with their status and cancels your own pending ones after a confirmation, and a movie or show page shows its Seerr status. A request goes to the Seerr server only, never to a media server, and needs no server-changes switch. Tested against a throwaway Seerr only (`scripts/test-seerr.sh`).
 
 ## [0.5.2] - 2026-11-20
 
