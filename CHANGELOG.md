@@ -11,6 +11,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Calendar: with Seerr requests on, a show in "Not on your servers" (a Trakt entry with a TMDB id) gets a Request button in the week and agenda views and the `r` key in every view, which opens the Request dialog; a show Seerr already knows wears its status (Requested, Approved, Available) instead.
 - Settings > Calendar > "Coming this week on Home" (off by default): a Home row of the episodes your servers list for the next seven days.
 - `scripts/make-demo-library.sh build --upcoming` adds a demo show whose episodes air in the next weeks, for Calendar screenshots.
+- Themes gallery: Settings > Themes has tabs Official, Community and My themes. Official lists NOCTURNE's own themes (Marquee, Feed, Classic, Spotlight, Glass, and the new Daylight light theme and High contrast) with a preview, author, licence and description, and installs one with a click; Update replaces an installed copy when the gallery has a newer one. Downloads come from the NOCTURNE website over https, are checked against the gallery's sha256, respect the "Themes may load from the web" switch, and the index is cached with a Refresh button and an offline notice. An installed theme is a normal saved theme; themes you add by hand stay and are marked "not from the gallery". Anyone can propose a community theme by pull request: see `themes/README.md`.
+- `scripts/themes-index.py` checks the `themes/` folders and writes the gallery index and files into `website/static/themes/` (`--check` for CI).
+- `docs/dev/FLATPAK.md`: evaluation of a Flatpak (manifest sketch, permissions, libmpv, keyring, size, Flathub steps), no packaging shipped.
 
 ## [0.5.2] - 2026-11-20
 

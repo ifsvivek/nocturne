@@ -49,6 +49,8 @@ Maintainers only: a `vX.Y.Z` tag builds every format in CI and drafts a release;
 
 Rust 2024 edition, `cargo fmt` defaults. Colours and sizes come from `crates/app/src/theme.rs`; do not add raw hex elsewhere (see [docs/DESIGN.md](docs/DESIGN.md)). Prefer the smallest change that works; comment non-obvious constraints (for example window-handle details the video embedding depends on). Keep pure logic in `crates/core` or `crates/local` with unit tests; `crates/app` is the only crate with UI code. Local media files are never modified: scanning only reads.
 
+Themes: to propose a theme for the gallery (Settings > Themes), add a folder under `themes/` as described in [themes/README.md](themes/README.md) and run `scripts/themes-index.py`.
+
 ## Dependencies and licences
 
 The project is GPL-3.0-or-later. New dependencies must pass `cargo deny check licenses`; regenerate `THIRD_PARTY_NOTICES.md` with `scripts/gen-notices.py > THIRD_PARTY_NOTICES.md`.

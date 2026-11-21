@@ -1,0 +1,22 @@
+/* Daylight: a light theme. Warm paper background, white surfaces, dark ink and a deep blue accent. Every text colour keeps a contrast of at least 4.5:1 on the background, surface and raised colours. */
+:root {
+  --nocturne-background: #f6f4ef;
+  --nocturne-surface: #ffffff;
+  --nocturne-raised: #ece9e1;
+  --nocturne-header: #ffffff;
+  --nocturne-text: #16181d;
+  --nocturne-text-secondary: #4a4f5a;
+  --nocturne-text-tertiary: #5d626d;
+  --nocturne-accent: #1d4ed8;
+  --nocturne-accent-hover: #1e40af;
+  --nocturne-accent-text: #1d4ed8;
+  --nocturne-on-accent: #ffffff;
+  --nocturne-radius-card: 8px;
+  --nocturne-radius-small: 6px;
+  --nocturne-radius-panel: 10px;
+}
+
+/* The billboard sits on a dark picture, where the dark ink of this theme would not read: no hero, the rows come first. */
+.hero {
+  --hero-style: none;
+}

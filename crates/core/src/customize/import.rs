@@ -15,6 +15,7 @@
 //! on disk by address and only replaced by a manual refresh. Run [`resolve`] through
 //! `bridge::spawn`.
 mod fonts;
+pub mod gallery;
 mod pics;
 
 pub use fonts::{FontStyle, LoadedFont};
@@ -237,6 +238,7 @@ fn absolute(raw: &str, base: Option<&Url>) -> Result<Url, String> {
 
 // ---- the disk cache --------------------------------------------------------------------------
 
+#[derive(Clone)]
 struct Cached {
     fetched: u64,
     final_url: String,

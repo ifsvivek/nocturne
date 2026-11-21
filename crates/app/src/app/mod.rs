@@ -53,6 +53,7 @@ pub(crate) mod studio;
 #[cfg(feature = "theme-engine")]
 mod studio_view;
 pub(crate) mod themes;
+pub(crate) mod themes_gallery;
 pub(crate) mod trakt;
 
 use crate::account::{self, Accounts, Event as AcctEvent, devices, picker};

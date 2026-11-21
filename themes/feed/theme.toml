@@ -1,0 +1,6 @@
+name = "Feed"
+author = "NOCTURNE"
+licence = "GPL-3.0-or-later"
+description = "A dark grey, compact look: no hero, a slim header, wrapping grids of rounded 16:9 thumbnails with titles underneath."
+kind = "official"
+min_version = "0.5.2"

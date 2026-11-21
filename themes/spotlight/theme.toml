@@ -1,0 +1,6 @@
+name = "Spotlight"
+author = "NOCTURNE"
+licence = "GPL-3.0-or-later"
+description = "A full-bleed backdrop under a floating rounded header, the logo as the title, light pill buttons and accent section bars."
+kind = "official"
+min_version = "0.5.2"

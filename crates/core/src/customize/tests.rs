@@ -467,3 +467,29 @@ body, .backgroundContainer { background: linear-gradient(135deg, #111827 0%, #1d
         ]
     );
 }
+
+#[test]
+fn a_gallery_install_updates_its_own_copy_and_leaves_hand_made_themes_alone() {
+    let mut s = Store::default();
+    let mine = s.add("Mine", "a{}", None);
+    let g = s.install_gallery("glass", "aa", "Glass", "one{}");
+    assert_ne!(mine, g);
+    assert!(s.get(mine).unwrap().gallery.is_none());
+    // The same gallery id again is an update: same saved theme, new text and checksum.
+    assert_eq!(s.install_gallery("glass", "bb", "Glass", "two{}"), g);
+    assert_eq!(s.themes.len(), 2);
+    let t = s.from_gallery("glass").unwrap();
+    assert_eq!(
+        (t.css.as_str(), t.gallery_sha.as_deref()),
+        ("two{}", Some("bb"))
+    );
+    // Saved to disk and read back.
+    let dir = std::env::temp_dir().join(format!("nocturne-gal-{}", std::process::id()));
+    let p = dir.join("themes.toml");
+    s.save_to(&p).unwrap();
+    assert_eq!(
+        Store::load_from(&p).from_gallery("glass").unwrap().css,
+        "two{}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}

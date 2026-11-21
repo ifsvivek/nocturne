@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "themes": [
+    {
+      "id": "classic",
+      "name": "Classic",
+      "description": "The familiar server web layout: slim navy header, wide library tiles, 16:9 thumbnails with captions, flat 4 px corners.",
+      "author": "NOCTURNE",
+      "licence": "GPL-3.0-or-later",
+      "kind": "official",
+      "min_version": "0.5.2",
+      "css": "classic/theme.css",
+      "preview": "classic/preview.webp",
+      "size": 2372,
+      "sha256": "43b0544eb206bda2922e4bfd457e174f2a26cc48b5f8bc5818d7b40af1fae20f"
+    },
+    {
+      "id": "daylight",
+      "name": "Daylight",
+      "description": "A light theme: warm paper background, white surfaces, dark ink, a deep blue accent. Text contrast is at least 4.5:1.",
+      "author": "NOCTURNE",
+      "licence": "GPL-3.0-or-later",
+      "kind": "official",
+      "min_version": "0.5.2",
+      "css": "daylight/theme.css",
+      "preview": "daylight/preview.webp",
+      "size": 827,
+      "sha256": "ca5e3aa82869066a2e0e878e2178ba6be2363f5ef64c33b89420c638ef7c50cd"
+    },
+    {
+      "id": "feed",
+      "name": "Feed",
+      "description": "A dark grey, compact look: no hero, a slim header, wrapping grids of rounded 16:9 thumbnails with titles underneath.",
+      "author": "NOCTURNE",
+      "licence": "GPL-3.0-or-later",
+      "kind": "official",
+      "min_version": "0.5.2",
+      "css": "feed/theme.css",
+      "preview": "feed/preview.webp",
+      "size": 1224,
+      "sha256": "f5582a1c612e817fb2cc7df9462a1b5122d12b49428d0e3a8235b4dc4a676d4a"
+    },
+    {
+      "id": "glass",
+      "name": "Glass",
+      "description": "A black canvas under a floating glass header pill, a full-bleed hero with the title as logo art, glass buttons and squircle cards.",
+      "author": "NOCTURNE",
+      "licence": "GPL-3.0-or-later",
+      "kind": "official",
+      "min_version": "0.5.2",
+      "css": "glass/theme.css",
+      "preview": "glass/preview.webp",
+      "size": 22031,
+      "sha256": "ed63815ce2ec9a014f64f42c12695ae01c362093c5d104f5b5597c60e20c11b1"
+    },
+    {
+      "id": "high-contrast",
+      "name": "High contrast",
+      "description": "Pure black, white text and a yellow accent, square corners. Text contrast is at least 11:1.",
+      "author": "NOCTURNE",
+      "licence": "GPL-3.0-or-later",
+      "kind": "official",
+      "min_version": "0.5.2",
+      "css": "high-contrast/theme.css",
+      "preview": "high-contrast/preview.webp",
+      "size": 677,
+      "sha256": "9ec79214b4860249b103d4fe14b2a6a5bb55982728a952d6f940ce177580157d"
+    },
+    {
+      "id": "marquee",
+      "name": "Marquee",
+      "description": "A dark, cinematic look: a full-bleed billboard under a see-through header, carousels of 16:9 thumbnails that grow on hover, a red accent.",
+      "author": "NOCTURNE",
+      "licence": "GPL-3.0-or-later",
+      "kind": "official",
+      "min_version": "0.5.2",
+      "css": "marquee/theme.css",
+      "preview": "marquee/preview.webp",
+      "size": 1328,
+      "sha256": "5309be19defcae1707537c1c2a6a314cea1a00e19a14e6f2b9f403e110b2e831"
+    },
+    {
+      "id": "spotlight",
+      "name": "Spotlight",
+      "description": "A full-bleed backdrop under a floating rounded header, the logo as the title, light pill buttons and accent section bars.",
+      "author": "NOCTURNE",
+      "licence": "GPL-3.0-or-later",
+      "kind": "official",
+      "min_version": "0.5.2",
+      "css": "spotlight/theme.css",
+      "preview": "spotlight/preview.webp",
+      "size": 4581,
+      "sha256": "3cff15f22c91351d688304dbc54c39b8ef9cfe4c13c80907dedece5e6ced3055"
+    }
+  ]
+}

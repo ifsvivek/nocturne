@@ -85,6 +85,8 @@ pub enum Msg {
     ReportTab(bool),
     /// Copy the open report tab as plain text.
     CopyReport,
+    /// The gallery tabs and cards (`themes_gallery`).
+    Gallery(super::themes_gallery::GMsg),
 }
 
 pub struct State {
@@ -106,7 +108,7 @@ pub struct State {
     /// Safe look: the built-in theme, whatever is saved (Ctrl+Shift+0, `NOCTURNE_SAFE_THEME=1`).
     pub safe: bool,
     /// The theme id last handed to `theme::set` (`None` = not yet / must be redone).
-    applied: Option<u64>,
+    pub(super) applied: Option<u64>,
     /// What was fetched for the editor's text.
     resolved: Option<Arc<Resolved>>,
     /// The editor's imports are being downloaded (the report says so).
@@ -119,6 +121,7 @@ pub struct State {
     how: bool,
     /// The report panel shows the servers' branding and plugin stylesheets.
     brand_tab: bool,
+    pub(super) gal: super::themes_gallery::Gallery,
 }
 
 impl Default for State {
@@ -145,6 +148,7 @@ impl Default for State {
             fonts_loaded: HashSet::new(),
             how: false,
             brand_tab: false,
+            gal: Default::default(),
         }
     }
 }
@@ -748,6 +752,7 @@ impl App {
             }
             Msg::How => self.th.how ^= true,
             Msg::ReportTab(b) => self.th.brand_tab = b,
+            Msg::Gallery(g) => return self.gallery_msg(g),
             Msg::CopyReport => return iced::clipboard::write(self.report_text()),
             Msg::Cycle(src) => {
                 let mut order = vec![None];
@@ -886,7 +891,13 @@ impl App {
             list = list.push(entry(
                 s.name.clone(),
                 th.sel == Some(s.id),
-                if global == Some(s.id) { "ACTIVE" } else { "" },
+                if global == Some(s.id) {
+                    "ACTIVE"
+                } else if s.gallery.is_some() {
+                    "GALLERY"
+                } else {
+                    "NOT FROM GALLERY"
+                },
                 Msg::Pick(Some(s.id)),
             ));
         }
@@ -919,7 +930,22 @@ impl App {
                 Msg::Preset(i),
             ));
         }
+        if self.th.gal.tab != super::themes_gallery::Tab::Mine {
+            return scroll(
+                column![self.gallery_tabs(), self.gallery_cards()]
+                    .spacing(t::S3)
+                    .padding(Padding {
+                        right: t::S3,
+                        ..Padding::ZERO
+                    }),
+            )
+            .style(style::scroll)
+            .width(width.map_or(Length::Fill, Length::Fixed))
+            .height(height)
+            .into();
+        }
         let mut col = column![
+            self.gallery_tabs(),
             text(tracked("Built-in"))
                 .shaping(text::Shaping::Advanced)
                 .size(t::CONTROL_TEXT)
@@ -940,6 +966,13 @@ impl App {
             list,
         ]
         .spacing(t::S3);
+        if !self.themes.themes.is_empty() {
+            col = col.push(
+                text("GALLERY: installed from the gallery. NOT FROM GALLERY: added by hand (pasted, imported or downloaded).")
+                    .size(t::CAPTION)
+                    .color(t::text_tertiary()),
+            );
+        }
         if global.is_none() {
             col = col.push(mono("USING THE BUILT-IN LOOK"));
         }
@@ -1609,7 +1642,7 @@ fn fetch_summary(r: &Resolved) -> String {
 }
 
 /// "5 min ago" for a Unix time.
-fn ago(at: u64) -> String {
+pub(super) fn ago(at: u64) -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());

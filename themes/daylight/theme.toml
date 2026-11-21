@@ -1,0 +1,6 @@
+name = "Daylight"
+author = "NOCTURNE"
+licence = "GPL-3.0-or-later"
+description = "A light theme: warm paper background, white surfaces, dark ink, a deep blue accent. Text contrast is at least 4.5:1."
+kind = "official"
+min_version = "0.5.2"

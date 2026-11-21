@@ -1,0 +1,6 @@
+name = "High contrast"
+author = "NOCTURNE"
+licence = "GPL-3.0-or-later"
+description = "Pure black, white text and a yellow accent, square corners. Text contrast is at least 11:1."
+kind = "official"
+min_version = "0.5.2"

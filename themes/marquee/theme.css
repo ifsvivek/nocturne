@@ -1,0 +1,69 @@
+/* Marquee: a dark, cinematic look. A full-bleed billboard under a see-through header, carousels of 16:9 thumbnails that grow on hover, no captions, a red accent. */
+:root {
+  --nocturne-background: #0a0a0a;
+  --nocturne-surface: #141414;
+  --nocturne-raised: #1c1c1c;
+  --nocturne-text: #f5f5f1;
+  --nocturne-text-secondary: #b8b8b8;
+  --nocturne-text-tertiary: #9a9a9a;
+  --nocturne-accent: #d62839;
+  --nocturne-accent-hover: #ee4254;
+  --nocturne-accent-text: #ff7a88;
+  --nocturne-on-accent: #ffffff;
+  --nocturne-radius-card: 4px;
+  --nocturne-radius-small: 4px;
+  --nocturne-radius-panel: 6px;
+}
+
+.header {
+  background: transparent;
+  position: fixed;
+}
+
+.header-link {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hero {
+  --hero-style: billboard;
+  height: 720px;
+  background: linear-gradient(to top, #0a0a0a 0%, rgba(10, 10, 10, 0) 60%);
+}
+
+.hero-title {
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+.row {
+  display: carousel;
+  gap: 8px;
+}
+
+.row-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.card {
+  aspect-ratio: 16 / 9;
+  width: 300px;
+  --title-position: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  transition-duration: 200ms;
+}
+
+.card:hover {
+  transform: scale(1.1);
+}
+
+.button {
+  transition-duration: 150ms;
+}
+
+.button:hover {
+  transform: scale(1.05);
+}
