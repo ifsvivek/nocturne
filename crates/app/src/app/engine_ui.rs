@@ -262,12 +262,15 @@ impl App {
             && self.eng.home.is_some()
     }
 
-    /// Is the library page's body on the engine right now?
+    /// Is the library page's body (or the Calendar) on the engine right now?
     pub(super) fn eng_page_active(&self) -> bool {
         self.eng.enabled
             && matches!(self.phase, Phase::Ready)
             && self.eng_overlay_free()
-            && self.stack.last().is_some_and(|p| p.view == View::Grid)
+            && self
+                .stack
+                .last()
+                .is_some_and(|p| matches!(p.view, View::Grid | View::Calendar))
             && self.eng.page.is_some()
     }
 
@@ -420,6 +423,9 @@ impl App {
         let on_grid = self.stack.last().is_some_and(|p| p.view == View::Grid);
         let task = if on_grid && self.eng_overlay_free() {
             self.eng_build_page()
+        } else if self.at_calendar() && self.eng_overlay_free() {
+            self.eng_build_calendar();
+            Task::none()
         } else {
             self.eng.page = None;
             Task::none()
@@ -707,6 +713,52 @@ impl App {
         }
         self.eng_restyle(Which::Page);
         Task::none()
+    }
+
+    /// The Calendar page: rebuilt on every change (it is small), keeping its scroll while the same range is shown and bringing the selection into view.
+    fn eng_build_calendar(&mut self) {
+        let Some(tree) = self.calendar_tree() else {
+            self.eng.page = None;
+            return;
+        };
+        let view = nocturne_core::calendar::View::ALL
+            .iter()
+            .position(|v| *v == self.cal.view)
+            .unwrap_or(0) as u64;
+        let key = (
+            self.stack.last().map_or(0, |p| p.pid),
+            view << 48 ^ (self.cal.anchor.0 as u64 & 0xffff_ffff_ffff),
+        );
+        let it = Interaction {
+            focus: tree.sel.and_then(|n| (n < tree.doc.len()).then_some(n)),
+            ..Interaction::default()
+        };
+        let old = self.eng.page.take().filter(|h| h.page == key);
+        let prev_sel = old.as_ref().map(|h| h.sel);
+        let keep = old.and_then(|h| {
+            let n = h.tree.list?;
+            h.scene.scroll.offsets.get(&n).copied()
+        });
+        let mut s = self.eng_scene(&tree, it, (self.eng_width(), self.win.height));
+        let cache = &mut self.eng.cache;
+        let m = &mut |t: &str, st: &nocturne_style::TextStyle, mx: Option<f32>| {
+            cache.measure(t, st, mx, &mut shape)
+        };
+        if let (Some(list), Some(o)) = (tree.list, keep) {
+            s.scroll.offsets.insert(list, o);
+            s.clamp_scroll();
+            s.set_page_scroll(0.0, m);
+        }
+        // Only a moved selection scrolls (a wheel turn must not snap back).
+        if let Some(n) = tree.sel
+            && prev_sel != Some(self.cal.sel)
+        {
+            s.reveal(n, m);
+        }
+        let mut h = Hosted::new(s, tree, it, self.eng.sheet_gen);
+        h.page = key;
+        h.sel = self.cal.sel;
+        self.eng.page = Some(h);
     }
 
     fn eng_build_search(&mut self) {

@@ -42,6 +42,7 @@ fn section_class(k: HRow) -> &'static str {
     match k {
         HRow::Resume => "section-resume",
         HRow::NextUp => "section-next-up",
+        HRow::Coming => "section-coming.section-next-up",
         HRow::Tiles => "section-tiles",
         _ => "section-latest",
     }
@@ -452,6 +453,13 @@ impl App {
                 true,
                 false,
             ),
+            HRow::Coming => (
+                "Coming this week".to_string(),
+                "Episodes airing in the next seven days.".to_string(),
+                format!("{n} coming"),
+                false,
+                false,
+            ),
             HRow::Tiles => (
                 "My media".to_string(),
                 "Your libraries.".to_string(),
@@ -572,7 +580,11 @@ impl App {
             let (title, meta) = if episode {
                 (
                     m.series_name.clone().unwrap_or_else(|| m.title.clone()),
-                    super::cells::episode_line(m, g.look.episode_format),
+                    if k == HRow::Coming {
+                        super::cells::coming_line(m)
+                    } else {
+                        super::cells::episode_line(m, g.look.episode_format)
+                    },
                 )
             } else {
                 (m.title.clone(), super::cells::caption(m))

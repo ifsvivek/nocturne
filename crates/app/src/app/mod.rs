@@ -4,6 +4,9 @@ mod actions;
 mod browse;
 #[cfg(feature = "theme-engine")]
 mod browse_tree;
+mod calendar;
+#[cfg(feature = "theme-engine")]
+mod calendar_tree;
 mod cascade;
 mod catalog;
 mod cells;
@@ -132,6 +135,7 @@ pub enum View {
     Home,
     Grid,
     Detail,
+    Calendar,
 }
 
 /// One entry of the history stack. Later steps add the per-page state of Home, library and
@@ -275,6 +279,7 @@ pub struct App {
     rq: requests::State,
     dl: downloads::State,
     smart: smart::State,
+    cal: calendar::Cal,
     setup: Option<FirstRun>,
     account_back: Option<AccountBack>,
     phase: Phase,
@@ -426,6 +431,7 @@ impl App {
             rq: Default::default(),
             dl: downloads::State::new(&catalog::app_data_dir()),
             smart: smart::State::load(),
+            cal: Default::default(),
             setup: None,
             account_back: None,
             phase: Phase::Connecting,
@@ -1064,6 +1070,7 @@ impl App {
             Message::Trakt(m) => self.trakt_msg(m),
             Message::Requests(m) => self.rq_msg(m),
             Message::Smart(m) => self.smart_msg(m),
+            Message::Calendar(m) => self.cal_msg(m),
             Message::Cascade(m) => self.cascade_msg(m),
             Message::Downloads(m) => self.dl_msg(m),
             Message::CycleFilter => {
@@ -2125,9 +2132,20 @@ impl App {
                 self.toggle_fav(&m)
             };
         }
+        if key == "c"
+            && ready
+            && k.plain()
+            && matches!(
+                self.stack.last().map(|p| p.view),
+                Some(View::Home | View::Grid)
+            )
+        {
+            return self.cal_msg(calendar::Msg::Open);
+        }
         match self.stack.last().map(|p| p.view) {
             Some(View::Grid) => self.browse_key(key, k.shift).unwrap_or_else(Task::none),
             Some(View::Home) => self.home_key(key),
+            Some(View::Calendar) => self.cal_key(&k),
             _ => Task::none(),
         }
     }
@@ -2146,6 +2164,7 @@ impl App {
             }
             View::Grid => p.br.as_deref()?.item(p.sel).map(|(m, _)| m.clone()),
             View::Detail => p.media.clone(),
+            View::Calendar => None,
         }
     }
 
@@ -2158,6 +2177,7 @@ impl App {
             Some(Link::Libraries) => self.update(Message::ToggleLibMenu),
             Some(Link::Global(i)) => self.update(Message::OpenGlobal(i)),
             Some(Link::Smart) => self.update(Message::Smart(smart::Msg::Menu)),
+            Some(Link::Calendar) => self.update(Message::Calendar(calendar::Msg::Open)),
             Some(Link::Admin) => self.update(Message::OpenAdmin),
             Some(Link::Requests) => self.update(Message::Requests(requests::Msg::PageOpen)),
             None => Task::none(),
@@ -2468,6 +2488,13 @@ impl App {
                     return p;
                 }
                 self.grid_page()
+            }
+            Some(View::Calendar) => {
+                #[cfg(feature = "theme-engine")]
+                if let Some(p) = self.eng_page_view() {
+                    return p;
+                }
+                self.cal_fallback()
             }
             _ => match self
                 .stack

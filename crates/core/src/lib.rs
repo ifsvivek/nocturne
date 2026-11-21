@@ -8,6 +8,7 @@ pub mod backend;
 pub mod blurhash;
 pub mod bridge;
 pub mod cache;
+pub mod calendar;
 pub mod catalog;
 pub mod customize;
 pub mod detail;

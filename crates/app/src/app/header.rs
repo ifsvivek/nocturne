@@ -128,6 +128,13 @@ impl App {
                     cur.is_some_and(|c| c.1.starts_with("smart-")) && !at_home && !blur,
                     focused,
                 ),
+                Link::Calendar => nav_link_icon(
+                    "Calendar",
+                    ico(&link),
+                    cur.is_some_and(|c| c.1 == "calendar") && !at_home && !blur,
+                    focused,
+                    Message::Calendar(super::calendar::Msg::Open),
+                ),
                 Link::Admin => nav_link_icon(
                     "Admin",
                     ico(&link),
@@ -552,6 +559,7 @@ pub(super) fn link_icon(l: &Link, libs: &[nocturne_core::source::Media]) -> Opti
         Link::Global(0) => "layers",
         Link::Global(1) => "queue",
         Link::Global(_) => "heart",
+        Link::Calendar => "calendar",
         Link::Admin => "gear",
         Link::Requests => "queue",
         Link::Libraries | Link::Smart => return None,
@@ -606,6 +614,7 @@ impl App {
             Link::Libraries => "Libraries \u{25BE}".into(),
             Link::Global(i) => GLOBALS[*i].1.into(),
             Link::Smart => "Smart \u{25BE}".into(),
+            Link::Calendar => "Calendar".into(),
             Link::Admin => "Admin".into(),
             Link::Requests => "Requests".into(),
         }
@@ -735,6 +744,12 @@ impl App {
             .position(|l| matches!(l, Link::Global(_) | Link::Admin))
             .unwrap_or(v.len());
         v.insert(at, Link::Smart);
+        // The Calendar is the last link before Admin.
+        let at = v
+            .iter()
+            .position(|l| matches!(l, Link::Admin))
+            .unwrap_or(v.len());
+        v.insert(at, Link::Calendar);
         if self.rq.signed_in() {
             v.push(Link::Requests);
         }

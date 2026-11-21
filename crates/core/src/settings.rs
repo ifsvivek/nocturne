@@ -171,6 +171,8 @@ pub struct Settings {
     pub home_resume: bool,
     pub home_next_up: bool,
     pub home_latest: bool,
+    /// A "Coming this week" row on Home: this week's upcoming episodes from the Calendar. Off by default so Home stays as it was.
+    pub home_coming: bool,
     pub density: Density,
     /// Disk image cache cap in MB.
     pub image_cache_mb: u32,
@@ -229,6 +231,7 @@ impl Default for Settings {
             home_resume: true,
             home_next_up: true,
             home_latest: true,
+            home_coming: false,
             density: Density::Comfortable,
             image_cache_mb: 512,
             reduce_motion: ReduceMotion::System,
@@ -289,7 +292,7 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 31;
+pub const ROWS: usize = 32;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
 pub const PROFILE_ROW: usize = 22;
@@ -311,11 +314,13 @@ pub const HERO_INTERVAL_ROW: usize = 27;
 
 /// The "Video player" row.
 pub const PLAYER_ROW: usize = 28;
+/// The "Coming this week" Home row switch.
+pub const COMING_ROW: usize = 29;
 /// The "Seerr server" row: not a toggle, it opens the sign-in dialog.
-pub const SEERR_ROW: usize = 29;
+pub const SEERR_ROW: usize = 30;
 
 /// The "Allow requests" row.
-pub const SEERR_ALLOW_ROW: usize = 30;
+pub const SEERR_ALLOW_ROW: usize = 31;
 
 /// The "Trakt account" row: not a toggle, it opens the connect dialog.
 pub const TRAKT_ROW: usize = 19;
@@ -336,6 +341,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         25 => Some("Themes"),
         26 => Some("Home banner"),
         PLAYER_ROW => Some("Video player"),
+        COMING_ROW => Some("Calendar"),
         SEERR_ROW => Some("Requests"),
         _ => None,
     }
@@ -569,6 +575,11 @@ impl Settings {
                 self.player.label().into(),
             ),
             r(
+                "Coming this week on Home",
+                "Adds a row to Home with the episodes airing in the next seven days from your servers and, when Trakt is connected, your Trakt calendar. The Calendar page in the header is always there. Off by default.",
+                onoff(self.home_coming),
+            ),
+            r(
                 "Seerr server",
                 "Connect a Seerr (or Jellyseerr / Overseerr) server to request movies and shows that are not in your library. You sign in with your own Jellyfin account on that server: Quick Connect, or username and password. NOCTURNE keeps only the session in your system keyring, never the password.",
                 match (self.seerr.url.is_empty(), self.seerr.user_name.is_empty()) {
@@ -739,6 +750,7 @@ impl Settings {
             HERO_INTERVAL_ROW => {
                 self.hero_interval_secs = step(&HERO_S, self.hero_interval_secs, 2, d)
             }
+            COMING_ROW => self.home_coming ^= true,
             COUCH_ROW => {
                 let i = COUCH.iter().position(|(m, _)| *m == self.couch);
                 let i = (i.unwrap_or(0) as i32 + d).rem_euclid(COUCH.len() as i32) as usize;
@@ -956,6 +968,23 @@ mod tests {
         assert!(!s.seerr_requests && s.seerr == SeerrCfg::default());
         assert!(s.autoplay_next && !s.auto_skip_intro);
         assert_eq!(s.rows().len(), ROWS);
+    }
+
+    #[test]
+    fn coming_row_is_last_and_off_by_default() {
+        let mut s = Settings::default();
+        assert!(!s.home_coming);
+        assert_eq!(s.rows().len(), ROWS);
+        assert_eq!(s.rows()[COMING_ROW].value, "Off");
+        s.cycle(COMING_ROW, 1);
+        assert!(s.home_coming);
+        assert_eq!(head(COMING_ROW), Some("Calendar"));
+        // An older settings file has no such key and keeps Home as it was.
+        assert!(
+            !toml::from_str::<Settings>("version = 1")
+                .unwrap()
+                .home_coming
+        );
     }
 
     #[test]
@@ -1358,12 +1387,12 @@ mod tests {
 
     #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24, 25, 26, 28 and 29.
+        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24, 25, 26, 28, 29 and 30.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
         assert_eq!(scroll_child(11), 15);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 14);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 15);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));
         assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));

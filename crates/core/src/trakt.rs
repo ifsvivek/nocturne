@@ -497,6 +497,34 @@ pub fn parse_shows(v: &Value) -> Vec<Show> {
 
 // ---- client --------------------------------------------------------------------------------------------
 
+/// One episode on the user's Trakt calendar (`/calendars/my/shows`): the show's ids, the episode and its air time (UTC, ISO 8601).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Airing {
+    pub show: String,
+    pub ids: Ids,
+    pub season: u32,
+    pub number: u32,
+    pub title: String,
+    pub first_aired: String,
+}
+
+pub fn parse_calendar(v: &Value) -> Vec<Airing> {
+    v.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| {
+            Some(Airing {
+                show: e["show"]["title"].as_str()?.into(),
+                ids: ids_of(&e["show"]["ids"]),
+                season: e["episode"]["season"].as_u64()? as u32,
+                number: e["episode"]["number"].as_u64()? as u32,
+                title: e["episode"]["title"].as_str().unwrap_or_default().into(),
+                first_aired: e["first_aired"].as_str()?.into(),
+            })
+        })
+        .collect()
+}
+
 pub struct Trakt {
     http: reqwest::Client,
     base: String,
@@ -536,8 +564,16 @@ impl Trakt {
         }
     }
 
-    /// The user's app credentials and sign-in from the keyring; `None` when not connected.
+    /// The user's app credentials and sign-in from the keyring; `None` when not connected. Debug builds with `NOCTURNE_TRAKT_MOCK_TOKEN` set use a fake sign-in (for a mock server named by `NOCTURNE_TRAKT_URL`).
     pub async fn load() -> Option<Self> {
+        if cfg!(debug_assertions) && std::env::var_os("NOCTURNE_TRAKT_MOCK_TOKEN").is_some() {
+            let t = Tokens {
+                access: "mock".into(),
+                refresh: "mock".into(),
+                expires_at: now() + 86_400,
+            };
+            return Some(Self::new(&base_url(), &auth_base(), "mock", Some(t), false));
+        }
         let (id, tok) = tokio::task::spawn_blocking(|| {
             let tok = nocturne_session::load_secret(KEY_TOKENS).ok().flatten();
             (Self::client_id_blocking(), tok)
@@ -735,6 +771,14 @@ impl Trakt {
             )
             .json(&t.body(progress));
         Self::check(&self.send(rb).await?)
+    }
+
+    /// The signed-in user's shows airing from `start` (`YYYY-MM-DD`) for `days` days (Trakt allows at most 33). Read only.
+    pub async fn calendar(&self, start: &str, days: u32) -> Result<Vec<Airing>, Error> {
+        let v = self
+            .authed_get(&format!("/calendars/my/shows/{start}/{}", days.min(33)))
+            .await?;
+        Ok(parse_calendar(&v))
     }
 
     pub async fn history(&self) -> Result<History, Error> {
@@ -1157,6 +1201,47 @@ mod tests {
             wait_callback(busy, "st", Duration::from_secs(1), no).await,
             Callback::PortBusy
         );
+    }
+
+    #[tokio::test]
+    async fn calendar_is_one_authenticated_get_and_parses_a_fake_reply() {
+        let reply = json!([
+            {"first_aired": "2026-12-01T02:00:00.000Z",
+             "episode": {"season": 2, "number": 5, "title": "Pilot", "ids": {"trakt": 9}},
+             "show": {"title": "Demo Show", "year": 2020, "ids": {"trakt": 1, "tvdb": 81189, "imdb": "TT7"}}},
+            // No air time or no episode: skipped.
+            {"episode": {"season": 1, "number": 1}, "show": {"title": "x", "ids": {}}},
+            {"first_aired": "2026-12-02T02:00:00.000Z", "show": {"title": "x", "ids": {}}}
+        ]);
+        let (base, log) = mock(vec![(
+            "/calendars/my/shows/",
+            vec![(200, reply.to_string())],
+        )])
+        .await;
+        let c = client(&base, Some(good()));
+        let v = c.calendar("2026-11-30", 99).await.unwrap();
+        assert_eq!(v.len(), 1);
+        assert_eq!((v[0].season, v[0].number), (2, 5));
+        assert_eq!(v[0].show, "Demo Show");
+        assert_eq!(v[0].ids.tvdb, Some(81189));
+        assert_eq!(v[0].ids.imdb.as_deref(), Some("tt7"));
+        let log = log.lock().unwrap().clone();
+        assert!(
+            log[0]
+                .0
+                .starts_with("GET /calendars/my/shows/2026-11-30/33 ")
+        );
+        assert!(
+            log[0]
+                .0
+                .to_lowercase()
+                .contains("authorization: bearer acc")
+        );
+        let none = client(&base, None);
+        assert!(matches!(
+            none.calendar("2026-11-30", 7).await,
+            Err(Error::Auth)
+        ));
     }
 
     #[tokio::test]

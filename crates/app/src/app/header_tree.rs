@@ -286,6 +286,11 @@ impl App {
                     on(cur.is_some_and(|c| c.1 == GLOBALS[gi].0)),
                     Some(Message::OpenGlobal(gi)),
                 ),
+                Link::Calendar => (
+                    "Calendar".into(),
+                    on(cur.is_some_and(|c| c.1 == "calendar")),
+                    Some(Message::Calendar(super::calendar::Msg::Open)),
+                ),
                 Link::Admin => ("Admin".into(), self.admin_open, Some(Message::OpenAdmin)),
                 Link::Requests => (
                     "Requests".into(),

@@ -1,7 +1,7 @@
 //! Shortcut reference shown by the help overlay (`?`); shared by the front ends.
 
 /// (heading, [(keys, what it does)]). The player has its own `?` panel with playback keys.
-pub const SHORTCUTS: [(&str, &[(&str, &str)]); 7] = [
+pub const SHORTCUTS: [(&str, &[(&str, &str)]); 8] = [
     (
         "Everywhere",
         &[
@@ -76,5 +76,16 @@ pub const SHORTCUTS: [(&str, &[(&str, &str)]); 7] = [
     (
         "Player",
         &[("Space", "Play / pause"), ("?", "All playback keys")],
+    ),
+    (
+        "Calendar",
+        &[
+            ("Arrow keys, Tab", "Move over the episodes"),
+            ("Enter", "Play an episode your server has, or open the show"),
+            ("m  w  l", "Month, week or agenda view"),
+            ("PgUp / PgDn  [  ]", "Previous / next period"),
+            ("t", "Back to today"),
+            ("c", "Open the Calendar (from Home or a library)"),
+        ],
     ),
 ];

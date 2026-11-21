@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds a fully synthetic DEMO library on a THROWAWAY Jellyfin (loopback :8097 or $NOCTURNE_JF_TEST_PORT, everything under /tmp)
 # for README/website screenshots. No real titles, people or artwork: see scripts/demo_assets.py.
-# Usage: scripts/make-demo-library.sh {build|stop|clean}
+# Usage: scripts/make-demo-library.sh {build|stop|clean} [--upcoming]
+#   --upcoming  (build) adds the show "Night Shift Radio" whose episodes air in the next weeks (dates relative to today), for the Calendar.
 #   build  start the throwaway server, generate media, add libraries, scan, create user `demo`,
 #          favourite/collection/resume/next-up state. Prints connection info (no secrets).
 #   stop   stop the server.   clean  stop and delete $DEMO entirely.
@@ -36,7 +37,7 @@ count() { api GET "/Items?Recursive=true&IncludeItemTypes=$1&CollapseBoxSetItems
 find_id() { api GET "/Items?Recursive=true&IncludeItemTypes=$1&SearchTerm=$(jq -rn --arg s "$2" '$s|@uri')&Limit=5" | jq -r --arg n "$2" '[.Items[]|select(.Name==$n)][0].Id'; }
 
 echo "generating media"
-python3 -I "$HERE/demo_assets.py" "$LIB" >"$DEMO/counts.json"
+python3 -I "$HERE/demo_assets.py" "$LIB" ${2:+"$2"} >"$DEMO/counts.json"
 
 # Server: keep short clips resumable.
 api GET /System/Configuration | jq -c '.ServerName="NOCTURNE Demo"|.MinResumePct=0|.MaxResumePct=90|.MinResumeDurationSeconds=0|.QuickConnectAvailable=true' |

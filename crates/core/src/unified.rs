@@ -90,6 +90,8 @@ pub enum Link {
     Global(usize),
     /// The smart collections menu (added by the UI, never by [`links`]).
     Smart,
+    /// The Calendar page (added by the UI, never by [`links`]).
+    Calendar,
     Admin,
     /// The Seerr Requests page (added by the UI, after the other links, only when Seerr is signed in).
     Requests,

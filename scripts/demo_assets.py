@@ -6,6 +6,7 @@ lavfi clips with tone audio. Nothing here is a real film, show, album or person;
 coincidental. Called by scripts/make-demo-library.sh; outputs only under the directory given as argv[1]
 (which that script restricts to /tmp). Prints the catalog counts as JSON on stdout.
 """
+import datetime
 import json
 import os
 import random
@@ -84,7 +85,7 @@ MOVIES = [
 ]
 
 SERIES = [
-    dict(t="The Ashen Coast", y=2020, g=["Drama", "Mystery"], r=8.4, mpaa="TV-14", studio="Greywater Studio", kind="sea", pal="steel",
+    dict(t="The Ashen Coast", y=2020, tvdb=910001, g=["Drama", "Mystery"], r=8.4, mpaa="TV-14", studio="Greywater Studio", kind="sea", pal="steel",
          plot="When a lighthouse goes dark for the first time in a century, a small coastal community begins to unravel its own secrets. Each season peels back another layer of the shoreline.",
          seasons=[
              ("Low Water", 2020, [("The Dark Beacon", "The lighthouse fails, and the harbour master is the first to notice."),
@@ -100,7 +101,7 @@ SERIES = [
                                    ("Breakwater", "Alliances crack as the sea reaches the high street."),
                                    ("First Light", "The final tide uncovers the truth about the first failure.")]),
          ]),
-    dict(t="Signal Garden", y=2023, g=["Science Fiction", "Comedy"], r=7.9, mpaa="TV-PG", studio="Little Kiln Animation", kind="mountains", pal="teal",
+    dict(t="Signal Garden", y=2023, tvdb=910002, g=["Science Fiction", "Comedy"], r=7.9, mpaa="TV-PG", studio="Little Kiln Animation", kind="mountains", pal="teal",
          plot="A ragtag team of botanists tends a greenhouse that happens to be the best radio receiver on the planet. Strange broadcasts are only the beginning.",
          seasons=[
              ("Season 1", 2023, [("Seedlings", "The team inherits a greenhouse and an unexplained hum."),
@@ -110,6 +111,19 @@ SERIES = [
                                  ("Harvest Moon", "The garden answers back, and the team has to decide what to say.")]),
          ]),
 ]
+
+# Only with --upcoming (scripts/make-demo-library.sh build --upcoming): a show whose episodes have not aired yet, for the Calendar. `upcoming` is days from today per episode, so the dates are always in the near future.
+UPCOMING = dict(t="Night Shift Radio", y=2026, tvdb=910003, g=["Drama", "Comedy"], r=8.1, mpaa="TV-14", studio="Little Kiln Animation", kind="city", pal="dusk",
+                plot="A late-night phone-in show on a failing radio station, and the callers who keep turning out to know too much.",
+                upcoming=[0, 1, 2, 8, 9, 15, 16, 23],
+                seasons=[("Season 1", 2026, [("Dead Air", "The first night on the graveyard shift."),
+                                             ("Request Line", "A caller asks for a song that was never recorded."),
+                                             ("Static", "The transmitter drifts off frequency."),
+                                             ("Signal Boost", "A sponsor arrives with strange conditions."),
+                                             ("Long Distance", "A listener from the coast calls in."),
+                                             ("Off the Record", "The producer takes the mic."),
+                                             ("Station ID", "Someone changes the call sign."),
+                                             ("Sign-Off", "The last broadcast of the season.")])])
 
 ALBUMS = [
     dict(artist="Vesper Lowe", album="Glasswork", year=2021, genre="Ambient", pal="indigo", kind="mountains",
@@ -354,6 +368,8 @@ def rlines(seed, n=3):
 
 
 def main(root):
+    if "--upcoming" in sys.argv:
+        SERIES.append(UPCOMING)
     media = os.path.join(root, "media")
     tmp = os.path.join(root, "scenes")
     os.makedirs(tmp, exist_ok=True)
@@ -409,7 +425,7 @@ def main(root):
             names, roles = cast_for(si + 5, 5)
             write(os.path.join(sroot, "tvshow.nfo"),
                   "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<tvshow>\n" + tag("title", s["t"]) + tag("year", s["y"]) + tag("plot", s["plot"])
-                  + tag("mpaa", s["mpaa"]) + tag("rating", s["r"]) + tag("studio", s["studio"]) + tag("status", "Continuing")
+                  + tag("mpaa", s["mpaa"]) + (f"  <uniqueid type=\"tvdb\" default=\"true\">{s['tvdb']}</uniqueid>\n" if "tvdb" in s else "") + tag("rating", s["r"]) + tag("studio", s["studio"]) + tag("status", "Continuing")
                   + "".join(tag("genre", g) for g in s["g"]) + cast_xml(names, roles) + "</tvshow>\n")
         for sn, (stitle, syear, eps) in enumerate(s["seasons"], 1):
             sdir = os.path.join(sroot, f"Season {sn:02d}")
@@ -426,8 +442,11 @@ def main(root):
                 sp = scene_png(f"e{si}_{sn}_{en}", seed, s["pal"] if en % 2 else ["indigo", "navy", "dusk", "violet"][(sn + en) % 4], s["kind"])
                 save_jpg(Image.open(sp).resize((960, 540), Image.LANCZOS), base + "-thumb.jpg", 78)
                 names, roles = cast_for(seed % 11 + si, 3)
+                aired = f"{syear}-0{en}-1{en}"
+                if "upcoming" in s:
+                    aired = (datetime.date.today() + datetime.timedelta(days=s["upcoming"][en - 1])).isoformat()
                 write(base + ".nfo", "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<episodedetails>\n" + tag("title", etitle) + tag("season", sn) + tag("episode", en)
-                      + tag("plot", eplot) + tag("aired", f"{syear}-0{en}-1{en}") + tag("rating", round(7.2 + ((seed * 7) % 17) / 10, 1))
+                      + tag("plot", eplot) + tag("aired", aired) + tag("rating", round(7.2 + ((seed * 7) % 17) / 10, 1))
                       + cast_xml(names, roles) + "</episodedetails>\n")
                 dur = 8 + (seed % 4)
                 jobs.append(lambda sp=sp, o=base + ".mkv", d=dur, sd=seed: ffmpeg_clip(sp, o, d, sd, rlines(sd), ["Cold Open", "Act One", "Act Two"], 180 + sd % 90))
