@@ -4,6 +4,8 @@
   import { shipped } from "#lib/site.js";
   // 0.5.2 copy is not marked ahead of time: it shows only once VERSION reaches 0.5.2 and replaces the 0.5 copy it outdates.
   const v052 = shipped("0.5.2");
+  // 0.6.0 copy (player choice, Calendar, Requests, links, themes gallery) is gated the same way and text only until its captures exist.
+  const v060 = shipped("0.6.0");
   const sources = [
     "A guided setup: local folders, a server, or both, then the promises and the real read-only switch",
     "Several Jellyfin servers, each with its own account",
@@ -28,6 +30,7 @@
     ["HDR video: play it in the window in SDR, or in an HDR pop-out window. Real HDR output depends on your display and mpv 0.42 or newer", "0.4.0"],
     ["Find subtitles online for local files: OpenSubtitles, with your own key", "0.4.0"],
     ["Playback reports tell the server whether it is direct play or a transcode", "0.4.0"],
+    ...(v060 ? ["Choose where video plays: in the window (the default), in VLC or in an mpv window, each offered only when installed. VLC is controlled over a local, password-protected interface, so your place, progress sync, Trakt and Stop still work; use VLC's own subtitle and audio menus there"] : []),
   ];
   const couch = [
     "D-pad or left stick to move, A to select, B to go back",
@@ -44,6 +47,7 @@
   ];
   // Themes and Server UI: [title, text]. 0.5.2 rebuilt both on the native CSS engine.
   const look = v052 ? [
+    ...(v060 ? [["Themes gallery", "Settings, Themes opens on a Gallery with the tabs Official, Community and My themes: a card for each theme with a preview, its author and licence, and one click to install. Downloads come from this website over https, are checked against a published sha256, and stop when you turn theme downloads off. Anyone can propose a community theme by pull request. Themes you add by hand keep working and are marked as not from the gallery."]] : []),
     ["Theme Studio", "Themes, Open Studio: point at any part of the live app and change it with controls for colour, size, spacing, shape, shadow, type, layout and hover, on that element only or on all like it. Undo and redo, and a CSS tab that stays in sync both ways: the Studio writes real CSS you can edit by hand, save, use for one server or all, and export."],
     ["NOCTURNE and Glass", "Two built-in themes: NOCTURNE, the default look, and Glass, with a black canvas, a glass header pill, a full-bleed hero that rotates and shows the title as logo art, pill buttons and an accent rail before each section title. Spotlight, Marquee, Feed and Classic are starters to build from."],
     ["Paste a Jellyfin theme", "Paste a stylesheet, its @import line or an https address. Its imports, fonts and pictures are fetched, the preview covers the whole app until you Keep or Revert, and Settings, Themes lists what was fetched, which fonts loaded and what did not apply."],
@@ -60,6 +64,12 @@
     ["Server UI", "Optional per server, off for new ones. With that server alone in the source filter, Home follows the server's own layout: its home sections in its order and its libraries in your order. The server's branding CSS becomes its theme, and its sign-in page shows the server's login disclaimer."],
     ["Home sections", "Settings, Sources, Sections reorders and switches the server's home sections for your account. That is a change on the server, so it needs server changes on."],
   ];
+  // Scene 11, shown from 0.6.0: [title, text].
+  const extras = [
+    ["Calendar", "A header link, or the c key, opens month, week and agenda views of upcoming episodes. Each server's list is merged, and with Trakt connected your Trakt calendar is added. Every entry has the poster, season and episode, the title and the air time in your time zone, and says On your server, Airing soon or Not on your servers. Enter plays an episode a server has. Reading only; an optional row on Home shows the next seven days."],
+    ["Requests with Seerr", "Sign in to your Seerr server (Jellyseerr and Overseerr work too) with your own server account. With Allow requests on, a title that is not in your library shows a Request button in Search and on the Calendar, with a season choice for shows, and a Requests page lists what you asked for and its status. A request goes to the Seerr server only, after a confirmation, and nothing is written to a media server. Off by default; NOCTURNE does not download anything itself."],
+    ["Play a link", "Paste a video address into Search and it plays in the player, through yt-dlp, for any site yt-dlp supports. yt-dlp runs on your computer, is optional and is not bundled; without it NOCTURNE shows the command to install it. A separate, off-by-default Save to library keeps a copy in a folder you choose. Save only what you have the right to keep."],
+  ];
   const tick = (p) => (Array.isArray(p) ? p : [p, ""]);
   // Slot widths for the browser's srcset choice: full-bleed (max 1680), the 3:2 split in the 1200 wrap, two-up at 1520, one framed 1320.
   const bleed = "(min-width: 1680px) 1680px, 100vw";
@@ -70,7 +80,7 @@
   const narrow = "(min-width: 800px) 760px, calc(100vw - 40px)";
 </script>
 
-<!-- Ten scenes. The first is the story (many sources, one library); the others are large stills from the app with
+<!-- Ten scenes (an eleventh from 0.6.0). The first is the story (many sources, one library); the others are large stills from the app with
      their copy set as a subtitle. 0.4 and 0.5 stills are 3840x2160 headless captures (see README). -->
 <div id="tour">
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s0">
@@ -222,4 +232,16 @@
     <div class="reveal mx-auto w-[min(1320px,100%-40px)]"><Shot name="admin-dashboard" sizes={framed} /></div>
     <p class="subtitle">Administrators get each server's dashboard in the same app: activity, sessions, devices, tasks, libraries, users, plugins, API keys and logs. It stays view-only until changes are allowed, and every change asks first.</p>
   </section>
+
+  {#if v060}
+  <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s10">
+    <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 11</span><h2 id="s10" class="scene-title">Calendar, requests and links</h2></header>
+    <p class="subtitle">Three more ways to fill the evening, each optional and each off or empty until you use it.</p>
+    <dl class="stagger mx-auto mt-14 grid w-[min(1000px,100%-40px)] gap-x-14 gap-y-10 md:grid-cols-2">
+      {#each extras as [t, d]}
+        <div class="rule pt-5"><dt class="role">{t}</dt><dd class="m-0 mt-3 text-ink-2">{d}</dd></div>
+      {/each}
+    </dl>
+  </section>
+  {/if}
 </div>

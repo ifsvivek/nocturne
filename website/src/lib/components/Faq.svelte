@@ -3,14 +3,16 @@
   import { shipped } from "#lib/site.js";
   // 0.5.2 answers replace the 0.5 ones only once VERSION reaches 0.5.2 (no mark ahead of time).
   const v052 = shipped("0.5.2");
+  const v060 = shipped("0.6.0");
   // [question, answer, version that ships it (marked until VERSION reaches it)]
+  const flatpak = shipped("0.6.0") ? "Flatpak is not available yet" : "Flatpak is being evaluated";
   const items = [
     ["Do I need a Jellyfin server?", "No. NOCTURNE works with local folders alone, with one or several Jellyfin servers, or with both. The first run asks which, and Settings, Sources changes it later.", "0.3.0"],
     ["Can I use several servers?", "Yes, each with its own account. Their libraries join one catalog, a source filter shows one at a time, and when one server is offline the others keep working.", "0.3.0"],
     ["What if the same film is on two sources?", "It shows once. Copies are merged only when they share an IMDb, TMDB or TVDB id, and the others are listed as alternate sources on the detail page. Titles that merely look alike stay separate.", "0.3.0"],
     ["Does it change my files?", "Never. Local folders are read in place: nothing is renamed, moved, modified or deleted. The index, resume points and your edits live in NOCTURNE's own data folder.", "0.3.0"],
     ["Is this an official Jellyfin app?", "No. NOCTURNE is an independent, unofficial project. It is not affiliated with, endorsed by or sponsored by the Jellyfin project, and uses the name only to say which server it works with."],
-    ["Which systems does it run on?", "Linux: signed repositories for Arch, Debian 13 and Ubuntu 24.04 or newer, and Fedora, and a tarball. Windows (x64) and macOS (Apple Silicon) have preview builds on the GitHub release, unsigned, tried on a real PC and Mac, " + (v052 ? "with video inside the app window in the Windows preview and in mpv's own window in the macOS preview" : "with video in mpv's own window") + "; there is an experimental AppImage on the GitHub release, and Flatpak is being evaluated. Linux needs a Wayland session: X11 sessions are not supported.", "0.4.0"],
+    ["Which systems does it run on?", "Linux: signed repositories for Arch, Debian 13 and Ubuntu 24.04 or newer, and Fedora, and a tarball. Windows (x64) and macOS (Apple Silicon) have preview builds on the GitHub release, unsigned, tried on a real PC and Mac, " + (v052 ? "with video inside the app window in the Windows preview and in mpv's own window in the macOS preview" : "with video in mpv's own window") + "; there is an experimental AppImage on the GitHub release, and " + flatpak + ". Linux needs a Wayland session: X11 sessions are not supported.", "0.4.0"],
     ["What needs permission to change my servers?", "Playback progress sync, watched and favourite flags, your own password, your home sections on a server and every admin action. All of them sit behind one setting, Allow NOCTURNE to change data on the server, which is off by default."],
     ["Where are my credentials stored?", "Server sign-in tokens go into the system keyring (Secret Service), never into a file. Settings and remembered servers (URLs only) are plain files under your config directory. Without a running Secret Service, NOCTURNE cannot remember a sign-in."],
     ["Does it send data anywhere?", "Only to the servers you add and to the online services you turn on (details, subtitles, Trakt)" + (v052 ? ", the addresses a theme you add loads its imports, fonts and pictures from" : "") + ", plus one daily request to this site asking for the newest version, which Settings, Updates turns off. There is no telemetry, usage statistics or crash reporting.", "0.4.0"],
@@ -22,6 +24,11 @@
       ["Can I change how it looks?", "Yes, with a CSS theme in Settings, Themes: colours, a font, card shape and size, carousel or grid rows, the hero and header and the order of Home's sections, globally or per server. NOCTURNE draws it natively, so it styles NOCTURNE's own parts; a Jellyfin web theme applies only partly.", "0.5.0"],
       ["How does it update?", "Installed from a repository, with your system's updates; NOCTURNE shows the pacman, apt or dnf command when a new version is out. A per-user install updates itself in the app after checking the download's signature.", "0.5.0"],
     ]),
+    ...(v060 ? [
+      ["Can I request movies?", "Yes, if you run a Seerr server (Jellyseerr and Overseerr work too). Sign in to it in Settings, turn on Allow requests, and a title that is not in your library gets a Request button. The request goes to the Seerr server, not to a media server, and what happens next is up to Seerr. 4K requests are not offered yet."],
+      ["Can I use VLC?", "Yes. If VLC is installed, Settings offers it as the player, next to the in-window player and an mpv window. NOCTURNE controls VLC over a local, password-protected interface, so your place, progress sync, Trakt and Stop keep working. VLC's own menus handle subtitles and audio."],
+      ["Can I play a YouTube link?", "A pasted address plays through yt-dlp, which supports YouTube and many other sites. It runs on your own computer, is optional and is never bundled with NOCTURNE. Make sure you have the right to watch what you open, and to keep what you save."],
+    ] : []),
     ["Does it work with other media servers?", "Not yet. Jellyfin is the first server type; local folders need no server at all."],
   ];
 </script>

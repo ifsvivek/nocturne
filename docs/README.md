@@ -8,13 +8,14 @@
 - [Writes](WRITES.md): which actions change data on a server, and the switches that gate them.
 - [HDR](HDR.md): how HDR video is handled and what an HDR setup needs.
 - [Trakt](TRAKT.md): connecting a Trakt account.
+- [Seerr requests](WRITES.md): requests go to your Seerr server only, behind their own switch (see the Seerr row; there is no separate page).
 - [Metadata](METADATA.md): online metadata providers for local media, and their credits.
 - [Watch together](syncplay.md): SyncPlay groups.
 - [Buffering](buffering.md): network buffering settings.
 
 ## Project
 
-- [Roadmap](ROADMAP.md): what is planned.
+- [Roadmap](ROADMAP.md): what is planned. Flatpak was evaluated for 0.6 and is not shipped; the report is [dev/FLATPAK.md](dev/FLATPAK.md).
 - [Changelog](../CHANGELOG.md): what changed in each release.
 - [Security](../SECURITY.md): reporting a vulnerability.
 - [Contributing](../CONTRIBUTING.md): building, testing and the ground rules.
