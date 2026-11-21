@@ -859,6 +859,29 @@ impl Source {
         self.media(self.client.next_up(&self.user, 12).await)
     }
 
+    /// Episodes this user's server lists as upcoming (premiere from yesterday on), up to 300.
+    pub async fn upcoming(&self) -> Result<Vec<crate::calendar::Upcoming>, Failed> {
+        let mut out = vec![];
+        for start in [0, 100, 200] {
+            let r = self
+                .client
+                .upcoming(&self.user, start, 100)
+                .await
+                .map_err(|_| Failed)?;
+            let n = r.items.len();
+            out.extend(
+                r.items
+                    .iter()
+                    .filter(|i| i.kind == "Episode")
+                    .map(|i| crate::calendar::Upcoming::from_item(self.origin, i)),
+            );
+            if n < 100 {
+                break;
+            }
+        }
+        Ok(out)
+    }
+
     /// The episode to watch next in one series, if any.
     pub async fn series_next_up(&self, series: &str) -> Result<Vec<Media>, Failed> {
         self.media(self.client.series_next_up(&self.user, series).await)
