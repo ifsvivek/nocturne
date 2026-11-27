@@ -2892,6 +2892,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nocturne-arr"
+version = "0.6.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "nocturne-core"
 version = "0.6.0"
 dependencies = [
@@ -2899,6 +2910,7 @@ dependencies = [
  "base64 0.23.1",
  "getrandom 0.4.3",
  "libc",
+ "nocturne-arr",
  "nocturne-jellyfin",
  "nocturne-jellyfin-admin",
  "nocturne-jellyfin-user",

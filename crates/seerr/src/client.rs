@@ -300,6 +300,32 @@ impl SeerrClient {
         .await
     }
 
+    /// A browse list (`/discover/...`): trending, popular or upcoming movies and shows, optionally
+    /// narrowed by TMDB genre id and release year. Same result shape as a search; trending also lists people.
+    pub async fn discover(&self, d: &DiscoverQuery) -> Result<SearchPage> {
+        let (path, date) = match d.list {
+            DiscoverList::Trending => ("/discover/trending", None),
+            DiscoverList::Movies => (
+                "/discover/movies",
+                Some(("primaryReleaseDateGte", "primaryReleaseDateLte")),
+            ),
+            DiscoverList::Tv => ("/discover/tv", Some(("firstAirDateGte", "firstAirDateLte"))),
+            DiscoverList::UpcomingMovies => ("/discover/movies/upcoming", None),
+            DiscoverList::UpcomingTv => ("/discover/tv/upcoming", None),
+        };
+        let mut q = vec![("page", d.page.max(1).to_string())];
+        if let Some((gte, lte)) = date {
+            if let Some(g) = d.genre {
+                q.push(("genre", g.to_string()));
+            }
+            if let Some(y) = d.year {
+                q.push((gte, format!("{y}-01-01")));
+                q.push((lte, format!("{y}-12-31")));
+            }
+        }
+        self.get(path, &q).await
+    }
+
     pub async fn detail(&self, kind: Kind, tmdb_id: u64) -> Result<Detail> {
         self.get(&format!("/{}/{tmdb_id}", kind.as_str()), &[])
             .await

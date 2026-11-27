@@ -30,7 +30,12 @@ pub fn can_request(perms: u64, kind: Kind) -> bool {
 /// What a title's (or a request's) state is called on a card or a page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Badge {
+    /// Asked for and waiting for approval (Seerr) .
+    Pending,
     Requested,
+    /// In the download queue of Radarr / Sonarr.
+    Queued,
+    Downloading,
     Approved,
     Declined,
     Failed,
@@ -41,7 +46,10 @@ pub enum Badge {
 impl Badge {
     pub fn label(self) -> &'static str {
         match self {
+            Self::Pending => "Pending",
             Self::Requested => "Requested",
+            Self::Queued => "Queued",
+            Self::Downloading => "Downloading",
             Self::Approved => "Approved",
             Self::Declined => "Declined",
             Self::Failed => "Failed",
