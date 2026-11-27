@@ -131,7 +131,10 @@ impl Rig {
     async fn gw_post(&self, path: &str) -> u16 {
         self.http
             .post(format!("{}{path}", self.gw))
-            .header("Authorization", format!(r#"MediaBrowser Token="{}""#, self.gw_token))
+            .header(
+                "Authorization",
+                format!(r#"MediaBrowser Token="{}""#, self.gw_token),
+            )
             .send()
             .await
             .unwrap()
@@ -144,7 +147,10 @@ impl Rig {
         let list: Vec<Value> = self
             .http
             .get(format!("{}/Sessions", self.gw))
-            .header("Authorization", format!(r#"MediaBrowser Token="{}""#, self.gw_token))
+            .header(
+                "Authorization",
+                format!(r#"MediaBrowser Token="{}""#, self.gw_token),
+            )
             .send()
             .await
             .unwrap()
@@ -159,10 +165,14 @@ impl Rig {
 async fn device_socket(r: &Rig) -> WebSocketStream<reqwest::Upgraded> {
     let resp = r
         .http
-        .get(format!(
-            "{}/socket?api_key={}&deviceId=gw-live-device",
-            r.server, r.device_token
-        ))
+        .get(format!("{}/socket", r.server))
+        .header(
+            "Authorization",
+            format!(
+                r#"MediaBrowser Client="Live Device", Device="Rig", DeviceId="gw-live-device", Version="1", Token="{}""#,
+                r.device_token
+            ),
+        )
         .header("Connection", "Upgrade")
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
@@ -181,9 +191,15 @@ async fn a_playstate_command_reaches_a_device_on_the_server() {
     let mut sock = device_socket(&r).await;
     let s = r.device_session().await.expect("the device is listed");
     assert_eq!(s["SupportsRemoteControl"], true);
-    assert_eq!(s["UserName"], "nocturne", "the server's user name is not shown");
+    assert_eq!(
+        s["UserName"], "nocturne",
+        "the server's user name is not shown"
+    );
     let id = s["Id"].as_str().unwrap();
-    assert_eq!(r.gw_post(&format!("/Sessions/{id}/Playing/Pause")).await, 204);
+    assert_eq!(
+        r.gw_post(&format!("/Sessions/{id}/Playing/Pause")).await,
+        204
+    );
     let got = tokio::time::timeout(Duration::from_secs(8), async {
         while let Some(Ok(m)) = sock.next().await {
             if let Message::Text(t) = m {
@@ -200,11 +216,17 @@ async fn a_playstate_command_reaches_a_device_on_the_server() {
     assert_eq!(got["Data"]["Command"], "Pause");
     // A seek carries its position.
     assert_eq!(
-        r.gw_post(&format!("/Sessions/{id}/Playing/Seek?SeekPositionTicks=600000000")).await,
+        r.gw_post(&format!(
+            "/Sessions/{id}/Playing/Seek?SeekPositionTicks=600000000"
+        ))
+        .await,
         204
     );
     // A command outside the allow-list never leaves the gateway.
-    assert_eq!(r.gw_post(&format!("/Sessions/{id}/Command/Shutdown")).await, 400);
+    assert_eq!(
+        r.gw_post(&format!("/Sessions/{id}/Command/Shutdown")).await,
+        400
+    );
     r.st.stop();
 }
 
@@ -212,9 +234,13 @@ async fn a_playstate_command_reaches_a_device_on_the_server() {
 #[ignore = "needs the throwaway Jellyfin (scripts/test-jellyfin.sh start)"]
 async fn with_server_changes_off_the_command_is_refused_and_nothing_is_sent() {
     let r = rig(false).await;
+    let _sock = device_socket(&r).await;
     let s = r.device_session().await.expect("the device is listed");
     assert_eq!(s["SupportsRemoteControl"], false, "listed read-only");
     let id = s["Id"].as_str().unwrap();
-    assert_eq!(r.gw_post(&format!("/Sessions/{id}/Playing/Pause")).await, 403);
+    assert_eq!(
+        r.gw_post(&format!("/Sessions/{id}/Playing/Pause")).await,
+        403
+    );
     r.st.stop();
 }
