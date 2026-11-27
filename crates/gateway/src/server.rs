@@ -112,17 +112,6 @@ impl Routes {
             .router
             .fallback(|req: Request| async move {
                 let path = req.uri().path();
-                if req.method() == axum::http::Method::GET
-                    && (path == "/" || path.to_ascii_lowercase().starts_with("/web"))
-                {
-                    // A browser opened the address: say what this is instead of a bare 404 (there is no web client).
-                    return (
-                        StatusCode::OK,
-                        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-                        "<!doctype html><title>NOCTURNE gateway</title><p>The NOCTURNE gateway is running. Add this address as a server in a Jellyfin app; there is no web page here.</p>",
-                    )
-                        .into_response();
-                }
                 // Path only (never the query, which can carry a token): shows which routes real clients still miss.
                 crate::glog!("404 {} {}", req.method(), path);
                 StatusCode::NOT_FOUND.into_response()
@@ -167,6 +156,7 @@ pub fn build(state: &State) -> (Router, Vec<RouteInfo>) {
     let r = crate::userdata::routes(r);
     let r = crate::sessions::routes(r);
     let r = crate::ws::routes(r);
+    let r = crate::web::routes(r);
     let (router, table) = r.finish();
     // Jellyfin routes ignore case (`/system/info/public` works against a real server and clients use it): the path is put into the registered spelling before routing.
     let paths: std::sync::Arc<[&'static str]> = table.iter().map(|t| t.path).collect();

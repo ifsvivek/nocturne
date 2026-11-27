@@ -314,6 +314,11 @@ async fn routes_are_gated() {
         "/QuickConnect/Enabled",
         "/QuickConnect/Initiate",
         "/QuickConnect/Connect",
+        // The web client's static files (the phone apps load it before signing in).
+        "/",
+        "/web",
+        "/web/",
+        "/web/{*path}",
     ];
     for p in &public {
         assert!(
@@ -368,13 +373,12 @@ async fn unknown_routes_are_404_even_with_a_token() {
     let token = g.login().await;
     for p in [
         "/Library/Refresh",
-        "/Users",
         "/System/Configuration",
         "/Plugins",
         "/ScheduledTasks",
         "/Devices",
         "/Startup/User",
-        "/Items/../Users",
+        "/Items/../Plugins",
     ] {
         for t in [None, Some(&token)] {
             let mut r = g.http.get(g.url(p));

@@ -41,4 +41,5 @@ pub mod state;
 pub mod stream;
 pub mod tls;
 pub mod userdata;
+pub mod web;
 pub mod ws;

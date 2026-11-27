@@ -909,6 +909,12 @@ pub fn routes(r: Routes) -> Routes {
             post(qc_login),
         )
         .add("/Users/Me", Access::Auth, get(me))
+        // A non-admin on a real server gets a list with only themselves; clients call it.
+        .add(
+            "/Users",
+            Access::Auth,
+            get(|St(st): St<State>| async move { Json(vec![user_dto(&st)]).into_response() }),
+        )
         .add("/Users/{userId}", Access::Auth, get(user_by_id))
         .add("/Sessions/Logout", Access::Auth, post(logout))
 }
