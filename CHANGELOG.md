@@ -4,6 +4,23 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-27
+
+NOCTURNE can now serve all your servers and local folders to Jellyfin apps on your phone or TV as one server, and can send requests to Radarr and Sonarr without a Seerr server.
+
+### Highlights
+- The gateway: one Jellyfin-compatible address over every server and local folder. Jellyfin apps browse one merged library, play from whichever server has the copy they pick, and (when you allow it) see and control the players on all your servers. It runs on this computer only by default, keeps every server token to itself, and can keep running after NOCTURNE is closed.
+- Requests in the header's top right, with a Discover view of trending, popular and upcoming movies and shows, search and filters.
+- Requests without a Seerr server: a list kept on your computer that turns Available when a source has the title, optionally sent to your own Radarr and Sonarr after a confirmation.
+
+### Fixed
+- Themes that shrink Search to an icon no longer show the Requests button as a second search icon.
+
+### Known limitations
+- The gateway is Linux only for now (not in the Windows and macOS previews), and the official phone and TV apps have not been tried by the project yet; report what your app does.
+- A change made directly on a server reaches apps connected to the gateway after a short delay, not at once.
+- The gateway does not transcode local files (direct play only) and has one sign-in for all devices.
+
 ### Added
 - Gateway foundation (0.7): the new optional `nocturne-gateway` binary (axum, off unless started) with the allow-list router, gateway sign-in (one user, Argon2id passphrase, revocable device tokens, Quick Connect), the id map, binding modes with bring-your-own TLS, a control socket for the app, and UDP discovery in local-network mode. Library, streaming and remote-control routes follow. The Linux packages ship the second binary.
 - Gateway remote control (0.7): a merged session list across your servers and the apps signed in to the gateway, and commands (play, pause, seek, next, volume, tracks, messages) delivered to those apps over the gateway's own WebSocket or forwarded to the device's own server. Off by default behind Settings > Gateway > Allow remote control; commands to a device on a real server also need server changes on, only a fixed list of player commands is accepted, at most 20 per second per device. The `/socket` WebSocket pushes session changes only while a client listens and coalesces library and watched-state news.
