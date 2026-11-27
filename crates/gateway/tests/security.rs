@@ -1,4 +1,5 @@
-//! Security review tests (docs/dev/GATEWAY_PLAN.md section 10): what a hostile client or a hostile upstream can and cannot do. In process, loopback only, a mock server for the upstream.
+//! Security review tests (docs/dev/GATEWAY_PLAN.md section 10): what a hostile client or a hostile upstream can and cannot do. In process, loopback only, a mock server for the upstream. Unix only (local-file and socket checks use unix paths and permissions; the gateway ships on Linux).
+#![cfg(unix)]
 use axum::Router;
 use axum::extract::{Request, State as AxState};
 use axum::http::{HeaderValue, StatusCode as Sc};

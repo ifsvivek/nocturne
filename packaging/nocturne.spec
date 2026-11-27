@@ -36,7 +36,6 @@ with the Jellyfin project.
 
 %install
 install -Dm755 %{binpath} %{buildroot}%{_bindir}/nocturne
-%{_bindir}/nocturne-gateway
 install -Dm755 %{gwpath} %{buildroot}%{_bindir}/nocturne-gateway
 install -Dm644 packaging/io.github.ifsvivek.nocturne.desktop -t %{buildroot}%{_datadir}/applications
 for s in 48 128 256 512; do

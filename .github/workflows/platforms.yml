@@ -179,7 +179,7 @@ jobs:
           if-no-files-found: error
       # Last on purpose: a test failure must not hide the packaging result above.
       - name: Test
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked --exclude nocturne-gateway
 
   macos:
     if: inputs.targets == 'both' || inputs.targets == 'macos'
@@ -254,4 +254,4 @@ jobs:
           retention-days: 7
           if-no-files-found: error
       - name: Test
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked --exclude nocturne-gateway

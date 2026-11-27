@@ -806,7 +806,8 @@ async fn remote_mode_will_not_start_without_a_certificate() {
     assert!(e.to_string().contains("certificate"), "{e}");
 }
 
-/// Remote mode with a real certificate (made with the `openssl` binary; skipped where it is missing): HTTPS works, plain HTTP does not, HSTS is set.
+/// Remote mode with a real certificate (made with the `openssl` binary; skipped where it is missing): HTTPS works, plain HTTP does not, HSTS is set. Linux only: the gateway ships there, and macOS's LibreSSL certificate is refused by the client.
+#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn remote_mode_serves_https() {
     let dir = tempfile::tempdir().unwrap();
