@@ -7,6 +7,7 @@
     ["Your files", "Indexed where they are. NOCTURNE never renames, moves, modifies or deletes a local file; its index, resume points and your edits live in its own data folder.", "0.3.0"],
     ["Server writes", "One setting, off by default, gates every change: playback progress, watched and favourite flags, your own password, your home sections on a server and all admin actions."],
     ...(shipped("0.6.0") ? [["Requests", "A request goes only to your Seerr server, after a confirmation and only with Allow requests on, which is off by default. It is not a change to a media server and does not use the server-changes setting."]] : []),
+    ...(shipped("0.7.0") ? [["Gateway", "Off by default. When on, it listens on this computer only until you choose the local network, and over the internet only with your own HTTPS certificate. No server token, address or file path ever reaches an app, apps get their own revocable sign-in, and with server changes off a request that would change a server is refused. Remote control is a separate switch, also off. Radarr and Sonarr keys stay in the keyring and every request to them asks first."]] : []),
     ["Several servers", "Each server keeps its own sign-in, and a change goes only to the server the item came from.", "0.3.0"],
     ["Admin actions", "Also need an administrator account and a confirmation dialog."],
     ["Sign-in", "Every server token lives in the system keyring (Secret Service), never in a file."],

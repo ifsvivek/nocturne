@@ -9,6 +9,7 @@
       "Other external players: VLC and mpv only for now; MPC-HC for the Windows preview and IINA for the macOS preview are not supported yet",
       "Requests for 4K versions, and Seerr's server, profile and folder choices",
     ] : []),
+    ...(shipped("0.7.0") ? ["The gateway is Linux only for now: it is not in the Windows and macOS previews"] : []),
     "X11 sessions: from 0.5, Linux needs Wayland",
     "Servers other than Jellyfin",
     "Book reading and audiobook playback",
@@ -31,6 +32,10 @@
     ]),
     ...(shipped("0.6.0") ? [
       "Seerr requests, the Calendar and the player choice were tried against throwaway servers and a demo library, not against a long-running setup.",
+    ] : []),
+    ...(shipped("0.7.0") ? [
+      "The gateway was tried with a Jellyfin client library and a command-line player, not yet with the official phone and TV apps. Transcoding of local files is not offered, so they must direct play.",
+      "A change made directly on a server reaches apps connected to the gateway after a short delay, not at once.",
     ] : []),
     "Couch mode has not been tried with a real gamepad or on a TV. Remote control was tried through the server, not yet from a phone app.",
     "The .deb and .rpm install from the apt and dnf repositories in clean containers, not yet on a full desktop install. On Ubuntu 24.04, video plays in an external mpv window.",
