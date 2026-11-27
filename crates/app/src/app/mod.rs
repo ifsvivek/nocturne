@@ -17,6 +17,7 @@ mod downloads;
 pub(crate) mod engine_ui;
 mod extras;
 mod folders;
+mod gateway;
 mod header;
 #[cfg(feature = "theme-engine")]
 mod header_tree;
@@ -276,6 +277,8 @@ pub struct App {
     folders: Option<folders::Folders>,
     online: online::State,
     trakt: trakt::State,
+    /// The optional gateway helper: child process, last status, Settings > Gateway.
+    gw: gateway::State,
     /// Seerr: sign-in, requests, the Requests page.
     rq: requests::State,
     dl: downloads::State,
@@ -429,6 +432,7 @@ impl App {
             folders: None,
             online: Default::default(),
             trakt: Default::default(),
+            gw: Default::default(),
             rq: Default::default(),
             dl: downloads::State::new(&catalog::app_data_dir()),
             smart: smart::State::load(),
@@ -586,6 +590,10 @@ impl App {
         // Every message redraws the window, so the polling tick runs only while something needs it.
         if let Some(d) = self.tick_period() {
             subs.push(iced::time::every(d).map(Message::Tick));
+        }
+        // The gateway status timer exists only while the page is open or the gateway is on.
+        if let Some(d) = self.gateway_poll_period() {
+            subs.push(iced::time::every(d).map(|_| Message::Gateway(gateway::Msg::Poll)));
         }
         subs.push(self.sp.subscription().map(Message::SyncPlay));
         if self.settings.couch != nocturne_core::settings::CouchMode::Off {
@@ -1069,6 +1077,7 @@ impl App {
             Message::Folder(m) => self.folder_msg(m),
             Message::Online(m) => self.online_msg(m),
             Message::Trakt(m) => self.trakt_msg(m),
+            Message::Gateway(m) => self.gateway_msg(m),
             Message::Requests(m) => self.rq_msg(m),
             Message::Smart(m) => self.smart_msg(m),
             Message::Calendar(m) => self.cal_msg(m),
@@ -1210,7 +1219,7 @@ impl App {
             Message::DiskReady(d) => {
                 self.disk = d;
                 self.apply_disk();
-                Task::batch([self.trakt_load(), self.rq_load()])
+                Task::batch([self.trakt_load(), self.rq_load(), self.gateway_start()])
             }
             Message::Noop => Task::none(),
         }
@@ -1297,6 +1306,10 @@ impl App {
     /// updates the one it already has: an account switch), gets a slot using this token, and Home shows.
     fn activate(&mut self, url: String, s: Session) -> Task<Message> {
         let url = url.trim_end_matches('/').to_string();
+        if self.gateway_owns(&s.server_id) {
+            self.toast("That address is NOCTURNE's own gateway, which already shows your sources. It cannot be added as a source.");
+            return Task::none();
+        }
         let id = self.sources.upsert_server(&url, &s.user_id, &s.user_name);
         // ponytail: a small atomic file write on the UI thread; move to a task if it ever shows up in a trace.
         if self.sources.save().is_err() {

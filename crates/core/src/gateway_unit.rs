@@ -15,9 +15,15 @@ pub fn unit_dir() -> Option<PathBuf> {
 
 /// A path as one `ExecStart=` / `ReadWritePaths=` word: quoted, with the characters systemd would expand escaped.
 fn quote(p: &Path) -> io::Result<String> {
-    let s = p.to_str().filter(|s| !s.contains(['\n', '\r', '\0'])).ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "path is not usable in a unit file")
-    })?;
+    let s = p
+        .to_str()
+        .filter(|s| !s.contains(['\n', '\r', '\0']))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "path is not usable in a unit file",
+            )
+        })?;
     Ok(format!(
         "\"{}\"",
         s.replace('\\', "\\\\")
@@ -99,7 +105,11 @@ pub fn enable(exe: &Path) -> io::Result<()> {
     let dir = unit_dir().ok_or_else(|| io::Error::other("no user config directory"))?;
     let data = nocturne_session::paths::data_dir().map(|d| d.join("gateway"));
     let cache = nocturne_session::paths::cache_dir();
-    let writable: Vec<&Path> = data.iter().chain(cache.iter()).map(PathBuf::as_path).collect();
+    let writable: Vec<&Path> = data
+        .iter()
+        .chain(cache.iter())
+        .map(PathBuf::as_path)
+        .collect();
     write_unit(&dir, exe, &writable)?;
     systemctl(&["daemon-reload"])?;
     systemctl(&["enable", "--now", UNIT_NAME])
@@ -150,7 +160,12 @@ mod tests {
         // One section each, in order, and nothing that widens access.
         let at = |s: &str| t.find(s).unwrap();
         assert!(at("[Unit]") < at("[Service]") && at("[Service]") < at("[Install]"));
-        for never in ["ProtectSystem=no", "NoNewPrivileges=no", "PrivateNetwork", "User=root"] {
+        for never in [
+            "ProtectSystem=no",
+            "NoNewPrivileges=no",
+            "PrivateNetwork",
+            "User=root",
+        ] {
             assert!(!t.contains(never));
         }
     }
@@ -170,8 +185,16 @@ mod tests {
         let p = write_unit(&dir, Path::new("/a/nocturne-gateway"), &[]).unwrap();
         assert_eq!(p, dir.join(UNIT_NAME));
         write_unit(&dir, Path::new("/b/nocturne-gateway"), &[]).unwrap();
-        assert!(std::fs::read_to_string(&p).unwrap().contains("/b/nocturne-gateway"));
-        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "no temp file left");
+        assert!(
+            std::fs::read_to_string(&p)
+                .unwrap()
+                .contains("/b/nocturne-gateway")
+        );
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            1,
+            "no temp file left"
+        );
         assert!(remove_unit(&dir).unwrap());
         assert!(!remove_unit(&dir).unwrap());
     }

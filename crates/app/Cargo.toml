@@ -40,6 +40,8 @@ tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time"] }
 image = { version = "0.25.1", default-features = false, features = ["png", "jpeg", "webp"] }
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
 gilrs = "0.11.2"
+# The gateway address as a QR code (Settings > Gateway); encoder only, no image or SVG output.
+qrcode = { version = "0.15", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

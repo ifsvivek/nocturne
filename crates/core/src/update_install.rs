@@ -605,7 +605,10 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&g).unwrap(), "new gateway");
         {
             use std::os::unix::fs::PermissionsExt;
-            assert_eq!(std::fs::metadata(&g).unwrap().permissions().mode() & 0o111, 0o111);
+            assert_eq!(
+                std::fs::metadata(&g).unwrap().permissions().mode() & 0o111,
+                0o111
+            );
         }
         // An installed one is replaced and the old one kept until the next start, like the app itself.
         std::fs::write(&g, "old gateway").unwrap();
@@ -633,7 +636,10 @@ mod tests {
         assert!(!bin.join("nocturne-gateway").exists());
         std::fs::write(bin.join("nocturne-gateway"), "mine").unwrap();
         install(InstallKind::PerUser, &tarball(d.path(), false), &exe).unwrap();
-        assert_eq!(std::fs::read_to_string(bin.join("nocturne-gateway")).unwrap(), "mine");
+        assert_eq!(
+            std::fs::read_to_string(bin.join("nocturne-gateway")).unwrap(),
+            "mine"
+        );
     }
 
     #[test]
