@@ -30,6 +30,12 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 debug = false
 
+# Argon2 (the gateway password) is unusably slow unoptimised: a sign-in takes seconds in tests.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+
 # QA and package-test builds (scripts set PROFILE_FLAGS to use it): release code, but thin LTO and 16 codegen units so the long single-core link phase disappears. Published artifacts use `release`.
 [profile.fast-release]
 inherits = "release"

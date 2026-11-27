@@ -209,6 +209,8 @@ pub struct Status {
     pub sources: Vec<SourceStatus>,
     /// The first-start passphrase has not been fetched yet ([`Request::RevealPassword`]).
     pub password_unseen: bool,
+    /// Why the listeners are down (port taken, bad certificate), if they are.
+    pub error: Option<String>,
     pub uptime_secs: u64,
 }
 
