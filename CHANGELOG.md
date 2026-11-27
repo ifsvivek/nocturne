@@ -4,6 +4,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Added
+- Gateway foundation (0.7): the new optional `nocturne-gateway` binary (axum, off unless started) with the allow-list router, gateway sign-in (one user, Argon2id passphrase, revocable device tokens, Quick Connect), the id map, binding modes with bring-your-own TLS, a control socket for the app, and UDP discovery in local-network mode. Library, streaming and remote-control routes follow. The Linux packages ship the second binary.
+
 ## [0.6.0] - 2026-11-21
 
 NOCTURNE can now play in VLC or an mpv window, shows what is airing next in a Calendar, sends requests to a Seerr server, and installs themes from a gallery.

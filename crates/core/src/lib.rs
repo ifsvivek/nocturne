@@ -17,6 +17,7 @@ pub mod download;
 pub mod dropdown;
 pub mod expand;
 pub mod folders;
+pub mod gateway;
 pub mod hdr;
 pub mod help;
 pub mod hero;

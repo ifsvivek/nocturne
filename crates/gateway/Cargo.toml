@@ -1,0 +1,45 @@
+[package]
+name = "nocturne-gateway"
+description = "Optional companion service: one Jellyfin-compatible address over every NOCTURNE source"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "nocturne_gateway"
+
+[[bin]]
+name = "nocturne-gateway"
+path = "src/main.rs"
+
+[dependencies]
+nocturne-core = { path = "../core" }
+nocturne-session = { path = "../session" }
+nocturne-jellyfin-user = { path = "../jellyfin-user" } # Session type of the stored logins
+# Minimal axum: HTTP/1 only, WebSocket upgrade, query and JSON extractors. No tracing, no form, no multipart, no macros.
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "ws", "query", "json"] }
+hyper = { version = "1", default-features = false, features = ["http1", "server"] }
+hyper-util = { version = "0.1", default-features = false, features = ["server", "tokio"] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "net", "time", "sync", "fs", "io-util", "signal", "macros"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "aws_lc_rs"] }
+rustls-pki-types = { version = "1", features = ["std"] }
+argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash", "std"] }
+sha2 = "0.10"
+getrandom = "0.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+toml = "1.2.1"
+libc = "0.2"
+
+[dev-dependencies]
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json"] }
+tempfile = "3.27.0"

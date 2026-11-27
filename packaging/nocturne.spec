@@ -1,4 +1,4 @@
-# RPM for Fedora, built in a fedora container by scripts/package-rpm.sh (Source0 is the tree tarball it makes). The binary is prebuilt on debian:stable by scripts/build-linux-bin.sh and passed as %{binpath}.
+# RPM for Fedora, built in a fedora container by scripts/package-rpm.sh (Source0 is the tree tarball it makes). The binaries are prebuilt on debian:stable by scripts/build-linux-bin.sh and passed as %{binpath} (app) and %{gwpath} (gateway companion).
 # libmpv is dlopen()ed, so rpm cannot detect it: every run-time library is listed by hand (docs/PACKAGING.md).
 %global debug_package %{nil}
 %global __os_install_post %{nil}
@@ -36,6 +36,8 @@ with the Jellyfin project.
 
 %install
 install -Dm755 %{binpath} %{buildroot}%{_bindir}/nocturne
+%{_bindir}/nocturne-gateway
+install -Dm755 %{gwpath} %{buildroot}%{_bindir}/nocturne-gateway
 install -Dm644 packaging/io.github.ifsvivek.nocturne.desktop -t %{buildroot}%{_datadir}/applications
 for s in 48 128 256 512; do
   install -Dm644 packaging/icons/nocturne-$s.png %{buildroot}%{_datadir}/icons/hicolor/${s}x${s}/apps/nocturne.png
@@ -48,6 +50,7 @@ install -Dm644 LICENSE THIRD_PARTY_NOTICES.md -t %{buildroot}%{_datadir}/license
 %license %{_datadir}/licenses/%{name}/LICENSE
 %{_datadir}/licenses/%{name}/THIRD_PARTY_NOTICES.md
 %{_bindir}/nocturne
+%{_bindir}/nocturne-gateway
 %{_datadir}/applications/io.github.ifsvivek.nocturne.desktop
 %{_datadir}/icons/hicolor/*/apps/nocturne.*
 %{_datadir}/metainfo/io.github.ifsvivek.nocturne.metainfo.xml
