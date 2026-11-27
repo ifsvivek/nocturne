@@ -30,7 +30,11 @@ Jellyfin layout mode is built (THEME_ENGINE_PLAN section 14; `app/jf`, `detail/j
 - Calendar (unreleased): verified on a throwaway demo server and a fake Trakt reply, not against a real Trakt account; in a server's own layout it shows the plain list page, not exercised against a live web client.
 - Live Trakt scrobble and import were verified in 0.4 against a real account; one-click connect with the built-in id is verified.
 
-## Next: 0.7
+## 0.7 in progress: the gateway
+
+Plan and decisions: [GATEWAY_PLAN.md](GATEWAY_PLAN.md). Done on the branch: the foundation (router, sign-in, ids, control socket, TLS, discovery), the merged session table with remote control and the `/socket` WebSocket (`crates/gateway/src/{sessions,ws}.rs`, tested in process with two native clients and with a mock server; live forwarding test in `crates/gateway/tests/live.rs`, throwaway server only), Settings > Gateway (`app/gateway.rs`, headless screenshots checked), the systemd user unit writer and the installer change that ships `nocturne-gateway` with updates. Open: a real phone or TV client, jellyfin-mpv-shim as a controllable device (not installed here), per-server views and the library routes (other worker).
+
+## Next after 0.7
 
 Add-ons (see [ROADMAP.md](../ROADMAP.md)); order and scope are the maintainer's call, nothing starts without a go-ahead. Small compatibility fixes listed in [ROADMAP.md](../ROADMAP.md) can go first.
 

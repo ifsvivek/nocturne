@@ -212,6 +212,7 @@ impl App {
                 .height(Length::Shrink);
             page = page.push(container(column![cell, rule()]).padding([0.0, t::page_pad()]));
         }
+        page = page.push(self.gateway_panel());
         // A readable measure: label and control stay within reach of each other on a wide window.
         scroll(page.max_width(1280.0).padding(Padding {
             top: t::header_h() + t::S8,
@@ -299,6 +300,10 @@ impl App {
 
     /// Make sure row `i` is inside the visible part of the page.
     fn reveal_row(&self, i: usize) -> Task<Message> {
+        // The last row is followed by the gateway status panel: End shows all of it.
+        if i + 1 == s::ROWS {
+            return operation::scroll_to(PAGE_ID, AbsoluteOffset { x: 0.0, y: 1e7 });
+        }
         let (top, bottom) = (row_top(i), row_top(i) + ROW_H);
         let (off, h) = (self.set_off, self.set_h);
         let y = if top < off + t::header_h() {
@@ -386,7 +391,11 @@ impl App {
             self.themes.set_remote(self.settings.remote_css);
             self.th_reapply();
         }
-        Task::batch([self.refresh_couch(), self.probe_monitor()])
+        Task::batch([
+            self.refresh_couch(),
+            self.probe_monitor(),
+            self.gateway_apply(),
+        ])
     }
 
     /// Open the drop-down of a multi-choice row (a toggle row is flipped instead).

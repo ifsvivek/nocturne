@@ -110,6 +110,11 @@ Administrator accounts only. The admin screens are view-only while server change
 - Packages: pacman, apt and dnf repositories, a tarball and an Arch PKGBUILD. Windows and macOS are unsigned previews. See [PLATFORMS.md](PLATFORMS.md).
 - Accessibility (partial): keyboard navigation and visible focus work; screen-reader support is limited by what Iced exposes.
 
+## Gateway (0.7, in progress)
+
+- Settings > Gateway starts and stops the optional `nocturne-gateway` helper, shows its status and address (Copy, QR code), the sign-in (a generated password shown once, Quick Connect approval) and the signed-in devices with Revoke. Off by default; with it off nothing runs. Modes: this computer only, local network (plain HTTP, private addresses only) or remote over HTTPS with your own certificate. "Keep running when NOCTURNE is closed" installs a systemd user service (Linux).
+- Remote control through the gateway (off by default): apps list the players of every signed-in server and of other gateway clients and send play, pause, seek, next, volume, track and message commands. Commands to a device on a real server also need server changes on. Checked in process and against a throwaway server, not yet from a phone app.
+
 ## Not implemented
 
 - Live TV and DVR, DLNA, being a cast target, gapless music: planned for 0.9 ([ROADMAP.md](ROADMAP.md)).

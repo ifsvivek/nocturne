@@ -14,6 +14,7 @@ can be tested without one.
 | `crates/player` | playback: `EmbeddedPlayer` (libmpv in a Wayland subsurface), `Player` (mpv child process over JSON IPC) and `VlcPlayer` (VLC child process over its loopback HTTP interface, `vlc.rs`). libmpv is `dlopen`ed (`mpv_ffi.rs`); `deps.rs` probes libmpv and the mpv binary and builds the install hint. No UI or Jellyfin dependencies | n/a |
 | `crates/core` | Everything UI-framework-free: settings, navigation, list / detail / admin / account state, the source layer (`source`, `backend`, `catalog`, `sources`, `merge`, `versions`), playback rules (`player_logic`, `video`, `sync`, `syncplay`, `player_mpris`), caches, image cache, blurhash, the tokio `bridge` | via the crates above |
 | `crates/local` | The local library: scan, naming rules, `.nfo` and sidecar metadata, optional `ffprobe` details, index, overrides, local resume state. Never writes to media folders. No UI dependencies | never |
+| `crates/gateway` | The optional companion binary `nocturne-gateway`: one Jellyfin-compatible address over every source (axum router with an allow-list, gateway sign-in, id map, merged sessions and remote control, `/socket`). The app starts it as a child (Settings > Gateway) and talks to it over a unix control socket; nothing links it. Off by default: with the switch off the process does not exist | yes, only the gated forwards of [WRITES.md](WRITES.md) |
 | `crates/app` | The Iced application. The only crate with UI code | via the crates above |
 
 `player`, `core`, `local` and the Jellyfin crates have no UI-framework dependency; `player` also has no Jellyfin dependency.
@@ -98,6 +99,10 @@ All pure logic is in `crates/core`, with the UI glue in `crates/app/src/app/`.
 ## 0.6 modules
 
 - `calendar.rs` + `app/calendar.rs`, `app/calendar_tree.rs`: the Calendar. Pure part (`core/calendar.rs`): civil-day arithmetic, ISO air-time parsing with the zone as a parameter, merging of each server's upcoming episodes (`Backend::upcoming`, a GET of `/Shows/Upcoming`, servers only) and the Trakt calendar (`Trakt::calendar`, read only) into dated entries marked on your server / airing soon / not on your servers, month, week and agenda ranges. The page is `View::Calendar` with state in `App::cal`, drawn as an element tree through `Which::Page` (classes `.calendar`, `.calendar-day`, `.calendar-entry`, ...); a server's own layout and `NOCTURNE_ENGINE_UI=0` use a plain list page. Home's optional "Coming this week" row is `HRow::Coming`.
+
+## Gateway (0.7)
+
+`crates/gateway` is a separate process so a network-facing listener cannot freeze the window and nothing runs when it is off ([dev/GATEWAY_PLAN.md](dev/GATEWAY_PLAN.md)). The protocol between the app and the process (status, reload, stop, devices, Quick Connect approval, password) and the gateway settings are pure types in `core/gateway.rs`; `app/gateway.rs` owns the child process, polls the control socket only while Settings is open or the gateway is on, and draws Settings > Gateway (QR code of the address through the `qrcode` crate, in the app only). "Keep running when NOCTURNE is closed" writes a systemd user unit (`core/gateway_unit.rs`, Linux only). `sessions.rs` and `ws.rs` in the gateway crate hold the merged session table and the `/socket` WebSocket: native sessions are driven over their socket, devices on real servers by a forwarded call gated as in [WRITES.md](WRITES.md). The self-updater installs `nocturne-gateway` next to `nocturne` when the archive has it. The gateway never creates a `Confirmed` or `UserConfirmed` token.
 
 ## Watch together (SyncPlay)
 

@@ -197,6 +197,9 @@ pub struct PendingCode {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Status {
     pub version: String,
+    /// The gateway's own Jellyfin `ServerId`: the app refuses a source with this id (it would loop back into the gateway).
+    #[serde(default)]
+    pub server_id: String,
     pub binding: Binding,
     pub tls: bool,
     /// Listening socket addresses, `ip:port`.

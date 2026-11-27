@@ -22,6 +22,7 @@ NOCTURNE is a native desktop media center written in Rust: one cinematic, search
 | `crates/player` | `EmbeddedPlayer` (libmpv in a Wayland subsurface) and `Player` (mpv child process over JSON IPC). libmpv is **loaded at run time** (`mpv_ffi.rs`); `deps.rs` probes libmpv / the mpv binary and gives per-distro install hints. No UI/Jellyfin deps. |
 | `crates/core` (`nocturne-core`) | UI-framework-free app logic: settings, navigation, media model (`source.rs`), caches, sync/reporting rules, player logic, admin/account state. Unit-tested without a window. |
 | `crates/local` (`nocturne-local`) | Local library: scanner, naming rules, index, metadata from `.nfo`/sidecars, overrides, local resume state. Never writes to media folders. |
+| `crates/gateway` (`nocturne-gateway`) | Optional companion process: one Jellyfin-compatible address over every source ([docs/dev/GATEWAY_PLAN.md](docs/dev/GATEWAY_PLAN.md)). Controlled from Settings > Gateway through `core/gateway.rs`; never links into the app. |
 | `crates/app` (`nocturne-app`, bin `nocturne`) | The Iced UI. Only crate with UI code. |
 
 Other directories: `docs/` (see below), `packaging/` (PKGBUILD, desktop/AppStream files, `install.sh`), `scripts/`, `website/` (SvelteKit static site, own README).
@@ -59,7 +60,7 @@ To run the app for testing, ALWAYS use `scripts/run-isolated.sh target/debug/noc
    [docs/WRITES.md](docs/WRITES.md).
 2. **`crates/jellyfin` never writes.** `crates/jellyfin/tests/readonly.rs` fails if a write verb appears in `src/`. Writes go in `jellyfin-user` or `jellyfin-admin`.
 3. **Local media is never modified.** `crates/local` opens media files read-only and never renames, moves or deletes them; it writes only its own index/state files under `$XDG_DATA_HOME/nocturne/`.
-4. **Confirmation tokens.** Destructive admin calls take `Confirmed`, minted only in the admin confirmation handler (`on_confirm`) after a dialog. The user's own password change takes `UserConfirmed`, minted only after its dialog in the account module. Never mint either elsewhere or in new UI shortcuts.
+4. **Confirmation tokens.** Destructive admin calls take `Confirmed`, minted only in the admin confirmation handler (`on_confirm`) after a dialog. The user's own password change takes `UserConfirmed`, minted only after its dialog in the account module. Never mint either elsewhere or in new UI shortcuts. `crates/gateway` never mints either: a remote command through the gateway only drives a player and its allow-list has no admin or confirmation action.
 5. **Never run anything that writes against a real server.** Writing tests use `TestServerGuard::connect()`, which refuses unless the URL comes from the file named by `NOCTURNE_JF_TEST_ENV`, is loopback port 8097, differs from the configured real server, and the server's data path is under `/tmp/`. Do not weaken or bypass it. Never type real credentials into an app window under test.
 6. **Never commit** credentials, tokens, `.env`, server addresses, personal media titles, personal paths, or screenshots/recordings of a personal library or desktop. Screenshots must come from a generated demo library. Never print token values in logs or test output (live tests report booleans and counts only).
 7. No force-push to shared branches. Do not publish releases, deploy the site, push, or change repository settings unless a maintainer asks.

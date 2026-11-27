@@ -246,6 +246,7 @@ impl App {
         }
         self.player = None;
         crate::timing::report();
+        self.gateway_shutdown();
         self.settings.save();
         crate::platform::remove_art_file();
         iced::exit()

@@ -310,6 +310,7 @@ impl State {
         let host = crate::server::lan_host(cfg.gw.binding);
         Status {
             version: nocturne_core::gateway::ADVERTISED_VERSION.into(),
+            server_id: self.users.server_id(),
             binding: cfg.gw.binding,
             tls: cfg.gw.tls(),
             listening: bound.iter().map(|a| a.to_string()).collect(),

@@ -463,23 +463,9 @@ const BODY_KEYS: [&str; 17] = [
     "SessionId",
 ];
 
-/// The one place request bodies are parsed: JSON whose top-level keys known to us are put into their canonical case (clients send `userId`, `itemId`; ASP.NET binds case-insensitively).
-/// Not an object or not JSON: `Value::Null`. To be replaced by the shared case-insensitive extractor.
+/// The one place request bodies are parsed: top-level keys known to us in their canonical case (clients send `userId`, `itemId`; ASP.NET binds case-insensitively), through the shared [`crate::jsonbody`].
 pub fn parse_body(raw: &[u8]) -> Value {
-    let Ok(Value::Object(m)) = serde_json::from_slice::<Value>(raw) else {
-        return Value::Null;
-    };
-    Value::Object(
-        m.into_iter()
-            .map(|(k, v)| {
-                let k = BODY_KEYS
-                    .iter()
-                    .find(|c| c.eq_ignore_ascii_case(&k))
-                    .map_or(k, |c| (*c).to_string());
-                (k, v)
-            })
-            .collect(),
-    )
+    crate::jsonbody::parse_canonical(raw, &BODY_KEYS)
 }
 
 #[cfg(test)]

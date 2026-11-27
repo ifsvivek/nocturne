@@ -1,6 +1,7 @@
 //! User settings: TOML at `$XDG_CONFIG_HOME/nocturne/settings.toml`, atomic write, versioned,
 //! never any secret (the login lives in the keyring). Every field has a default, so a missing,
 //! older or half-written file still loads.
+use crate::gateway::{Binding, GatewaySettings};
 use crate::hdr::HdrMode;
 use crate::libview::LibPrefs;
 use crate::video::{Installed, LANGUAGES, PlayerPref, PlayerPrefs, SubMode, language};
@@ -200,6 +201,8 @@ pub struct Settings {
     pub arr_requests: bool,
     pub radarr: ArrCfg,
     pub sonarr: ArrCfg,
+    /// The optional gateway companion (`nocturne-gateway`, docs/dev/GATEWAY_PLAN.md); the same `[gateway]` table is read by that process.
+    pub gateway: GatewaySettings,
 }
 
 /// Non-secret state of a Radarr or Sonarr connection (the API key is in the keyring, never here).
@@ -266,6 +269,7 @@ impl Default for Settings {
             arr_requests: false,
             radarr: ArrCfg::default(),
             sonarr: ArrCfg::default(),
+            gateway: GatewaySettings::default(),
         }
     }
 }
@@ -324,7 +328,7 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 36;
+pub const ROWS: usize = 44;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
 pub const PROFILE_ROW: usize = 22;
@@ -361,6 +365,15 @@ pub const RADARR_ROW: usize = 33;
 pub const SONARR_ROW: usize = 34;
 /// "Add requests to Radarr and Sonarr".
 pub const ARR_ALLOW_ROW: usize = 35;
+/// The Settings > Gateway rows (docs/dev/GATEWAY_PLAN.md section 6), last in the list.
+pub const GATEWAY_ROW: usize = 36;
+pub const GATEWAY_BINDING_ROW: usize = 37;
+pub const GATEWAY_PORT_ROW: usize = 38;
+pub const GATEWAY_CACHE_ROW: usize = 39;
+pub const GATEWAY_KEEP_ROW: usize = 40;
+pub const GATEWAY_REMOTE_ROW: usize = 41;
+pub const GATEWAY_VIEWS_ROW: usize = 42;
+pub const GATEWAY_ANNOUNCE_ROW: usize = 43;
 
 /// The "Trakt account" row: not a toggle, it opens the connect dialog.
 pub const TRAKT_ROW: usize = 19;
@@ -383,6 +396,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         PLAYER_ROW => Some("Video player"),
         COMING_ROW => Some("Calendar"),
         SEERR_ROW => Some("Requests"),
+        GATEWAY_ROW => Some("Gateway"),
         NATIVE_ROW => Some("Requests without Seerr"),
         _ => None,
     }
@@ -413,6 +427,25 @@ pub fn nav_row(sel: usize, key: &str) -> Option<usize> {
 
 /// Two plain sentences under the "Server changes" title.
 pub const WRITES_NOTE: &str = "When this is on, NOCTURNE can mark items watched, set favourites, report what you watch (if sync is on) and, for administrators, change server settings, always asking before anything destructive. When it is off, NOCTURNE only reads from your server and never changes anything on it.";
+
+const BINDINGS: [Binding; 3] = [Binding::Local, Binding::Lan, Binding::Remote];
+
+/// The systemd user service is the only "keep running" mechanism so far (launchd and a Windows login task come with those platforms).
+pub const fn keep_running_supported() -> bool {
+    cfg!(target_os = "linux")
+}
+
+const GATEWAY_PORTS: [u32; 4] = [8099, 8100, 8199, 18096];
+/// Gateway disk cache sizes in MiB; 0 is none.
+const GATEWAY_CACHE_MB: [u32; 4] = [0, 256, 1024, 4096];
+
+fn fmt_gw_cache(mb: u32) -> String {
+    match mb {
+        0 => "None".into(),
+        m if m % 1024 == 0 => format!("{} GiB", m / 1024),
+        m => format!("{m} MiB"),
+    }
+}
 
 const CACHE_MB: [u32; 5] = [128, 256, 512, 1024, 2048];
 /// Choices for the banner interval, seconds.
@@ -654,6 +687,50 @@ impl Settings {
                 "When on, a request made without Seerr is also added to your connected Radarr (movies) or Sonarr (shows), after you confirm it in the request dialog, and its status follows the service. Off until you turn it on; needs a connected service.",
                 onoff(self.arr_requests),
             ),
+            r(
+                "Gateway",
+                "One Jellyfin-compatible address over all your sources, for phone and TV apps. Off by default; when off nothing runs. Starts the nocturne-gateway helper while NOCTURNE is open.",
+                onoff(self.gateway.enabled),
+            ),
+            r(
+                "Allow connections from",
+                "This computer only (default), your local network (private addresses only, plain HTTP), or remote over HTTPS with your own certificate and key.",
+                self.gateway.binding.label().into(),
+            ),
+            r(
+                "Gateway port",
+                "8099 by default (8096 is Jellyfin's own). Other numbers can be set in settings.toml.",
+                self.gateway.port.to_string(),
+            ),
+            r(
+                "Gateway caching",
+                "Disk cache for images and small metadata answers, never for video. None by default.",
+                fmt_gw_cache(self.gateway.cache_mb),
+            ),
+            r(
+                "Keep running when NOCTURNE is closed",
+                "Installs a systemd user service so the gateway starts at login and survives closing the window. Linux only; off removes the service.",
+                if keep_running_supported() {
+                    onoff(self.gateway.keep_running)
+                } else {
+                    "Not available".into()
+                },
+            ),
+            r(
+                "Allow remote control",
+                "Lets apps list and control players across your servers through the gateway. Commands to a player on a real server also need server changes on above. Off by default.",
+                onoff(self.gateway.remote_control),
+            ),
+            r(
+                "Per-server library views",
+                "Show each server's libraries next to the combined Movies, Shows and Music views. Off by default.",
+                onoff(self.gateway.per_server_views),
+            ),
+            r(
+                "Announce on the local network",
+                "Answer the Jellyfin apps' automatic discovery (UDP 7359). Only in local network mode.",
+                onoff(self.gateway.announce),
+            ),
         ]
     }
 
@@ -701,6 +778,12 @@ impl Settings {
                 MOTION.iter().position(|(m, _)| *m == self.reduce_motion)?,
             ),
             HERO_INTERVAL_ROW => nums(&HERO_S, self.hero_interval_secs, fmt_secs),
+            GATEWAY_BINDING_ROW => (
+                BINDINGS.iter().map(|b| b.label().to_string()).collect(),
+                BINDINGS.iter().position(|b| *b == self.gateway.binding)?,
+            ),
+            GATEWAY_PORT_ROW => nums(&GATEWAY_PORTS, self.gateway.port.into(), |p| p.to_string()),
+            GATEWAY_CACHE_ROW => nums(&GATEWAY_CACHE_MB, self.gateway.cache_mb, fmt_gw_cache),
             PLAYER_ROW => {
                 let o = self.player_options();
                 (
@@ -745,6 +828,20 @@ impl Settings {
                     HERO_S.get(idx).copied().unwrap_or(self.hero_interval_secs)
             }
             COUCH_ROW => self.couch = COUCH.get(idx).map_or(self.couch, |(m, _)| *m),
+            GATEWAY_BINDING_ROW => {
+                self.gateway.binding = BINDINGS.get(idx).copied().unwrap_or(self.gateway.binding)
+            }
+            GATEWAY_PORT_ROW => {
+                if let Some(p) = GATEWAY_PORTS.get(idx) {
+                    self.gateway.port = *p as u16;
+                }
+            }
+            GATEWAY_CACHE_ROW => {
+                self.gateway.cache_mb = GATEWAY_CACHE_MB
+                    .get(idx)
+                    .copied()
+                    .unwrap_or(self.gateway.cache_mb)
+            }
             PLAYER_ROW => {
                 self.player = self
                     .player_options()
@@ -827,6 +924,22 @@ impl Settings {
             NATIVE_ROW => self.native_requests ^= true,
             RADARR_ROW | SONARR_ROW => {} // open the connect dialog (the app handles them)
             ARR_ALLOW_ROW => self.arr_requests ^= true,
+            GATEWAY_ROW => self.gateway.enabled ^= true,
+            GATEWAY_BINDING_ROW => {
+                let i = BINDINGS.iter().position(|b| *b == self.gateway.binding);
+                let i = (i.unwrap_or(0) as i32 + d).rem_euclid(BINDINGS.len() as i32) as usize;
+                self.gateway.binding = BINDINGS[i];
+            }
+            GATEWAY_PORT_ROW => {
+                self.gateway.port = step(&GATEWAY_PORTS, self.gateway.port.into(), 0, d) as u16
+            }
+            GATEWAY_CACHE_ROW => {
+                self.gateway.cache_mb = step(&GATEWAY_CACHE_MB, self.gateway.cache_mb, 0, d)
+            }
+            GATEWAY_KEEP_ROW if keep_running_supported() => self.gateway.keep_running ^= true,
+            GATEWAY_REMOTE_ROW => self.gateway.remote_control ^= true,
+            GATEWAY_VIEWS_ROW => self.gateway.per_server_views ^= true,
+            GATEWAY_ANNOUNCE_ROW => self.gateway.announce ^= true,
             _ => {}
         }
     }
@@ -1032,6 +1145,47 @@ mod tests {
         assert!(!s.seerr_requests && s.seerr == SeerrCfg::default());
         assert!(s.autoplay_next && !s.auto_skip_intro);
         assert_eq!(s.rows().len(), ROWS);
+    }
+
+    #[test]
+    fn gateway_rows_are_last_and_off_by_default() {
+        let mut s = Settings::default();
+        assert!(!s.gateway.enabled && !s.gateway.remote_control && !s.gateway.keep_running);
+        assert_eq!(GATEWAY_ANNOUNCE_ROW, ROWS - 1);
+        let rows = s.rows();
+        assert_eq!(rows.len(), ROWS);
+        assert_eq!(rows[GATEWAY_ROW].value, "Off");
+        assert_eq!(rows[GATEWAY_BINDING_ROW].value, "This computer only");
+        assert_eq!(rows[GATEWAY_PORT_ROW].value, "8099");
+        assert_eq!(rows[GATEWAY_CACHE_ROW].value, "None");
+        assert_eq!(head(GATEWAY_ROW), Some("Gateway"));
+        s.cycle(GATEWAY_ROW, 1);
+        s.cycle(GATEWAY_REMOTE_ROW, 1);
+        s.cycle(GATEWAY_VIEWS_ROW, 1);
+        s.cycle(GATEWAY_ANNOUNCE_ROW, 1);
+        assert!(s.gateway.enabled && s.gateway.remote_control && s.gateway.per_server_views);
+        assert!(!s.gateway.announce);
+        s.cycle(GATEWAY_BINDING_ROW, 1);
+        assert_eq!(s.gateway.binding, Binding::Lan);
+        s.choose(GATEWAY_BINDING_ROW, 2);
+        assert_eq!(s.gateway.binding, Binding::Remote);
+        s.cycle(GATEWAY_PORT_ROW, 1);
+        assert_eq!(s.gateway.port, 8100);
+        s.choose(GATEWAY_CACHE_ROW, 2);
+        assert_eq!(s.gateway.cache_mb, 1024);
+        assert_eq!(s.rows()[GATEWAY_CACHE_ROW].value, "1 GiB");
+        // A hand-edited port stays visible and selectable as its own entry.
+        s.gateway.port = 9000;
+        let (labels, cur) = s.choices(GATEWAY_PORT_ROW).unwrap();
+        assert_eq!((labels[cur].as_str(), labels.len()), ("9000", 5));
+        assert_eq!(s.choices(GATEWAY_ROW), None);
+        // Saved in the [gateway] table the gateway process reads; an older file without it keeps the defaults.
+        let t = toml::to_string(&s).unwrap();
+        assert!(t.contains("[gateway]") && t.contains("binding = \"remote\""));
+        assert_eq!(
+            toml::from_str::<Settings>("version = 2").unwrap().gateway,
+            GatewaySettings::default()
+        );
     }
 
     #[test]
@@ -1484,12 +1638,12 @@ mod tests {
 
     #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24, 25, 26, 28, 29 and 30.
+        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24, 25, 26, 28, 29, 30, 32 and 36.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
         assert_eq!(scroll_child(11), 15);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 16);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 17);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));
         assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));

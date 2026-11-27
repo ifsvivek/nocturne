@@ -747,7 +747,6 @@ pub fn status_json(code: StatusCode, msg: &str) -> Response {
 // ---------------------------------------------------------------- handlers
 
 #[derive(Deserialize)]
-#[serde(rename_all = "PascalCase")]
 struct LoginBody {
     username: Option<String>,
     pw: Option<String>,
@@ -760,7 +759,7 @@ async fn by_name(
     Extension(ci): Extension<ClientInfo>,
     body: Bytes,
 ) -> Response {
-    let Ok(b) = serde_json::from_slice::<LoginBody>(&body) else {
+    let Some(b) = crate::jsonbody::parse::<LoginBody>(&body) else {
         return status_json(StatusCode::BAD_REQUEST, "Invalid request");
     };
     let name = b.username.unwrap_or_default();
@@ -843,7 +842,6 @@ async fn qc_authorize(St(st): St<State>, Query(q): Query<CodeQuery>) -> Response
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "PascalCase")]
 struct QcLogin {
     secret: String,
 }
@@ -853,7 +851,7 @@ async fn qc_login(
     Extension(ci): Extension<ClientInfo>,
     body: Bytes,
 ) -> Response {
-    let Ok(b) = serde_json::from_slice::<QcLogin>(&body) else {
+    let Some(b) = crate::jsonbody::parse::<QcLogin>(&body) else {
         return status_json(StatusCode::BAD_REQUEST, "Invalid request");
     };
     match st.qc.redeem(&b.secret, Instant::now()) {
