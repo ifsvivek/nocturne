@@ -11,7 +11,7 @@ use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Request};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{MethodRouter, get};
 use hyper_util::rt::{TokioIo, TokioTimer};
 use nocturne_core::gateway::{self as core_gw, Binding};
@@ -110,7 +110,23 @@ impl Routes {
         let tls = self.state.cfg().gw.tls();
         let router = self
             .router
-            .fallback(|| async { StatusCode::NOT_FOUND })
+            .fallback(|req: Request| async move {
+                let path = req.uri().path();
+                if req.method() == axum::http::Method::GET
+                    && (path == "/" || path.to_ascii_lowercase().starts_with("/web"))
+                {
+                    // A browser opened the address: say what this is instead of a bare 404 (there is no web client).
+                    return (
+                        StatusCode::OK,
+                        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                        "<!doctype html><title>NOCTURNE gateway</title><p>The NOCTURNE gateway is running. Add this address as a server in a Jellyfin app; there is no web page here.</p>",
+                    )
+                        .into_response();
+                }
+                // Path only (never the query, which can carry a token): shows which routes real clients still miss.
+                crate::glog!("404 {} {}", req.method(), path);
+                StatusCode::NOT_FOUND.into_response()
+            })
             .layer(DefaultBodyLimit::max(BODY_LIMIT))
             .layer(middleware::from_fn(
                 move |req: Request, next: Next| async move {
@@ -157,7 +173,15 @@ pub fn build(state: &State) -> (Router, Vec<RouteInfo>) {
     let outer = Router::new().fallback_service(tower::ServiceExt::map_request(
         router,
         move |mut req: Request| {
-            if let Some(p) = canonical_path(&paths, req.uri().path()) {
+            // Jellyfin still accepts the old `/emby` and `/mediabrowser` prefixes that some clients send.
+            let path = req.uri().path();
+            let lower = path.to_ascii_lowercase();
+            let stripped = ["/emby", "/mediabrowser"]
+                .iter()
+                .find(|p| lower.starts_with(*p) && lower[p.len()..].starts_with('/'))
+                .map(|p| path[p.len()..].to_string());
+            let base = stripped.clone().unwrap_or_else(|| path.to_string());
+            if let Some(p) = canonical_path(&paths, &base).or(stripped) {
                 let pq = match req.uri().query() {
                     Some(q) => format!("{p}?{q}"),
                     None => p,
