@@ -1024,12 +1024,67 @@ fn merge_ctx<'a>(
     }
 }
 
+/// Item fields a session shows (`NowPlayingItem`): enough for a remote to draw a now-playing card, never paths or media sources.
+const NOW_KEYS: [&str; 22] = [
+    "Id",
+    "Name",
+    "OriginalTitle",
+    "Type",
+    "MediaType",
+    "SeriesName",
+    "SeriesId",
+    "SeasonId",
+    "SeasonName",
+    "IndexNumber",
+    "ParentIndexNumber",
+    "ProductionYear",
+    "RunTimeTicks",
+    "ImageTags",
+    "BackdropImageTags",
+    "PrimaryImageAspectRatio",
+    "ParentBackdropItemId",
+    "ParentBackdropImageTags",
+    "SeriesPrimaryImageTag",
+    "IsFolder",
+    "ServerId",
+    "Container",
+];
+
+/// Real item DTOs for `NowPlayingItem`, kept 5 minutes so the 1.5 s session diff does not fan out to the servers.
+#[derive(Default)]
+struct NowCache(Mutex<HashMap<crate::idmap::Gid, (u64, Value)>>);
+
+async fn now_item(st: &State, gid: crate::idmap::Gid) -> Value {
+    let cache = st.ext::<NowCache>();
+    let now = unix_now();
+    if let Some((t, v)) = cache.0.lock().unwrap().get(&gid)
+        && now.saturating_sub(*t) < 300
+    {
+        return v.clone();
+    }
+    let mut out = json!({"Id": gid.to_string()});
+    let Some(d) = crate::items::detail(st, gid, None).await else {
+        return out; // not cached: the item may come back
+    };
+    for k in NOW_KEYS {
+        if let Some(x) = d.get(k) {
+            out[k] = x.clone();
+        }
+    }
+    out["Id"] = json!(gid.to_string());
+    strip_deep(&mut out);
+    let mut m = cache.0.lock().unwrap();
+    m.retain(|_, (t, _)| now.saturating_sub(*t) < 300);
+    m.insert(gid, (now, out.clone()));
+    out
+}
+
 /// What each client reports through the playback routes ([`crate::playback::PlayTable`]) becomes its `PlayState` and `NowPlayingItem`.
-fn with_playing(st: &State, mut v: Vec<Native>) -> Vec<Native> {
+async fn with_playing(st: &State, mut v: Vec<Native>) -> Vec<Native> {
     let table = st.ext::<crate::playback::PlayTable>();
     for n in &mut v {
         if let Some(p) = table.get(&n.token_id) {
-            n.playing = Some(json!({"Id": p.item.to_string()}));
+            n.playing = Some(now_item(st, p.item).await);
             n.play_state = Some(json!({
                 "PositionTicks": p.ticks, "CanSeek": true, "IsPaused": p.paused, "IsMuted": false,
                 "RepeatMode": "RepeatNone", "PlaybackOrder": "Default",
@@ -1050,9 +1105,9 @@ pub async fn list(st: &State, caller: &AuthCtx) -> Vec<Value> {
             .into_iter()
             .filter(|n| n.token_id == caller.token_id)
             .collect();
-        return merge(&c, &with_playing(st, own), &[]).0;
+        return merge(&c, &with_playing(st, own).await, &[]).0;
     }
-    let natives = with_playing(st, hub.snapshot(Some(caller)));
+    let natives = with_playing(st, hub.snapshot(Some(caller))).await;
     let ups = hub.up_sessions(st, false).await;
     merge(&c, &natives, &ups).0
 }

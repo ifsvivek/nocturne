@@ -184,8 +184,35 @@ fn upstream_pq(
     })
 }
 
-/// Every media route: `/Videos/{id}/...`, `/Audio/{id}/...`, `/Items/{id}/Download`, `/MediaSegments/{id}`, trickplay, subtitles, attachments.
+/// Media requests served since start (`state.ext::<Stats>()`): how many, how many with a `Range`, and the body bytes announced (`Content-Length`). For tests and diagnosis; no per-client data.
+#[derive(Default)]
+pub struct Stats {
+    pub requests: std::sync::atomic::AtomicU64,
+    pub ranged: std::sync::atomic::AtomicU64,
+    pub bytes: std::sync::atomic::AtomicU64,
+}
+
 async fn media(St(st): St<State>, headers: HeaderMap, uri: Uri) -> Response {
+    use std::sync::atomic::Ordering::Relaxed;
+    let stats = st.ext::<Stats>();
+    stats.requests.fetch_add(1, Relaxed);
+    if headers.contains_key(header::RANGE) {
+        stats.ranged.fetch_add(1, Relaxed);
+    }
+    let r = media_inner(st, headers, uri).await;
+    if let Some(n) = r
+        .headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+    {
+        stats.bytes.fetch_add(n, Relaxed);
+    }
+    r
+}
+
+/// Every media route: `/Videos/{id}/...`, `/Audio/{id}/...`, `/Items/{id}/Download`, `/MediaSegments/{id}`, trickplay, subtitles, attachments.
+async fn media_inner(st: State, headers: HeaderMap, uri: Uri) -> Response {
     let segs: Vec<&str> = uri.path().split('/').collect();
     let Some(item) = segs.get(2).copied() else {
         return StatusCode::NOT_FOUND.into_response();
