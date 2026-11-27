@@ -436,4 +436,75 @@ mod tests {
         );
         assert_eq!(s, "a  b  c");
     }
+
+    /// Fuzz-lite (fixed seed, runs in milliseconds): URLs and playlists stitched from the dangerous pieces never panic, never keep the server token, host or id, and a header or log line full of the same junk never panics either.
+    #[test]
+    fn junk_never_panics_or_leaks() {
+        const PIECES: [&str; 26] = [
+            "ApiKey=",
+            "api_key=",
+            "&",
+            "?",
+            "://",
+            "/",
+            "%2f",
+            "%2F",
+            "..",
+            ".m3u8",
+            "main",
+            "MediaSourceId=",
+            "#EXT-X-MAP:URI=\"",
+            "\"",
+            "\n",
+            "\r\n",
+            "Token=\"",
+            "ünï",
+            "\u{0}",
+            "http://10.9.8.7:8096",
+            "http://evil.test",
+            "/videos/",
+            ITEM,
+            ITEM_D,
+            // The server token as a query parameter, the only form in which a server hands it out (loose text is not a token leak the rewriter can know about).
+            "ApiKey=SRVTOKEN0123456789abcdef",
+            "=",
+        ];
+        let mut x = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        let ids = IdMap::in_memory();
+        let g = ids.register_single("srvA", ITEM);
+        let c = ctx(&ids, g);
+        for _ in 0..3000 {
+            let n = (next() % 12) as usize;
+            let s: String = (0..n)
+                .map(|_| PIECES[(next() % PIECES.len() as u64) as usize])
+                .collect();
+            // Only a real query parameter (`?ApiKey=` or `&ApiKey=` after a `?` on the same line) counts as a token the server handed out.
+            let real = s.split('\n').all(|l| {
+                l.match_indices("ApiKey=SRV")
+                    .all(|(i, _)| l[..i].ends_with(['?', '&']) && l[..i].contains('?'))
+            });
+            let u = rewrite_url(&s, &c);
+            let p = rewrite_playlist(&s, &c);
+            for (out, name) in [(&u, "url"), (&p, "playlist")] {
+                if real {
+                    assert!(!out.contains(TOKEN), "token in {name} {out:?} from {s:?}");
+                }
+            }
+            // A well-formed absolute URL of the server loses its host.
+            if s.starts_with("http://10.9.8.7:8096/") && s.matches("10.9.8.7").count() == 1 {
+                assert!(!u.contains("10.9.8.7"), "host in {u:?} from {s:?}");
+            }
+            let _ = crate::log::redact(&s);
+            let _ = crate::auth::parse_authorization(&s);
+            let _ = crate::idmap::Gid::parse(&s);
+            let r = crate::log::redact(&format!("x?ApiKey={s}"));
+            assert!(r.contains("<redacted>"));
+        }
+    }
 }

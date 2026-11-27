@@ -755,6 +755,11 @@ async fn two_servers_and_a_local_folder_behind_one_address() {
     ] {
         assert!(!all.contains(bad), "{what} leaked into a response");
     }
+    // Any absolute file path, whatever the folder: no `"Path":"/..."` and no key holding a server or media path.
+    assert!(
+        !all.contains(r#""Path":"/"#) && !all.contains(r#""Path": "/"#) && !all.contains("/media/"),
+        "an absolute file path leaked"
+    );
     g.st.stop();
 }
 
