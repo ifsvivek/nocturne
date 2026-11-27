@@ -53,22 +53,24 @@ Not yet verified (see [QA_REPORT.md](QA_REPORT.md) and [FEATURES.md](FEATURES.md
 - **Themes gallery**: Settings > Themes opens on a Gallery with Official, Community and My themes, previews and one-click install checked against a sha256, from folders in this repository (`themes/`); the Editor keeps the lists and the CSS editor.
 - **Flatpak evaluated, not shipped** ([dev/FLATPAK.md](dev/FLATPAK.md)): worth doing after 0.6.0 as a Flathub app with a small sandbox (Wayland, GPU, network, audio, the Secret Service name, `xdg-videos` read-only), in-window playback with a bundled mpv, no host players (VLC is not reachable without a host-spawn permission that Flathub rejects), and the in-app updater switched off. About 3 to 5 working days to a first build plus review time.
 
-## Next: 0.7, add-ons
+## Next: 0.7, gateway
 
-Add-ons in the style of media-center add-on catalogs: an add-on is a web address that answers a few JSON requests (manifest, catalogs, item details, streams, subtitles). No add-on code runs inside NOCTURNE; it only reads data, as it reads a Jellyfin server.
+`nocturne-gateway`: an optional companion service (in this workspace, off by default; plan: [dev/GATEWAY_PLAN.md](dev/GATEWAY_PLAN.md)) that merges all of a user's servers, local folders and add-ons into one catalog and serves it at one address speaking the subset of the Jellyfin API that the official Jellyfin phone and TV apps need, so they can connect to it as one server; streams are passed through from the item's own server.
+
+- Its own sign-in, local network (or a private overlay network) only, read-only toward the servers it merges unless the user turns writes on.
+- It holds sign-ins for every merged server, so it gets a security review before release.
+- Controlled from Settings > Gateway (NOCTURNE starts and stops the service, no separate setup): Gateway Off (default) / On; status (Online, Stopped, or the error); Allow connections from: this computer only (default), the local network, or remote over HTTPS (needs a certificate, off by default); caching: none (default) or a size limit; the gateway address with Copy and a QR code for phones; the gateway's own sign-in for phones and TVs (never a server's password). No torrent features.
+- Remote control (maintainer, 2026-11-27): clients see the sessions of every server and of devices signed in to the gateway, and commands go to the device's own server; behind its own setting, off by default.
+
+## Then: 0.8, add-ons
+
+Add-ons speaking a subset of the Stremio add-on protocol (maintainer, 2026-11-27): an add-on is a web address that answers a few JSON requests (manifest, catalogs, item details, streams, subtitles). No add-on code runs inside NOCTURNE; it only reads data, as it reads a Jellyfin server.
 
 - An add-on is another source next to local folders and servers: its catalogs become Home rows, its items get detail pages, its streams play in the player.
 - An Add-ons page: tabs Official, Community and My add-ons (installed, including ones added by URL), a type filter (movies and series, subtitles, anime, ...) and search; one card per add-on with its logo, name, version, what it provides and a one-line description; Install / Uninstall, a settings button for add-ons that have a configuration page (opened in the browser, which returns the configured add-on URL to paste back; no web view in the app), and Share (copies the add-on URL). The curated catalog is read from an index on the website. The 0.6 themes gallery uses the same layout.
 - Add-ons can be written in any language and hosted anywhere (also on the same machine); remote add-ons over https only, with the same size and time limits as theme fetching.
 - The spec, a small SDK, examples and the catalog index live in this repository (`addons/`): pull requests welcome, the maintainer merges. Only add-ons for sources the user is entitled to (own media, public-domain catalogs, trailers, subtitles) are listed. The catalog is a curated list, not a gate: "Add by URL" installs any add-on, listed or not (including one running on the same machine), marked "not reviewed".
-
-## Then: 0.8, gateway
-
-`nocturne-gateway`: an optional companion service (in this workspace, off by default) that merges all of a user's servers, local folders and add-ons into one catalog and serves it at one address speaking the subset of the Jellyfin API that the official Jellyfin phone and TV apps need, so they can connect to it as one server; streams are passed through from the item's own server.
-
-- Its own sign-in, local network (or a private overlay network) only, read-only toward the servers it merges unless the user turns writes on.
-- It holds sign-ins for every merged server, so it gets a security review before release.
-- Controlled from Settings > Gateway (NOCTURNE starts and stops the service, no separate setup): Gateway Off (default) / On; status (Online, Stopped, or the error); Allow connections from: this computer only (default), the local network, or remote over HTTPS (needs a certificate, off by default); caching: none (default) or a size limit; the gateway address with Copy and a QR code for phones; the gateway's own sign-in for phones and TVs (never a server's password). No torrent features.
+- Only http(s) streams play; torrent streams (`infoHash`, magnet links) are ignored. libtorrent is not part of NOCTURNE: a torrent-streaming program the user runs can be played like any other http stream.
 
 ## Then: 0.9, living room
 

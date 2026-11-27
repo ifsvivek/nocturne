@@ -246,3 +246,19 @@ Estimate, honest: A 3 to 4 days, B 7 to 10 days (merged lists, HLS and local DTO
 | 10 | Is the maintainer's third-party app allowed to use `ApiKey` query tokens for streams? | yes (V1: that is the spelling the server accepts); the gateway still accepts the older spellings for official apps |
 | 11 | `X-Emby-Token`/`api_key` rejection on 12.x: should NOCTURNE's own `stream_url_with_key` (VLC path) move to `ApiKey`? | yes, check and fix separately from the gateway (side finding V1) |
 | 12 | Keep this in 0.7 as one release or cut sessions to 0.7.1? | ship browse and play first if time is short; sessions follow as 0.7.1 |
+
+## 9. Decisions (maintainer and master, 2026-11-27)
+
+1. Advertise 10.11.x as one constant; the 12.4.0 spec stays the shape reference.
+2. One gateway user in v1 (password or Quick Connect), devices revocable one by one.
+3. No transcoding of local files in v1 (direct play only, documented).
+4. Per-server library views: a row, off by default.
+5. "Keep running when NOCTURNE is closed": opt-in, Linux only (systemd user unit); otherwise the gateway stops with the app.
+6. Remote exposure: bring-your-own certificate only; no ACME, no UPnP; docs point to Tailscale or a reverse proxy.
+7. Default port 8099.
+8. With server writes off, gateway clients keep watched and resume state in the gateway overlay ("stored in NOCTURNE, not on the server").
+9. The app refuses a source whose `ServerId` is its own gateway's.
+10. Query tokens (`ApiKey`, and the older spellings) are accepted from clients; servers are always called with the `Authorization` header.
+11. Checked by the master on the throwaway server: `/Videos/{id}/stream?static=true` answers 206 with `api_key`, `ApiKey` and the header alike, so the VLC path is not broken; no change now.
+12. Browse, play and remote control ship together in 0.7.0.
+13. Workers: A alone first (skeleton, auth, ids, process, control socket), then B and C in parallel (at most three workers at a time).
