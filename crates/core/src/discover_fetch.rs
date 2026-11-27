@@ -324,6 +324,59 @@ async fn arr(s: &Sources, f: &Filter) -> Result<Vec<Card>, Fail> {
     Ok(mix(lists))
 }
 
+/// What a native request of a show needs to know: its seasons (number, episode count; 0 when unknown)
+/// and its TVDB id (Sonarr's key).
+#[derive(Clone, Debug, Default)]
+pub struct TvInfo {
+    pub seasons: Vec<(u32, u32)>,
+    pub tvdb: Option<u64>,
+}
+
+/// Read a show's seasons and TVDB id: from TMDB with the user's key, else from Sonarr's lookup.
+pub async fn tv_info(s: &Sources, tmdb: u64, title: &str, year: Option<u32>) -> Option<TvInfo> {
+    if let Some(key) = s.tmdb_key.as_deref() {
+        let v = engine()
+            .tmdb_client(key)
+            .raw(
+                &format!("/tv/{tmdb}"),
+                &[("append_to_response", "external_ids")],
+            )
+            .await
+            .ok()?;
+        return Some(parse_tv_info(&v));
+    }
+    // Sonarr's own lookup (the first connected one).
+    let c = s.arr.iter().find(|c| c.service() == Service::Sonarr)?;
+    let found = c.lookup(title).await.ok()?;
+    let hit = found.iter().find(|l| l.tmdb_id == tmdb).or_else(|| {
+        found.iter().find(|l| {
+            l.title.eq_ignore_ascii_case(title) && (year.is_none() || l.year == year.unwrap_or(0))
+        })
+    })?;
+    Some(TvInfo {
+        seasons: hit.seasons.iter().map(|x| (x.season_number, 0)).collect(),
+        tvdb: (hit.tvdb_id > 0).then_some(hit.tvdb_id),
+    })
+}
+
+/// TMDB's `/tv/{id}?append_to_response=external_ids`.
+pub fn parse_tv_info(v: &serde_json::Value) -> TvInfo {
+    TvInfo {
+        seasons: v["seasons"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|s| {
+                Some((
+                    s["season_number"].as_u64()? as u32,
+                    s["episode_count"].as_u64().unwrap_or(0) as u32,
+                ))
+            })
+            .collect(),
+        tvdb: v["external_ids"]["tvdb_id"].as_u64().filter(|n| *n > 0),
+    }
+}
+
 /// A poster: a TMDB path (`/abc.jpg`, from TMDB's image host) or a full http(s) URL (Radarr / Sonarr
 /// lookups). Sent without any credential. At most 2 MB.
 pub async fn poster(spec: &str) -> Option<Vec<u8>> {
@@ -467,6 +520,16 @@ mod tests {
             seerr_lists(&f(List::Upcoming, Scope::All)),
             [DiscoverList::UpcomingMovies, DiscoverList::UpcomingTv]
         );
+    }
+
+    #[test]
+    fn tv_info_reads_seasons_and_tvdb() {
+        let v = serde_json::json!({"seasons":[{"season_number":0,"episode_count":2},{"season_number":1,"episode_count":7},{"name":"x"}],
+            "external_ids":{"tvdb_id":81189,"imdb_id":"tt1"}});
+        let i = parse_tv_info(&v);
+        assert_eq!(i.seasons, [(0, 2), (1, 7)]);
+        assert_eq!(i.tvdb, Some(81189));
+        assert_eq!(parse_tv_info(&serde_json::json!({})).tvdb, None);
     }
 
     #[test]

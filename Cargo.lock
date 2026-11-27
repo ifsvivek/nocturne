@@ -2874,6 +2874,7 @@ dependencies = [
  "iced_test",
  "image",
  "libc",
+ "nocturne-arr",
  "nocturne-core",
  "nocturne-jellyfin",
  "nocturne-jellyfin-admin",

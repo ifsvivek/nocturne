@@ -222,6 +222,12 @@ pub fn arr_seasons(
         .collect()
 }
 
+/// How long to wait before looking at the requests again (the catalog, and Radarr / Sonarr): often
+/// while the Requests page is open, every 15 minutes otherwise.
+pub fn poll_every(page_open: bool) -> std::time::Duration {
+    std::time::Duration::from_secs(if page_open { 20 } else { 15 * 60 })
+}
+
 /// `2026-11-27` for unix seconds (UTC).
 pub fn date_text(secs: u64) -> String {
     crate::calendar::Day((secs / 86_400) as i64).iso()
@@ -357,6 +363,12 @@ mod tests {
             Wishlist::default()
         );
         std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
+    fn polling_is_slow_unless_the_page_is_open() {
+        assert!(poll_every(true) <= std::time::Duration::from_secs(30));
+        assert_eq!(poll_every(false), std::time::Duration::from_secs(900));
     }
 
     #[test]

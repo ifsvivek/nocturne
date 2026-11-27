@@ -208,6 +208,8 @@ pub struct State {
     pub(super) sent: HashMap<(Kind, u64), Badge>,
     pub(super) hits: Option<Hits>,
     pub(super) chip: Option<Chip>,
+    /// Discover, the native request list, Radarr / Sonarr (`discover.rs`).
+    pub(super) disc: super::discover::State,
     epoch: u64,
 }
 
@@ -228,12 +230,24 @@ impl App {
     }
 
     pub(super) fn rq_can(&self, kind: Kind) -> bool {
-        self.requests_on()
-            && self
-                .rq
-                .me
-                .as_ref()
-                .is_some_and(|m| rq::can_request(m.permissions, kind))
+        self.native_on()
+            || (self.requests_on()
+                && self
+                    .rq
+                    .me
+                    .as_ref()
+                    .is_some_and(|m| rq::can_request(m.permissions, kind)))
+    }
+
+    /// There is a Requests page: a Seerr server is signed in, or requests without Seerr are on.
+    pub fn requests_available(&self) -> bool {
+        self.rq.signed_in() || self.settings.native_requests
+    }
+
+    /// Requests are kept in NOCTURNE's own list (and Radarr / Sonarr): the setting is on and no Seerr
+    /// server is signed in (Seerr wins).
+    pub fn native_on(&self) -> bool {
+        self.settings.native_requests && !self.rq.signed_in()
     }
 
     /// The Settings chip.
@@ -248,8 +262,12 @@ impl App {
 
     // ---- launch ----
 
-    /// Read the saved sign-in once, after launch.
+    /// Read the saved sign-ins (Seerr, Radarr, Sonarr) and the native request list once, after launch.
     pub(super) fn rq_load(&mut self) -> Task<Message> {
+        Task::batch([self.rq_load_seerr(), self.disc_boot()])
+    }
+
+    fn rq_load_seerr(&mut self) -> Task<Message> {
         if self.rq.loaded {
             return Task::none();
         }
@@ -310,7 +328,7 @@ impl App {
 
     /// A call answered "not signed in": drop the session (the cookie is a bearer credential, so it
     /// leaves the keyring too) and say so once. Never retried in a loop.
-    fn rq_ended(&mut self, e: &Error) -> bool {
+    pub(super) fn rq_ended(&mut self, e: &Error) -> bool {
         if !matches!(e, Error::Unauthorized)
             || self.rq.client.as_ref().is_none_or(|c| c.is_api_key())
         {
@@ -802,6 +820,7 @@ impl App {
             .sent
             .get(&(kind, tmdb))
             .copied()
+            .or_else(|| self.native_badge(kind, tmdb))
             .or_else(|| info.and_then(rq::badge_of_info))
     }
 
@@ -834,6 +853,9 @@ impl App {
     // ---- the Request dialog ----
 
     pub(super) fn rq_ask(&mut self, t: Target) -> Task<Message> {
+        if self.native_on() {
+            return self.nat_ask(t);
+        }
         if !self.rq_can(t.kind) {
             self.toast(if !self.settings.seerr_requests {
                 "Turn on Allow requests in Settings first."
@@ -973,28 +995,38 @@ impl App {
     // ---- the Requests page ----
 
     fn rq_open_page(&mut self) -> Task<Message> {
-        let (Some(c), Some(me)) = (self.rq.client.clone(), self.rq.me.as_ref().map(|m| m.id))
-        else {
+        if !self.requests_available() {
             return Task::none();
-        };
+        }
         self.close_admin();
         self.rq.epoch += 1;
         let e = self.rq.epoch;
+        let seerr = self
+            .rq
+            .client
+            .clone()
+            .zip(self.rq.me.as_ref().map(|m| m.id));
         self.rq.page = Some(PageSt {
             epoch: e,
             tab: Tab::All,
-            list: Load::Loading,
+            list: if seerr.is_some() {
+                Load::Loading
+            } else {
+                Load::Ready(vec![])
+            },
             cancel: None,
             busy: None,
             note: None,
         });
-        Task::batch([
-            run(
+        let mut tasks = vec![self.disc_on_open()];
+        if let Some((c, me)) = seerr {
+            tasks.push(run(
                 async move { arc(c.my_requests(me, 50, 0).await) },
                 move |r| Message::Requests(Msg::Fetched(e, r)),
-            ),
-            self.rq_refresh(),
-        ])
+            ));
+            tasks.push(self.rq_refresh());
+        }
+        Task::batch(tasks)
     }
 
     fn rq_fetched(&mut self, e: u64, r: Res<RequestsPage>) -> Task<Message> {
@@ -1201,6 +1233,9 @@ impl App {
 
     /// Keys while a dialog or the page of this feature is open. `None`: not ours.
     pub(super) fn rq_key(&mut self, key: &str) -> Option<Task<Message>> {
+        if let Some(t) = self.disc_key(key) {
+            return Some(t);
+        }
         if self.rq.page.as_ref().is_some_and(|p| p.cancel.is_some()) {
             return Some(match key {
                 "escape" | "backspace" => self.rq_msg(Msg::CancelNo),
@@ -1221,7 +1256,9 @@ impl App {
                 _ => Task::none(),
             });
         }
-        if self.rq.page.is_some() && matches!(key, "escape" | "backspace") {
+        // In Discover the search box is a text field: only Escape leaves (Backspace deletes).
+        let typing = self.rq.disc.typing();
+        if self.rq.page.is_some() && (key == "escape" || (key == "backspace" && !typing)) {
             return Some(self.rq_msg(Msg::PageClose));
         }
         None

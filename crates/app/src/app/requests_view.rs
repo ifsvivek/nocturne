@@ -54,7 +54,7 @@ pub(super) fn pill<'a>(b: Badge) -> El<'a> {
 }
 
 /// The tick box of a season line.
-fn check<'a>(on: bool) -> El<'a> {
+pub(super) fn check<'a>(on: bool) -> El<'a> {
     container(
         text(if on { "\u{2713}" } else { "" })
             .size(t::CAPTION)
@@ -464,9 +464,36 @@ impl App {
         };
         let mut page = column![section(
             "Requests",
-            "What you asked your Seerr server for. Nothing here changes your media servers.",
+            if self.rq.signed_in() {
+                "What you asked your Seerr server for. Nothing here changes your media servers."
+            } else {
+                "What you asked for, kept on this computer. A request turns Available when the title shows up on one of your sources."
+            },
             "Esc to go back".into(),
         )];
+        page = page.push(self.rq_view_switch());
+        page = match (self.rq.disc.view, self.rq.signed_in()) {
+            (super::discover::View::Discover, _) => self.discover_view(page),
+            (_, false) => self.native_list(page),
+            _ => self.seerr_list(page, p),
+        };
+        scroll(page.padding(Padding {
+            top: t::header_h() + t::S8,
+            bottom: t::S8,
+            ..Padding::ZERO
+        }))
+        .style(style::scroll)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+    }
+
+    /// Seerr's own request list: tabs, quota, the rows.
+    fn seerr_list<'a>(
+        &'a self,
+        mut page: iced::widget::Column<'a, Message>,
+        p: &'a super::requests::PageSt,
+    ) -> iced::widget::Column<'a, Message> {
         let mut tabs = row![].spacing(t::S2);
         for tab in Tab::ALL {
             tabs = tabs.push(action_button(
@@ -521,15 +548,7 @@ impl App {
                 }
             }
         }
-        scroll(page.padding(Padding {
-            top: t::header_h() + t::S8,
-            bottom: t::S8,
-            ..Padding::ZERO
-        }))
-        .style(style::scroll)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        page
     }
 
     fn rq_row<'a>(&'a self, r: &'a Request, busy: Option<u64>) -> El<'a> {
@@ -754,6 +773,7 @@ impl App {
         if self.rq.page.as_ref().is_some_and(|p| p.cancel.is_some()) {
             layers.push(self.rq_cancel_dialog());
         }
+        self.disc_layers(layers);
     }
 }
 

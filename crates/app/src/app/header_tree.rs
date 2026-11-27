@@ -292,11 +292,6 @@ impl App {
                     Some(Message::Calendar(super::calendar::Msg::Open)),
                 ),
                 Link::Admin => ("Admin".into(), self.admin_open, Some(Message::OpenAdmin)),
-                Link::Requests => (
-                    "Requests".into(),
-                    self.rq.page_open(),
-                    Some(Message::Requests(super::requests::Msg::PageOpen)),
-                ),
                 Link::Libraries | Link::Smart => (String::new(), false, None),
             };
             let d = &mut tree.doc;
@@ -380,6 +375,30 @@ impl App {
             let n = d.add(right, "div.slot.header-people");
             d.inline(n, "width: 22px; height: 22px");
             slots.push((n, Slot::People));
+        }
+        if self.requests_available() {
+            let s = d.add(right, "a.header-search");
+            d.focusable(s);
+            d.attr(
+                s,
+                "title",
+                "Requests: ask for movies and shows, and discover new ones",
+            );
+            let l = d.add(s, "span.header-search-label");
+            d.text(l, "Requests");
+            d.inline(
+                l,
+                &format!(
+                    "font-size: 13px; color: {}",
+                    if self.rq.page_open() {
+                        "var(--nocturne-text)"
+                    } else {
+                        "var(--nocturne-text-secondary)"
+                    }
+                ),
+            );
+            tree.act(s, Message::Requests(super::requests::Msg::PageOpen));
+            d = &mut tree.doc;
         }
         if t::header_item(t::HeaderItem::Search) {
             let s = d.add(right, "a.header-search");
