@@ -20,6 +20,8 @@ page { display: flex; flex-direction: column; background: var(--nocturne-bg, tra
 .header-icons { display: flex; flex-direction: row; align-items: center; gap: 16px; flex: none; }
 .header-search { display: flex; flex-direction: row; align-items: center; gap: 12px; height: 32px; padding: 0 11px; border: 1px solid var(--nocturne-edge); border-radius: 6px; color: var(--nocturne-text); font-size: 13px; }
 .header-search:hover, .header-search:focus { border-color: var(--nocturne-accent); }
+.header-requests { display: flex; flex-direction: row; align-items: center; height: 32px; padding: 0 11px; border: 1px solid var(--nocturne-edge); border-radius: 6px; color: var(--nocturne-text); font-size: 13px; }
+.header-requests:hover, .header-requests:focus { border-color: var(--nocturne-accent); }
 .header-search-hint { color: var(--nocturne-text-tertiary); font-family: monospace; font-size: 11px; }
 .slot { flex: none; }
 

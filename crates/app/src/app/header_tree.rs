@@ -377,14 +377,14 @@ impl App {
             slots.push((n, Slot::People));
         }
         if self.requests_available() {
-            let s = d.add(right, "a.header-search");
+            let s = d.add(right, "a.header-requests");
             d.focusable(s);
             d.attr(
                 s,
                 "title",
                 "Requests: ask for movies and shows, and discover new ones",
             );
-            let l = d.add(s, "span.header-search-label");
+            let l = d.add(s, "span.header-requests-label");
             d.text(l, "Requests");
             d.inline(
                 l,
