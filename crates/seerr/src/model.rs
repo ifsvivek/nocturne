@@ -78,6 +78,7 @@ pub struct SearchHit {
     pub first_air_date: Option<String>,
     pub poster_path: Option<String>,
     pub overview: Option<String>,
+    pub vote_average: Option<f32>,
     pub media_info: Option<MediaInfo>,
 }
 
@@ -275,4 +276,25 @@ pub struct NewRequest {
 pub(crate) enum SeasonsBody<'a> {
     All(&'a str),
     List(&'a [u32]),
+}
+
+/// Which browse list of Seerr to read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiscoverList {
+    Trending,
+    /// Popular movies (Seerr's default `/discover/movies`).
+    Movies,
+    /// Popular shows.
+    Tv,
+    UpcomingMovies,
+    UpcomingTv,
+}
+
+/// One page of a browse list with its optional filters (genre = TMDB genre id, year = release year).
+#[derive(Clone, Copy, Debug)]
+pub struct DiscoverQuery {
+    pub list: DiscoverList,
+    pub genre: Option<u32>,
+    pub year: Option<u32>,
+    pub page: u32,
 }

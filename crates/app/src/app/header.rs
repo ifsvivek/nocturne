@@ -142,13 +142,6 @@ impl App {
                     focused,
                     Message::OpenAdmin,
                 ),
-                Link::Requests => nav_link_icon(
-                    "Requests",
-                    ico(&link),
-                    self.rq.page_open(),
-                    focused,
-                    Message::Requests(super::requests::Msg::PageOpen),
-                ),
             });
         }
         // Couch mode drops the pointer-sized history buttons (B goes back) and keeps the big tabs.
@@ -228,6 +221,38 @@ impl App {
             }),
             "Search (Ctrl+K or /)",
         );
+        let requests =
+            self.requests_available().then(|| {
+                tip(
+                    Press::new(text("Requests").size(t::CAPTION + 1.0).color(
+                        if self.rq.page_open() {
+                            t::text()
+                        } else {
+                            t::text_secondary()
+                        },
+                    ))
+                    .height(32)
+                    .padding([6.0, t::S3])
+                    .on_press(Message::Requests(super::requests::Msg::PageOpen))
+                    .style({
+                        let on = self.rq.page_open();
+                        move |s| Style {
+                            text_color: t::text(),
+                            border: border(
+                                if on || matches!(s, Status::Hovered | Status::Pressed) {
+                                    t::accent()
+                                } else {
+                                    t::edge()
+                                },
+                                1.0,
+                                6.0,
+                            ),
+                            ..Default::default()
+                        }
+                    }),
+                    "Requests: ask for movies and shows, and discover new ones",
+                )
+            });
         let mut right = row![].spacing(t::S4).align_y(Alignment::Center);
         if self.catalog.online().count() > 1 {
             right = right.push(tip(
@@ -248,6 +273,9 @@ impl App {
                     .style(|_| Style::default()),
                 "Watch together",
             ));
+        }
+        if let Some(r) = requests {
+            right = right.push(r);
         }
         if t::header_item(t::HeaderItem::Search) {
             right = right.push(search);
@@ -561,7 +589,6 @@ pub(super) fn link_icon(l: &Link, libs: &[nocturne_core::source::Media]) -> Opti
         Link::Global(_) => "heart",
         Link::Calendar => "calendar",
         Link::Admin => "gear",
-        Link::Requests => "queue",
         Link::Libraries | Link::Smart => return None,
     })
 }
@@ -616,7 +643,6 @@ impl App {
             Link::Smart => "Smart \u{25BE}".into(),
             Link::Calendar => "Calendar".into(),
             Link::Admin => "Admin".into(),
-            Link::Requests => "Requests".into(),
         }
     }
 
@@ -750,9 +776,6 @@ impl App {
             .position(|l| matches!(l, Link::Admin))
             .unwrap_or(v.len());
         v.insert(at, Link::Calendar);
-        if self.rq.signed_in() {
-            v.push(Link::Requests);
-        }
         v
     }
 

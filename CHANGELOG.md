@@ -6,6 +6,11 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 - Gateway foundation (0.7): the new optional `nocturne-gateway` binary (axum, off unless started) with the allow-list router, gateway sign-in (one user, Argon2id passphrase, revocable device tokens, Quick Connect), the id map, binding modes with bring-your-own TLS, a control socket for the app, and UDP discovery in local-network mode. Library, streaming and remote-control routes follow. The Linux packages ship the second binary.
+- Requests entry in the header's top right, next to Search, shown when a Seerr server is signed in or requests without Seerr are on. It replaces the Requests link in the link row.
+- Discover on the Requests page: browse trending, popular and upcoming movies and shows, search, and filter by movies or shows, genre and year. Cards show the poster, year, rating and status (Available on your servers, Pending, Requested, Queued, Downloading, Not requested), a title any source has opens its page, and Request uses the confirmation dialog with the season choice. Titles come from your Seerr server, else your own TMDB key, else Trakt; Radarr or Sonarr alone can search. With none connected it says what to connect.
+- Requests without a Seerr server (Settings > Requests, off by default): a list kept on this computer (`wishlist.json`). A request turns Available by itself when the title or the requested seasons appear on any source, with a notice. Nothing leaves the computer.
+- Optional Radarr and Sonarr (Settings > Requests): connect your own with an address and API key (the key stays in the keyring), test the connection and pick the quality profile and root folder from what the service lists. With "Add requests to Radarr and Sonarr" on, a request made without Seerr is also added there, after the confirmation dialog (movies to Radarr, shows with the picked seasons to Sonarr), and its status follows the service. New crate `nocturne-arr`, `scripts/test-arr.sh` for throwaway services.
+- `scripts/mock-requests.py`: mock TMDB, Seerr, Radarr and Sonarr with invented titles for headless screenshots of the Requests page.
 
 ## [0.6.0] - 2026-11-21
 
