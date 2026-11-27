@@ -21,13 +21,15 @@ if [ -n "${LOCAL:-}" ]; then
   # Keep build-machine paths (home directory, checkout) out of the shipped binary.
   export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$HOME=/home/build --remap-path-prefix=$PWD=/src"
   scripts/cache-budget.sh --quiet || true
-  cargo build --profile "$PROFILE" --locked -p "$PKG"
+  cargo build --profile "$PROFILE" --locked -p "$PKG" -p nocturne-gateway
+  gwbin="${CARGO_TARGET_DIR:-target}/$PROFILE/nocturne-gateway"
 else
   PKG="$PKG" scripts/build-linux-bin.sh
-  bin="dist/bin/nocturne-$PROFILE"
+  bin="dist/bin/nocturne-$PROFILE"; gwbin="dist/bin/nocturne-gateway-$PROFILE"
 fi
 rm -rf "dist/$name" && mkdir -p "dist/$name/icons"
 install -m755 "$bin" "dist/$name/nocturne"
+install -m755 "$gwbin" "dist/$name/nocturne-gateway"
 install -m644 LICENSE THIRD_PARTY_NOTICES.md "dist/$name/"
 install -m644 packaging/io.github.ifsvivek.nocturne.desktop packaging/nocturne.svg packaging/*.metainfo.xml "dist/$name/"
 install -m644 packaging/icons/*.png "dist/$name/icons/"
