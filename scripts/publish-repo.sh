@@ -14,7 +14,13 @@ gpg --list-secret-keys "$FPR" >/dev/null 2>&1 || { echo "signing key $FPR not in
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 cp packaging/PKGBUILD "$work/"
 chmod 777 "$work"
-docker run --rm -v "$work:/build" archlinux:base-devel bash -euxc '
+# The image's default mirror is often slow: use this machine's ranked Arch mirror list when it has one (MIRRORLIST overrides).
+ml=${MIRRORLIST:-/etc/pacman.d/mirrorlist}
+mirror=(); [ -r "$ml" ] && mirror=(-v "$ml:/etc/pacman.d/mirrorlist:ro")
+# Packages are kept between runs (a slow or broken download never starts over) and fetched 16 at a time.
+pkgcache=${PKGCACHE:-$HOME/.cache/nocturne-pacman-pkg}; mkdir -p "$pkgcache"
+docker run --rm "${mirror[@]}" -v "$pkgcache:/var/cache/pacman/pkg" -v "$work:/build" archlinux:base-devel bash -euxc '
+  sed -i "s/^#\?ParallelDownloads.*/ParallelDownloads = 16/" /etc/pacman.conf
   pacman -Syu --noconfirm
   cd /build
   # runtime + build deps as root; any vulkan-driver satisfies the dependency in the container

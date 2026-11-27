@@ -1,25 +1,25 @@
 {
-  "version": "0.6.0",
-  "date": "2026-11-21",
-  "notes_url": "https://github.com/ifsvivek/nocturne/releases/tag/v0.6.0",
+  "version": "0.7.0",
+  "date": "2026-11-27",
+  "notes_url": "https://github.com/ifsvivek/nocturne/releases/tag/v0.7.0",
   "platforms": {
     "macos-aarch64": {
-      "url": "https://github.com/ifsvivek/nocturne/releases/download/v0.6.0/nocturne-0.6.0-aarch64-macos.tar.gz",
-      "size": 42977089,
-      "sha256": "0ede63995c6f5394ad2a49c29b523a9b37e6be4fb1a1a80c7bb37a6468b30d82",
-      "signature": "Ik5GyxX5/O3/sM/dyWIEdKXUez2NPkDN+d+42ogQbJHmdFcxwbE3e2U0AVRt8sRAKTm1bw/DrgXouKjPpR+ADA=="
+      "url": "https://github.com/ifsvivek/nocturne/releases/download/v0.7.0/nocturne-0.7.0-aarch64-macos.tar.gz",
+      "size": 43306963,
+      "sha256": "8b175937b7b1224c9826f5c4356c71023d844ccebc1a78509ca712fbc919131d",
+      "signature": "HKYH54RBL36evPlzzaVnehSYNv9bugRz0jEZAY3/NanQdYUiErlJY55bQcn7ceaYdUnoPnP038982w0D0NlCDA=="
     },
     "linux-x86_64": {
-      "url": "https://github.com/ifsvivek/nocturne/releases/download/v0.6.0/nocturne-0.6.0-x86_64-linux.tar.gz",
-      "size": 16864561,
-      "sha256": "eb25df615981deee321be70765b4e3721bc3040def732f06490224964391032a",
-      "signature": "BsqxrFzB6egYbpTLxk+1ubdPPkatn+Hb/XxcYviWhlwO/gafFcz/bSGkUbV7OekaNwtXO6Ki2s/aqqEkqQYZAg=="
+      "url": "https://github.com/ifsvivek/nocturne/releases/download/v0.7.0/nocturne-0.7.0-x86_64-linux.tar.gz",
+      "size": 21874386,
+      "sha256": "9e8c7658ca6ea0a109b4f1bd1cbdd86898f7b559568bb2a07e77e544567ca936",
+      "signature": "vaD4WT+UylAHHRJ4TtSgC6iHXYCby0zJHY7/Eo78JYcfDJu3fuCTfoI77VyDAFcOfZ7W+pzTorqs2hpC22gbCg=="
     },
     "windows-x86_64": {
-      "url": "https://github.com/ifsvivek/nocturne/releases/download/v0.6.0/nocturne-0.6.0-x86_64-windows.zip",
-      "size": 60943935,
-      "sha256": "bb97d204c07d4b36d308d51a52cb2c4b443a528cfe2a9f768dcd10b16d1b77e6",
-      "signature": "2362UqNvglbVo9xf6+uD5JeTaHoIBnVafHDrKGO3Vw2aaI91RI3M68yMi9HkQiGeRUge8KmowbQtIMmpHUlLBQ=="
+      "url": "https://github.com/ifsvivek/nocturne/releases/download/v0.7.0/nocturne-0.7.0-x86_64-windows.zip",
+      "size": 61287915,
+      "sha256": "7e462034386966672b46d0f3ed971ca74555da4d47e6a8b4d46a7f0b4c409cbc",
+      "signature": "aTVWo0EKh7fD4ybCfjLyFdoMW+KlFUkUX3N5lRwSSma1kK4h+jMm7gUiunm7QYIA9K2wY1miOGuURcGCXEe6Cw=="
     }
   }
 }
