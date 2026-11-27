@@ -27,6 +27,7 @@ pub mod discovery;
 pub mod idmap;
 pub mod images;
 pub mod items;
+pub mod jsonbody;
 pub mod limits;
 pub mod lists;
 pub mod local_dto;

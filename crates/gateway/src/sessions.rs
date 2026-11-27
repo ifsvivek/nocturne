@@ -466,15 +466,17 @@ fn short_list<'a>(it: impl Iterator<Item = &'a str>, max: usize) -> Vec<String> 
 impl Caps {
     /// From the JSON body of `/Capabilities/Full`; anything odd is dropped.
     pub fn from_json(v: &Value) -> Self {
+        let v = &crate::jsonbody::lower_top(v.clone());
         let list = |k: &str, max| -> Vec<String> {
-            v[k].as_array()
+            v[k.to_ascii_lowercase()]
+                .as_array()
                 .map(|a| short_list(a.iter().filter_map(Value::as_str), max))
                 .unwrap_or_default()
         };
         Self {
             playable: list("PlayableMediaTypes", 16),
             commands: list("SupportedCommands", 64),
-            media_control: v["SupportsMediaControl"].as_bool().unwrap_or(false),
+            media_control: v["supportsmediacontrol"].as_bool().unwrap_or(false),
         }
     }
 
@@ -552,7 +554,8 @@ pub fn group_session_id(device_id: &str, client: &str) -> String {
 #[derive(Clone, Debug)]
 pub enum Event {
     Library,
-    UserData(Vec<String>),
+    /// `UserItemDataDto` objects (`ItemId`, `Played`, `IsFavorite`, `PlayCount`, `PlaybackPositionTicks`, `Key`), the shape clients apply as is.
+    UserData(Vec<Value>),
 }
 
 /// One session of a real server as it came back from `GET /Sessions`.
@@ -701,8 +704,9 @@ impl Hub {
         let _ = self.events.send(Event::Library);
     }
 
-    pub fn user_data_changed(&self, item_ids: Vec<String>) {
-        let _ = self.events.send(Event::UserData(item_ids));
+    /// A user-data change for these items, each a Jellyfin `UserItemDataDto` with a gateway `ItemId`; sent to listening clients coalesced.
+    pub fn user_data_changed(&self, items: Vec<Value>) {
+        let _ = self.events.send(Event::UserData(items));
     }
 
     pub fn events(&self) -> broadcast::Receiver<Event> {
@@ -1250,7 +1254,7 @@ async fn caps_query(
 }
 
 async fn caps_full(St(st): St<State>, Extension(ctx): Extension<AuthCtx>, body: Bytes) -> Response {
-    let v: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    let v = crate::jsonbody::parse_value(&body).unwrap_or(Value::Null);
     store_caps(&st, &ctx, Caps::from_json(&v))
 }
 
@@ -1302,14 +1306,14 @@ async fn command_body(
     Path(sid): Path<String>,
     body: Bytes,
 ) -> Response {
-    let Ok(v) = serde_json::from_slice::<Value>(&body) else {
+    let Some(v) = crate::jsonbody::parse_value(&body) else {
         return status_json(StatusCode::BAD_REQUEST, "Invalid request");
     };
-    let args = match args_of(&v["Arguments"]) {
+    let args = match args_of(&v["arguments"]) {
         Ok(a) => a,
         Err((c, m)) => return status_json(c, &m),
     };
-    let name = v["Name"].as_str().unwrap_or_default().to_string();
+    let name = v["name"].as_str().unwrap_or_default().to_string();
     done(dispatch(&st, &ctx, &sid, Cmd::General { name, args }).await)
 }
 
@@ -1319,13 +1323,13 @@ async fn message_body(
     Path(sid): Path<String>,
     body: Bytes,
 ) -> Response {
-    let Ok(v) = serde_json::from_slice::<Value>(&body) else {
+    let Some(v) = crate::jsonbody::parse_value(&body) else {
         return status_json(StatusCode::BAD_REQUEST, "Invalid request");
     };
     let cmd = Cmd::Message {
-        header: v["Header"].as_str().unwrap_or_default().to_string(),
-        text: v["Text"].as_str().unwrap_or_default().to_string(),
-        timeout_ms: v["TimeoutMs"].as_i64(),
+        header: v["header"].as_str().unwrap_or_default().to_string(),
+        text: v["text"].as_str().unwrap_or_default().to_string(),
+        timeout_ms: v["timeoutms"].as_i64(),
     };
     done(dispatch(&st, &ctx, &sid, cmd).await)
 }

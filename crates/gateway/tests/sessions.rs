@@ -331,8 +331,13 @@ async fn library_and_user_data_news_arrive_coalesced() {
     let hub = g.st.ext::<nocturne_gateway::sessions::Hub>();
     hub.library_changed();
     hub.library_changed();
-    hub.user_data_changed(vec!["i1".into()]);
-    hub.user_data_changed(vec!["i2".into(), "i1".into()]);
+    hub.user_data_changed(vec![
+        json!({"ItemId": "i1", "Played": false, "PlayCount": 0}),
+    ]);
+    hub.user_data_changed(vec![
+        json!({"ItemId": "i2", "Played": true}),
+        json!({"ItemId": "i1", "Played": true, "PlayCount": 1}),
+    ]);
     let (a, b) = (next(&mut w).await, next(&mut w).await);
     assert_eq!(
         (a["MessageType"].as_str(), b["MessageType"].as_str()),
@@ -578,6 +583,64 @@ async fn with_server_changes_off_a_server_session_is_listed_but_not_controllable
     assert!(
         seen.0.lock().unwrap().iter().all(|r| r.0 == "GET"),
         "nothing was written to the server"
+    );
+    g.st.stop();
+}
+
+#[tokio::test]
+async fn json_bodies_bind_in_any_casing() {
+    let g = start(true, false).await;
+    // jellyfin-apiclient-python's casing: lower-case Username, Pw
+    let r = g
+        .http
+        .post(g.url("/Users/AuthenticateByName"))
+        .header(
+            "Authorization",
+            r#"MediaBrowser Client="Py", Device="d", DeviceId="py-1", Version="1""#,
+        )
+        .json(&json!({"username": "nocturne", "Pw": g.pw}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    let t = r.json::<Value>().await.unwrap()["AccessToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let tb = g.login("dev-b", "B").await;
+    let _wb = g.socket(&tb).await;
+    let caps = json!({"playablemediatypes": ["Video"], "supportedcommands": ["SetVolume"], "supportsmediacontrol": true});
+    assert_eq!(
+        g.post(&tb, "/Sessions/Capabilities/Full", Some(caps)).await,
+        204
+    );
+    let list = g.sessions(&t).await;
+    let b = list.iter().find(|s| s["DeviceId"] == "dev-b").unwrap();
+    assert_eq!(b["SupportsRemoteControl"], true);
+    assert_eq!(b["Capabilities"]["SupportedCommands"], json!(["SetVolume"]));
+    let id = b["Id"].as_str().unwrap();
+    let cmd = format!("/Sessions/{id}/Command");
+    assert_eq!(
+        g.post(
+            &t,
+            &cmd,
+            Some(json!({"name": "SetVolume", "arguments": {"Volume": "3"}}))
+        )
+        .await,
+        204
+    );
+    assert_eq!(
+        g.post(&t, &cmd, Some(json!({"NAME": "Shutdown"}))).await,
+        400
+    );
+    assert_eq!(
+        g.post(
+            &t,
+            &format!("/Sessions/{id}/Message"),
+            Some(json!({"text": "hi"}))
+        )
+        .await,
+        204
     );
     g.st.stop();
 }

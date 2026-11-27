@@ -12,7 +12,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 const FORCE_KEEPALIVE_SECS: u64 = 60;
@@ -53,7 +53,8 @@ pub fn parse_incoming(text: &str) -> Incoming {
 #[derive(Default)]
 pub struct Coalesce {
     library: bool,
-    user_data: BTreeSet<String>,
+    /// By `ItemId`; a later report of the same item replaces the earlier one.
+    user_data: BTreeMap<String, Value>,
     due: Option<Instant>,
 }
 
@@ -61,7 +62,13 @@ impl Coalesce {
     pub fn note(&mut self, e: Event, now: Instant) {
         match e {
             Event::Library => self.library = true,
-            Event::UserData(ids) => self.user_data.extend(ids),
+            Event::UserData(items) => {
+                for d in items {
+                    if let Some(id) = d["ItemId"].as_str() {
+                        self.user_data.insert(id.to_string(), d);
+                    }
+                }
+            }
         }
         self.due.get_or_insert(now + COALESCE);
     }
@@ -83,11 +90,11 @@ impl Coalesce {
                 json!({"ItemsAdded": [], "ItemsRemoved": [], "ItemsUpdated": [], "CollectionFolders": [], "IsEmpty": false}),
             ));
         }
-        let ids = std::mem::take(&mut self.user_data);
-        if !ids.is_empty() {
+        let items = std::mem::take(&mut self.user_data);
+        if !items.is_empty() {
             out.push(frame(
                 "UserDataChanged",
-                json!({"UserId": user_id, "UserDataList": ids.iter().map(|i| json!({"ItemId": i})).collect::<Vec<_>>()}),
+                json!({"UserId": user_id, "UserDataList": items.into_values().collect::<Vec<_>>()}),
             ));
         }
         out
@@ -236,11 +243,14 @@ mod tests {
         c.note(Event::Library, t0);
         c.note(Event::Library, t0 + Duration::from_secs(1));
         c.note(
-            Event::UserData(vec!["b".into(), "a".into()]),
+            Event::UserData(vec![
+                json!({"ItemId": "b", "Played": false}),
+                json!({"ItemId": "a", "Played": false}),
+            ]),
             t0 + Duration::from_secs(2),
         );
         c.note(
-            Event::UserData(vec!["a".into()]),
+            Event::UserData(vec![json!({"ItemId": "a", "Played": true})]),
             t0 + Duration::from_secs(3),
         );
         assert!(
@@ -256,7 +266,7 @@ mod tests {
         assert_eq!(ud["Data"]["UserId"], "user1");
         assert_eq!(
             ud["Data"]["UserDataList"],
-            json!([{"ItemId": "a"}, {"ItemId": "b"}])
+            json!([{"ItemId": "a", "Played": true}, {"ItemId": "b", "Played": false}])
         );
         assert!(
             c.due().is_none() && c.take(t0 + Duration::from_secs(60), "u").is_empty(),
