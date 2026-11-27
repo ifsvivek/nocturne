@@ -75,7 +75,7 @@ async fn playback_info(
     let Some((gid, members)) = st.ids.resolve_str(item) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let body_json: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    let body_json = parse_body(&body);
     let want = q
         .get("MediaSourceId")
         .or(body_json["MediaSourceId"].as_str())
@@ -273,9 +273,10 @@ pub fn finished(ticks: i64, runtime: i64) -> bool {
 }
 
 async fn report(st: State, ctx: AuthCtx, kind: Kind, body: Bytes) -> StatusCode {
-    let Ok(mut v) = serde_json::from_slice::<Value>(&body) else {
+    let mut v = parse_body(&body);
+    if !v.is_object() {
         return StatusCode::BAD_REQUEST;
-    };
+    }
     let item = v["ItemId"]
         .as_str()
         .or(v["Item"]["Id"].as_str())
@@ -442,8 +443,65 @@ pub fn routes(r: Routes) -> Routes {
     .add("/Sessions/Playing/Ping", Access::Auth, post(report_ping))
 }
 
+const BODY_KEYS: [&str; 17] = [
+    "ItemId",
+    "MediaSourceId",
+    "PositionTicks",
+    "IsPaused",
+    "PlaySessionId",
+    "UserId",
+    "Item",
+    "Played",
+    "IsFavorite",
+    "PlaybackPositionTicks",
+    "PlayCount",
+    "EnableDirectPlay",
+    "EnableDirectStream",
+    "EnableTranscoding",
+    "AutoOpenLiveStream",
+    "DeviceProfile",
+    "SessionId",
+];
+
+/// The one place request bodies are parsed: JSON whose top-level keys known to us are put into their canonical case (clients send `userId`, `itemId`; ASP.NET binds case-insensitively).
+/// Not an object or not JSON: `Value::Null`. To be replaced by the shared case-insensitive extractor.
+pub fn parse_body(raw: &[u8]) -> Value {
+    let Ok(Value::Object(m)) = serde_json::from_slice::<Value>(raw) else {
+        return Value::Null;
+    };
+    Value::Object(
+        m.into_iter()
+            .map(|(k, v)| {
+                let k = BODY_KEYS
+                    .iter()
+                    .find(|c| c.eq_ignore_ascii_case(&k))
+                    .map_or(k, |c| (*c).to_string());
+                (k, v)
+            })
+            .collect(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn body_keys_are_case_insensitive() {
+        let v = super::parse_body(br#"{"itemid":"a","POSITIONTICKS":5,"Other":1}"#);
+        assert_eq!(
+            (
+                v["ItemId"].clone(),
+                v["PositionTicks"].clone(),
+                v["Other"].clone()
+            ),
+            (
+                serde_json::json!("a"),
+                serde_json::json!(5),
+                serde_json::json!(1)
+            )
+        );
+        assert!(super::parse_body(b"[1]").is_null() && super::parse_body(b"x").is_null());
+    }
+
     use super::*;
 
     #[test]

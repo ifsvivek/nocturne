@@ -321,7 +321,7 @@ async fn set_user_data(
     uri: Uri,
     body: Bytes,
 ) -> Response {
-    let u: Update = serde_json::from_slice(&body).unwrap_or_default();
+    let u: Update = serde_json::from_value(crate::playback::parse_body(&body)).unwrap_or_default();
     let item = item_param(&p);
     if let Some(pl) = u.played {
         let _ = apply_mark(&st, item, Mark::Played(pl)).await;
