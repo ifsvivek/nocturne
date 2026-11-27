@@ -32,13 +32,16 @@ docs/screenshots/server-look.webp  Home drawn in a server's own look (Jellyfin l
 docs/screenshots/calendar.webp   Calendar, week view, with entries marked On your server, Airing soon and Not on your servers (make-demo-library.sh build --upcoming)
 docs/screenshots/requests.webp   The Requests page (throwaway Seerr, scripts/test-seerr.sh)
 docs/screenshots/gallery.webp    Settings > Themes, Gallery view with the Official cards
+docs/screenshots/gateway.webp    Settings > Gateway with the gateway on (loopback address, demo data)
+docs/screenshots/discover.webp   Requests > Discover (scripts/mock-requests.py)
 -->
 
 | | |
 |---|---|
 | ![Movie page with the versions and sources picker](docs/screenshots/detail.webp) | ![Playback inside the app window](docs/screenshots/player.webp) |
 | ![Settings > Themes with the built-in themes](docs/screenshots/themes.webp) | ![Theme Studio editing an element of Home](docs/screenshots/studio.webp) |
-| ![Home in a Jellyfin server's own look](docs/screenshots/server-look.webp) | |
+| ![Home in a Jellyfin server's own look](docs/screenshots/server-look.webp) | ![Settings > Gateway with the address, QR code and devices](docs/screenshots/gateway.webp) |
+| ![Requests > Discover with trending titles](docs/screenshots/discover.webp) | |
 
 Screenshots show a generated demo library, not personal media.
 
@@ -49,6 +52,8 @@ Screenshots show a generated demo library, not personal media.
 - Video plays inside the app window through libmpv with hardware decoding, or in VLC or an mpv window if you prefer. HDR video is tone-mapped to SDR, with an optional HDR pop-out window.
 - Themes are CSS, drawn by a native engine with no browser inside. A gallery installs the official ones in a click, Theme Studio edits any element of the live screens, and each server can use its own look.
 - A Calendar of upcoming episodes from your servers and Trakt, and optional requests to a Seerr server for titles you do not have yet.
+- A gateway for your phone and TV: one Jellyfin-compatible address over all your servers and folders, so Jellyfin apps can browse and play from it. Off by default, Linux only for now.
+- A Requests button with a Discover view of trending, popular and upcoming titles, and requests through Seerr, or kept on your computer with optional Radarr and Sonarr.
 - Read-only by default: nothing on a server changes until you switch on server changes in Settings.
 - Signed pacman, apt and dnf repositories, and in-app updates for per-user installs.
 - Trakt scrobbling and history import, SyncPlay for watching together, and playlists, a music queue and offline copies.
@@ -156,6 +161,16 @@ Runtime needs: a Wayland session, a Vulkan driver, EGL, libmpv (or the `mpv` pro
 2. For a local library, add a folder. For a server, enter its address and sign in with a password or Quick Connect.
 3. Browse, search with Ctrl+K or `/`, and press `?` for the keyboard shortcuts.
 4. Everything else is in Settings: sources, themes, playback, updates and the opt-in features.
+
+## Gateway
+
+The gateway makes NOCTURNE answer as a Jellyfin server of its own, so a phone or TV app can use it. It is off by default and Linux only for now.
+
+1. Open Settings > Gateway and switch it on. The page shows the address (loopback by default, with a QR code) and a generated password, shown once.
+2. In the Jellyfin app, add that address and sign in as `nocturne` with the password, or choose Quick Connect and approve the code on the same page.
+3. A phone needs more than loopback: set "Allow connections from" to the local network. That serves plain HTTP to devices on your own network only. For anywhere else, use your own HTTPS certificate or a private overlay such as Tailscale.
+
+No server token or file path ever reaches an app, remote control is a separate switch, and changes to a server follow your server-changes setting. The official phone and TV apps have not been tried yet; see [docs/dev/GATEWAY_PLAN.md](docs/dev/GATEWAY_PLAN.md).
 
 ## Privacy and safety
 
