@@ -308,10 +308,102 @@ pub async fn bind(cfg: &Config) -> std::io::Result<Vec<TcpListener>> {
     }
 }
 
+/// The router and the case table every connection needs.
+#[derive(Clone)]
+struct Front {
+    router: Router,
+    cases: std::sync::Arc<CaseMap>,
+}
+
+#[derive(Clone, Debug)]
+enum Seg {
+    Lit(&'static str),
+    Param,
+    /// A parameter inside a segment (`stream.{container}`): literal prefix and suffix.
+    Mixed(&'static str, &'static str),
+}
+
+/// Registered paths by segment count. ASP.NET-style clients send `/users/me` or `/ITEMS/...` in any case; the router is case-sensitive, so literal segments are put into the registered case before routing. Parameter segments (ids, names) are kept as sent.
+pub struct CaseMap(std::collections::HashMap<usize, Vec<Vec<Seg>>>);
+
+impl CaseMap {
+    pub fn new(table: &[RouteInfo]) -> Self {
+        let mut m: std::collections::HashMap<usize, Vec<Vec<Seg>>> = Default::default();
+        for r in table {
+            let segs: Vec<Seg> = r
+                .path
+                .split('/')
+                .map(|s| match (s.find('{'), s.find('}')) {
+                    (Some(0), Some(e)) if e + 1 == s.len() => Seg::Param,
+                    (Some(a), Some(e)) => Seg::Mixed(&s[..a], &s[e + 1..]),
+                    _ => Seg::Lit(s),
+                })
+                .collect();
+            m.entry(segs.len()).or_default().push(segs);
+        }
+        Self(m)
+    }
+
+    /// The path in registered case, or `None` when it needs no change (or matches no route: the router answers 404).
+    pub fn fix(&self, path: &str) -> Option<String> {
+        let req: Vec<&str> = path.split('/').collect();
+        let mut best: Option<(usize, &Vec<Seg>)> = None;
+        for t in self.0.get(&req.len())? {
+            let mut score = 0;
+            let ok = t.iter().zip(&req).all(|(s, r)| match s {
+                Seg::Lit(l) if r.eq_ignore_ascii_case(l) => {
+                    score += 2;
+                    true
+                }
+                Seg::Lit(_) => false,
+                Seg::Param => true,
+                Seg::Mixed(p, x) => {
+                    let (rl, ok) = (r.to_ascii_lowercase(), r.len() >= p.len() + x.len());
+                    score += 1;
+                    ok && rl.starts_with(&p.to_ascii_lowercase())
+                        && rl.ends_with(&x.to_ascii_lowercase())
+                }
+            });
+            if ok && best.is_none_or(|(b, _)| score > b) {
+                best = Some((score, t));
+            }
+        }
+        let (_, t) = best?;
+        let fixed: Vec<String> = t
+            .iter()
+            .zip(&req)
+            .map(|(s, r)| match s {
+                Seg::Lit(l) => (*l).to_string(),
+                Seg::Param => (*r).to_string(),
+                Seg::Mixed(p, x) => format!("{p}{}{x}", &r[p.len()..r.len() - x.len()]),
+            })
+            .collect();
+        let out = fixed.join("/");
+        (out != path).then_some(out)
+    }
+
+    fn apply(&self, req: &mut hyper::Request<Body>) {
+        let Some(path) = self.fix(req.uri().path()) else {
+            return;
+        };
+        let pq = match req.uri().query() {
+            Some(q) => format!("{path}?{q}"),
+            None => path,
+        };
+        let mut parts = req.uri().clone().into_parts();
+        if let Ok(p) = pq.parse() {
+            parts.path_and_query = Some(p);
+            if let Ok(u) = axum::http::Uri::from_parts(parts) {
+                *req.uri_mut() = u;
+            }
+        }
+    }
+}
+
 async fn accept_loop(
     st: State,
     l: TcpListener,
-    router: Router,
+    router: Front,
     tls: Option<tokio_rustls::TlsAcceptor>,
 ) {
     loop {
@@ -344,14 +436,15 @@ async fn accept_loop(
     }
 }
 
-async fn serve_conn<S>(io: S, peer: SocketAddr, router: Router)
+async fn serve_conn<S>(io: S, peer: SocketAddr, router: Front)
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
     let svc = hyper::service::service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
         let mut req = req.map(Body::new);
         req.extensions_mut().insert(Peer(peer));
-        let r = router.clone();
+        router.cases.apply(&mut req);
+        let r = router.router.clone();
         async move { r.oneshot(req).await }
     });
     let _ = hyper::server::conn::http1::Builder::new()
@@ -378,7 +471,11 @@ async fn start_listeners(st: &State) -> Result<Vec<JoinHandle<()>>, String> {
         .filter_map(|l| l.local_addr().ok())
         .collect();
     st.set_bound(addrs.clone());
-    let (router, _) = build(st);
+    let (router, table) = build(st);
+    let router = Front {
+        router,
+        cases: std::sync::Arc::new(CaseMap::new(&table)),
+    };
     let mut tasks: Vec<_> = listeners
         .into_iter()
         .map(|l| tokio::spawn(accept_loop(st.clone(), l, router.clone(), tls.clone())))
@@ -481,6 +578,49 @@ mod tests {
         );
         h.insert("x-forwarded-for", "garbage".parse().unwrap());
         assert_eq!(effective_ip(&cfg, proxy, &h), proxy);
+    }
+
+    #[test]
+    fn literal_segments_take_the_registered_case_and_parameters_stay() {
+        let route = |path| RouteInfo {
+            path,
+            access: Access::Auth,
+            streaming: false,
+        };
+        let m = CaseMap::new(&[
+            route("/Users/Me"),
+            route("/Users/{userId}"),
+            route("/Items/{itemId}/Images/{imageType}"),
+            route("/Items/Latest"),
+            route("/Items/{itemId}"),
+            route("/Videos/{itemId}/stream.{container}"),
+        ]);
+        let fix = |p: &str| m.fix(p).unwrap_or_else(|| p.to_string());
+        assert_eq!(fix("/users/me"), "/Users/Me");
+        assert_eq!(fix("/USERS/Me"), "/Users/Me");
+        assert_eq!(
+            fix("/Users/AbC123"),
+            "/Users/AbC123",
+            "a parameter is kept as sent"
+        );
+        assert_eq!(
+            fix("/items/AbC/images/primary"),
+            "/Items/AbC/Images/primary",
+            "the image type is a parameter"
+        );
+        assert_eq!(
+            fix("/items/latest"),
+            "/Items/Latest",
+            "a literal wins over a parameter"
+        );
+        assert_eq!(fix("/items/Latestx"), "/Items/Latestx");
+        assert_eq!(
+            fix("/videos/ABC/STREAM.MKV"),
+            "/Videos/ABC/stream.MKV",
+            "suffix parameter keeps the extension as sent"
+        );
+        assert_eq!(fix("/nothing/here"), "/nothing/here");
+        assert_eq!(fix("/Items/Latest"), "/Items/Latest");
     }
 
     #[test]
