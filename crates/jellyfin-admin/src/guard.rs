@@ -13,6 +13,9 @@ use reqwest::Url;
 /// Default port used by `scripts/test-jellyfin.sh`.
 pub const TEST_PORT: u16 = 8097;
 
+/// The second throwaway (`scripts/test-jellyfin.sh start 2`), for merge tests that need two servers.
+pub const TEST_PORT_2: u16 = 8098;
+
 /// Port the tests may talk to: `NOCTURNE_JF_TEST_PORT` (a second throwaway) or [`TEST_PORT`].
 /// Never 8096, the usual port of a real server.
 pub fn test_port() -> u16 {
@@ -28,10 +31,17 @@ pub struct TestServerGuard;
 impl TestServerGuard {
     /// Load the throwaway server's URL/token from `NOCTURNE_JF_TEST_ENV`, run all checks, return a client.
     pub async fn connect() -> Result<AdminClient> {
-        let path = std::env::var("NOCTURNE_JF_TEST_ENV").map_err(|_| {
-            Error::Guard(
-                "NOCTURNE_JF_TEST_ENV is not set (run scripts/test-jellyfin.sh start)".into(),
-            )
+        Self::connect_env("NOCTURNE_JF_TEST_ENV")
+            .await
+            .map(|(c, _, _)| c)
+    }
+
+    /// [`TestServerGuard::connect`] for the env file named by `var` (`NOCTURNE_JF_TEST_ENV_2` for the second instance), also returning the checked URL and the throwaway key for tests that drive the server themselves.
+    pub async fn connect_env(var: &str) -> Result<(AdminClient, String, String)> {
+        let path = std::env::var(var).map_err(|_| {
+            Error::Guard(format!(
+                "{var} is not set (run scripts/test-jellyfin.sh start)"
+            ))
         })?;
         let text = std::fs::read_to_string(&path)
             .map_err(|e| Error::Guard(format!("cannot read {path}: {e}")))?;
@@ -41,8 +51,8 @@ impl TestServerGuard {
         let (url, token) = (get("NOCTURNE_JF_TEST_URL")?, get("NOCTURNE_JF_TEST_TOKEN")?);
         Self::check_url(&url, &real_urls())?;
         let client = AdminClient::new(Config {
-            base_url: url,
-            token,
+            base_url: url.clone(),
+            token: token.clone(),
         })?;
         let data = client.system_info().await?.program_data_path;
         if !data.starts_with("/tmp/") {
@@ -50,15 +60,15 @@ impl TestServerGuard {
                 "server data path is not under /tmp: not a throwaway instance".into(),
             ));
         }
-        Ok(client)
+        Ok((client, url, token))
     }
 
     /// Pure URL check (see module docs, rules 2 and 3).
     pub fn check_url(url: &str, real: &[String]) -> Result<()> {
         let hp = host_port(url).ok_or_else(|| Error::Guard("unparsable test URL".into()))?;
-        if !hp.0.is_loopback() || hp.1 != test_port() {
+        if !hp.0.is_loopback() || ![TEST_PORT, TEST_PORT_2, test_port()].contains(&hp.1) {
             return Err(Error::Guard(format!(
-                "test URL must be loopback port {}",
+                "test URL must be loopback port {TEST_PORT}, {TEST_PORT_2} or {}",
                 test_port()
             )));
         }
@@ -127,6 +137,11 @@ mod tests {
         );
         assert!(
             TestServerGuard::check_url("http://localhost:8097/", &real("http://127.0.0.1:8096"))
+                .is_ok()
+        );
+        // The second throwaway instance (merge tests).
+        assert!(
+            TestServerGuard::check_url("http://127.0.0.1:8098", &real("http://127.0.0.1:8096"))
                 .is_ok()
         );
     }
