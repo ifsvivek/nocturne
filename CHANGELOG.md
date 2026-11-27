@@ -6,6 +6,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 - Gateway foundation (0.7): the new optional `nocturne-gateway` binary (axum, off unless started) with the allow-list router, gateway sign-in (one user, Argon2id passphrase, revocable device tokens, Quick Connect), the id map, binding modes with bring-your-own TLS, a control socket for the app, and UDP discovery in local-network mode. Library, streaming and remote-control routes follow. The Linux packages ship the second binary.
+- Gateway library and playback (0.7): views, items (modern and legacy forms), Home rows, search, seasons and episodes, filter lists and images, merged across servers by provider id with one media source per server, plus local folders as direct-play items. Streams are proxied with Range, HLS playlists are rewritten so no server token, address or file path reaches a client, and watched and resume state is kept in a gateway overlay and forwarded to the item's own server only with the write switches on. Paths are matched case-insensitively. The test script gains a second instance (`test-jellyfin.sh start 2`).
 
 ## [0.6.0] - 2026-11-21
 

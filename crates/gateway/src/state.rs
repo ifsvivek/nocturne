@@ -215,6 +215,11 @@ impl State {
         self.upstreams.read().unwrap().clone()
     }
 
+    /// Replace the sources without the keyring (tests that run the gateway against throwaway servers).
+    pub fn set_upstreams(&self, list: Vec<Upstream>) {
+        *self.upstreams.write().unwrap() = Arc::new(list);
+    }
+
     pub async fn refresh_upstreams(&self) {
         let paths = self.paths.clone();
         let list = tokio::task::spawn_blocking(move || load_upstreams(&paths))
