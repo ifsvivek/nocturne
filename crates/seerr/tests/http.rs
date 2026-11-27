@@ -324,3 +324,38 @@ async fn posters_refuse_paths_that_could_leave_the_cdn() {
         assert!(matches!(c.poster(bad).await, Err(Error::NotFound)), "{bad}");
     }
 }
+
+#[tokio::test]
+async fn discover_asks_for_the_list_genre_and_year() {
+    let empty = r#"{"page":1,"totalPages":1,"totalResults":0,"results":[]}"#;
+    let (url, log) = serve(vec![
+        ("GET", "/api/v1/discover/movies", 200, OK, empty.into()),
+        ("GET", "/api/v1/discover/tv/upcoming", 200, OK, empty.into()),
+        ("GET", "/api/v1/discover/trending", 200, OK, empty.into()),
+    ])
+    .await;
+    let c = signed_in(&url);
+    let q = |list, genre, year| DiscoverQuery {
+        list,
+        genre,
+        year,
+        page: 2,
+    };
+    c.discover(&q(DiscoverList::Movies, Some(28), Some(1999)))
+        .await
+        .unwrap();
+    // Trending and upcoming have no genre or year on Seerr's side: they are not sent.
+    c.discover(&q(DiscoverList::UpcomingTv, Some(28), Some(1999)))
+        .await
+        .unwrap();
+    c.discover(&q(DiscoverList::Trending, None, None))
+        .await
+        .unwrap();
+    let l = log.lock().unwrap();
+    assert!(l[0].1.contains("page=2") && l[0].1.contains("genre=28"));
+    assert!(l[0].1.contains("primaryReleaseDateGte=1999-01-01"));
+    assert!(l[0].1.contains("primaryReleaseDateLte=1999-12-31"));
+    assert!(!l[1].1.contains("genre") && !l[1].1.contains("Date"));
+    assert!(l[2].1.contains("page=2"));
+    assert!(l.iter().all(|r| r.0 == "GET"));
+}

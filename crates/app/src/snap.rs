@@ -24,6 +24,33 @@ pub fn on_boot() -> Task<Message> {
                 .parse()
                 .ok()
                 .map(|i| Message::Smart(crate::app::smart::Msg::Open(i))),
+            // Requests QA: the page, its Discover view, the n-th card's request dialog, the dialog's confirmation,
+            // and the Radarr / Sonarr connect dialog (`arr-fill-radarr` fills it from `NOCTURNE_RADARR_URL` / `_KEY`).
+            "discover" => Some(Message::Discover(crate::app::discover::Msg::View(
+                crate::app::discover::View::Discover,
+            ))),
+            "discover-popular" => Some(Message::Discover(crate::app::discover::Msg::List(
+                nocturne_core::discover::List::Popular,
+            ))),
+            n if n.starts_with("discover-ask-") => n[13..]
+                .parse()
+                .ok()
+                .map(|i| Message::Discover(crate::app::discover::Msg::AskNth(i))),
+            n if n.starts_with("request-tick-") => n[13..]
+                .parse()
+                .ok()
+                .map(|i| Message::Discover(crate::app::discover::Msg::Tick(i))),
+            "request-confirm" => Some(Message::Discover(crate::app::discover::Msg::Confirm)),
+            "request-close" => Some(Message::Discover(crate::app::discover::Msg::Close)),
+            "arr-radarr" => Some(Message::Discover(crate::app::discover::Msg::ArrOpen(
+                nocturne_arr::Service::Radarr,
+            ))),
+            "arr-sonarr" => Some(Message::Discover(crate::app::discover::Msg::ArrOpen(
+                nocturne_arr::Service::Sonarr,
+            ))),
+            "arr-fill" => Some(Message::Discover(crate::app::discover::Msg::ArrFill)),
+            "arr-test" => Some(Message::Discover(crate::app::discover::Msg::ArrTest)),
+            "arr-save" => Some(Message::Discover(crate::app::discover::Msg::ArrSave)),
             "open-calendar" => Some(Message::Calendar(crate::app::calendar::Msg::Open)),
             "calendar-week" => Some(Message::Calendar(crate::app::calendar::Msg::View(
                 nocturne_core::calendar::View::Week,

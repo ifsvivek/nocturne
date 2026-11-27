@@ -31,7 +31,7 @@ mod images;
 pub(crate) mod jf;
 #[cfg(feature = "theme-engine")]
 pub(crate) use home_tree::CardIn;
-mod discover;
+pub(crate) mod discover;
 mod discover_view;
 pub mod message;
 mod onboard;

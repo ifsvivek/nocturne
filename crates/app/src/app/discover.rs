@@ -91,6 +91,9 @@ pub enum Msg {
     ArrFolder,
     ArrSave,
     ArrDisconnect,
+    /// Debug builds only (`NOCTURNE_KEYS`): request the n-th card; fill the connect form from `NOCTURNE_RADARR_URL` / `_KEY` (or SONARR).
+    AskNth(usize),
+    ArrFill,
 }
 
 enum Stage {
@@ -408,6 +411,17 @@ impl App {
     pub(super) fn disc_on_open(&mut self) -> Task<Message> {
         let mut tasks = vec![];
         if self.native_on() {
+            let posters: Vec<String> = self
+                .rq
+                .disc
+                .wish
+                .entries
+                .iter()
+                .filter_map(|e| e.poster.clone())
+                .collect();
+            for p in posters {
+                tasks.push(self.disc_poster(p));
+            }
             tasks.push(self.wish_refresh());
             tasks.push(self.wish_kick(wishlist::poll_every(true)));
         }
@@ -607,6 +621,21 @@ impl App {
             }),
             Msg::ArrSave => self.arr_save(),
             Msg::ArrDisconnect => self.arr_disconnect(),
+            Msg::AskNth(n) => {
+                let c = match &self.rq.disc.cards {
+                    Some(Load::Ready(v)) if cfg!(debug_assertions) => v.get(n).cloned(),
+                    _ => None,
+                };
+                c.map_or_else(Task::none, |c| self.disc_ask(c))
+            }
+            Msg::ArrFill => self.arr_field(|d| {
+                if cfg!(debug_assertions) {
+                    let name = d.service.key().to_uppercase();
+                    let env =
+                        |s: &str| std::env::var(format!("NOCTURNE_{name}_{s}")).unwrap_or_default();
+                    (d.url, d.key, d.typed) = (env("URL"), env("KEY"), true);
+                }
+            }),
         }
     }
 

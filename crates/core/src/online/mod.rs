@@ -509,6 +509,14 @@ impl Engine {
 // ---- keys (keyring only) -----------------------------------------------------------------------------------
 
 pub fn tmdb_key() -> Option<String> {
+    // Debug builds may use a throwaway key against a mock (`NOCTURNE_TMDB_URL`); a release build reads the keyring only.
+    if cfg!(debug_assertions)
+        && let Some(k) = std::env::var("NOCTURNE_TMDB_KEY")
+            .ok()
+            .filter(|k| !k.trim().is_empty())
+    {
+        return Some(k);
+    }
     nocturne_session::load_secret(KEY_TMDB)
         .ok()
         .flatten()

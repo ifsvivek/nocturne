@@ -1001,6 +1001,7 @@ impl App {
         self.close_admin();
         self.rq.epoch += 1;
         let e = self.rq.epoch;
+        self.rq.disc.view = super::discover::View::Mine;
         let seerr = self
             .rq
             .client

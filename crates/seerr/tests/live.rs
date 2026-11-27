@@ -253,3 +253,48 @@ async fn a_used_up_quota_is_refused_with_its_own_error() {
     assert!(matches!(second, Err(Error::QuotaExceeded(_))));
     assert!(q.movie.restricted && q.movie.remaining == Some(0));
 }
+
+#[tokio::test]
+#[ignore = "needs the throwaway Seerr"]
+async fn discover_lists_and_filters_read_through_seerr() {
+    let (env, c) = start().await;
+    let (_, a) = alice(&env, &c).await;
+    for list in [
+        DiscoverList::Trending,
+        DiscoverList::Movies,
+        DiscoverList::Tv,
+        DiscoverList::UpcomingMovies,
+        DiscoverList::UpcomingTv,
+    ] {
+        let mut n = 0;
+        // Seerr reaches TMDB itself and sometimes answers a first call with nothing.
+        for _ in 0..3 {
+            let q = DiscoverQuery {
+                list,
+                genre: None,
+                year: None,
+                page: 1,
+            };
+            n = a.discover(&q).await.expect("discover").results.len();
+            if n > 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+        println!("{list:?}: {n} results");
+        assert!(n > 0, "{list:?}");
+    }
+    let q = DiscoverQuery {
+        list: DiscoverList::Movies,
+        genre: Some(28),
+        year: Some(1999),
+        page: 1,
+    };
+    let page = a.discover(&q).await.expect("filtered");
+    println!("filtered movies: {}", page.results.len());
+    assert!(
+        page.results
+            .iter()
+            .all(|h| h.year().is_none_or(|y| y == 1999))
+    );
+}

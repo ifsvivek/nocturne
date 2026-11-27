@@ -234,7 +234,7 @@ impl App {
         .flatten()
         .collect();
         let status: El = match badge {
-            Some(Badge::Available) => text(dc::card_label(badge))
+            Some(Badge::Available) if on_server => text(dc::card_label(badge))
                 .size(t::CAPTION)
                 .font(t::semibold())
                 .color(t::accent_text())
@@ -489,13 +489,15 @@ impl App {
                     .into(),
             );
         }
-        body.push(dim(match a.via {
+        if a.done().is_none() {
+            body.push(dim(match a.via {
             Some(s) => format!(
                 "This adds the request to your list on this computer and to your {}, which will look for it. Nothing is changed on your media servers.",
                 s.name()
             ),
             None => "This adds the request to your list on this computer. Nothing is sent anywhere, and nothing is changed on your media servers.".to_string(),
         }));
+        }
         let mut buttons = row![].spacing(t::S3);
         if let Some(done) = a.done() {
             body.push(
