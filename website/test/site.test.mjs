@@ -24,10 +24,10 @@ const files = (d) => readdirSync(d).flatMap((f) => (statSync(join(d, f)).isDirec
 const read = (dir, f) => readFileSync(join(dir, f), "utf8");
 // Site files only: repo/ holds the generated, signed package repositories (checksums, upstream XML namespaces), not site copy.
 const own = (d) => files(d).filter((f) => !f.startsWith(join(d, "repo/")));
-let off, on, prev, v03, v04, v051, v052, v060;
+let off, on, prev, v03, v04, v051, v052, v060, v070;
 // prev: the same site while VERSION was 0.2.0, when every new-in-0.3 claim must carry its "Coming in 0.3" mark.
 // v03 / v04: the page just before and just after 0.4.0 ships, for the 0.4 marks.
-before(() => { off = build(false); on = build(true); prev = build(true, "0.2.0"); v03 = build(true, "0.3.0"); v04 = build(true, "0.4.0"); v051 = build(true, "0.5.1"); v052 = build(true, "0.5.2"); v060 = build(true, "0.6.0"); });
+before(() => { off = build(false); on = build(true); prev = build(true, "0.2.0"); v03 = build(true, "0.3.0"); v04 = build(true, "0.4.0"); v051 = build(true, "0.5.1"); v052 = build(true, "0.5.2"); v060 = build(true, "0.6.0"); v070 = build(true, "0.7.0"); });
 
 test("RELEASED=false: no repo or release links, coming soon", () => {
   for (const f of ["index.html", "privacy.html", "404.html", "repo.html"]) {
@@ -158,8 +158,20 @@ test("0.6.0 copy appears only from 0.6.0, without a mark", () => {
   assert.ok(read(v060, "index.html").includes("Early software, version 0.6.0."));
 });
 
+test("0.7.0 copy appears only from 0.7.0, without a mark", () => {
+  const text = (d, f) => read(d, f).replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+  const NEW = ["The gateway and Discover", "One address for your apps", "Requests without Seerr", "Can my phone or TV app use NOCTURNE?", "Can NOCTURNE send requests to Radarr or Sonarr?",
+    "The gateway is Linux only for now", "not yet with the official phone and TV apps", "reaches apps connected to the gateway after a short delay", "No server token, address or file path ever reaches an app"];
+  for (const s of NEW) {
+    assert.ok(text(v070, "index.html").includes(s), `0.7.0: ${s}`);
+    assert.ok(!text(v060, "index.html").includes(s), `0.6.0 must not show: ${s}`);
+  }
+  assert.ok(!/Coming in/.test(read(v070, "index.html")));
+  assert.ok(read(v070, "index.html").includes("Early software, version 0.7.0."));
+});
+
 test("content hygiene: no em dashes, no GPU model or compositor advice, every img has alt and size", () => {
-  for (const d of [off, on, prev, v04, v052, v060]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
+  for (const d of [off, on, prev, v04, v052, v060, v070]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
     const h = readFileSync(f, "utf8");
     assert.doesNotMatch(h, /\u2014|\u2013/, f);
     assert.doesNotMatch(h, /nvidia|nvdec|hyprland|geforce|radeon|\bRTX\b/i, f);
@@ -175,7 +187,7 @@ test("required copy, no JS, no inline style", () => {
   const h = read(off, "index.html");
   for (const s of ["YOUR MEDIA. YOUR NIGHT.", "not affiliated with or endorsed by Jellyfin", "GPL-3.0-or-later", "Copyright (C) 2026 ifsvivek", 'rel="canonical" href="https://nocturne.ifsvivek.in/"', "og:image", "og.jpg", "twitter:card"])
     assert.ok(h.includes(s), s);
-  for (const d of [off, on, prev, v04, v052, v060]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
+  for (const d of [off, on, prev, v04, v052, v060, v070]) for (const f of files(d).filter((f) => f.endsWith(".html"))) {
     assert.doesNotMatch(readFileSync(f, "utf8"), /<script\b|<style\b|\sstyle=/i, f);
   }
   // Other platforms may only be named as previews or planned, never as finished (0.4 ships unsigned Windows and macOS previews on the GitHub release).
@@ -187,7 +199,7 @@ test("required copy, no JS, no inline style", () => {
 });
 
 test("no external origins except upstream credit links", () => {
-  for (const d of [off, on, prev, v04, v052, v060]) for (const f of own(d).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) {
+  for (const d of [off, on, prev, v04, v052, v060, v070]) for (const f of own(d).filter((f) => /\.(html|css|svg|xml|txt)$/.test(f))) {
     for (const m of readFileSync(f, "utf8").replace(/\/\*![\s\S]*?\*\//g, "").matchAll(/https?:\/\/([^\s"'<>)\\/]+)/g)) assert.ok(ALLOWED.has(m[1]), `${f}: ${m[1]}`);
   }
 });

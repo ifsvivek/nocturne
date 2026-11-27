@@ -4,6 +4,7 @@
   // 0.5.2 answers replace the 0.5 ones only once VERSION reaches 0.5.2 (no mark ahead of time).
   const v052 = shipped("0.5.2");
   const v060 = shipped("0.6.0");
+  const v070 = shipped("0.7.0");
   // [question, answer, version that ships it (marked until VERSION reaches it)]
   const flatpak = shipped("0.6.0") ? "Flatpak is not available yet" : "Flatpak is being evaluated";
   const items = [
@@ -27,6 +28,10 @@
     ...(v060 ? [
       ["Can I request movies?", "Yes, if you run a Seerr server (Jellyseerr and Overseerr work too). Sign in to it in Settings, turn on Allow requests, and a title that is not in your library gets a Request button. The request goes to the Seerr server, not to a media server, and what happens next is up to Seerr. 4K requests are not offered yet."],
       ["Can I use VLC?", "Yes. If VLC is installed, Settings offers it as the player, next to the in-window player and an mpv window. NOCTURNE controls VLC over a local, password-protected interface, so your place, progress sync, Trakt and Stop keep working. VLC's own menus handle subtitles and audio."],
+    ] : []),
+    ...(v070 ? [
+      ["Can my phone or TV app use NOCTURNE?", "It may. Switch on the gateway in Settings, Gateway and NOCTURNE answers as a Jellyfin server of its own, with all your servers and local folders as one library. Add that address in a Jellyfin app and sign in as nocturne or with Quick Connect. By default it listens on this computer only; the local network is opt-in. The project has not yet tried the official phone and TV apps, so expect rough edges."],
+      ["Can NOCTURNE send requests to Radarr or Sonarr?", "Yes, if you connect your own in Settings, Requests and turn on adding requests there. Each request asks first, goes to the service you chose and shows its status afterwards. Without Seerr, requests can also stay in a list on your computer that marks a title Available once a source has it."],
     ] : []),
     ["Does it work with other media servers?", "Not yet. Jellyfin is the first server type; local folders need no server at all."],
   ];

@@ -76,6 +76,8 @@ const ALT = {
   calendar: "The Calendar in week view: Night Shift Radio episodes marked On your server and Airing soon, and other shows marked Not on your servers, each with season, episode and air time",
   requests: "The Requests page: three requested films, each with a poster, year, request date and an Approved tag, under tabs All, Pending, Approved, Available and Declined",
   gallery: "Settings, Themes, Gallery view, Official tab: a grid of theme cards with previews, NOCTURNE applied and Classic, Daylight, Feed, Glass, High contrast, Marquee and Spotlight with Install buttons",
+  gateway: "Settings, Gateway: the gateway switched on, its status Online at a loopback address, a QR code, and the sign-in with Regenerate password",
+  discover: "Requests, Discover: search, All, Movies and Shows filters, Trending, Popular and Upcoming, genre buttons and a grid of poster cards marked Available on your servers, Pending or Not requested",
   "sections-crop": "Home of Living room: the server's home sections, each with On or Off and up and down arrows, view-only until server changes are on",
 };
 // Image props for one screenshot: src (largest), srcset, intrinsic size and alt, so layout never shifts.

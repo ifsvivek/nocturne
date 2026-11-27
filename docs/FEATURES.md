@@ -110,10 +110,11 @@ Administrator accounts only. The admin screens are view-only while server change
 - Packages: pacman, apt and dnf repositories, a tarball and an Arch PKGBUILD. Windows and macOS are unsigned previews. See [PLATFORMS.md](PLATFORMS.md).
 - Accessibility (partial): keyboard navigation and visible focus work; screen-reader support is limited by what Iced exposes.
 
-## Gateway (0.7, in progress)
+## Gateway (0.7)
 
 - Settings > Gateway starts and stops the optional `nocturne-gateway` helper, shows its status and address (Copy, QR code), the sign-in (a generated password shown once, Quick Connect approval) and the signed-in devices with Revoke. Off by default; with it off nothing runs. Modes: this computer only, local network (plain HTTP, private addresses only) or remote over HTTPS with your own certificate. "Keep running when NOCTURNE is closed" installs a systemd user service (Linux).
-- Remote control through the gateway (off by default): apps list the players of every signed-in server and of other gateway clients and send play, pause, seek, next, volume, track and message commands. Commands to a device on a real server also need server changes on. Checked in process and against a throwaway server, not yet from a phone app.
+- Remote control through the gateway (off by default): apps list the players of every signed-in server and of other gateway clients and send play, pause, seek, next, volume, track and message commands. Commands to a device on a real server also need server changes on. Checked in process, against throwaway servers and with jellyfin-mpv-shim, not yet from the official phone and TV apps.
+- One address over everything: your servers and local folders as one library for Jellyfin apps, merged by provider id with one media source per server; streams are proxied (Range and HLS supported) so no server token, address or file path reaches a client. Local files direct play only (no transcoding). Watched and resume state is kept in the gateway and forwarded to the item's own server only with the write switches on. A change made directly on a server reaches connected apps after a short delay. Linux only for now: not in the Windows and macOS previews. Details and the security review: [dev/GATEWAY_PLAN.md](dev/GATEWAY_PLAN.md).
 
 ## Not implemented
 

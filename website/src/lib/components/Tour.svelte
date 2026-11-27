@@ -6,6 +6,8 @@
   const v052 = shipped("0.5.2");
   // 0.6.0 copy (player choice, Calendar, Requests, links, themes gallery) is gated the same way and text only until its captures exist.
   const v060 = shipped("0.6.0");
+  // 0.7.0 copy (the gateway, Discover and requests without Seerr) is gated the same way.
+  const v070 = shipped("0.7.0");
   const sources = [
     "A guided setup: local folders, a server, or both, then the promises and the real read-only switch",
     "Several Jellyfin servers, each with its own account",
@@ -69,6 +71,18 @@
     ["Calendar", "A header link, or the c key, opens month, week and agenda views of upcoming episodes. Each server's list is merged, and with Trakt connected your Trakt calendar is added. Every entry has the poster, season and episode, the title and the air time in your time zone, and says On your server, Airing soon or Not on your servers. Enter plays an episode a server has. Reading only; an optional row on Home shows the next seven days."],
     ["Requests with Seerr", "Sign in to your Seerr server (Jellyseerr and Overseerr work too) with your own server account. With Allow requests on, a title that is not in your library shows a Request button in Search and on the Calendar, with a season choice for shows, and a Requests page lists what you asked for and its status. A request goes to the Seerr server only, after a confirmation, and nothing is written to a media server. Off by default; NOCTURNE does not download anything itself."],
   ];
+  // Scene 12, shown from 0.7.0: [title, text].
+  const gateway = [
+    ["One address for your apps", "NOCTURNE can answer as a Jellyfin server of its own. Point a phone or TV app that speaks the Jellyfin protocol at it and it lists your servers and local folders as one library, plays from them, and keeps your place. The apps never see a server's address, token or a file path."],
+    ["Remote control, off by default", "With Allow remote control on, a phone can play, pause and seek on this computer, and the apps signed in to the gateway show up with your servers' sessions. Commands to a device on a real server also need server changes on."],
+    ["You decide who connects", "It listens on this computer only until you choose your local network, and reaches further only over HTTPS with a certificate you supply. Sign in as nocturne with the generated password, or approve a Quick Connect code from the app; every device can be revoked."],
+    ["Keeps running when closed", "On Linux the gateway can stay up as a systemd user service after you close NOCTURNE. It is opt-in, a separate small program, and idle it uses almost nothing."],
+  ];
+  const discover = [
+    ["Discover", "A Requests button at the top right opens a Discover view: trending, popular and upcoming films and shows, search, and filters for movies or shows, genre and year. Each card says whether a source already has it, and a title you have opens its page. The titles come from your Seerr server, your own TMDB key, Trakt, or a Radarr or Sonarr lookup."],
+    ["Requests without Seerr", "Turn on a request list that lives on this computer. A request becomes Available by itself when any source gets the title, with a notice. Nothing leaves the computer unless you also connect Radarr or Sonarr."],
+    ["Radarr and Sonarr", "Optionally connect your own Radarr and Sonarr (their keys stay in the keyring), pick a quality profile and folder, and a request is added there after a confirmation, every time. Off by default, and a separate setting from server changes."],
+  ];
   const tick = (p) => (Array.isArray(p) ? p : [p, ""]);
   // Slot widths for the browser's srcset choice: full-bleed (max 1680), the 3:2 split in the 1200 wrap, two-up at 1520, one framed 1320.
   const bleed = "(min-width: 1680px) 1680px, 100vw";
@@ -79,7 +93,7 @@
   const narrow = "(min-width: 800px) 760px, calc(100vw - 40px)";
 </script>
 
-<!-- Ten scenes (an eleventh from 0.6.0). The first is the story (many sources, one library); the others are large stills from the app with
+<!-- Ten scenes (an eleventh from 0.6.0, a twelfth from 0.7.0). The first is the story (many sources, one library); the others are large stills from the app with
      their copy set as a subtitle. 0.4 and 0.5 stills are 3840x2160 headless captures (see README). -->
 <div id="tour">
   <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s0">
@@ -246,6 +260,22 @@
       <figure class="m-0"><Shot name="requests" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Requests: what you asked your Seerr server for, and its status.</figcaption></figure>
       <figure class="m-0 md:col-span-2 md:mx-auto md:w-1/2"><Shot name="gallery" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Themes gallery: official themes with a preview, one click to install.</figcaption></figure>
     </div>
+  </section>
+  {/if}
+
+  {#if v070}
+  <section class="pb-[clamp(110px,14vw,220px)]" aria-labelledby="s11">
+    <header class="reveal wrap mb-[clamp(32px,4vw,56px)] text-center"><span class="role">Scene 12</span><h2 id="s11" class="scene-title">The gateway and Discover</h2></header>
+    <p class="subtitle">Your phone and TV apps can use everything NOCTURNE gathers, and finding something new starts in the same window. Both are optional and off until you turn them on.</p>
+    <div class="stagger wrap mt-14 grid gap-10 md:grid-cols-2">
+      <figure class="m-0"><Shot name="gateway" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Settings, Gateway: the address with a QR code, who may connect, and the devices signed in.</figcaption></figure>
+      <figure class="m-0"><Shot name="discover" sizes={two} /><figcaption class="mt-4 text-sm text-ink-2">Requests, Discover: trending titles with their status on your sources.</figcaption></figure>
+    </div>
+    <dl class="stagger mx-auto mt-14 grid w-[min(1000px,100%-40px)] gap-x-14 gap-y-10 md:grid-cols-2">
+      {#each [...gateway, ...discover] as [t, d]}
+        <div class="rule pt-5"><dt class="role">{t}</dt><dd class="m-0 mt-3 text-ink-2">{d}</dd></div>
+      {/each}
+    </dl>
   </section>
   {/if}
 </div>

@@ -2,6 +2,8 @@
 
 **Linux x86_64 under Wayland is the supported platform**, with signed pacman, apt and dnf repositories at `https://nocturne.ifsvivek.in/repo` and a tarball. Arch is the primary test target. Windows (x64) and macOS (Apple Silicon) are **unsigned previews** attached to the GitHub release; they have been tried on a real Windows PC and a Mac. X11, Homebrew packaging and Windows and macOS code signing are not planned. Nothing here may degrade playback quality, stability or security.
 
+The optional gateway (`nocturne-gateway`, a second binary) is Linux only for now: the Linux packages and tarball ship it, the Windows and macOS previews do not, and "Keep running when NOCTURNE is closed" is a systemd user service. It is plain tokio and axum with no platform code beyond that, so other platforms are a packaging and service-manager task, not started.
+
 ## Platform seams
 
 Keep everything platform-specific behind these seams; `#[cfg(target_os = ...)]` appears only inside them.
