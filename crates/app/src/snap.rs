@@ -29,6 +29,14 @@ pub fn on_boot() -> Task<Message> {
             "discover" => Some(Message::Discover(crate::app::discover::Msg::View(
                 crate::app::discover::View::Discover,
             ))),
+            n if n.starts_with("discover-q-") => Some(Message::Discover(
+                crate::app::discover::Msg::Query(n[11..].replace('_', " ")),
+            )),
+            "discover-go" => Some(Message::Discover(crate::app::discover::Msg::Search)),
+            n if n.starts_with("discover-genre-") => n[15..]
+                .parse()
+                .ok()
+                .map(|g| Message::Discover(crate::app::discover::Msg::Genre(Some(g)))),
             "discover-popular" => Some(Message::Discover(crate::app::discover::Msg::List(
                 nocturne_core::discover::List::Popular,
             ))),

@@ -728,7 +728,8 @@ impl App {
         match r {
             Ok(fresh) => {
                 let d = &mut self.rq.disc;
-                d.more = !fresh.is_empty() && d.src != Some(Src::Arr);
+                // The sources answer 20 or more a page; a shorter one is the end of the list.
+                d.more = fresh.len() >= 10 && d.src != Some(Src::Arr);
                 let mut all = match (page, d.cards.take()) {
                     (p, Some(Load::Ready(v))) if p > 1 => v,
                     _ => vec![],
