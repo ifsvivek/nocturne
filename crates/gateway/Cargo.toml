@@ -22,7 +22,10 @@ path = "src/main.rs"
 [dependencies]
 nocturne-core = { path = "../core" }
 nocturne-session = { path = "../session" }
-nocturne-jellyfin-user = { path = "../jellyfin-user" } # Session type of the stored logins
+nocturne-jellyfin-user = { path = "../jellyfin-user" } # Session type of the stored logins, raw POST/DELETE forwarding
+nocturne-jellyfin = { path = "../jellyfin" } # raw GET forwarding
+nocturne-local = { path = "../local" } # local library items
+futures-util = { version = "0.3.34", default-features = false }
 # Minimal axum: HTTP/1 only, WebSocket upgrade, query and JSON extractors. No tracing, no form, no multipart, no macros.
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "ws", "query", "json"] }
 hyper = { version = "1", default-features = false, features = ["http1", "server"] }
@@ -43,8 +46,8 @@ libc = "0.2"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "query"] }
 
 [dev-dependencies]
-nocturne-jellyfin-admin = { path = "../jellyfin-admin" } # TestServerGuard only (live tests)
 # WebSocket test clients: the handshake is done by reqwest, tungstenite only frames.
 futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
 tokio-tungstenite = { version = "0.30", default-features = false }
 tempfile = "3.27.0"
+nocturne-jellyfin-admin = { path = "../jellyfin-admin" } # TestServerGuard for the live tests

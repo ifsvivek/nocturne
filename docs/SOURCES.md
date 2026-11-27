@@ -47,6 +47,7 @@ A Seerr server (also Jellyseerr or Overseerr) is a request service, not a source
 ## The gateway is a front for the catalog, not a source
 
 `nocturne-gateway` (Settings > Gateway, [dev/GATEWAY_PLAN.md](dev/GATEWAY_PLAN.md)) serves the merged catalog of all sources as one Jellyfin-compatible address for other apps. It is not a source and adds nothing to the catalog. NOCTURNE refuses to add a server whose `ServerId` is its own gateway's (the app learns it from the running gateway), because the catalog would then loop back into itself. A real Jellyfin server behind the gateway is still added as itself.
+Without a Seerr server the same rule holds for the native request list (`wishlist.json`, Settings > Requests > "Requests without a Seerr server") and for an optional Radarr and Sonarr: they are request services, not sources, and have no slot in `Catalog`. Whether a title is "on your servers" is decided from the catalog by TMDB, IMDb and TVDB ids (`crates/core/src/discover.rs`, the same strong-identity rule as `merge.rs`; title and year only for an item that has no ids at all). The Discover view reads titles from the Seerr server, your own TMDB key or Trakt and never contacts a media server except to look a title up in the catalog.
 
 ## UI
 

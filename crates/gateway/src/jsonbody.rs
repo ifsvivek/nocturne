@@ -22,6 +22,25 @@ pub fn parse<T: DeserializeOwned>(body: &[u8]) -> Option<T> {
     serde_json::from_value(lower_top(serde_json::from_slice(body).ok()?)).ok()
 }
 
+/// A body as an object whose top-level keys that match one of `canonical` (any case) are spelled as in `canonical`; other keys are untouched.
+/// For handlers that read fields by their Jellyfin names (`ItemId`, `PositionTicks`). Not an object or not JSON: `Value::Null`.
+pub fn parse_canonical(body: &[u8], canonical: &[&str]) -> Value {
+    let Ok(Value::Object(m)) = serde_json::from_slice::<Value>(body) else {
+        return Value::Null;
+    };
+    Value::Object(
+        m.into_iter()
+            .map(|(k, v)| {
+                let k = canonical
+                    .iter()
+                    .find(|c| c.eq_ignore_ascii_case(&k))
+                    .map_or(k, |c| (*c).to_string());
+                (k, v)
+            })
+            .collect(),
+    )
+}
+
 /// A body as a `Value` with lower-case top-level keys (for handlers that read fields by name).
 pub fn parse_value(body: &[u8]) -> Option<Value> {
     serde_json::from_slice(body).ok().map(lower_top)

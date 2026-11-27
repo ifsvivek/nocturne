@@ -143,6 +143,11 @@ impl Tmdb<'_> {
         self.http.json(self.gate, self.get(path, q)).await
     }
 
+    /// Any GET of the API, for the Discover lists (`/trending/...`, `/discover/...`, `/search/...`).
+    pub async fn raw(&self, path: &str, q: &[(&str, &str)]) -> Result<Value, Err> {
+        self.json(path, q).await
+    }
+
     /// One cheap authenticated request: is this key accepted?
     pub async fn validate(&self) -> Result<(), Err> {
         self.json("/configuration", &[]).await.map(|_| ())

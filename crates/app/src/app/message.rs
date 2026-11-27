@@ -327,4 +327,6 @@ pub enum Message {
     Calendar(super::calendar::Msg),
     /// Seerr: sign-in, the Request dialog, the Requests page.
     Requests(super::requests::Msg),
+    /// The Requests page's Discover view, the list kept on this computer, Radarr and Sonarr.
+    Discover(super::discover::Msg),
 }

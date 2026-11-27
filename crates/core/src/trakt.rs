@@ -753,6 +753,14 @@ impl Trakt {
         r.json().await.map_err(|_| Error::Failed)
     }
 
+    /// A public list or search (trending, popular, search): needs the app's client id, no sign-in. Read only.
+    pub async fn public_get(&self, path: &str, q: &[(String, String)]) -> Result<Value, Error> {
+        let rb = self.headers(self.http.get(format!("{}{path}", self.base)).query(q), None);
+        let r = self.send(rb).await?;
+        Self::check(&r)?;
+        r.json().await.map_err(|_| Error::Failed)
+    }
+
     pub async fn username(&self) -> Result<String, Error> {
         let v = self.authed_get("/users/settings").await?;
         v["user"]["username"]

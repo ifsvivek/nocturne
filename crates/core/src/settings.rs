@@ -192,8 +192,28 @@ pub struct Settings {
     pub seerr_requests: bool,
     /// The one Seerr server and who is signed in there (the session cookie is in the keyring, never here).
     pub seerr: SeerrCfg,
+    /// Requests without a Seerr server: kept in a list on this computer (`wishlist.rs`), nothing leaves it
+    /// unless Radarr or Sonarr is also connected and `arr_requests` is on. Off by default.
+    pub native_requests: bool,
+    /// A native request is also added to the connected Radarr / Sonarr. A write to that service, always
+    /// after the request dialog's confirmation. Off until the user turns it on. Needs no `allow_server_writes`
+    /// (no media server is touched). docs/WRITES.md.
+    pub arr_requests: bool,
+    pub radarr: ArrCfg,
+    pub sonarr: ArrCfg,
     /// The optional gateway companion (`nocturne-gateway`, docs/dev/GATEWAY_PLAN.md); the same `[gateway]` table is read by that process.
     pub gateway: GatewaySettings,
+}
+
+/// Non-secret state of a Radarr or Sonarr connection (the API key is in the keyring, never here).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ArrCfg {
+    pub url: String,
+    /// The quality profile and root folder requests use; 0 / empty = the service's first, chosen on connect.
+    pub profile_id: u32,
+    pub profile_name: String,
+    pub root_folder: String,
 }
 
 /// Non-secret state of the Seerr connection.
@@ -245,8 +265,20 @@ impl Default for Settings {
             recent_searches: vec![],
             seerr_requests: false,
             seerr: SeerrCfg::default(),
+            native_requests: false,
+            arr_requests: false,
+            radarr: ArrCfg::default(),
+            sonarr: ArrCfg::default(),
             gateway: GatewaySettings::default(),
         }
+    }
+}
+
+fn arr_value(c: &ArrCfg) -> String {
+    if c.url.is_empty() {
+        "Not set up".into()
+    } else {
+        "Connected".into()
     }
 }
 
@@ -296,7 +328,7 @@ pub struct Row {
 }
 
 /// Number of rows in the Settings screen (`rows()` / `choices()` / `cycle()` index them).
-pub const ROWS: usize = 40;
+pub const ROWS: usize = 44;
 
 /// The "Default profile" row; the app applies its changes (they live in `accounts.toml`).
 pub const PROFILE_ROW: usize = 22;
@@ -326,15 +358,22 @@ pub const SEERR_ROW: usize = 30;
 /// The "Allow requests" row.
 pub const SEERR_ALLOW_ROW: usize = 31;
 
+/// "Requests without a Seerr server".
+pub const NATIVE_ROW: usize = 32;
+/// The "Radarr" / "Sonarr" rows: not toggles, they open the connect dialog.
+pub const RADARR_ROW: usize = 33;
+pub const SONARR_ROW: usize = 34;
+/// "Add requests to Radarr and Sonarr".
+pub const ARR_ALLOW_ROW: usize = 35;
 /// The Settings > Gateway rows (docs/dev/GATEWAY_PLAN.md section 6), last in the list.
-pub const GATEWAY_ROW: usize = 32;
-pub const GATEWAY_BINDING_ROW: usize = 33;
-pub const GATEWAY_PORT_ROW: usize = 34;
-pub const GATEWAY_CACHE_ROW: usize = 35;
-pub const GATEWAY_KEEP_ROW: usize = 36;
-pub const GATEWAY_REMOTE_ROW: usize = 37;
-pub const GATEWAY_VIEWS_ROW: usize = 38;
-pub const GATEWAY_ANNOUNCE_ROW: usize = 39;
+pub const GATEWAY_ROW: usize = 36;
+pub const GATEWAY_BINDING_ROW: usize = 37;
+pub const GATEWAY_PORT_ROW: usize = 38;
+pub const GATEWAY_CACHE_ROW: usize = 39;
+pub const GATEWAY_KEEP_ROW: usize = 40;
+pub const GATEWAY_REMOTE_ROW: usize = 41;
+pub const GATEWAY_VIEWS_ROW: usize = 42;
+pub const GATEWAY_ANNOUNCE_ROW: usize = 43;
 
 /// The "Trakt account" row: not a toggle, it opens the connect dialog.
 pub const TRAKT_ROW: usize = 19;
@@ -358,6 +397,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         COMING_ROW => Some("Calendar"),
         SEERR_ROW => Some("Requests"),
         GATEWAY_ROW => Some("Gateway"),
+        NATIVE_ROW => Some("Requests without Seerr"),
         _ => None,
     }
 }
@@ -628,6 +668,26 @@ impl Settings {
                 onoff(self.seerr_requests),
             ),
             r(
+                "Requests without a Seerr server",
+                "Keep your own list of requested movies and shows on this computer. A request turns Available by itself when the title shows up on any of your sources. Used only when no Seerr server is signed in; nothing leaves this computer unless you also connect Radarr or Sonarr below. Off by default.",
+                onoff(self.native_requests),
+            ),
+            r(
+                "Radarr",
+                "Connect your own Radarr (address and API key) to have requested movies added to it. The key stays in your system keyring, never in settings. Never contacts your media servers.",
+                arr_value(&self.radarr),
+            ),
+            r(
+                "Sonarr",
+                "Connect your own Sonarr (address and API key) to have requested shows added to it, with the seasons you pick. The key stays in your system keyring, never in settings. Never contacts your media servers.",
+                arr_value(&self.sonarr),
+            ),
+            r(
+                "Add requests to Radarr and Sonarr",
+                "When on, a request made without Seerr is also added to your connected Radarr (movies) or Sonarr (shows), after you confirm it in the request dialog, and its status follows the service. Off until you turn it on; needs a connected service.",
+                onoff(self.arr_requests),
+            ),
+            r(
                 "Gateway",
                 "One Jellyfin-compatible address over all your sources, for phone and TV apps. Off by default; when off nothing runs. Starts the nocturne-gateway helper while NOCTURNE is open.",
                 onoff(self.gateway.enabled),
@@ -861,6 +921,9 @@ impl Settings {
             }
             SEERR_ROW => {} // opens the Seerr dialog (the app handles it)
             SEERR_ALLOW_ROW => self.seerr_requests ^= true,
+            NATIVE_ROW => self.native_requests ^= true,
+            RADARR_ROW | SONARR_ROW => {} // open the connect dialog (the app handles them)
+            ARR_ALLOW_ROW => self.arr_requests ^= true,
             GATEWAY_ROW => self.gateway.enabled ^= true,
             GATEWAY_BINDING_ROW => {
                 let i = BINDINGS.iter().position(|b| *b == self.gateway.binding);
@@ -1204,6 +1267,39 @@ mod tests {
     }
 
     #[test]
+    fn native_request_and_arr_rows_toggle_and_keep_no_key() {
+        let mut s = Settings::default();
+        assert!(!s.native_requests && !s.arr_requests);
+        assert_eq!(s.rows()[NATIVE_ROW].value, "Off");
+        assert_eq!(s.rows()[RADARR_ROW].value, "Not set up");
+        assert_eq!(s.rows()[SONARR_ROW].value, "Not set up");
+        let before = s.clone();
+        s.cycle(RADARR_ROW, 1); // open dialogs, change nothing
+        s.cycle(SONARR_ROW, 1);
+        assert_eq!(s, before);
+        s.cycle(NATIVE_ROW, 1);
+        s.cycle(ARR_ALLOW_ROW, 1);
+        assert!(s.native_requests && s.arr_requests && !s.allow_server_writes);
+        s.radarr = ArrCfg {
+            url: "http://radarr.lan:7878".into(),
+            profile_id: 4,
+            profile_name: "HD".into(),
+            root_folder: "/movies".into(),
+        };
+        assert_eq!(s.rows()[RADARR_ROW].value, "Connected");
+        let d = dir("arr");
+        let p = d.join("settings.toml");
+        s.save_to(&p).unwrap();
+        assert_eq!(Settings::load_from(&p), s);
+        let text = std::fs::read_to_string(&p).unwrap().to_lowercase();
+        assert!(!text.contains("apikey") && !text.contains("api_key"));
+        std::fs::write(&p, "version = 3\n").unwrap();
+        let old = Settings::load_from(&p);
+        assert!(!old.native_requests && !old.arr_requests && old.radarr == ArrCfg::default());
+        std::fs::remove_dir_all(d).unwrap();
+    }
+
+    #[test]
     fn onboarding_defaults_to_never_and_persists() {
         let d = dir("onb");
         let p = d.join("nocturne").join("settings.toml");
@@ -1542,12 +1638,12 @@ mod tests {
 
     #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24, 25, 26, 28, 29, 30 and 32.
+        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24, 25, 26, 28, 29, 30, 32 and 36.
         assert_eq!(scroll_child(0), 2);
         assert_eq!(scroll_child(1), 3);
         assert_eq!(scroll_child(2), 5);
         assert_eq!(scroll_child(11), 15);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 16);
+        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 17);
         assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
         assert_eq!(nav_row(0, "up"), Some(0));
         assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));

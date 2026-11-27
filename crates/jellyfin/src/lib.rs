@@ -15,6 +15,7 @@ mod config;
 pub mod header;
 mod model;
 mod play;
+pub mod raw;
 mod server_ui;
 mod web;
 

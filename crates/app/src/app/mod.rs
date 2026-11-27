@@ -32,6 +32,8 @@ mod images;
 pub(crate) mod jf;
 #[cfg(feature = "theme-engine")]
 pub(crate) use home_tree::CardIn;
+pub(crate) mod discover;
+mod discover_view;
 pub mod message;
 mod onboard;
 mod online;
@@ -1079,6 +1081,7 @@ impl App {
             Message::Trakt(m) => self.trakt_msg(m),
             Message::Gateway(m) => self.gateway_msg(m),
             Message::Requests(m) => self.rq_msg(m),
+            Message::Discover(m) => self.disc_msg(m),
             Message::Smart(m) => self.smart_msg(m),
             Message::Calendar(m) => self.cal_msg(m),
             Message::Cascade(m) => self.cascade_msg(m),
@@ -2197,7 +2200,6 @@ impl App {
             Some(Link::Smart) => self.update(Message::Smart(smart::Msg::Menu)),
             Some(Link::Calendar) => self.update(Message::Calendar(calendar::Msg::Open)),
             Some(Link::Admin) => self.update(Message::OpenAdmin),
-            Some(Link::Requests) => self.update(Message::Requests(requests::Msg::PageOpen)),
             None => Task::none(),
         }
     }

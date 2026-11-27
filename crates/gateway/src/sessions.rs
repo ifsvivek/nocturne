@@ -1024,6 +1024,21 @@ fn merge_ctx<'a>(
     }
 }
 
+/// What each client reports through the playback routes ([`crate::playback::PlayTable`]) becomes its `PlayState` and `NowPlayingItem`.
+fn with_playing(st: &State, mut v: Vec<Native>) -> Vec<Native> {
+    let table = st.ext::<crate::playback::PlayTable>();
+    for n in &mut v {
+        if let Some(p) = table.get(&n.token_id) {
+            n.playing = Some(json!({"Id": p.item.to_string()}));
+            n.play_state = Some(json!({
+                "PositionTicks": p.ticks, "CanSeek": true, "IsPaused": p.paused, "IsMuted": false,
+                "RepeatMode": "RepeatNone", "PlaybackOrder": "Default",
+            }));
+        }
+    }
+    v
+}
+
 /// The table for one caller: with remote control off only the caller's own session, nothing is asked of any server.
 pub async fn list(st: &State, caller: &AuthCtx) -> Vec<Value> {
     let hub = st.ext::<Hub>();
@@ -1035,9 +1050,9 @@ pub async fn list(st: &State, caller: &AuthCtx) -> Vec<Value> {
             .into_iter()
             .filter(|n| n.token_id == caller.token_id)
             .collect();
-        return merge(&c, &own, &[]).0;
+        return merge(&c, &with_playing(st, own), &[]).0;
     }
-    let natives = hub.snapshot(Some(caller));
+    let natives = with_playing(st, hub.snapshot(Some(caller)));
     let ups = hub.up_sessions(st, false).await;
     merge(&c, &natives, &ups).0
 }

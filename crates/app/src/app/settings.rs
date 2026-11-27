@@ -12,6 +12,7 @@ use iced::widget::operation;
 use iced::widget::scrollable::AbsoluteOffset;
 use iced::widget::{Stack, column, container, row, scrollable as scroll, space, text};
 use iced::{Alignment, Element, Length, Padding, Task};
+use nocturne_arr::Service;
 use nocturne_core::dropdown::Outcome;
 use nocturne_core::settings as s;
 
@@ -241,6 +242,20 @@ impl App {
         if i == s::SEERR_ROW {
             return value_chip(&self.rq_chip_label(), false, on, false, Message::SetRow(i));
         }
+        if i == s::RADARR_ROW || i == s::SONARR_ROW {
+            let svc = if i == s::RADARR_ROW {
+                Service::Radarr
+            } else {
+                Service::Sonarr
+            };
+            return value_chip(
+                &self.arr_chip_label(svc),
+                false,
+                on,
+                false,
+                Message::SetRow(i),
+            );
+        }
         let Some((labels, cur)) = self.settings.choices(i) else {
             return switch(value == "On", on, Message::SetRow(i));
         };
@@ -391,6 +406,14 @@ impl App {
         }
         if i == s::SEERR_ROW {
             return self.rq_msg(super::requests::Msg::Open);
+        }
+        if i == s::RADARR_ROW || i == s::SONARR_ROW {
+            let svc = if i == s::RADARR_ROW {
+                Service::Radarr
+            } else {
+                Service::Sonarr
+            };
+            return self.disc_msg(super::discover::Msg::ArrOpen(svc));
         }
         let Some((labels, cur)) = self.settings.choices(i) else {
             return self.cycle_setting(i, 1);

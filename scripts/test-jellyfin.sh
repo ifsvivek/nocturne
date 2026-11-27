@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Throwaway Jellyfin for NOCTURNE admin tests. NEVER touches /var/lib/jellyfin, ~/.config or port 8096.
-# Usage: scripts/test-jellyfin.sh {start|stop|reset|status}
-# Set NOCTURNE_JF_TEST_PORT (and NOCTURNE_JF_TEST_DIR) to run a second instance next to the default one.
+# Usage: scripts/test-jellyfin.sh {start|stop|reset|status} [2]
+# `start 2` (also stop, reset, status) is the second instance for merge tests: port 8098, state in /tmp/nocturne-jf-test-2, its own test.env.
+# Its media overlaps the first instance's (Test Clip 2 and 3 carry the same provider ids in an .nfo, in another resolution), so merging is real.
+# Set NOCTURNE_JF_TEST_PORT (and NOCTURNE_JF_TEST_DIR) to run another instance next to the default one.
 # Everything (data, config, secrets, media, env file) lives under $NOCTURNE_JF_TEST_DIR (default /tmp/nocturne-jf-test).
 set -euo pipefail
 
-T="${NOCTURNE_JF_TEST_DIR:-/tmp/nocturne-jf-test}"
-PORT="${NOCTURNE_JF_TEST_PORT:-8097}"
+INST="${2:-1}"
+case "$INST" in 1) D_DIR=/tmp/nocturne-jf-test; D_PORT=8097; CLIPS="1 2 3"; SIZE=160x90;; 2) D_DIR=/tmp/nocturne-jf-test-2; D_PORT=8098; CLIPS="2 3 4"; SIZE=320x180;; *) echo "instance must be 1 or 2" >&2; exit 2;; esac
+T="${NOCTURNE_JF_TEST_DIR:-$D_DIR}"
+PORT="${NOCTURNE_JF_TEST_PORT:-$D_PORT}"
 URL="http://127.0.0.1:$PORT"
 ENVF="$T/test.env"
 PIDF="$T/jellyfin.pid"
@@ -29,11 +33,14 @@ api() { # method path [json-body] [token]
 media() {
   mkdir -p "$T/media/Movies"
   local i
-  for i in 1 2 3; do
+  for i in $CLIPS; do
     local f="$T/media/Movies/Test Clip $i (200$i)/Test Clip $i (200$i).mp4"
-    [[ -f $f ]] && continue
+    # Same provider ids on both instances: a title present on both merges in the gateway.
+    local nfo="${f%.mp4}.nfo"
     mkdir -p "$(dirname "$f")"
-    ffmpeg -v error -y -f lavfi -i "testsrc2=size=160x90:rate=10:duration=2" \
+    [[ -f $nfo ]] || printf '<movie><title>Test Clip %s</title><year>200%s</year><imdbid>tt900000%s</imdbid><tmdbid>90000%s</tmdbid><uniqueid type="imdb" default="true">tt900000%s</uniqueid><uniqueid type="tmdb">90000%s</uniqueid></movie>\n' "$i" "$i" "$i" "$i" "$i" "$i" >"$nfo"
+    [[ -f $f ]] && continue
+    ffmpeg -v error -y -f lavfi -i "testsrc2=size=$SIZE:rate=10:duration=2" \
       -f lavfi -i "sine=frequency=$((300 * i)):duration=2" -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "$f"
   done
 }
@@ -91,7 +98,7 @@ seed() { # first run only: wizard, admin, api key, users, library
     api POST /Users/New "$(jq -nc --arg n "$u" --arg p "$(rnd)" '{Name:$n,Password:$p}')" "$tok" >/dev/null
   done
   api POST "/Library/VirtualFolders?name=Test%20Movies&collectionType=movies&refreshLibrary=true" \
-    "$(jq -nc --arg p "$T/media/Movies" '{LibraryOptions:{PathInfos:[{Path:$p}]}}')" "$tok" >/dev/null
+    "$(jq -nc --arg p "$T/media/Movies" '{LibraryOptions:{PathInfos:[{Path:$p}], LocalMetadataReaderOrder:["Nfo"], EnableInternetProviders:false, SaveLocalMetadata:false, MetadataSavers:[]}}')" "$tok" >/dev/null
   ( umask 077; printf 'NOCTURNE_JF_TEST_URL=%s\nNOCTURNE_JF_TEST_TOKEN=%s\n' "$URL" "$key" >"$ENVF" )
 }
 

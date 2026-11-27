@@ -29,6 +29,7 @@ aws-lc-rs = { version = "1.19", default-features = false, features = ["aws-lc-sy
 getrandom = "0.4"
 nocturne-session = { path = "../session" }
 nocturne-seerr = { path = "../seerr" }
+nocturne-arr = { path = "../arr" }
 # WOFF/WOFF2 web fonts from theme stylesheets are decoded to TTF/OTF (pure Rust, MIT) and checked with ttf-parser before use.
 wuff = "0.2.10"
 ttf-parser = "0.25"
