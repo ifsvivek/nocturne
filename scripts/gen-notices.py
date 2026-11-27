@@ -53,7 +53,8 @@ if "--bundled" in sys.argv:
 
 PKG = os.environ.get("PKG", "nocturne-app")
 tgt = "x86_64-unknown-linux-gnu"
-tree = run("cargo", "tree", "-p", PKG, "-e", "normal", "--prefix", "none", "--target", tgt, "--format", "{p}")
+# The Linux packages also ship the gateway companion (nocturne-gateway): its dependencies are listed too.
+tree = run("cargo", "tree", "-p", PKG, "-p", "nocturne-gateway", "-e", "normal", "--prefix", "none", "--target", tgt, "--format", "{p}")
 shipped = set()
 for line in tree.splitlines():
     m = re.match(r"(\S+) v(\S+)", line)
