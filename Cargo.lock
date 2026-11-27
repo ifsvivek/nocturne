@@ -3029,6 +3029,7 @@ version = "0.6.0"
 dependencies = [
  "argon2",
  "axum",
+ "futures-util",
  "getrandom 0.3.4",
  "hyper",
  "hyper-util",
@@ -3045,6 +3046,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-rustls",
+ "tokio-tungstenite 0.30.0",
  "toml",
  "tower",
 ]

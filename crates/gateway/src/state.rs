@@ -223,6 +223,11 @@ impl State {
         *self.upstreams.write().unwrap() = Arc::new(list);
     }
 
+    /// Replace the sources without reading `sources.toml` or the keyring (tests that stand in for them).
+    pub fn set_upstreams(&self, list: Vec<Upstream>) {
+        *self.upstreams.write().unwrap() = Arc::new(list);
+    }
+
     /// A server answered 401: that source is signed out until the next refresh (the app is told by status and re-signs in).
     pub fn mark_signed_out(&self, id: SourceId) {
         let mut w = self.upstreams.write().unwrap();

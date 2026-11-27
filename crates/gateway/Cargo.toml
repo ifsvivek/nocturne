@@ -39,7 +39,11 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 toml = "1.2.1"
 libc = "0.2"
+# Calls to the servers' own session routes (GET /Sessions, command forwarding); redirects are never followed.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "query"] }
 
 [dev-dependencies]
-reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json"] }
+# WebSocket test clients: the handshake is done by reqwest, tungstenite only frames.
+futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
+tokio-tungstenite = { version = "0.30", default-features = false }
 tempfile = "3.27.0"
