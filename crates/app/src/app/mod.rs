@@ -1307,6 +1307,10 @@ impl App {
     fn activate(&mut self, url: String, s: Session) -> Task<Message> {
         let url = url.trim_end_matches('/').to_string();
         if self.gateway_owns(&s.server_id) {
+            // The login was stored when it succeeded: take it back out of the keyring and the remembered accounts.
+            let _ = nocturne_session::delete_account(&url, &s.user_id);
+            nocturne_session::forget_account(&url, &s.user_id);
+            let _ = nocturne_session::delete(&url);
             self.toast("That address is NOCTURNE's own gateway, which already shows your sources. It cannot be added as a source.");
             return Task::none();
         }

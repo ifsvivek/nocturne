@@ -151,7 +151,59 @@ pub fn build(state: &State) -> (Router, Vec<RouteInfo>) {
     let r = crate::userdata::routes(r);
     let r = crate::sessions::routes(r);
     let r = crate::ws::routes(r);
-    r.finish()
+    let (router, table) = r.finish();
+    // Jellyfin routes ignore case (`/system/info/public` works against a real server and clients use it): the path is put into the registered spelling before routing.
+    let paths: std::sync::Arc<[&'static str]> = table.iter().map(|t| t.path).collect();
+    let outer = Router::new().fallback_service(tower::ServiceExt::map_request(
+        router,
+        move |mut req: Request| {
+            if let Some(p) = canonical_path(&paths, req.uri().path()) {
+                let pq = match req.uri().query() {
+                    Some(q) => format!("{p}?{q}"),
+                    None => p,
+                };
+                let mut parts = req.uri().clone().into_parts();
+                if let Ok(v) = pq.parse() {
+                    parts.path_and_query = Some(v);
+                    if let Ok(u) = axum::http::Uri::from_parts(parts) {
+                        *req.uri_mut() = u;
+                    }
+                }
+            }
+            req
+        },
+    ));
+    (outer, table)
+}
+
+/// The registered spelling of `path` when it differs only in the case of fixed segments (`{param}` segments are kept as sent). `None`: no change needed or no route fits.
+pub fn canonical_path(templates: &[&str], path: &str) -> Option<String> {
+    let segs: Vec<&str> = path.split('/').collect();
+    let mut best: Option<(usize, String)> = None;
+    for t in templates {
+        let ts: Vec<&str> = t.split('/').collect();
+        if ts.len() != segs.len() {
+            continue;
+        }
+        let mut fixed = 0;
+        let mut out = Vec::with_capacity(ts.len());
+        let mut ok = true;
+        for (a, b) in ts.iter().zip(&segs) {
+            if a.starts_with('{') {
+                out.push(*b);
+            } else if a.eq_ignore_ascii_case(b) {
+                fixed += 1;
+                out.push(*a);
+            } else {
+                ok = false;
+                break;
+            }
+        }
+        if ok && best.as_ref().is_none_or(|(f, _)| fixed > *f) {
+            best = Some((fixed, out.join("/")));
+        }
+    }
+    best.map(|(_, p)| p).filter(|p| p != path)
 }
 
 fn effective_ip(cfg: &Config, peer: IpAddr, headers: &axum::http::HeaderMap) -> IpAddr {
@@ -493,5 +545,45 @@ mod tests {
         assert!(admit(&cfg, lan) && !admit(&cfg, wan));
         cfg.gw.binding = Binding::Remote;
         assert!(admit(&cfg, wan));
+    }
+}
+
+#[cfg(test)]
+mod case_tests {
+    use super::canonical_path;
+
+    #[test]
+    fn paths_are_matched_without_regard_to_case() {
+        let t = [
+            "/System/Info/Public",
+            "/Users/{userId}",
+            "/Users/Me",
+            "/Sessions/{sessionId}/Playing/{command}",
+        ];
+        let c = |p| canonical_path(&t, p);
+        assert_eq!(
+            c("/system/info/public").as_deref(),
+            Some("/System/Info/Public")
+        );
+        assert_eq!(
+            c("/SYSTEM/INFO/PUBLIC").as_deref(),
+            Some("/System/Info/Public")
+        );
+        assert_eq!(
+            c("/users/me").as_deref(),
+            Some("/Users/Me"),
+            "the fixed segment wins over the parameter"
+        );
+        assert_eq!(
+            c("/users/AbC").as_deref(),
+            Some("/Users/AbC"),
+            "parameters keep the sender's case"
+        );
+        assert_eq!(
+            c("/sessions/AbC/playing/Pause").as_deref(),
+            Some("/Sessions/AbC/Playing/Pause")
+        );
+        assert_eq!(c("/System/Info/Public"), None, "already right");
+        assert_eq!(c("/nothing/here"), None);
     }
 }
