@@ -6,6 +6,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 - Gateway foundation (0.7): the new optional `nocturne-gateway` binary (axum, off unless started) with the allow-list router, gateway sign-in (one user, Argon2id passphrase, revocable device tokens, Quick Connect), the id map, binding modes with bring-your-own TLS, a control socket for the app, and UDP discovery in local-network mode. Library, streaming and remote-control routes follow. The Linux packages ship the second binary.
+- Gateway remote control (0.7): a merged session list across your servers and the apps signed in to the gateway, and commands (play, pause, seek, next, volume, tracks, messages) delivered to those apps over the gateway's own WebSocket or forwarded to the device's own server. Off by default behind Settings > Gateway > Allow remote control; commands to a device on a real server also need server changes on, only a fixed list of player commands is accepted, at most 20 per second per device. The `/socket` WebSocket pushes session changes only while a client listens and coalesces library and watched-state news.
+- Settings > Gateway: switch the gateway on and off (NOCTURNE starts and stops the helper), choose who may connect, port, caching, remote control, per-server views and local-network discovery; see status, the address with Copy and a QR code, the generated password (shown once, regenerate any time), approve Quick Connect codes and revoke signed-in devices. "Keep running when NOCTURNE is closed" installs a systemd user service on Linux. A server whose ServerId is the gateway's own cannot be added as a source.
+- In-app updates also install `nocturne-gateway` next to `nocturne` when the release archive contains it.
 
 ## [0.6.0] - 2026-11-21
 

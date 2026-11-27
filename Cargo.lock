@@ -3036,6 +3036,7 @@ dependencies = [
  "hyper-util",
  "libc",
  "nocturne-core",
+ "nocturne-jellyfin-admin",
  "nocturne-jellyfin-user",
  "nocturne-session",
  "reqwest",
