@@ -170,6 +170,29 @@ mod tests {
         }
     }
 
+    /// `systemd-analyze verify` is offline (it reads the file, starts nothing, never talks to the user's manager). Skipped where the tool is missing.
+    #[test]
+    fn systemd_accepts_the_unit() {
+        let Ok(exe) = std::fs::canonicalize("/usr/bin/true") else {
+            return;
+        };
+        let d = tempfile::tempdir().unwrap();
+        let data = d.path().join("data dir");
+        let p = write_unit(d.path(), &exe, &[&data]).unwrap();
+        let out = match std::process::Command::new("systemd-analyze")
+            .args(["verify", "--user"])
+            .arg(&p)
+            .output()
+        {
+            Ok(o) => o,
+            Err(_) => return,
+        };
+        let text = String::from_utf8_lossy(&out.stderr).into_owned()
+            + &String::from_utf8_lossy(&out.stdout);
+        // Anything it prints about this unit is a finding (a missing Documentation URL scheme or ExecStart would show here).
+        assert!(out.status.success() && !text.contains(UNIT_NAME), "{text}");
+    }
+
     #[test]
     fn awkward_paths_cannot_inject_directives() {
         let t = unit_text(Path::new("/x/a\"b%c$d\\e"), &[]).unwrap();

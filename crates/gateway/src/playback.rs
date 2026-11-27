@@ -321,7 +321,7 @@ async fn report(st: State, ctx: AuthCtx, kind: Kind, body: Bytes) -> StatusCode 
     } else {
         false
     };
-    overlay(&st).update(&st, gid, |o| {
+    let ov = overlay(&st).update(&st, gid, |o| {
         o.ticks = Some(if played { 0 } else { ticks });
         o.last = Some(iso(unix_now()));
         if played {
@@ -345,6 +345,9 @@ async fn report(st: State, ctx: AuthCtx, kind: Kind, body: Bytes) -> StatusCode 
             })
             .await;
         }
+    }
+    if kind == Kind::Stopped {
+        crate::userdata::announce(&st, gid, &ov);
     }
     forward(&st, kind, gid, &members, &mut v).await;
     StatusCode::NO_CONTENT

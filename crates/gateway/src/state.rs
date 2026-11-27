@@ -248,6 +248,9 @@ impl State {
         let changed = listener_part(&self.cfg()) != listener_part(&new);
         *self.cfg.write().unwrap() = Arc::new(new);
         self.refresh_upstreams().await;
+        // The sources may hold different things now. The gateway keeps no upstream socket (it polls, with short caches), so this and a playback stop are its only library news.
+        crate::items::hub(self).cache.clear();
+        self.ext::<crate::sessions::Hub>().library_changed();
         if changed {
             self.relisten.send_modify(|g| *g += 1);
         }

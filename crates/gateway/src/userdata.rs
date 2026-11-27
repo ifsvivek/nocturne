@@ -219,6 +219,7 @@ pub async fn apply_mark(st: &State, item: &str, mark: Mark) -> Result<Ov, Status
         }
     }
     forward_mark(st, &members, mark).await;
+    announce(st, gid, &ov);
     Ok(ov)
 }
 
@@ -270,6 +271,12 @@ async fn forward_mark(st: &State, members: &[Member], mark: Mark) {
     if any {
         items::hub(st).cache.clear();
     }
+}
+
+/// Tell listening clients (WebSocket `UserDataChanged`) that this item's watched, favourite or resume state changed.
+pub fn announce(st: &State, gid: Gid, ov: &Ov) {
+    st.ext::<crate::sessions::Hub>()
+        .user_data_changed(vec![dto_of(ov, gid)]);
 }
 
 fn dto_of(ov: &Ov, gid: Gid) -> Value {
@@ -332,11 +339,12 @@ async fn set_user_data(
     if u.playback_position_ticks.is_some() || u.play_count.is_some() {
         // A position set by hand lands in the overlay only: it is not a playback report, nothing is forwarded.
         if let Some((gid, _)) = st.ids.resolve_str(item) {
-            overlay(&st).update(&st, gid, |o| {
+            let ov = overlay(&st).update(&st, gid, |o| {
                 o.ticks = u.playback_position_ticks.or(o.ticks);
                 o.count = u.play_count.or(o.count);
                 o.last = Some(iso(unix_now()));
             });
+            announce(&st, gid, &ov);
         }
     }
     user_data_of(&st, item, &headers, &uri).await
