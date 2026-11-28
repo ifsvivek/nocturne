@@ -11,6 +11,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Fixed
 - The header is opaque, so page text no longer shows through it while scrolling (Settings content now also starts below the header).
+### Added
+- `nocturne-server`: a headless server with independently enabled modules behind one REST + WebSocket API, first-run admin setup, session tokens and API keys, a local-admin unix socket, and a CLI (`install`, `status`, `config`, `apikey`, ...).
+- Library manager in the server: monitored movies, shows, music and books, quality profiles, user-added Torznab / Newznab indexers, automatic and interactive search, a download queue on the built-in torrent engine, import into your library folders under naming templates, failed-download handling, RSS, missing and upgrade searches, and native requests.
 
 ## [0.7.0] - 2026-11-27
 

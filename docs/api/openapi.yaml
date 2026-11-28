@@ -1,0 +1,763 @@
+openapi: 3.1.0
+info:
+  title: NOCTURNE server API
+  version: "1"
+  description: |
+    The API of `nocturne-server` (docs/dev/SERVER_PLAN.md), used by the web dashboard, the desktop app and the CLI alike.
+
+    Transport: HTTP on the configured address (loopback by default) and the same API on the unix socket `$XDG_RUNTIME_DIR/nocturne/server.sock`. A unix-socket peer with the server's own uid is the local admin and needs no credential.
+
+    Auth: `Authorization: Bearer <session token or API key>` or `X-Api-Key: <API key>`. Every route needs it except `GET /api/v1/health`, `GET /api/v1/setup`, `POST /api/v1/setup` (only until an admin exists) and `POST /api/v1/auth/login`. The WebSocket also accepts `?token=` because browsers cannot set headers on it.
+
+    Conventions: JSON bodies; ids are integers unless noted; times are unix seconds; enums are snake_case strings. Errors are `{"error": "message"}` with 400 (bad input), 401 (no or bad credential), 403 (not allowed), 404, 409 (conflict, e.g. already set up), 503 (module off). A route of a module that is switched off answers 503.
+
+    Modules: every feature is a module with its own `server.toml` section and its routes under `/api/v1/<module>/` (library, downloads, requests here; gateway, tunnel, discovery and storage are documented by their modules as they land). A module's routes answer 503 while it is off.
+
+    Every registered route must be listed here; `crates/server/tests/openapi.rs` fails otherwise. Changes: docs/api/CHANGES.md.
+servers:
+  - url: http://127.0.0.1:8100
+security:
+  - bearer: []
+  - apiKey: []
+
+paths:
+  /api/v1/health:
+    get:
+      summary: Liveness, no auth
+      security: []
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {ok: {type: boolean}}}}}}
+  /api/v1/status:
+    get:
+      summary: Version, uptime, modules, counters, jobs
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Status"}}}}
+  /api/v1/config:
+    get:
+      summary: The server configuration (server.toml)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/ServerConfig"}}}}
+    put:
+      summary: Replace the configuration; modules start or stop to match. Changing `http` takes effect at the next start.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ServerConfig"}}}}
+      responses:
+        "200": {description: saved, content: {application/json: {schema: {$ref: "#/components/schemas/ServerConfig"}}}}
+
+  /api/v1/setup:
+    get:
+      summary: Whether first-run setup is still needed
+      security: []
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {needed: {type: boolean}}}}}}
+    post:
+      summary: Create the admin user (only while none exists) and sign in
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Credentials"}}}}
+      responses:
+        "200": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/LoginResult"}}}}
+        "409": {description: already set up}
+  /api/v1/auth/login:
+    post:
+      summary: Sign in; failed attempts are slowed down
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Credentials"}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/LoginResult"}}}}
+        "401": {description: wrong name or password}
+  /api/v1/auth/logout:
+    post:
+      summary: Revoke the session token used for this call
+      responses:
+        "200": {description: ok}
+  /api/v1/auth/me:
+    get:
+      summary: The caller
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/User"}}}}
+  /api/v1/auth/password:
+    put:
+      summary: Change the caller's password (needs `current`), or as the local admin (unix socket) any user's by `user`; every session is revoked (API keys stay)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [new], properties: {current: {type: string}, new: {type: string, minLength: 8}, user: {type: string, description: "local admin only: the user whose password is reset"}}}}}}
+      responses:
+        "200": {description: ok}
+        "403": {description: wrong current password}
+  /api/v1/auth/sessions:
+    get:
+      summary: Signed-in sessions (tokens are never shown)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Session"}}}}}
+  /api/v1/auth/sessions/{id}:
+    delete:
+      summary: Revoke a session
+      parameters: [{$ref: "#/components/parameters/StrId"}]
+      responses:
+        "200": {description: ok}
+  /api/v1/apikeys:
+    get:
+      summary: Named API keys (the key itself only at creation)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/ApiKey"}}}}}
+    post:
+      summary: Create a named API key
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}}}}}}
+      responses:
+        "200": {description: created; `key` is shown only here, content: {application/json: {schema: {$ref: "#/components/schemas/NewApiKey"}}}}
+  /api/v1/apikeys/{id}:
+    delete:
+      summary: Revoke an API key
+      parameters: [{$ref: "#/components/parameters/StrId"}]
+      responses:
+        "200": {description: ok}
+
+  /api/v1/events:
+    get:
+      summary: WebSocket upgrade; one JSON `Event` per text message
+      description: Queue progress at most every 2 s while something downloads, plus history, title, job, request and health events. Auth by header or `?token=`.
+      parameters:
+        - {name: token, in: query, required: false, schema: {type: string}}
+      responses:
+        "101": {description: switching protocols; messages are `Event`, content: {application/json: {schema: {$ref: "#/components/schemas/Event"}}}}
+
+  /api/v1/logs:
+    get:
+      summary: The newest server log lines, oldest first (redacted when written; admin only)
+      parameters:
+        - {name: lines, in: query, required: false, schema: {type: integer, default: 200, maximum: 1000}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {type: object, properties: {at: {type: integer}, line: {type: string}}}}}}}
+
+  /api/v1/library/libraries:
+    get:
+      summary: Library folders (module library)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Library"}}}}}
+    post:
+      summary: Add a library folder. Managed mode creates the root; existing mode needs an existing folder.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Library"}}}}
+      responses:
+        "200": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+  /api/v1/library/libraries/{id}:
+    put:
+      summary: Change a library folder
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Library"}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+    delete:
+      summary: Forget a library folder (refused while a title uses it; files untouched)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+        "409": {description: in use}
+  /api/v1/library/profiles:
+    get:
+      summary: Quality profiles
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Profile"}}}}}
+    post:
+      summary: Add a quality profile
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Profile"}}}}
+      responses:
+        "200": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+  /api/v1/library/profiles/{id}:
+    put:
+      summary: Change a quality profile
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Profile"}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+    delete:
+      summary: Delete a profile (refused while a title uses it)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+        "409": {description: in use}
+  /api/v1/library/indexers:
+    get:
+      summary: User-added Torznab / Newznab indexers (API keys are never returned)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/IndexerDef"}}}}}
+    post:
+      summary: Add an indexer; `api_key` goes to the keyring
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/IndexerSave"}}}}
+      responses:
+        "200": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+  /api/v1/library/indexers/{id}:
+    put:
+      summary: Change an indexer; `api_key` null keeps the stored key, "" deletes it
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/IndexerSave"}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+    delete:
+      summary: Delete an indexer and its key
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+  /api/v1/library/indexers/{id}/test:
+    post:
+      summary: Fetch the indexer's caps
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Caps"}}}}
+
+  /api/v1/library/titles:
+    get:
+      summary: Monitored movies, series, artists and authors
+      parameters:
+        - {name: kind, in: query, required: false, schema: {$ref: "#/components/schemas/MediaKind"}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Title"}}}}}
+    post:
+      summary: Add a title; its units (episodes, albums, books) come from TVmaze, MusicBrainz or Open Library
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/NewTitle"}}}}
+      responses:
+        "200": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+        "409": {description: already monitored}
+  /api/v1/library/titles/{id}:
+    get:
+      summary: A title with its units
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/TitleDetail"}}}}
+    delete:
+      summary: Stop managing a title; its downloads are removed, imported files stay
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+  /api/v1/library/titles/{id}/refresh:
+    post:
+      summary: Refresh the unit list from the metadata provider
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+  /api/v1/library/titles/{id}/monitor:
+    put:
+      summary: Monitor or unmonitor the title (`units` empty) or some of its units
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [monitored], properties: {units: {type: array, items: {type: integer}}, monitored: {type: boolean}}}}}}
+      responses:
+        "200": {description: ok}
+  /api/v1/library/titles/{id}/search:
+    post:
+      summary: Automatic search and grab in the background (`units` empty = every wanted unit); results arrive as events
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/Units"}}}}
+      responses:
+        "200": {description: started}
+  /api/v1/library/titles/{id}/releases:
+    post:
+      summary: Interactive search; every release found with the decision on it
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/Units"}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Candidate"}}}}}
+  /api/v1/library/titles/{id}/grab:
+    post:
+      summary: Grab one release from the interactive search (overrides rejections except Usenet and the blocklist)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Release"}}}}
+      responses:
+        "200": {description: grabbed, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+
+  /api/v1/library/queue:
+    get:
+      summary: Grabs that are downloading, seeding or waiting for an import fix
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/QueueItem"}}}}}
+  /api/v1/library/queue/{id}:
+    delete:
+      summary: Remove a grab with its torrent and download data; optionally blocklist the release and search again
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: blocklist, in: query, required: false, schema: {type: boolean}}
+        - {name: search, in: query, required: false, schema: {type: boolean}}
+      responses:
+        "200": {description: ok}
+  /api/v1/library/queue/{id}/retry:
+    post:
+      summary: Retry the import of a grab in `import_blocked`
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+  /api/v1/library/queue/{id}/pause:
+    post:
+      summary: Pause the grab's torrent
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+  /api/v1/library/queue/{id}/resume:
+    post:
+      summary: Resume the grab's torrent
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+  /api/v1/library/history:
+    get:
+      summary: Newest first
+      parameters:
+        - {name: title, in: query, required: false, schema: {type: integer}}
+        - {name: limit, in: query, required: false, schema: {type: integer, default: 100}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/HistoryEntry"}}}}}
+  /api/v1/library/blocklist:
+    get:
+      summary: Blocklisted releases
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/BlockEntry"}}}}}
+  /api/v1/library/blocklist/{id}:
+    delete:
+      summary: Remove from the blocklist
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+  /api/v1/library/calendar:
+    get:
+      summary: Units of monitored titles dated in a range, by date
+      parameters:
+        - {name: from, in: query, required: false, schema: {type: string, description: "YYYY-MM-DD, default today"}}
+        - {name: to, in: query, required: false, schema: {type: string, description: "YYYY-MM-DD, default today + 30 days"}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/CalendarEntry"}}}}}
+  /api/v1/library/lookup:
+    get:
+      summary: "Search a metadata provider by name to add a title: TMDB for movies (needs the user's TMDB key, else 400), TVmaze for series, MusicBrainz for artists, Open Library for authors"
+      parameters:
+        - {name: kind, in: query, required: true, schema: {$ref: "#/components/schemas/MediaKind"}}
+        - {name: q, in: query, required: true, schema: {type: string}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/LookupHit"}}}}}
+  /api/v1/library/jobs:
+    get:
+      summary: Scheduled jobs and their last and next runs
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/JobInfo"}}}}}
+  /api/v1/library/jobs/{job}/run:
+    post:
+      summary: Run a job now (in the background)
+      parameters:
+        - {name: job, in: path, required: true, schema: {$ref: "#/components/schemas/Job"}}
+      responses:
+        "200": {description: started}
+
+  /api/v1/downloads:
+    get:
+      summary: Every torrent of the engine (module downloads)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/TorrentStatus"}}}}}
+  /api/v1/downloads/limits:
+    put:
+      summary: Global transfer limits (also saved in the config)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Limits"}}}}
+      responses:
+        "200": {description: ok}
+
+  /api/v1/requests:
+    get:
+      summary: Requests (module requests)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Request"}}}}}
+    post:
+      summary: Request a title. With auto-approve on and the library module running it becomes a monitored title at once (default library and profile of its kind unless given).
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/NewRequest"}}}}
+      responses:
+        "200": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+  /api/v1/requests/{id}:
+    delete:
+      summary: Cancel a request (a title it created stays monitored)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+  /api/v1/requests/{id}/approve:
+    post:
+      summary: Approve a pending request (adds the title)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+
+  /:
+    get:
+      summary: "The web dashboard (static files embedded in the binary, no auth for the files themselves). Sent with Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+      security: []
+      responses:
+        "200": {description: index.html}
+  /{path}:
+    get:
+      summary: Dashboard assets; unknown paths outside /api get index.html (client-side routing)
+      security: []
+      parameters:
+        - {name: path, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: a file}
+
+components:
+  securitySchemes:
+    bearer: {type: http, scheme: bearer}
+    apiKey: {type: apiKey, in: header, name: X-Api-Key}
+  parameters:
+    Id: {name: id, in: path, required: true, schema: {type: integer}}
+    StrId: {name: id, in: path, required: true, schema: {type: string}}
+  schemas:
+    Saved:
+      type: object
+      properties: {id: {type: integer}}
+    Units:
+      type: object
+      properties: {units: {type: array, items: {type: integer}, description: "empty or missing = all wanted"}}
+    Credentials:
+      type: object
+      required: [username, password]
+      properties: {username: {type: string}, password: {type: string, minLength: 8}}
+    LoginResult:
+      type: object
+      properties: {token: {type: string}, user: {$ref: "#/components/schemas/User"}}
+    User:
+      type: object
+      properties: {id: {type: integer}, name: {type: string}, admin: {type: boolean}, created: {type: integer}, local: {type: boolean, description: "true for the unix-socket local admin"}}
+    Session:
+      type: object
+      properties: {id: {type: string}, created: {type: integer}, last_used: {type: integer}, client: {type: string}, current: {type: boolean}}
+    ApiKey:
+      type: object
+      properties: {id: {type: string}, name: {type: string}, created: {type: integer}, last_used: {type: integer}}
+    NewApiKey:
+      type: object
+      properties: {id: {type: string}, name: {type: string}, key: {type: string}}
+    Binding: {type: string, enum: [local, lan, remote], description: "local: loopback only; lan: private-range peers only, plain HTTP; remote: any peer, HTTPS with your certificate"}
+    ServerConfig:
+      type: object
+      properties:
+        version: {type: integer}
+        http:
+          type: object
+          properties:
+            binding: {$ref: "#/components/schemas/Binding"}
+            port: {type: integer, default: 8100}
+            cert_path: {type: [string, "null"]}
+            key_path: {type: [string, "null"]}
+            trusted_proxy: {type: [string, "null"], description: "X-Forwarded-For is believed only from this address"}
+        library: {type: object, properties: {enabled: {type: boolean}}}
+        downloads:
+          type: object
+          properties:
+            enabled: {type: boolean}
+            dir: {type: [string, "null"], description: "default $XDG_DATA_HOME/nocturne/server/downloads"}
+            seed_ratio: {type: number, default: 1.0}
+            seed_hours: {type: integer, default: 168}
+            limits: {$ref: "#/components/schemas/Limits"}
+        requests: {type: object, properties: {enabled: {type: boolean}, auto_approve: {type: boolean, default: true}}}
+      additionalProperties:
+        type: object
+        description: "the section of another module (`gateway`, `tunnel`, `discovery`, `storage`, ...): at least `enabled`, the rest defined by that module"
+        properties: {enabled: {type: boolean}}
+    ModuleStatus:
+      type: object
+      properties: {name: {type: string, description: "module name: library, downloads, requests, gateway, tunnel, discovery, storage, ..."}, enabled: {type: boolean}, running: {type: boolean}, error: {type: [string, "null"]}}
+    Status:
+      type: object
+      properties:
+        version: {type: string}
+        uptime_secs: {type: integer}
+        setup_needed: {type: boolean}
+        modules: {type: array, items: {$ref: "#/components/schemas/ModuleStatus"}}
+        titles: {type: integer}
+        missing: {type: integer}
+        downloading: {type: integer}
+        down_rate: {type: integer}
+        up_rate: {type: integer}
+        jobs: {type: array, items: {$ref: "#/components/schemas/JobInfo"}}
+        disk: {type: array, items: {$ref: "#/components/schemas/Disk"}, description: "one entry per file system the server writes to (data, downloads, library folders, storage mounts)"}
+    Disk:
+      type: object
+      properties: {path: {type: string}, total: {type: integer}, free: {type: integer}}
+    CalendarEntry:
+      type: object
+      properties:
+        title: {type: integer}
+        title_name: {type: string}
+        kind: {$ref: "#/components/schemas/MediaKind"}
+        unit: {$ref: "#/components/schemas/Unit"}
+    LookupHit:
+      type: object
+      properties:
+        kind: {$ref: "#/components/schemas/MediaKind"}
+        name: {type: string}
+        year: {type: [integer, "null"]}
+        overview: {type: string}
+        ids: {$ref: "#/components/schemas/Ids", description: "the provider's id (tmdb, tvmaze, musicbrainz or openlibrary); pass it on in NewTitle"}
+    MediaKind: {type: string, enum: [movie, series, music, book]}
+    Protocol: {type: string, enum: [torrent, usenet]}
+    Quality:
+      type: string
+      enum: [unknown, cam, telesync, telecine, dvd, sdtv, web_rip480, web_dl480, bluray480, bluray576, hdtv720, web_rip720, web_dl720, bluray720, hdtv1080, web_rip1080, web_dl1080, bluray1080, remux1080, hdtv2160, web_rip2160, web_dl2160, bluray2160, remux2160, mp3_low, mp3_192, mp3_vbr, mp3_256, mp3_320, aac, ogg, alac, flac, flac24, pdf, mobi, azw3, epub, audiobook_mp3, audiobook_m4b]
+    Ids:
+      type: object
+      properties: {imdb: {type: [string, "null"]}, tmdb: {type: [integer, "null"]}, tvdb: {type: [integer, "null"]}, tvmaze: {type: [integer, "null"]}, musicbrainz: {type: [string, "null"]}, openlibrary: {type: [string, "null"]}}
+    LibraryMode: {type: string, enum: [managed, existing], description: "managed: a folder NOCTURNE owns (added as a local source); existing: the user's folder, imports added under the naming templates, files NOCTURNE did not import are never touched"}
+    Library:
+      type: object
+      required: [name, kind, mode, root]
+      properties:
+        id: {type: integer, description: "ignored on create"}
+        name: {type: string}
+        kind: {$ref: "#/components/schemas/MediaKind"}
+        mode: {$ref: "#/components/schemas/LibraryMode"}
+        root: {type: string, description: absolute path}
+        folder_template: {type: string, description: "empty = default for the kind"}
+        file_template: {type: string}
+    Preferred:
+      type: object
+      properties: {term: {type: string}, score: {type: integer}}
+    Profile:
+      type: object
+      required: [name, kind, allowed, cutoff]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        kind: {$ref: "#/components/schemas/MediaKind"}
+        allowed: {type: array, items: {$ref: "#/components/schemas/Quality"}, description: worst first}
+        cutoff: {$ref: "#/components/schemas/Quality"}
+        upgrades: {type: boolean}
+        preferred: {type: array, items: {$ref: "#/components/schemas/Preferred"}}
+        required: {type: array, items: {type: string}}
+        ignored: {type: array, items: {type: string}}
+        min_mb: {type: integer, description: per unit, 0 = none}
+        max_mb: {type: integer}
+        min_seeders: {type: integer}
+        languages: {type: array, items: {type: string}, description: "ISO 639-1; empty = any"}
+    IndexerDef:
+      type: object
+      required: [name, protocol, url, kinds, enabled]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        protocol: {$ref: "#/components/schemas/Protocol"}
+        url: {type: string}
+        categories: {type: array, items: {type: integer}}
+        kinds: {type: array, items: {$ref: "#/components/schemas/MediaKind"}}
+        enabled: {type: boolean}
+        priority: {type: integer}
+    IndexerSave:
+      type: object
+      required: [def]
+      properties:
+        def: {$ref: "#/components/schemas/IndexerDef"}
+        api_key: {type: [string, "null"]}
+    Caps:
+      type: object
+      properties:
+        search: {type: [array, "null"], items: {type: string}}
+        movie: {type: [array, "null"], items: {type: string}}
+        tv: {type: [array, "null"], items: {type: string}}
+        music: {type: [array, "null"], items: {type: string}}
+        book: {type: [array, "null"], items: {type: string}}
+        categories: {type: array, items: {type: object, properties: {id: {type: integer}, name: {type: string}}}}
+        limit_max: {type: [integer, "null"]}
+    Title:
+      type: object
+      properties:
+        id: {type: integer}
+        kind: {$ref: "#/components/schemas/MediaKind"}
+        name: {type: string}
+        year: {type: [integer, "null"]}
+        ids: {$ref: "#/components/schemas/Ids"}
+        profile: {type: integer}
+        library: {type: integer}
+        monitored: {type: boolean}
+        added: {type: integer}
+    FileRecord:
+      type: object
+      properties:
+        paths: {type: array, items: {type: string}}
+        quality: {$ref: "#/components/schemas/Quality"}
+        revision: {type: integer}
+        size: {type: integer}
+        release: {type: string}
+        imported: {type: integer}
+    Unit:
+      type: object
+      description: the movie itself, an episode, an album or a book
+      properties:
+        id: {type: integer}
+        title: {type: integer}
+        name: {type: string}
+        season: {type: [integer, "null"]}
+        episode: {type: [integer, "null"]}
+        year: {type: [integer, "null"]}
+        air_date: {type: [string, "null"], description: YYYY-MM-DD}
+        ids: {$ref: "#/components/schemas/Ids"}
+        monitored: {type: boolean}
+        file: {oneOf: [{$ref: "#/components/schemas/FileRecord"}, {type: "null"}]}
+    TitleDetail:
+      type: object
+      properties: {title: {$ref: "#/components/schemas/Title"}, units: {type: array, items: {$ref: "#/components/schemas/Unit"}}}
+    Monitor:
+      description: '"all", "future", "none", or {"seasons": [1, 2]}'
+      oneOf:
+        - {type: string, enum: [all, future, none]}
+        - {type: object, properties: {seasons: {type: array, items: {type: integer}}}}
+    NewTitle:
+      type: object
+      required: [kind, name, profile, library]
+      properties:
+        kind: {$ref: "#/components/schemas/MediaKind"}
+        name: {type: string}
+        year: {type: [integer, "null"]}
+        ids: {$ref: "#/components/schemas/Ids"}
+        profile: {type: integer}
+        library: {type: integer}
+        monitor: {$ref: "#/components/schemas/Monitor"}
+        search: {type: boolean}
+    ParsedRelease:
+      type: object
+      properties:
+        title: {type: string}
+        year: {type: [integer, "null"]}
+        season: {type: [integer, "null"]}
+        episodes: {type: array, items: {type: integer}}
+        full_season: {type: boolean}
+        work: {type: [string, "null"], description: album or book title}
+        quality: {$ref: "#/components/schemas/Quality"}
+        codec: {type: [string, "null"]}
+        group: {type: [string, "null"]}
+        proper: {type: boolean}
+        repack: {type: boolean}
+        languages: {type: array, items: {type: string}}
+    Link:
+      description: '{"magnet": "magnet:?..."} or {"url": "https://..."}'
+      oneOf:
+        - {type: object, properties: {magnet: {type: string}}}
+        - {type: object, properties: {url: {type: string}}}
+    Release:
+      type: object
+      properties:
+        guid: {type: string}
+        indexer_id: {type: integer}
+        indexer: {type: string}
+        protocol: {$ref: "#/components/schemas/Protocol"}
+        title: {type: string}
+        size: {type: integer}
+        seeders: {type: [integer, "null"]}
+        leechers: {type: [integer, "null"]}
+        link: {$ref: "#/components/schemas/Link"}
+        info_hash: {type: [string, "null"]}
+        published: {type: [integer, "null"]}
+        categories: {type: array, items: {type: integer}}
+        ids: {$ref: "#/components/schemas/Ids"}
+        parsed: {$ref: "#/components/schemas/ParsedRelease"}
+    Candidate:
+      type: object
+      properties:
+        release: {$ref: "#/components/schemas/Release"}
+        units: {type: array, items: {type: integer}}
+        rejections: {type: array, items: {type: string}, description: empty = acceptable}
+    GrabState: {type: string, enum: [downloading, seeding, import_blocked, failed, done]}
+    Grab:
+      type: object
+      properties:
+        id: {type: integer}
+        title: {type: integer}
+        units: {type: array, items: {type: integer}}
+        release: {$ref: "#/components/schemas/Release"}
+        torrent: {type: string}
+        state: {$ref: "#/components/schemas/GrabState"}
+        added: {type: integer}
+        done: {type: integer}
+        progress_at: {type: integer}
+        seeding_since: {type: [integer, "null"]}
+        message: {type: [string, "null"]}
+    TorrentState: {type: string, enum: [queued, metadata, checking, downloading, seeding, paused, error]}
+    TorrentStatus:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        state: {$ref: "#/components/schemas/TorrentState"}
+        error: {type: [string, "null"]}
+        category: {type: string}
+        save_path: {type: string}
+        size: {type: integer}
+        done: {type: integer}
+        uploaded: {type: integer}
+        down_rate: {type: integer}
+        up_rate: {type: integer}
+        peers: {type: integer}
+        eta_secs: {type: [integer, "null"]}
+        files: {type: array, items: {type: object, properties: {path: {type: string}, size: {type: integer}, done: {type: integer}}}}
+        added: {type: integer}
+    QueueItem:
+      type: object
+      properties:
+        grab: {$ref: "#/components/schemas/Grab"}
+        title_name: {type: string}
+        status: {oneOf: [{$ref: "#/components/schemas/TorrentStatus"}, {type: "null"}]}
+    HistoryEvent: {type: string, enum: [grabbed, imported, upgraded, import_failed, download_failed, removed]}
+    HistoryEntry:
+      type: object
+      properties:
+        id: {type: integer}
+        at: {type: integer}
+        title: {type: integer}
+        units: {type: array, items: {type: integer}}
+        event: {$ref: "#/components/schemas/HistoryEvent"}
+        release: {type: string}
+        quality: {$ref: "#/components/schemas/Quality"}
+        indexer: {type: string}
+        message: {type: string}
+    BlockEntry:
+      type: object
+      properties:
+        id: {type: integer}
+        at: {type: integer}
+        title: {type: integer}
+        release: {type: string}
+        indexer_id: {type: integer}
+        guid: {type: string}
+        info_hash: {type: [string, "null"]}
+        reason: {type: string}
+    Job: {type: string, enum: [rss_sync, missing_search, upgrade_search, refresh_metadata]}
+    JobInfo:
+      type: object
+      properties:
+        job: {$ref: "#/components/schemas/Job"}
+        last_run: {type: [integer, "null"]}
+        next_run: {type: integer}
+        running: {type: boolean}
+    Limits:
+      type: object
+      properties: {down_bps: {type: [integer, "null"]}, up_bps: {type: [integer, "null"]}}
+    RequestStatus: {type: string, enum: [pending, approved, downloading, available, declined]}
+    NewRequest:
+      type: object
+      required: [kind, name]
+      properties:
+        kind: {$ref: "#/components/schemas/MediaKind"}
+        name: {type: string}
+        year: {type: [integer, "null"]}
+        ids: {$ref: "#/components/schemas/Ids"}
+        seasons: {type: array, items: {type: integer}, description: "series: these seasons; empty = all"}
+        library: {type: [integer, "null"]}
+        profile: {type: [integer, "null"]}
+    Request:
+      type: object
+      properties:
+        id: {type: integer}
+        kind: {$ref: "#/components/schemas/MediaKind"}
+        name: {type: string}
+        year: {type: [integer, "null"]}
+        ids: {$ref: "#/components/schemas/Ids"}
+        seasons: {type: array, items: {type: integer}}
+        requested_by: {type: string}
+        created: {type: integer}
+        status: {$ref: "#/components/schemas/RequestStatus"}
+        title: {type: [integer, "null"], description: the monitored title it became}
+    Event:
+      description: 'WebSocket message: {"type": ..., "data": ...}'
+      oneOf:
+        - {type: object, properties: {type: {const: queue}, data: {type: array, items: {$ref: "#/components/schemas/QueueItem"}}}}
+        - {type: object, properties: {type: {const: history}, data: {$ref: "#/components/schemas/HistoryEntry"}}}
+        - {type: object, properties: {type: {const: title}, data: {type: integer, description: title id that changed}}}
+        - {type: object, properties: {type: {const: job}, data: {type: object, properties: {job: {$ref: "#/components/schemas/Job"}, running: {type: boolean}, message: {type: [string, "null"]}}}}}
+        - {type: object, properties: {type: {const: request}, data: {type: integer, description: request id that changed}}}
+        - {type: object, properties: {type: {const: health}, data: {$ref: "#/components/schemas/ModuleStatus"}}}
+        - {type: object, properties: {type: {const: module}, data: {type: object, properties: {module: {type: string}, kind: {type: string, description: the module's own event name}, data: {description: any JSON}}}}}

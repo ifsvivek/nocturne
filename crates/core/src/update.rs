@@ -215,7 +215,7 @@ fn now_secs() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-async fn fetch(url: &str) -> Result<Manifest, String> {
+pub async fn fetch(url: &str) -> Result<Manifest, String> {
     let mut r = reqwest::Client::builder()
         .user_agent(format!("NOCTURNE/{CURRENT}"))
         .timeout(Duration::from_secs(10))

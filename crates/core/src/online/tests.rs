@@ -133,6 +133,7 @@ fn engine(m: &Mock) -> Engine {
         musicbrainz: format!("{}/mb", m.base),
         caa: format!("{}/caa", m.base),
         subs: format!("{}/os", m.base),
+        openlibrary: format!("{}/ol", m.base),
     };
     // Gates shrunk so the tests do not wait on real rate limits (the spacing itself is tested in `http`).
     Engine::paced(ep, Arc::default(), 0.001)

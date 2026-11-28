@@ -12,6 +12,9 @@ What 0.5 added: native CSS themes with layout on named parts (`crates/core/src/c
 ## Unreleased: Settings redesign and elevation
 
 Settings is a sidebar of sections beside the section's cards (`app/settings.rs`); the row to section mapping, the cross-section search and the list navigation are pure in `core/settings.rs` (`Section`, `order`, `search`, `nav_row`, `summary`) with unit tests. New sections are a `Section` variant with its rows (every row must be in exactly one, tested) and an icon in `sec_icon`; a section may have no rows and draw its own cards (About, Gateway's panels). Elevation tokens (`SHADOW_RAISED`, `SHADOW_OVERLAY`, `style::card` / `style::panel`), the opaque header and `widget::empty_state` are shared by every screen (docs/DESIGN.md).
+## 0.7.5 (in progress): NOCTURNE server
+
+Plan: [SERVER_PLAN.md](SERVER_PLAN.md), API: [docs/api/openapi.yaml](../api/openapi.yaml). Built (worker A): `crates/server` with the module framework, auth (setup, sessions, API keys, local admin over the unix socket), listeners, config sections, redb store, dashboard embedding, CLI and `install`; the library manager (decision rules, import, naming, queue, jobs), the downloads module on `nocturne-torrent`, the indexer adapter over `nocturne-indexer`, native requests; `crates/arr-types`. Tests: unit, `tests/api.rs`, `tests/flow.rs` (movie, episode, album, book end to end with fakes), `tests/openapi.rs`. Open: gateway, tunnel, discovery and sources modules (gateway worker), storage (storage worker), dashboard files, desktop client; moving Seerr and the external Radarr / Sonarr connections into the server; a real-indexer manual test by the maintainer; `update` only reports.
 
 ## 0.7.0: Requests hub (Discover, native requests, Radarr and Sonarr)
 
