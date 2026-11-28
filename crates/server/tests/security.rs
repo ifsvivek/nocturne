@@ -261,3 +261,30 @@ async fn one_peer_cannot_hold_every_connection() {
     let r = reqwest::get(format!("{}/health", s.base)).await.unwrap();
     assert_eq!(r.status(), 200);
 }
+
+/// Finding: the storage agent client followed redirects, and `X-Api-Key` (unlike `Authorization`) survives a redirect to another host, so an agent address that redirects handed the key to whatever host it named.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_agent_key_never_follows_a_redirect() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    let hits = std::sync::Arc::new(AtomicU32::new(0));
+    let h = hits.clone();
+    let other = axum::Router::new().fallback(move || {
+        h.fetch_add(1, Ordering::SeqCst);
+        async { "[]" }
+    });
+    let ol = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let to = format!("http://{}/stolen", ol.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(ol, other).await });
+    let agent = axum::Router::new().fallback(move || {
+        let to = to.clone();
+        async move { axum::response::Redirect::temporary(&to) }
+    });
+    let al = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", al.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(al, agent).await });
+    let r = nocturne_storage::agent::AgentClient::new(&url, "nsa_secret")
+        .roots()
+        .await;
+    assert!(r.is_err(), "{r:?}");
+    assert_eq!(hits.load(Ordering::SeqCst), 0);
+}
