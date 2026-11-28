@@ -12,7 +12,7 @@ mod model;
 pub mod raw;
 pub mod syncplay;
 
-pub use client::UserClient;
+pub use client::{UserClient, set_device_id};
 pub use model::*;
 
 /// Proof that the user explicitly confirmed a sensitive action (changing their password).

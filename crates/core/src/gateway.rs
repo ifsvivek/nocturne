@@ -179,6 +179,9 @@ pub struct TokenInfo {
     /// Unix seconds.
     pub created: u64,
     pub last_used: u64,
+    /// A named API key (created through the control socket) rather than a device sign-in; `device_name` holds its name.
+    #[serde(default)]
+    pub api_key: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -233,6 +236,8 @@ pub enum Request {
     RegeneratePassword,
     /// The passphrase generated at first start, once.
     RevealPassword,
+    /// A named long-lived API key for a client that signs in with a key instead of the password; answered with [`Response::Key`] (shown once). Revoked with `Revoke` like a device; survives a password regeneration, as API keys do on a server.
+    CreateApiKey(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -241,6 +246,8 @@ pub enum Response {
     Status(Box<Status>),
     Tokens(Vec<TokenInfo>),
     Password(String),
+    /// A new API key, shown once.
+    Key(String),
     Ok,
     Err(String),
 }
@@ -399,6 +406,7 @@ mod tests {
             Request::ApproveQuickConnect("123456".into()),
             Request::RegeneratePassword,
             Request::RevealPassword,
+            Request::CreateApiKey("tv".into()),
         ] {
             let j = serde_json::to_string(&r).unwrap();
             assert!(!j.contains('\n'));
@@ -412,6 +420,7 @@ mod tests {
             Response::Ok,
             Response::Err("no".into()),
             Response::Password("p".into()),
+            Response::Key("k".into()),
             Response::Tokens(vec![TokenInfo {
                 id: "i".into(),
                 client: "c".into(),
@@ -419,6 +428,7 @@ mod tests {
                 device_id: "x".into(),
                 created: 1,
                 last_used: 2,
+                api_key: true,
             }]),
         ] {
             let j = serde_json::to_string(&r).unwrap();

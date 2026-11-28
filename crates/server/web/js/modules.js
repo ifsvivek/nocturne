@@ -1,13 +1,29 @@
-// Modules whose routes are documented by their own workers as they land (gateway, tunnel, discovery, sources, storage).
-// Their pages read the module state from /status and render whatever the module's status route returns; edit ROUTES when the contract fixes the paths.
+// Pages of the gateway, tunnel, discovery, sources and storage modules: the module state from /status, then whatever the module's status or list route returns.
+// The routes are those of docs/api/openapi.yaml.
 import { h, table } from "./ui.js";
 import { getOr, probe } from "./api.js";
 
 export const ROUTES = {
-  gateway: { status: "/gateway/status", restart: "/gateway/restart" },
-  tunnel: { status: "/tunnel/status" },
+  gateway: {
+    status: "/gateway/status",
+    restart: "/gateway/restart",
+    devices: "/gateway/devices", // DELETE /gateway/devices/{id} signs a device out or revokes a key
+    approve: (code) => `/gateway/quickconnect/${encodeURIComponent(code)}`,
+    password: "/gateway/password",
+    reveal: "/gateway/password/reveal",
+    apikeys: "/gateway/apikeys",
+  },
+  tunnel: { status: "/tunnel/status", restart: "/tunnel/restart", token: "/tunnel/token" },
+  // A GET scans the network for two seconds.
   discovery: { list: "/discovery/servers" },
-  sources: { list: "/sources" },
+  sources: {
+    list: "/sources",
+    one: (id) => `/sources/${id}`,
+    signin: (id) => `/sources/${id}/signin`,
+    check: (id) => `/sources/${id}/check`,
+    quickconnect: "/sources/quickconnect",
+    quickconnectComplete: "/sources/quickconnect/complete",
+  },
   storage: { list: "/storage/mounts" },
 };
 

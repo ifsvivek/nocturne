@@ -90,12 +90,21 @@ impl Overlay {
         ov
     }
 
-    /// Items with a stop position and not watched, most recent first (the Continue Watching of a gateway client when no server knows the position).
+    /// Items the overlay marks favourite.
+    pub fn favourites(&self) -> Vec<Gid> {
+        let m = self.map.lock().unwrap();
+        m.iter()
+            .filter(|(_, o)| o.favorite == Some(true))
+            .filter_map(|(k, _)| Gid::parse(k))
+            .collect()
+    }
+
+    /// Items with a stop position (a played title watched again included, as on a real server), most recent first (the Continue Watching of a gateway client when no server knows the position).
     pub fn resumable(&self, n: usize) -> Vec<(Gid, Ov)> {
         let m = self.map.lock().unwrap();
         let mut v: Vec<(Gid, Ov)> = m
             .iter()
-            .filter(|(_, o)| o.ticks.unwrap_or(0) > 0 && o.played != Some(true))
+            .filter(|(_, o)| o.ticks.unwrap_or(0) > 0)
             .filter_map(|(k, o)| Some((Gid::parse(k)?, o.clone())))
             .collect();
         v.sort_by_key(|(_, o)| std::cmp::Reverse(o.ts));
@@ -159,9 +168,7 @@ pub fn merge_user_data(
             last = o.last.clone().or(last);
         }
     }
-    if played {
-        ticks = 0;
-    }
+    // A played title watched again keeps its new resume point, as on a real server (a stop near the end sets the position back to 0).
     let o = out.as_object_mut().expect("object");
     o.insert("Played".into(), played.into());
     o.insert("IsFavorite".into(), fav.into());
@@ -529,17 +536,34 @@ mod tests {
             m.insert(
                 Gid::of("b").to_string(),
                 Ov {
-                    ticks: Some(9),
+                    ticks: Some(0),
                     played: Some(true),
                     ts: 9,
+                    ..Default::default()
+                },
+            );
+            // Watched, then started again and stopped halfway: resumes, as on a real server.
+            m.insert(
+                Gid::of("c").to_string(),
+                Ov {
+                    ticks: Some(4),
+                    played: Some(true),
+                    ts: 7,
                     ..Default::default()
                 },
             );
         }
         assert_eq!(o.get(g).unwrap().ticks, Some(9));
         let r = o.resumable(10);
-        assert_eq!(r.len(), 1, "played items do not resume");
-        assert_eq!(r[0].0, g);
+        assert_eq!(
+            r.iter().map(|x| x.0).collect::<Vec<_>>(),
+            [Gid::of("c"), g],
+            "finished items do not resume, newest first"
+        );
+        assert_eq!(
+            merge_user_data(&[], 0, Some(&r[0].1), G())["PlaybackPositionTicks"],
+            4
+        );
         let f: File = serde_json::from_slice(
             &serde_json::to_vec(&File {
                 version: 1,
