@@ -53,7 +53,12 @@ By default NOCTURNE only reads. One setting, **Settings > Allow NOCTURNE to chan
 - `wishlist.json`: requests made without Seerr (kind, ids, seasons, status; no keys)
 - keyring: the Seerr session cookie (`seerr:<address>`), the Radarr and Sonarr API keys (`radarr:<address>`, `sonarr:<address>`), server tokens, the per-server extra header value, TMDB / OpenSubtitles keys and logins, the Trakt client id and tokens
 
-Local media files are never modified, moved, renamed or deleted by NOCTURNE, whatever the setting says; scanning only reads.
+Local media files are never modified, moved, renamed or deleted by NOCTURNE, whatever the setting says; scanning only reads. The one exception is the server's library manager, below.
+
+**The NOCTURNE server** (`nocturne-server`, docs/dev/SERVER_PLAN.md) changes no media server. Every module is off by default. What it writes, each only while its module is on:
+- `downloads`: the torrent engine downloads into `[downloads] dir` and uploads to peers while seeding (until the ratio or time limit, default 1.0 or a week); its state is under `$XDG_DATA_HOME/nocturne/server/torrent/`.
+- `library`: imports finished downloads into library folders the user added, and only there: below the folder's root, by hardlink or copy (the download keeps seeding), under the naming templates. It never overwrites or deletes a file it did not import; an upgrade replaces only a file it imported itself, after the new one is in place. A folder in managed mode is created and owned by NOCTURNE; in existing mode it is the user's folder with the same rules. It searches only the Torznab / Newznab indexers the user added (no built-in ones) and looks titles up at TVmaze, MusicBrainz and Open Library (names and ids only, never paths).
+- Its own files: `server.toml` (no secrets), `$XDG_DATA_HOME/nocturne/server/state.redb` (titles, queue, history, users, password and token hashes); indexer keys and source tokens only in the keyring.
 
 Not server changes: the daily update check (one GET of a small manifest from the NOCTURNE website, switchable in Settings > Updates) and a downloaded update never involve your media servers. Server UI reads (a server's home sections, library order, branding CSS and login disclaimer) are plain GETs and need no setting; only the home-sections editor writes (the row above).
 
