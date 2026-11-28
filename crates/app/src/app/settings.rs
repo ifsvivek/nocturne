@@ -45,6 +45,7 @@ fn sec_icon(sec: Section) -> &'static str {
         Section::Sync => "sync",
         Section::Requests => "inbox",
         Section::Gateway => "broadcast",
+        Section::Servers => "layers",
         Section::Privacy => "lock",
         Section::Updates => "download",
         Section::About => "info",
@@ -81,18 +82,6 @@ fn row_top(sec: Section, i: usize) -> f32 {
         }
     }
     y
-}
-
-/// A row label without a prefix that only repeats its section ("Home: Latest" under Home).
-fn short_label(label: &str, sec: Section) -> String {
-    match label.split_once(": ") {
-        Some((pre, rest)) if sec.title().contains(pre) => {
-            let mut c = rest.chars();
-            c.next()
-                .map_or_else(String::new, |f| f.to_uppercase().chain(c).collect())
-        }
-        _ => label.to_string(),
-    }
 }
 
 /// The icon tile of a sidebar entry or a section title: accent-filled when selected.
@@ -244,7 +233,11 @@ impl App {
         if let Some(&r) = sec.rows().first() {
             self.settings_sel = r;
         }
-        operation::scroll_to(PAGE_ID, AbsoluteOffset { x: 0.0, y: 0.0 })
+        let top = operation::scroll_to(PAGE_ID, AbsoluteOffset { x: 0.0, y: 0.0 });
+        if sec == Section::Servers {
+            return Task::batch([top, self.ns_refresh()]);
+        }
+        top
     }
 
     pub(super) fn settings_query(&mut self, q: String) -> Task<Message> {
@@ -540,6 +533,7 @@ impl App {
                 }
                 match sec {
                     Section::Gateway => col = col.push(self.gateway_panel()),
+                    Section::Servers => col = col.push(self.servers_panel()),
                     Section::About => col = col.push(self.set_about()),
                     _ => {}
                 }
@@ -596,8 +590,7 @@ impl App {
         .size(t::CONTROL_TEXT)
         .line_height(1.45)
         .color(t::text_secondary());
-        let label = short_label(r.label, Section::of(i));
-        let text_col = column![text(label).size(t::BODY).font(t::semibold()), help]
+        let text_col = column![text(r.label).size(t::BODY).font(t::semibold()), help]
             .spacing(3)
             .width(Length::Fill);
         let chip = container(self.setting_chip(i, &r.value, on)).align_x(Alignment::End);
@@ -928,10 +921,17 @@ impl App {
                 let to = if has_rows {
                     s::nav_row(&list, self.settings_sel, key)
                 } else {
-                    // From About, going back lands on the last row before it.
-                    matches!(key, "up" | "pageup" | "end")
-                        .then(|| list.last().copied())
-                        .flatten()
+                    // From a section without rows (Servers, About), up lands on the last row before it, down on the first after it.
+                    let at = Section::ALL.iter().position(|x| *x == self.set_sec);
+                    let (before, after) = Section::ALL.split_at(at.unwrap_or(0));
+                    let mut before = before.iter().flat_map(|x| x.rows().iter().copied());
+                    let mut after = after.iter().flat_map(|x| x.rows().iter().copied());
+                    match key {
+                        "up" | "pageup" => before.next_back(),
+                        "down" | "pagedown" => after.next(),
+                        "home" => list.first().copied(),
+                        _ => list.last().copied(),
+                    }
                 };
                 let Some(r) = to else {
                     return Task::none();
@@ -976,19 +976,5 @@ mod tests {
         assert_eq!(groups(Section::Playback)[0].0, None);
         let rows = Section::Playback.rows();
         assert!(row_top(Section::Playback, rows[1]) > row_top(Section::Playback, rows[0]));
-    }
-
-    #[test]
-    fn labels_drop_a_prefix_that_repeats_the_section() {
-        assert_eq!(short_label("Home: Next up", Section::Home), "Next up");
-        assert_eq!(
-            short_label("Trakt: scrobble what you watch", Section::Sync),
-            "Scrobble what you watch"
-        );
-        assert_eq!(
-            short_label("Gateway port", Section::Gateway),
-            "Gateway port"
-        );
-        assert_eq!(short_label("A: b", Section::Home), "A: b");
     }
 }

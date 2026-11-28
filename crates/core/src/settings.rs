@@ -414,6 +414,7 @@ pub enum Section {
     Sync,
     Requests,
     Gateway,
+    Servers,
     Privacy,
     Updates,
     About,
@@ -421,7 +422,7 @@ pub enum Section {
 
 impl Section {
     /// Sidebar order.
-    pub const ALL: [Section; 11] = [
+    pub const ALL: [Section; 12] = [
         Section::General,
         Section::Appearance,
         Section::Home,
@@ -430,6 +431,7 @@ impl Section {
         Section::Sync,
         Section::Requests,
         Section::Gateway,
+        Section::Servers,
         Section::Privacy,
         Section::Updates,
         Section::About,
@@ -445,6 +447,7 @@ impl Section {
             Section::Sync => "Sync & Trakt",
             Section::Requests => "Requests",
             Section::Gateway => "Gateway",
+            Section::Servers => "NOCTURNE Servers",
             Section::Privacy => "Privacy & Data",
             Section::Updates => "Updates",
             Section::About => "About",
@@ -462,6 +465,9 @@ impl Section {
             Section::Sync => "Watched state across your sources, and your Trakt account.",
             Section::Requests => "Ask for movies and shows that are not in your library yet.",
             Section::Gateway => "One address over every source, for phone and TV apps.",
+            Section::Servers => {
+                "This computer's server and others you sign in to: downloads, library and requests."
+            }
             Section::Privacy => "What NOCTURNE keeps on this computer and what it may download.",
             Section::Updates => "Whether NOCTURNE looks for a newer version.",
             Section::About => "Version, licence and where NOCTURNE comes from.",
@@ -495,6 +501,7 @@ impl Section {
                 GATEWAY_VIEWS_ROW,
                 GATEWAY_ANNOUNCE_ROW,
             ],
+            Section::Servers => &[],
             Section::Privacy => &[15, REMOTE_CSS_ROW],
             Section::Updates => &[UPDATES_ROW],
             Section::About => &[],
@@ -691,17 +698,17 @@ impl Settings {
                 fmt_gib(self.buffer_max_mb),
             ),
             r(
-                "Home: Continue watching",
+                "Continue watching",
                 "Show the row of items you have started.",
                 onoff(self.home_resume),
             ),
             r(
-                "Home: Next up",
+                "Next up",
                 "Show the next episode of what you follow.",
                 onoff(self.home_next_up),
             ),
             r(
-                "Home: Latest",
+                "Latest",
                 "Show recently added items per library.",
                 onoff(self.home_latest),
             ),
@@ -740,12 +747,12 @@ impl Settings {
                 "Set up".into(),
             ),
             r(
-                "Trakt: scrobble what you watch",
+                "Scrobble what you watch",
                 "Tells Trakt when you start, pause and finish a movie or episode that has IMDb / TMDB / TVDB ids. Needs the account above.",
                 onoff(self.trakt_scrobble),
             ),
             r(
-                "Trakt: import watched history",
+                "Import watched history",
                 "Marks local items you have watched on Trakt as watched here (and server items, only when server changes are on). Runs when you connect and at launch. Needs the account above.",
                 onoff(self.trakt_history),
             ),

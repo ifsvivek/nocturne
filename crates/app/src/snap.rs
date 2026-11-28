@@ -6,7 +6,6 @@ use iced::Task;
 
 #[cfg(debug_assertions)]
 pub fn on_boot() -> Task<Message> {
-    use iced::window;
     use std::time::Duration;
     // `NOCTURNE_KEYS="enter@3000,escape@4000"`: named keys injected into the root (QA without a
     // human; the app never reads it in release builds).
@@ -17,6 +16,31 @@ pub fn on_boot() -> Task<Message> {
             "open-admin" => Some(Message::OpenAdmin),
             "run-setup" => Some(Message::RunSetup),
             "open-settings" => Some(Message::MenuAct(crate::app::message::AcctAct::Settings)),
+            // `settings-sec-<n>`: the n-th Settings section of the sidebar.
+            n if n.starts_with("settings-sec-") => n[13..]
+                .parse::<usize>()
+                .ok()
+                .and_then(|i| nocturne_core::settings::Section::ALL.get(i).copied())
+                .map(Message::SetSection),
+            // NOCTURNE server QA: `server-downloads`, `server-library`, `server-requests`, `server-storage` open that page,
+            // `server-releases-<title id>` runs an interactive search on the Library page; `server-fill` (from `NOCTURNE_SERVER_URL` / `_USER` / `_PASS`),
+            // `server-check` and `server-signin` drive the add card, `server-use-local` makes this computer's server active.
+            n if n.starts_with("server-") => {
+                use crate::app::servers::{Msg, Tab};
+                let msg = match &n[7..] {
+                    "downloads" => Msg::Open(Tab::Downloads),
+                    "library" => Msg::Open(Tab::Library),
+                    "requests" => Msg::Open(Tab::Requests),
+                    "storage" => Msg::Open(Tab::Storage),
+                    r if r.starts_with("releases-") => Msg::Releases(r[9..].parse().ok()?),
+                    "fill" => Msg::Fill,
+                    "check" => Msg::Check,
+                    "signin" => Msg::SignIn,
+                    "use-local" => Msg::Activate(nocturne_core::server_client::LOCAL.into()),
+                    _ => return None,
+                };
+                Some(Message::Servers(msg))
+            }
             // Settings QA: `settings-q-<text>` types into its search field (`_` is a space).
             n if n.starts_with("settings-q-") => Some(Message::SetQuery(n[11..].replace('_', " "))),
             "smart-menu" => Some(Message::Smart(crate::app::smart::Msg::Menu)),
@@ -219,13 +243,10 @@ pub fn on_boot() -> Task<Message> {
         ))
     });
     let snaps = std::env::var_os("NOCTURNE_SNAP").is_some().then(|| {
-        delays().into_iter().enumerate().map(|(n, ms)| {
-            crate::task::after(Duration::from_millis(ms), n).then(|n| {
-                window::oldest()
-                    .and_then(window::screenshot)
-                    .map(move |s| Message::Snapped(s, n))
-            })
-        })
+        delays()
+            .into_iter()
+            .enumerate()
+            .map(|(n, ms)| crate::task::after(Duration::from_millis(ms), n).then(|n| capture(n, 5)))
     });
     Task::batch(keys.chain(pad).chain(snaps.into_iter().flatten()))
 }
@@ -239,7 +260,6 @@ pub fn on_boot() -> Task<Message> {
 /// first line is the output path, the file is removed and a capture is written there.
 #[cfg(debug_assertions)]
 pub fn poll() -> Task<Message> {
-    use iced::window;
     let Some(req) = std::env::var_os("NOCTURNE_SNAP_WATCH") else {
         return Task::none();
     };
@@ -248,9 +268,98 @@ pub fn poll() -> Task<Message> {
     };
     let _ = std::fs::remove_file(&req);
     *NEXT.lock().unwrap() = Some(text.trim().into());
-    window::oldest()
-        .and_then(window::screenshot)
-        .map(|s| Message::Snapped(s, usize::MAX))
+    capture(usize::MAX, 5)
+}
+
+// A screenshot renders the layers of the last *draw*. After a message the view is rebuilt at once but drawn only at the
+// next frame, and the rebuild drops the old text paragraphs the last layers still point to: a capture taken in between
+// showed the previous frame with its changed text missing. So a capture waits until the newest view has been drawn, and is
+// taken again when the view was rebuilt before the screenshot ran.
+#[cfg(debug_assertions)]
+static BUILT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+#[cfg(debug_assertions)]
+static DRAWN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Resolves once the newest view has been drawn (at most about a second later), with that view's number.
+#[cfg(debug_assertions)]
+async fn drawn() -> u64 {
+    use std::sync::atomic::Ordering::Relaxed;
+    for _ in 0..60 {
+        let b = BUILT.load(Relaxed);
+        if DRAWN.load(Relaxed) == b {
+            return b;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(16)).await;
+    }
+    BUILT.load(Relaxed)
+}
+
+/// Capture number `n` from freshly drawn layers (`tries` more attempts when a rebuild raced the screenshot).
+#[cfg(debug_assertions)]
+fn capture(n: usize, tries: u8) -> Task<Message> {
+    use iced::window;
+    Task::perform(drawn(), |b| b).then(move |b| {
+        window::oldest()
+            .and_then(window::screenshot)
+            .then(move |s| {
+                let fresh = BUILT.load(std::sync::atomic::Ordering::Relaxed) == b;
+                if fresh || tries == 0 {
+                    Task::done(Message::Snapped(s, n))
+                } else {
+                    capture(n, tries - 1)
+                }
+            })
+    })
+}
+
+/// The root view with a zero-size marker that records, when drawn, which view it belongs to. Release builds return the view as it is.
+#[cfg(debug_assertions)]
+pub fn mark(view: iced::Element<'_, Message>) -> iced::Element<'_, Message> {
+    use std::sync::atomic::Ordering::Relaxed;
+    if std::env::var_os("NOCTURNE_SNAP").is_none()
+        && std::env::var_os("NOCTURNE_SNAP_WATCH").is_none()
+    {
+        return view;
+    }
+    let id = BUILT.fetch_add(1, Relaxed) + 1;
+    iced::widget::Stack::with_children([view, iced::Element::new(Marker(id))]).into()
+}
+
+#[cfg(not(debug_assertions))]
+pub fn mark(view: iced::Element<'_, Message>) -> iced::Element<'_, Message> {
+    view
+}
+
+#[cfg(debug_assertions)]
+struct Marker(u64);
+
+#[cfg(debug_assertions)]
+impl<M> iced::advanced::Widget<M, iced::Theme, iced::Renderer> for Marker {
+    fn size(&self) -> iced::Size<iced::Length> {
+        iced::Size::new(iced::Length::Shrink, iced::Length::Shrink)
+    }
+
+    fn layout(
+        &mut self,
+        _: &mut iced::advanced::widget::Tree,
+        _: &iced::Renderer,
+        _: &iced::advanced::layout::Limits,
+    ) -> iced::advanced::layout::Node {
+        iced::advanced::layout::Node::new(iced::Size::ZERO)
+    }
+
+    fn draw(
+        &self,
+        _: &iced::advanced::widget::Tree,
+        _: &mut iced::Renderer,
+        _: &iced::Theme,
+        _: &iced::advanced::renderer::Style,
+        _: iced::advanced::Layout<'_>,
+        _: iced::mouse::Cursor,
+        _: &iced::Rectangle,
+    ) {
+        DRAWN.store(self.0, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 #[cfg(not(debug_assertions))]
