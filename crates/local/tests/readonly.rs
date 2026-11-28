@@ -22,7 +22,7 @@ const MUTATING: [&str; 14] = [
 ];
 
 fn sources() -> Vec<(String, String)> {
-    std::fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("src"))
+    std::fs::read_dir(Path::new(std::env::var("CARGO_MANIFEST_DIR").unwrap().as_str()).join("src"))
         .unwrap()
         .map(|e| e.unwrap().path())
         .map(|p| {

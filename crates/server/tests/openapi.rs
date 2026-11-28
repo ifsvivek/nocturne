@@ -6,9 +6,9 @@ use std::collections::HashSet;
 
 /// `(method, path)` pairs of the document: paths at two spaces, methods at four (the layout the file keeps).
 fn documented() -> HashSet<(String, String)> {
-    let text = std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/api/openapi.yaml"
+    let text = std::fs::read_to_string(format!(
+        "{}/../../docs/api/openapi.yaml",
+        std::env::var("CARGO_MANIFEST_DIR").unwrap()
     ))
     .unwrap();
     let mut out = HashSet::new();

@@ -598,9 +598,9 @@ async fn shutdown_server_stops_it() {
             break;
         }
     }
-    let script = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../scripts/test-jellyfin.sh"
+    let script = format!(
+        "{}/../../scripts/test-jellyfin.sh",
+        std::env::var("CARGO_MANIFEST_DIR").unwrap()
     );
     // The script must manage the same instance this test talks to: its directory is the one holding the env file.
     let dir = std::path::Path::new(&std::env::var("NOCTURNE_JF_TEST_ENV").unwrap())
@@ -608,7 +608,7 @@ async fn shutdown_server_stops_it() {
         .unwrap()
         .to_path_buf();
     let jf = |arg: &str| {
-        let mut c = std::process::Command::new(script);
+        let mut c = std::process::Command::new(&script);
         c.arg(arg).env("NOCTURNE_JF_TEST_DIR", &dir);
         c
     };

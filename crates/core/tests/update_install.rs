@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    Path::new(std::env::var("CARGO_MANIFEST_DIR").unwrap().as_str()).join("../..")
 }
 
 fn run(cmd: &mut Command) -> String {

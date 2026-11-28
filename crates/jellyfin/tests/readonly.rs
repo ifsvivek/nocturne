@@ -6,7 +6,12 @@ fn no_write_verbs_in_src() {
     let banned = ["post", "put", "delete", "patch"].map(|v| format!(".{v}("));
     let method = ["Method", "::"].concat();
     let request = [".req", "uest("].concat();
-    for entry in std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/src")).unwrap() {
+    for entry in std::fs::read_dir(format!(
+        "{}/src",
+        std::env::var("CARGO_MANIFEST_DIR").unwrap()
+    ))
+    .unwrap()
+    {
         let path = entry.unwrap().path();
         let src = std::fs::read_to_string(&path).unwrap();
         for b in banned.iter().chain([&method, &request]) {

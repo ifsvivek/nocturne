@@ -4,7 +4,10 @@
 use std::path::Path;
 
 fn read(rel: &str) -> String {
-    std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)).unwrap()
+    std::fs::read_to_string(
+        Path::new(std::env::var("CARGO_MANIFEST_DIR").unwrap().as_str()).join(rel),
+    )
+    .unwrap()
 }
 
 #[test]

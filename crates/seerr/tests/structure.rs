@@ -3,8 +3,8 @@
 //! another file. (Sign-in POSTs are explicit user actions and are not requests.)
 #[test]
 fn writes_only_in_write_rs() {
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
-    for entry in std::fs::read_dir(dir).unwrap() {
+    let dir = format!("{}/src", std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    for entry in std::fs::read_dir(&dir).unwrap() {
         let path = entry.unwrap().path();
         let name = path.file_name().unwrap().to_string_lossy().to_string();
         if name == "write.rs" {
