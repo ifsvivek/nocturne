@@ -16,8 +16,11 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Settings is a two-pane page: a sidebar of sections (General, Appearance & Themes, Home, Playback, Sources & Servers, Sync & Trakt, Requests, Gateway, Privacy & Data, Updates, About) with icons, and the selected section with its rows in rounded cards. A search field at the top of the sidebar (or `/`) filters rows across all sections. Tab and Shift+Tab move between sections; the arrow keys walk every row and cross into the next section. Narrow windows show the section list and drill into one section.
 - One elevation scale: raised cards and overlays (dialogs, menus, toasts, tooltips, the search panel) get soft shadows over the existing hairline outlines.
 - Empty Requests, Discover, Calendar and My themes views show an icon and a sentence instead of a bare line of text.
+- Linux packages: `nocturne-server` is its own package (Arch, .deb, .rpm) with only the server binary and no desktop dependencies (no mpv, Vulkan, Wayland or fonts), for headless machines; the `nocturne` app package depends on it. The tarball and the in-app updater ship and update `nocturne-server` next to `nocturne`.
 
 ### Fixed
+- `nocturne-server agent --new-key` while the server runs: the next configuration change no longer drops the agent's key (the agent then refused to start with "no agent key yet").
+- `nocturne-server install` on a machine without a systemd user manager no longer leaves a unit file behind, and says to run `nocturne-server serve` instead.
 - The header is opaque, so page text no longer shows through it while scrolling (Settings content now also starts below the header).
 - Settings rows no longer repeat their section in the label ("Home: Latest" is "Latest" under Home).
 - A stray › chevron no longer stays in the header after the window is widened so that every link fits.
