@@ -133,3 +133,7 @@ Improvements under (a), in order of value:
 | 5 | Richer *arr status (progress, ETA, stalled / failed, "search again")? | Yes for reads; "search again" and "remove from queue" only as confirmed writes behind `arr_requests`. |
 | 6 | Is a Seerr-compatible API wanted for a specific client (e.g. Streamyfin)? | No unless a named client and multi-user exist. |
 | 7 | Any path toward a native indexer / download engine? | No; keep it in Dropped next to libtorrent, with the reasons from section 2. |
+
+## Maintainer decision (2026-11-28)
+
+The maintainer chose the native route anyway: a standalone *arr stack inside NOCTURNE with an integrated Rust torrent client, for movies, shows, music and books, released as 0.7.5 after the maintainer tests it. Indexers are user-added Torznab/Newznab URLs only (no shipped tracker or site definitions). Finished downloads go, by a per-library radio choice, either into a library folder NOCTURNE manages or into the user's existing folders (move and rename). The external Seerr/Radarr/Sonarr integration stays. Plan: [ARR_PLAN.md](ARR_PLAN.md).
