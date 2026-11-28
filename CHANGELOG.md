@@ -4,6 +4,14 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Changed
+- Settings is a two-pane page: a sidebar of sections (General, Appearance & Themes, Home, Playback, Sources & Servers, Sync & Trakt, Requests, Gateway, Privacy & Data, Updates, About) with icons, and the selected section with its rows in rounded cards. A search field at the top of the sidebar (or `/`) filters rows across all sections. Tab and Shift+Tab move between sections; the arrow keys walk every row and cross into the next section. Narrow windows show the section list and drill into one section.
+- One elevation scale: raised cards and overlays (dialogs, menus, toasts, tooltips, the search panel) get soft shadows over the existing hairline outlines.
+- Empty Requests, Discover, Calendar and My themes views show an icon and a sentence instead of a bare line of text.
+
+### Fixed
+- The header is opaque, so page text no longer shows through it while scrolling (Settings content now also starts below the header).
+
 ## [0.7.0] - 2026-11-27
 
 NOCTURNE can now serve all your servers and local folders to Jellyfin apps on your phone or TV as one server, and can send requests to Radarr and Sonarr without a Seerr server.
