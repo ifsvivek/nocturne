@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
+<channel>
+<atom:link href="https://nzb.example.invalid/api" rel="self" type="application/rss+xml" />
+<title>Example Newznab</title>
+<description>Example Newznab API results</description>
+<newznab:response offset="0" total="137"/>
+<item>
+  <title>Example.Show.S02E05.1080p.WEB.H264-GROUP</title>
+  <guid isPermaLink="true">https://nzb.example.invalid/details/5f1d2c</guid>
+  <link>https://nzb.example.invalid/getnzb/5f1d2c.nzb&amp;i=1&amp;r=FIXTUREKEY</link>
+  <comments>https://nzb.example.invalid/details/5f1d2c#comments</comments>
+  <pubDate>Tue, 05 Mar 2024 21:15:00 +0000</pubDate>
+  <category>TV &gt; HD</category>
+  <description>Example.Show.S02E05.1080p.WEB.H264-GROUP</description>
+  <enclosure url="https://nzb.example.invalid/getnzb/5f1d2c.nzb&amp;i=1&amp;r=FIXTUREKEY" length="1932735283" type="application/x-nzb" />
+  <newznab:attr name="category" value="5000" />
+  <newznab:attr name="category" value="5040" />
+  <newznab:attr name="size" value="1932735283" />
+  <newznab:attr name="tvdbid" value="81189" />
+  <newznab:attr name="season" value="S02" />
+  <newznab:attr name="episode" value="E05" />
+  <newznab:attr name="grabs" value="311" />
+  <newznab:attr name="imdbid" value="tt0903747" />
+</item>
+<item>
+  <title>Example.Show.S02E05.720p.HDTV.x264-OTHER</title>
+  <guid isPermaLink="false">a7b8c9</guid>
+  <link>https://nzb.example.invalid/getnzb/a7b8c9.nzb&amp;i=1&amp;r=FIXTUREKEY</link>
+  <pubDate>Tue, 05 Mar 2024 03:00:00 +0000</pubDate>
+  <enclosure url="https://nzb.example.invalid/getnzb/a7b8c9.nzb&amp;i=1&amp;r=FIXTUREKEY" length="0" type="application/x-nzb" />
+  <newznab:attr name="category" value="5040" />
+  <newznab:attr name="size" value="1288490188" />
+</item>
+</channel>
+</rss>
