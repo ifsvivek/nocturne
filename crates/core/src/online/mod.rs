@@ -7,6 +7,7 @@
 //! artist names, plus the user's IP address. Never a file path, folder name or server address.
 //! Everything runs on the tokio bridge in the background; every provider has a request gate and 429 / 503 back-off.
 
+pub mod catalog;
 pub mod http;
 pub mod matching;
 pub mod musicbrainz;
@@ -56,6 +57,7 @@ pub struct Endpoints {
     pub musicbrainz: String,
     pub caa: String,
     pub subs: String,
+    pub openlibrary: String,
 }
 
 impl Default for Endpoints {
@@ -67,6 +69,7 @@ impl Default for Endpoints {
             musicbrainz: "https://musicbrainz.org/ws/2".into(),
             caa: "https://coverartarchive.org".into(),
             subs: "https://api.opensubtitles.com/api/v1".into(),
+            openlibrary: "https://openlibrary.org".into(),
         }
     }
 }
@@ -109,6 +112,7 @@ pub struct Engine {
     pub(crate) mb: Gate,
     pub(crate) caa: Gate,
     pub(crate) subs: Gate,
+    pub(crate) ol: Gate,
 }
 
 impl Engine {
@@ -130,6 +134,8 @@ impl Engine {
             mb: g(1100),
             caa: g(500),
             subs: g(300),
+            // Open Library asks for restraint; no number is documented.
+            ol: g(500),
         }
     }
 
