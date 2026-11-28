@@ -1,0 +1,50 @@
+[package]
+name = "nocturne-server"
+description = "NOCTURNE server: one headless process with independently enabled modules (library manager, downloads, requests, gateway, storage) behind one REST + WebSocket API"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "nocturne_server"
+
+[[bin]]
+name = "nocturne-server"
+path = "src/main.rs"
+
+[dependencies]
+nocturne-arr-types = { path = "../arr-types" }
+nocturne-core = { path = "../core" } # API model, config, metadata providers
+nocturne-session = { path = "../session" } # paths, keyring
+nocturne-torrent = { path = "../torrent" }
+nocturne-indexer = { path = "../indexer" }
+# Pure-Rust embedded key-value store (MIT/Apache). 3.1 is the last line with MSRV 1.89; 4.x needs 1.90.
+redb = "3.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+toml = "1.2.1"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "net", "time", "sync", "io-util", "signal", "macros", "fs"] }
+libc = "0.2"
+# The same minimal HTTP stack as the gateway (already in the tree): HTTP/1, WebSocket, query and JSON extractors.
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "ws", "query", "json"] }
+hyper = { version = "1", default-features = false, features = ["http1", "server"] }
+hyper-util = { version = "0.1", default-features = false, features = ["server", "tokio"] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "aws_lc_rs"] }
+rustls-pki-types = { version = "1", features = ["std"] }
+argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash", "std"] }
+sha2 = "0.10"
+getrandom = "0.3"
+futures-util = { version = "0.3.34", default-features = false }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+reqwest = { version = "0.13.5", default-features = false, features = ["json"] }
