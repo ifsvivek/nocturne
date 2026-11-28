@@ -211,6 +211,7 @@ pub enum LibraryMode {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Library {
     /// 0 when saving a new one.
+    #[serde(default)]
     pub id: u64,
     pub name: String,
     pub kind: MediaKind,
@@ -218,8 +219,10 @@ pub struct Library {
     /// Absolute. Imports write only below it.
     pub root: PathBuf,
     /// Per title, relative to `root` (tokens: docs/dev/ARR_PLAN.md section 6).
+    #[serde(default)]
     pub folder_template: String,
     /// Per file, relative to the title folder, without extension.
+    #[serde(default)]
     pub file_template: String,
 }
 

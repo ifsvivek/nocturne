@@ -262,17 +262,20 @@ pub struct Release {
 /// A user-added Torznab or Newznab endpoint. No site definitions ship with NOCTURNE. The API key is never in here: it lives in the keyring and is passed to each call.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexerDef {
+    #[serde(default)]
     pub id: u64,
     pub name: String,
     pub protocol: Protocol,
     /// The API endpoint, e.g. `http://127.0.0.1:9117/api/v2.0/indexers/x/results/torznab/` (the client appends `api?t=...`).
     pub url: String,
     /// Newznab category ids to search; empty = the standard ones for the kind (2000 movies, 5000 TV, 3000 audio, 7000 books).
+    #[serde(default)]
     pub categories: Vec<u32>,
     /// Kinds this indexer is used for.
     pub kinds: Vec<MediaKind>,
     pub enabled: bool,
     /// Lower is tried first and wins ties.
+    #[serde(default)]
     pub priority: u8,
 }
 
