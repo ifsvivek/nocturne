@@ -162,6 +162,13 @@ pub async fn run(
             format!("cannot listen on port {}: {e}", cfg.http.port),
         )
     })?;
+    crate::auth::prepare_setup_code(&sh).map_err(io::Error::other)?;
+    if crate::auth::setup_needed(&sh) {
+        crate::slog!(
+            "first-run setup is waiting: run `nocturne-server open` on this machine (the setup code is in {})",
+            crate::auth::setup_code_path(&sh.paths).display()
+        );
+    }
     let addrs: Vec<SocketAddr> = listeners
         .iter()
         .filter_map(|l| l.local_addr().ok())

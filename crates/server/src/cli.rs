@@ -14,7 +14,7 @@ pub const USAGE: &str = "usage: nocturne-server [command]
   status                    modules, counters and jobs of the running server
   logs [-f]                 the service's log
   update                    check for a newer version
-  open                      print and open the dashboard address
+  open                      print and open the dashboard address (with the setup code until setup is done)
   config get [key]          show the configuration, or one dotted key (http.port)
   config set <key> <value>  change one key (JSON value or plain text) and apply it
   apikey create <name> | list | revoke <id>
@@ -200,8 +200,25 @@ fn install(linger: bool, paths: &crate::state::Paths) -> Res<()> {
     let cfg = ServerConfig::load_from(&paths.config).unwrap_or_default();
     let url = dashboard_url(&cfg);
     println!("Dashboard: {url}");
-    println!("First-run setup: {url}setup (or `nocturne-server user add <name>`)");
+    // The server writes the code when it starts; give it a moment.
+    for _ in 0..20 {
+        if crate::auth::setup_code(paths).is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    match setup_link(&url, paths) {
+        Some(l) => println!("First-run setup: {l} (or `nocturne-server user add <name>`)"),
+        None => println!(
+            "First-run setup: `nocturne-server open` once the server runs, or `nocturne-server user add <name>`"
+        ),
+    }
     Ok(())
+}
+
+/// The dashboard's setup page with the one-time code, while setup is waiting.
+fn setup_link(url: &str, paths: &crate::state::Paths) -> Option<String> {
+    crate::auth::setup_code(paths).map(|c| format!("{url}setup?code={c}"))
 }
 
 // ponytail: reports a newer version only; installing stays with the package manager or the app's updater until the server ships its own archives.
@@ -266,6 +283,7 @@ pub fn run(args: &[String]) -> Option<Res<()>> {
         ["status"] => api(&sock, "GET", "/status", None).map(|v| print(&v)),
         ["open"] => {
             let url = dashboard_url(&ServerConfig::load_from(&paths.config).unwrap_or_default());
+            let url = setup_link(&url, &paths).unwrap_or(url);
             println!("{url}");
             let _ = std::process::Command::new("xdg-open").arg(&url).status();
             Ok(())

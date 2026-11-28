@@ -243,3 +243,47 @@ pub fn revoke_sessions(sh: &Shared) -> Res<()> {
     let ids: Vec<u64> = list(sh, TokenKind::Session)?.iter().map(|t| t.id).collect();
     sh.db.delete::<TokenRec>(&ids)
 }
+
+/// `<data>/setup-code`: the one-time code first-run setup over TCP needs (0600, only the owner reads it; `nocturne-server open` puts it in the link). Gone once an admin exists.
+pub fn setup_code_path(p: &crate::state::Paths) -> std::path::PathBuf {
+    p.data.join("setup-code")
+}
+
+pub fn setup_code(p: &crate::state::Paths) -> Option<String> {
+    std::fs::read_to_string(setup_code_path(p))
+        .ok()
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
+}
+
+/// While setup is needed: make the code once (kept across restarts so a printed link stays valid). Otherwise remove a stale one.
+pub fn prepare_setup_code(sh: &Shared) -> Res<()> {
+    let path = setup_code_path(&sh.paths);
+    if !setup_needed(sh) {
+        let _ = std::fs::remove_file(&path);
+        return Ok(());
+    }
+    if setup_code(&sh.paths).is_some() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(&sh.paths.data).map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_file(&path);
+    let mut o = std::fs::OpenOptions::new();
+    o.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
+    let code: String = random_hex().chars().take(24).collect();
+    std::io::Write::write_all(
+        &mut o.open(&path).map_err(|e| e.to_string())?,
+        code.as_bytes(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// The presented code is the waiting one (compared as hashes, so timing tells nothing).
+pub fn setup_code_ok(p: &crate::state::Paths, given: Option<&str>) -> bool {
+    match (setup_code(p), given) {
+        (Some(c), Some(g)) => sha256_hex(&c) == sha256_hex(g.trim()),
+        _ => false,
+    }
+}

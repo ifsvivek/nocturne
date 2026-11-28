@@ -299,6 +299,9 @@ async fn setup_needed(State(sh): State<Shared>) -> Json<Value> {
 struct Credentials {
     username: String,
     password: String,
+    /// First-run setup over TCP: the code from `<data>/setup-code`.
+    #[serde(default)]
+    code: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -328,8 +331,10 @@ fn client_name(h: &HeaderMap) -> String {
 /// One setup at a time, so two racing first-run requests cannot both create an admin.
 static SETUP: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+/// Setup over TCP needs the code of `<data>/setup-code`: whoever reaches the port first (a LAN peer, a visitor of a tunnel address, another local user, a web page through DNS rebinding) must not become the admin. The unix-socket local admin needs none.
 async fn setup(
     State(sh): State<Shared>,
+    peer: Option<Extension<Peer>>,
     h: HeaderMap,
     Json(c): Json<Credentials>,
 ) -> ApiResult<Value> {
@@ -337,28 +342,71 @@ async fn setup(
     if !auth::setup_needed(&sh) {
         return Err(ApiErr::conflict("setup is already done"));
     }
+    let local = matches!(peer, Some(Extension(Peer::Unix)));
+    if !local && !auth::setup_code_ok(&sh.paths, c.code.as_deref()) {
+        return Err(ApiErr::forbidden(
+            "the setup code is missing or wrong: open the link `nocturne-server open` prints on the server, or run `nocturne-server user add <name>` there",
+        ));
+    }
     let u = auth::create_user(&sh, &c.username, &c.password, true).await?;
+    let _ = std::fs::remove_file(auth::setup_code_path(&sh.paths));
     login_result(&sh, &u, &client_name(&h))
 }
 
-/// Failed sign-ins are answered one at a time, each after a second.
-// ponytail: one global delay for failures; per-address limits if the server is exposed widely.
-static FAILED: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// The client's address: the peer, or the last `X-Forwarded-For` entry when the peer is the configured `trusted_proxy` (cloudflared or a reverse proxy on loopback).
+fn client_ip(sh: &Shared, peer: Option<Peer>, h: &HeaderMap) -> std::net::IpAddr {
+    use nocturne_core::gateway::normalize;
+    let peer = match peer {
+        Some(Peer::Tcp(a)) => normalize(a.ip()),
+        _ => std::net::Ipv4Addr::LOCALHOST.into(),
+    };
+    if sh.cfg().http.trusted_proxy.map(normalize) == Some(peer)
+        && let Some(ip) = h
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.rsplit(',').next())
+            .and_then(|s| s.trim().parse().ok())
+    {
+        return normalize(ip);
+    }
+    peer
+}
+
+/// Failed sign-ins: 5 per 10 minutes per (address, name), then back-off, plus a global ceiling (the gateway's limiter). Each attempt is counted before Argon2 runs, so parallel guesses cannot outrun it.
+#[derive(Default)]
+pub struct Logins(nocturne_gateway::limits::LoginLimiter);
 
 async fn login(
     State(sh): State<Shared>,
+    peer: Option<Extension<Peer>>,
     h: HeaderMap,
     Json(c): Json<Credentials>,
-) -> ApiResult<Value> {
+) -> Response {
+    let ip = client_ip(&sh, peer.map(|p| p.0), &h);
+    let limiter = sh.ext::<Logins>();
+    if let Err(wait) = limiter.0.begin(ip, &c.username, std::time::Instant::now()) {
+        let mut r = ApiErr(
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many failed sign-ins; try again later".into(),
+        )
+        .into_response();
+        if let Ok(v) = wait.as_secs().max(1).to_string().parse() {
+            r.headers_mut().insert(header::RETRY_AFTER, v);
+        }
+        return r;
+    }
     match auth::verify(&sh, &c.username, &c.password).await {
-        Some(u) => login_result(&sh, &u, &client_name(&h)),
+        Some(u) => {
+            limiter.0.succeeded(ip, &c.username);
+            login_result(&sh, &u, &client_name(&h)).into_response()
+        }
         None => {
-            let _one = FAILED.lock().await;
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            Err(ApiErr(
+            ApiErr(
                 StatusCode::UNAUTHORIZED,
                 "wrong user name or password".into(),
-            ))
+            )
+            .into_response()
         }
     }
 }

@@ -192,7 +192,7 @@ async fn module_roots_health_mount_watch_and_agents() {
         "POST",
         &format!("{b}/setup"),
         "",
-        Some(json!({"username": "admin", "password": "correct horse"})),
+        Some(json!({"username": "admin", "password": "correct horse", "code": nocturne_server::auth::setup_code(&sh.paths)})),
     )
     .await;
     let tok = v["token"].as_str().unwrap().to_string();

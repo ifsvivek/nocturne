@@ -2,6 +2,7 @@
 
 One line per change to `docs/api/openapi.yaml` after its first commit (bf51f3f), newest first.
 
+- `POST /api/v1/setup` over TCP needs `code`, the one-time setup code in `<data>/setup-code` (403 without it); the unix socket needs none. `POST /api/v1/auth/login` answers 429 with `Retry-After` after 5 failures per address and name in 10 minutes.
 - Module `discovery`: `GET /api/v1/discovery/servers` (a two-second LAN scan; the dashboard's guessed path).
 - Module `tunnel`: `GET /api/v1/tunnel/status`, `POST /api/v1/tunnel/restart`, `PUT` and `DELETE /api/v1/tunnel/token`.
 - Module `gateway`: `GET /api/v1/gateway/status`, `POST /api/v1/gateway/restart`, `GET /api/v1/gateway/devices`, `DELETE /api/v1/gateway/devices/{id}`, `POST /api/v1/gateway/quickconnect/{code}`, `POST /api/v1/gateway/password`, `POST /api/v1/gateway/password/reveal`, `POST /api/v1/gateway/apikeys`.

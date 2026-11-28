@@ -114,7 +114,7 @@ async fn setup_login_keys_local_admin_and_gating() {
             "POST",
             &format!("{b}/setup"),
             None,
-            Some(json!({"username": "ad", "password": "short"}))
+            Some(json!({"username": "ad", "password": "short", "code": nocturne_server::auth::setup_code(&s.sh.paths)}))
         )
         .await
         .0,
@@ -124,7 +124,7 @@ async fn setup_login_keys_local_admin_and_gating() {
         "POST",
         &format!("{b}/setup"),
         None,
-        Some(json!({"username": "admin", "password": "correct horse"})),
+        Some(json!({"username": "admin", "password": "correct horse", "code": nocturne_server::auth::setup_code(&s.sh.paths)})),
     )
     .await;
     assert_eq!(code, 200, "{v}");
