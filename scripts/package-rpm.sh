@@ -20,7 +20,7 @@ docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -e PROFILE="$PROFILE" -e V
 mkdir -p ~/rpmbuild/SOURCES
 tar -C /src --exclude=./target --exclude=./dist --exclude=./website --exclude=./.git --exclude=./.claude \
   --transform "s,^\.,nocturne-$VER," -czf ~/rpmbuild/SOURCES/nocturne-$VER.tar.gz .
-rpmbuild -bb --define "pkgver $VER" --define "binpath /src/dist/bin/nocturne-$PROFILE" --define "gwpath /src/dist/bin/nocturne-gateway-$PROFILE" /src/packaging/nocturne.spec
+rpmbuild -bb --define "pkgver $VER" --define "binpath /src/dist/bin/nocturne-$PROFILE" --define "gwpath /src/dist/bin/nocturne-gateway-$PROFILE" --define "srvpath /src/dist/bin/nocturne-server-$PROFILE" /src/packaging/nocturne.spec
 cp ~/rpmbuild/RPMS/*/nocturne-*.rpm /out/
 chown $HOST_UID /out/nocturne-*.rpm
 '

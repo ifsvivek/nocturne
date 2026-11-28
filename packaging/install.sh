@@ -110,6 +110,7 @@ install)
   install -Dm755 nocturne "$P/bin/nocturne"
   # The optional gateway companion (off until enabled in Settings > Gateway); the app looks for it next to itself.
   [ ! -f nocturne-gateway ] || install -Dm755 nocturne-gateway "$P/bin/nocturne-gateway"
+  [ ! -f nocturne-server ] || install -Dm755 nocturne-server "$P/bin/nocturne-server"
   # Absolute Exec so launchers find the binary even when they do not have PREFIX/bin on their PATH.
   mkdir -p "$P/share/applications"
   sed "s|^Exec=nocturne|Exec=${PREFIX:-/usr/local}/bin/nocturne|" io.github.ifsvivek.nocturne.desktop \
@@ -132,7 +133,7 @@ install)
   echo "If NOCTURNE does not show in your app launcher, restart the launcher or log out and back in, or run: nocturne"
   ;;
 uninstall)
-  rm -f "$P/bin/nocturne" "$P/bin/nocturne-gateway" "$P/share/applications/io.github.ifsvivek.nocturne.desktop" \
+  rm -f "$P/bin/nocturne" "$P/bin/nocturne-gateway" "$P/bin/nocturne-server" "$P/share/applications/io.github.ifsvivek.nocturne.desktop" \
     "$P/share/icons/hicolor/scalable/apps/nocturne.svg" "$P/share/metainfo/$META"
   for s in 48 128 256 512; do rm -f "$P/share/icons/hicolor/${s}x${s}/apps/nocturne.png"; done
   rm -rf "$P/share/licenses/nocturne"

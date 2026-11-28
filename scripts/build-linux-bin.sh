@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the Linux binaries ONCE, in a debian:stable container (oldest glibc we ship against), into dist/bin/nocturne-<profile> and dist/bin/nocturne-gateway-<profile> (the optional gateway companion).
+# Build the Linux binaries ONCE, in a debian:stable container (oldest glibc we ship against), into dist/bin/nocturne-<profile> and dist/bin/nocturne-gateway-<profile> (the optional gateway companion) and dist/bin/nocturne-server-<profile> (the headless server).
 # The tarball, .deb and .rpm all reuse it (a newer-glibc distro such as Fedora runs it fine).
 #   usage: [PROFILE=release|fast-release] [IMG=debian:stable] [PKG=nocturne-app] scripts/build-linux-bin.sh
 # release = published artifacts (fat LTO); fast-release = QA and package tests (thin LTO, 16 codegen units, see Cargo.toml).
@@ -26,10 +26,11 @@ export CARGO_HOME=/cache/cargo CARGO_TARGET_DIR=/cache/target RUSTUP_HOME=/cache
 [ -x /cache/cargo/bin/cargo ] || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable >/dev/null
 export PATH=/cache/cargo/bin:$PATH
 cd /src
-RUSTFLAGS="--remap-path-prefix=/cache/cargo=/cargo --remap-path-prefix=/src=/src" cargo build --profile "$PROFILE" --locked -p "$PKG" -p nocturne-gateway
+RUSTFLAGS="--remap-path-prefix=/cache/cargo=/cargo --remap-path-prefix=/src=/src" cargo build --profile "$PROFILE" --locked -p "$PKG" -p nocturne-gateway -p nocturne-server
 install -m755 /cache/target/$PROFILE/nocturne /out/nocturne-$PROFILE
 install -m755 /cache/target/$PROFILE/nocturne-gateway /out/nocturne-gateway-$PROFILE
-chown $HOST_UID /out/nocturne-$PROFILE /out/nocturne-gateway-$PROFILE
+install -m755 /cache/target/$PROFILE/nocturne-server /out/nocturne-server-$PROFILE
+chown $HOST_UID /out/nocturne-$PROFILE /out/nocturne-gateway-$PROFILE /out/nocturne-server-$PROFILE
 # bound the volume
 over() { [ "$(du -sk /cache | cut -f1)" -gt $((CAP * 1024 * 1024)) ]; }
 if over; then

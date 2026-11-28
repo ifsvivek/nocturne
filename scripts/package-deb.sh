@@ -10,7 +10,7 @@ ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 scripts/build-linux-bin.sh
 mkdir -p dist
 
-docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -e BIN=/src/dist/bin/nocturne-$PROFILE -e GWBIN=/src/dist/bin/nocturne-gateway-$PROFILE -e VER="$ver" -e HOST_UID="$(id -u)" "nocturne-build:$(echo "$IMG" | tr ':/' '--')" bash -euc '
+docker run --rm -v "$PWD":/src:ro -v "$PWD/dist":/out -e BIN=/src/dist/bin/nocturne-$PROFILE -e GWBIN=/src/dist/bin/nocturne-gateway-$PROFILE -e SRVBIN=/src/dist/bin/nocturne-server-$PROFILE -e VER="$ver" -e HOST_UID="$(id -u)" "nocturne-build:$(echo "$IMG" | tr ':/' '--')" bash -euc '
 cd /src
 bin=$BIN
 
@@ -23,6 +23,7 @@ shl=$(cd $w && dpkg-shlibdeps -O -enocturne 2>/dev/null | sed "s/^shlibs:Depends
 r=$w/root
 install -Dm755 $bin $r/usr/bin/nocturne
 install -Dm755 $GWBIN $r/usr/bin/nocturne-gateway
+install -Dm755 $SRVBIN $r/usr/bin/nocturne-server
 install -Dm644 packaging/io.github.ifsvivek.nocturne.desktop -t $r/usr/share/applications
 for s in 48 128 256 512; do install -Dm644 packaging/icons/nocturne-$s.png $r/usr/share/icons/hicolor/${s}x${s}/apps/nocturne.png; done
 install -Dm644 packaging/nocturne.svg -t $r/usr/share/icons/hicolor/scalable/apps

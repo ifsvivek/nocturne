@@ -37,7 +37,7 @@ build() {
   cd "$pkgname-$pkgver"
   export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
   export RUSTFLAGS="$RUSTFLAGS --remap-path-prefix=$HOME=/home/build --remap-path-prefix=$PWD=/src"
-  cargo build --frozen --release -p "$_pkg" -p nocturne-gateway
+  cargo build --frozen --release -p "$_pkg" -p nocturne-gateway -p nocturne-server
 }
 
 check() {
@@ -50,6 +50,7 @@ package() {
   cd "$pkgname-$pkgver"
   install -Dm755 "target/release/$_bin" "$pkgdir/usr/bin/nocturne"
   install -Dm755 target/release/nocturne-gateway "$pkgdir/usr/bin/nocturne-gateway"
+  install -Dm755 target/release/nocturne-server "$pkgdir/usr/bin/nocturne-server"
   install -Dm644 packaging/io.github.ifsvivek.nocturne.desktop -t "$pkgdir/usr/share/applications"
   for s in 48 128 256 512; do
     install -Dm644 "packaging/icons/nocturne-$s.png" "$pkgdir/usr/share/icons/hicolor/${s}x${s}/apps/nocturne.png"

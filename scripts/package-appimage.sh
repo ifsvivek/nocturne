@@ -23,11 +23,12 @@ apt-get install -y -qq --no-install-recommends build-essential pkg-config curl c
 [ -x /cache/cargo/bin/cargo ] || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable >/dev/null
 export PATH=/cache/cargo/bin:$PATH
 cd /src
-RUSTFLAGS="--remap-path-prefix=/cache/cargo=/cargo --remap-path-prefix=/src=/src" cargo build $([ "$PROFILE" = release ] && echo --release) --locked -p "$PKG" -p nocturne-gateway
+RUSTFLAGS="--remap-path-prefix=/cache/cargo=/cargo --remap-path-prefix=/src=/src" cargo build $([ "$PROFILE" = release ] && echo --release) --locked -p "$PKG" -p nocturne-gateway -p nocturne-server
 
 A=/tmp/AppDir; rm -rf $A; mkdir -p $A/usr/bin $A/usr/lib
 install -m755 /cache/target/$([ "$PROFILE" = release ] && echo release || echo debug)/nocturne $A/usr/bin/nocturne
 install -m755 /cache/target/$([ "$PROFILE" = release ] && echo release || echo debug)/nocturne-gateway $A/usr/bin/nocturne-gateway
+install -m755 /cache/target/$([ "$PROFILE" = release ] && echo release || echo debug)/nocturne-server $A/usr/bin/nocturne-server
 # libmpv closure minus host-provided libraries (see header).
 skip="^(ld-linux.*|libc|libm|libdl|libpthread|librt|libutil|libresolv|libnsl|libanl|libstdc\+\+|libgcc_s|libGL|libGLX|libGLdispatch|libEGL|libOpenGL|libGLESv[12]|libvulkan|libgbm|libdrm.*|libwayland-.*|libX11|libxcb|libxkbcommon.*|libva.*|libvdpau|libnvidia.*)\.so"
 mpv=$(ldconfig -p | awk "/libmpv.so.2 /{print \$NF; exit}")
