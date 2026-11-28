@@ -4,6 +4,13 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Added
+- Gateway: the Jellyfin web client, and the official phone apps that wrap it, work through the gateway: sign-in by password or Quick Connect, Home, libraries, item pages, search, favourites, playback (direct play, transcoding when the browser needs it, subtitle and audio track changes, resume), the display, home, playback and subtitle settings (kept by the gateway, never written to a server), the cast menu and sign-out.
+- Gateway: named API keys for clients that sign in with a key instead of the password; they are stored hashed, can be revoked one by one and survive a password change.
+
+### Fixed
+- Gateway: favourites kept in the gateway (server changes off) now show in the Favourites tab, and a watched title started again keeps its resume point.
+
 ## [0.7.0] - 2026-11-27
 
 NOCTURNE can now serve all your servers and local folders to Jellyfin apps on your phone or TV as one server, and can send requests to Radarr and Sonarr without a Seerr server.
