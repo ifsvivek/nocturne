@@ -1,4 +1,4 @@
-//! "Keep running when NOCTURNE is closed": the systemd user units that start the companion processes (`nocturne-gateway`, docs/dev/GATEWAY_PLAN.md section 5; `nocturne-arrd`, docs/dev/ARR_PLAN.md) at login. Linux only; launchd and a Windows login task come with those platforms.
+//! "Keep running when NOCTURNE is closed": the systemd user units that start the companion processes (`nocturne-gateway`, docs/dev/GATEWAY_PLAN.md section 5; `nocturne-server`, docs/dev/SERVER_PLAN.md) at login. Linux only; launchd and a Windows login task come with those platforms.
 //!
 //! A user unit starts when the user logs in, which is also when the Secret Service is available; `loginctl enable-linger` is not supported because the keyring would be locked. The text and the file handling are pure and tested; `enable` / `disable` call `systemctl --user`.
 use std::io;
@@ -22,10 +22,10 @@ pub const GATEWAY: Service = Service {
     cache: true,
 };
 
-pub const ARRD: Service = Service {
-    unit: "nocturne-arrd.service",
-    description: "NOCTURNE downloads (monitored titles, indexers and the torrent engine)",
-    data: "arrd",
+pub const SERVER: Service = Service {
+    unit: "nocturne-server.service",
+    description: "NOCTURNE server (library manager, downloads, requests, gateway)",
+    data: "server",
     cache: false,
 };
 
@@ -126,7 +126,7 @@ fn systemctl(args: &[&str]) -> io::Result<()> {
     }
 }
 
-/// Install and start the unit: written to the user's unit directory, then enabled now and at every login. `extra` are more writable directories (the downloads' and libraries' folders of `nocturne-arrd`; call again when they change). Blocking; run it off the UI thread.
+/// Install and start the unit: written to the user's unit directory, then enabled now and at every login. `extra` are more writable directories (the downloads' and libraries' folders of `nocturne-server`; call again when they change). Blocking; run it off the UI thread.
 pub fn enable(svc: &Service, exe: &Path, extra: &[&Path]) -> io::Result<()> {
     if !cfg!(target_os = "linux") {
         return Err(io::Error::other("Keep running is available on Linux only"));
@@ -203,15 +203,15 @@ mod tests {
     }
 
     #[test]
-    fn arrd_unit_lists_its_library_folders() {
+    fn server_unit_lists_its_library_folders() {
         let t = unit_text(
-            &ARRD,
-            Path::new("/usr/bin/nocturne-arrd"),
-            &[Path::new("/data/arrd"), Path::new("/mnt/media/Movies")],
+            &SERVER,
+            Path::new("/usr/bin/nocturne-server"),
+            &[Path::new("/data/server"), Path::new("/mnt/media/Movies")],
         )
         .unwrap();
-        assert!(t.contains("Description=NOCTURNE downloads"));
-        assert!(t.contains("ReadWritePaths=-%t/nocturne -/data/arrd -/mnt/media/Movies\n"));
+        assert!(t.contains("Description=NOCTURNE server"));
+        assert!(t.contains("ReadWritePaths=-%t/nocturne -/data/server -/mnt/media/Movies\n"));
         assert!(t.contains("ProtectSystem=strict") && t.contains("ProtectHome=read-only"));
     }
 
@@ -221,7 +221,7 @@ mod tests {
         let Ok(exe) = std::fs::canonicalize("/usr/bin/true") else {
             return;
         };
-        for svc in [&GATEWAY, &ARRD] {
+        for svc in [&GATEWAY, &SERVER] {
             let d = tempfile::tempdir().unwrap();
             let data = d.path().join("data dir");
             let p = write_unit(svc, d.path(), &exe, &[&data]).unwrap();
@@ -245,7 +245,7 @@ mod tests {
         let t = unit_text(&GATEWAY, Path::new("/x/a\"b%c$d\\e"), &[]).unwrap();
         assert!(t.contains(r#"ExecStart="/x/a\"b%%c$$d\\e""#), "{t}");
         assert!(unit_text(&GATEWAY, Path::new("/x\nExecStart=/bin/sh"), &[]).is_err());
-        assert!(unit_text(&ARRD, Path::new("/ok"), &[Path::new("/y\nZ=1")]).is_err());
+        assert!(unit_text(&SERVER, Path::new("/ok"), &[Path::new("/y\nZ=1")]).is_err());
     }
 
     #[test]
@@ -266,9 +266,9 @@ mod tests {
             "no temp file left"
         );
         // Units of the two services live side by side.
-        write_unit(&ARRD, &dir, Path::new("/b/nocturne-arrd"), &[]).unwrap();
+        write_unit(&SERVER, &dir, Path::new("/b/nocturne-server"), &[]).unwrap();
         assert!(remove_unit(&GATEWAY, &dir).unwrap());
         assert!(!remove_unit(&GATEWAY, &dir).unwrap());
-        assert!(dir.join(ARRD.unit).exists());
+        assert!(dir.join(SERVER.unit).exists());
     }
 }

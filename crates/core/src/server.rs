@@ -1,32 +1,64 @@
-//! The native *arr engine as the app sees it (docs/dev/ARR_PLAN.md): its settings, the catalog model and the control-socket protocol of `nocturne-arrd`. Pure and dependency-light on purpose, like `gateway.rs`: the app never links the daemon (torrent engine, database).
+//! The NOCTURNE server as its clients see it (docs/dev/SERVER_PLAN.md, API: docs/api/openapi.yaml): its configuration (`server.toml`), the library manager's model and the event stream. Pure and dependency-light, like `gateway.rs`: the app never links the server (torrent engine, database, HTTP server).
+use crate::gateway::Binding;
 pub use nocturne_arr_types as types;
 use serde::{Deserialize, Serialize};
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
-use types::{Caps, Ids, IndexerDef, Limits, MediaKind, Quality, Release, TorrentStatus};
+use types::{Ids, Limits, MediaKind, Quality, Release, TorrentStatus};
 
-/// The `[arrd]` table of `settings.toml`; the daemon reads the same table with [`ArrdSettings::load_from`].
+pub const DEFAULT_PORT: u16 = 8100;
+/// Bump with a migration in [`ServerConfig::load_from`] when a field changes meaning.
+pub const CONFIG_VERSION: u32 = 1;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct ArrdSettings {
-    /// Master switch: when off nothing runs, no indexer is called and no torrent is started.
+pub struct HttpConfig {
+    pub binding: Binding,
+    pub port: u16,
+    /// PEM files; required for [`Binding::Remote`].
+    pub cert_path: Option<PathBuf>,
+    pub key_path: Option<PathBuf>,
+    /// `X-Forwarded-For` is believed only from this peer (a reverse proxy).
+    pub trusted_proxy: Option<IpAddr>,
+}
+
+impl Default for HttpConfig {
+    fn default() -> Self {
+        Self {
+            binding: Binding::Local,
+            port: DEFAULT_PORT,
+            cert_path: None,
+            key_path: None,
+            trusted_proxy: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Switch {
     pub enabled: bool,
-    /// Keep running when the window is closed (systemd user unit, Linux).
-    pub keep_running: bool,
-    /// Where torrents download to; `None` = `$XDG_DATA_HOME/nocturne/arrd/downloads`. Put it on the libraries' file system so imports are hardlinks.
-    pub downloads: Option<PathBuf>,
-    /// Stop seeding an imported torrent at this upload ratio (0 = no ratio limit).
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DownloadsConfig {
+    /// The torrent engine. Off by default: no torrent is started and no peer is contacted.
+    pub enabled: bool,
+    /// `None` = `$XDG_DATA_HOME/nocturne/server/downloads`. Put it on the libraries' file system so imports are hardlinks.
+    pub dir: Option<PathBuf>,
+    /// Stop seeding an imported torrent at this ratio (0 = no ratio limit)...
     pub seed_ratio: f32,
-    /// ...or after this many hours of seeding (0 = no time limit). With both 0 it seeds until removed.
+    /// ...or after this many hours (0 = no time limit). Both 0: seed until removed.
     pub seed_hours: u32,
     pub limits: Limits,
 }
 
-impl Default for ArrdSettings {
+impl Default for DownloadsConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            keep_running: false,
-            downloads: None,
+            dir: None,
             seed_ratio: 1.0,
             seed_hours: 168,
             limits: Limits::default(),
@@ -34,22 +66,135 @@ impl Default for ArrdSettings {
     }
 }
 
-impl ArrdSettings {
-    /// The `[arrd]` table of the file at `path`; a missing file, table or field gives the defaults.
-    pub fn load_from(path: &Path) -> Self {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|t| toml::from_str::<toml::Table>(&t).ok())
-            .and_then(|mut t| t.remove("arrd"))
+impl DownloadsConfig {
+    pub fn dir_or_default(&self) -> Option<PathBuf> {
+        self.dir.clone().or_else(|| {
+            nocturne_session::paths::data_dir().map(|d| d.join("server").join("downloads"))
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RequestsConfig {
+    pub enabled: bool,
+    /// A new request becomes a monitored title at once (needs the library module).
+    pub auto_approve: bool,
+}
+
+impl Default for RequestsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            auto_approve: true,
+        }
+    }
+}
+
+/// `$XDG_CONFIG_HOME/nocturne/server.toml`. Every module is off by default; with all off the server only answers the API.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ServerConfig {
+    pub version: u32,
+    pub http: HttpConfig,
+    /// The library manager: libraries, profiles, indexers, monitored titles, search, import, scheduled jobs.
+    pub library: Switch,
+    pub downloads: DownloadsConfig,
+    pub requests: RequestsConfig,
+    /// The sections of the other modules (`[gateway]`, `[tunnel]`, `[discovery]`, `[storage]`, ...), each owned and typed by its module: read with [`ServerConfig::section`], write with [`ServerConfig::set_section`]. Unknown sections survive a load and save untouched.
+    #[serde(flatten)]
+    pub sections: toml::Table,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            version: CONFIG_VERSION,
+            http: HttpConfig::default(),
+            library: Switch::default(),
+            downloads: DownloadsConfig::default(),
+            requests: RequestsConfig::default(),
+            sections: toml::Table::new(),
+        }
+    }
+}
+
+impl ServerConfig {
+    pub fn default_path() -> Option<PathBuf> {
+        nocturne_session::paths::config_dir().map(|d| d.join("server.toml"))
+    }
+
+    /// A missing file gives the defaults; an unreadable one is an error (the server must not start with everything reset).
+    pub fn load_from(path: &Path) -> Result<Self, String> {
+        match std::fs::read_to_string(path) {
+            Ok(t) => {
+                let c: Self = toml::from_str(&t).map_err(|e| format!("{}: {e}", path.display()))?;
+                if c.version > CONFIG_VERSION {
+                    return Err(format!("{} is from a newer NOCTURNE", path.display()));
+                }
+                Ok(Self {
+                    version: CONFIG_VERSION,
+                    ..c
+                })
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(e) => Err(format!("{}: {e}", path.display())),
+        }
+    }
+
+    /// Atomic: a temporary file in the same folder, then a rename.
+    pub fn save_to(&self, path: &Path) -> Result<(), String> {
+        let text = toml::to_string(self).map_err(|e| e.to_string())?;
+        if let Some(d) = path.parent() {
+            std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+        }
+        let tmp = path.with_extension("toml.tmp");
+        std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+    }
+
+    /// A module's section; missing or unreadable gives its defaults (`T` should be `#[serde(default)]`).
+    pub fn section<T: serde::de::DeserializeOwned + Default>(&self, name: &str) -> T {
+        self.sections
+            .get(name)
+            .cloned()
             .and_then(|v| v.try_into().ok())
             .unwrap_or_default()
     }
 
-    pub fn downloads_dir(&self) -> Option<PathBuf> {
-        self.downloads.clone().or_else(|| {
-            nocturne_session::paths::data_dir().map(|d| d.join("arrd").join("downloads"))
-        })
+    /// Replace a module's section.
+    pub fn set_section<T: Serialize>(&mut self, name: &str, v: &T) -> Result<(), String> {
+        let v = toml::Value::try_from(v).map_err(|e| e.to_string())?;
+        self.sections.insert(name.to_string(), v);
+        Ok(())
     }
+
+    /// Whether a module is switched on: the `enabled` key of its section (typed sections included).
+    pub fn enabled(&self, module: &str) -> bool {
+        match module {
+            "library" => self.library.enabled,
+            "downloads" => self.downloads.enabled,
+            "requests" => self.requests.enabled,
+            _ => self.section::<Switch>(module).enabled,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.http.binding == Binding::Remote
+            && (self.http.cert_path.is_none() || self.http.key_path.is_none())
+        {
+            return Err("Remote over HTTPS needs a certificate and a key file".into());
+        }
+        if self.http.port == 0 {
+            return Err("port 0 is not allowed".into());
+        }
+        Ok(())
+    }
+}
+
+/// `$XDG_RUNTIME_DIR/nocturne/server.sock`: the same API for local clients; a peer with the server's uid is the local admin.
+pub fn socket_path() -> Option<PathBuf> {
+    nocturne_session::paths::runtime_dir().map(|d| d.join("nocturne").join("server.sock"))
 }
 
 /// Where a library's finished downloads go (a radio choice per library).
@@ -379,22 +524,31 @@ pub struct JobInfo {
     pub job: Job,
     pub last_run: Option<u64>,
     pub next_run: u64,
+    pub running: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleStatus {
+    /// The module's name (its config section and route prefix).
+    pub name: String,
+    pub enabled: bool,
+    pub running: bool,
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Status {
     pub version: String,
     pub uptime_secs: u64,
+    pub setup_needed: bool,
+    pub modules: Vec<ModuleStatus>,
     pub titles: usize,
-    /// Monitored units without a file.
+    /// Monitored, released units without a file.
     pub missing: usize,
     pub downloading: usize,
     pub down_rate: u64,
     pub up_rate: u64,
-    pub downloads: PathBuf,
     pub jobs: Vec<JobInfo>,
-    /// Why the torrent engine is unavailable, if it is.
-    pub error: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -403,175 +557,78 @@ pub struct TitleDetail {
     pub units: Vec<Unit>,
 }
 
-/// One request per line, JSON, on the control socket.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "cmd", content = "arg", rename_all = "snake_case")]
-pub enum Request {
-    Status,
-    /// Re-read `[arrd]` from settings.toml (limits, seeding rules).
-    Reload,
-    Stop,
-    Libraries,
-    /// Id 0 creates. Answers `Saved(id)`.
-    SaveLibrary(Library),
-    /// Refused while a title uses it.
-    DeleteLibrary(u64),
-    Profiles,
-    SaveProfile(Profile),
-    DeleteProfile(u64),
-    Indexers,
-    /// `api_key`: `None` keeps the stored one, `Some("")` deletes it. Keys go to the keyring only.
-    SaveIndexer {
-        def: IndexerDef,
-        api_key: Option<String>,
-    },
-    DeleteIndexer(u64),
-    /// Fetch the caps of a saved indexer.
-    TestIndexer(u64),
-    Titles(Option<MediaKind>),
-    Title(u64),
-    AddTitle(NewTitle),
-    /// Forget a title and its units. Files on disk are left alone.
-    RemoveTitle(u64),
-    /// `units` empty = the title itself.
-    Monitor {
-        title: u64,
-        units: Vec<u64>,
-        monitored: bool,
-    },
-    /// Automatic search and grab; `units` empty = every wanted unit of the title. Results show up as queue and history events.
-    Search {
-        title: u64,
-        units: Vec<u64>,
-    },
-    /// Interactive search: every release found, with the decision on each.
-    Releases {
-        title: u64,
-        units: Vec<u64>,
-    },
-    /// Grab one release from [`Request::Releases`] (the user's choice overrides rejections except protocol and blocklist).
-    Grab {
-        title: u64,
-        release: Box<Release>,
-    },
-    Queue,
-    /// Remove from the queue (the torrent and its download data too); optionally blocklist and search again.
-    RemoveGrab {
-        id: u64,
-        blocklist: bool,
-        search: bool,
-    },
-    /// Retry the import of an `ImportBlocked` grab.
-    RetryImport(u64),
-    PauseGrab(u64),
-    ResumeGrab(u64),
-    History {
-        title: Option<u64>,
-        limit: u32,
-    },
-    Blocklist,
-    Unblock(u64),
-    RunJob(Job),
-    /// Keep the connection open: one `Event` line per change (queue progress at most every 2 s while something downloads).
-    Subscribe,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RequestStatus {
+    Pending,
+    Approved,
+    Downloading,
+    Available,
+    Declined,
 }
 
+/// A request of the server's requests module (`Request` in the API).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaRequest {
+    pub id: u64,
+    pub kind: MediaKind,
+    pub name: String,
+    pub year: Option<u16>,
+    #[serde(default)]
+    pub ids: Ids,
+    #[serde(default)]
+    pub seasons: Vec<u32>,
+    pub requested_by: String,
+    pub created: u64,
+    pub status: RequestStatus,
+    /// The monitored title it became.
+    pub title: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NewRequest {
+    pub kind: MediaKind,
+    pub name: String,
+    #[serde(default)]
+    pub year: Option<u16>,
+    #[serde(default)]
+    pub ids: Ids,
+    #[serde(default)]
+    pub seasons: Vec<u32>,
+    #[serde(default)]
+    pub library: Option<u64>,
+    #[serde(default)]
+    pub profile: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobEvent {
+    pub job: Job,
+    pub running: bool,
+    pub message: Option<String>,
+}
+
+/// One message on `/api/v1/events`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum Event {
     Queue(Vec<QueueItem>),
     History(HistoryEntry),
-    /// A title or one of its units changed (added, monitored, imported).
+    /// A title or one of its units changed.
     Title(u64),
+    Job(JobEvent),
+    Request(u64),
+    Health(ModuleStatus),
+    /// Anything a module publishes about itself (gateway sessions, storage mounts, ...).
+    Module(ModuleEvent),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", content = "data", rename_all = "snake_case")]
-pub enum Response {
-    Status(Box<Status>),
-    Ok,
-    Saved(u64),
-    Err(String),
-    Libraries(Vec<Library>),
-    Profiles(Vec<Profile>),
-    Indexers(Vec<IndexerDef>),
-    Caps(Box<Caps>),
-    Titles(Vec<Title>),
-    Title(Box<TitleDetail>),
-    Releases(Vec<Candidate>),
-    Queue(Vec<QueueItem>),
-    History(Vec<HistoryEntry>),
-    Blocklist(Vec<BlockEntry>),
-    Event(Box<Event>),
-}
-
-/// Longest request line the daemon accepts.
-pub const MAX_LINE: usize = 1024 * 1024;
-/// Longest response line the client accepts (a big catalog).
-pub const MAX_RESPONSE: usize = 64 * 1024 * 1024;
-
-/// `$XDG_RUNTIME_DIR/nocturne/arrd.sock`.
-pub fn socket_path() -> Option<PathBuf> {
-    nocturne_session::paths::runtime_dir().map(|d| d.join("nocturne").join("arrd.sock"))
-}
-
-/// Ask the running daemon. Blocking: call it from a worker, not the UI thread. An error means it is not running.
-#[cfg(unix)]
-pub fn request(req: &Request) -> std::io::Result<Response> {
-    let path = socket_path().ok_or_else(|| std::io::Error::other("no runtime directory"))?;
-    // Searches ask every indexer: allow them time.
-    request_at(&path, req, std::time::Duration::from_secs(120))
-}
-
-#[cfg(unix)]
-fn connect(
-    path: &Path,
-    req: &Request,
-    timeout: Option<std::time::Duration>,
-) -> std::io::Result<std::io::BufReader<std::os::unix::net::UnixStream>> {
-    use std::io::Write;
-    let mut s = std::os::unix::net::UnixStream::connect(path)?;
-    s.set_read_timeout(timeout)?;
-    s.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
-    let mut line = serde_json::to_vec(req).map_err(std::io::Error::other)?;
-    line.push(b'\n');
-    s.write_all(&line)?;
-    Ok(std::io::BufReader::new(s))
-}
-
-#[cfg(unix)]
-fn read_response(r: &mut impl std::io::BufRead) -> std::io::Result<Response> {
-    use std::io::{BufRead, Read};
-    let mut out = Vec::new();
-    r.take(MAX_RESPONSE as u64).read_until(b'\n', &mut out)?;
-    if out.is_empty() {
-        return Err(std::io::ErrorKind::UnexpectedEof.into());
-    }
-    serde_json::from_slice(&out).map_err(std::io::Error::other)
-}
-
-/// [`request`] against an explicit socket path (tests).
-#[cfg(unix)]
-pub fn request_at(
-    path: &Path,
-    req: &Request,
-    timeout: std::time::Duration,
-) -> std::io::Result<Response> {
-    read_response(&mut connect(path, req, Some(timeout))?)
-}
-
-/// Subscribe and return the event stream: blocking, ends when the daemon stops. Run it on its own thread.
-#[cfg(unix)]
-pub fn subscribe_at(path: &Path) -> std::io::Result<impl Iterator<Item = Event>> {
-    let mut r = connect(path, &Request::Subscribe, None)?;
-    match read_response(&mut r)? {
-        Response::Ok => {}
-        other => return Err(std::io::Error::other(format!("{other:?}"))),
-    }
-    Ok(std::iter::from_fn(move || match read_response(&mut r) {
-        Ok(Response::Event(e)) => Some(*e),
-        _ => None,
-    }))
+pub struct ModuleEvent {
+    pub module: String,
+    /// The module's own event name.
+    pub kind: String,
+    pub data: serde_json::Value,
 }
 
 #[cfg(test)]
@@ -579,28 +636,58 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_are_off_and_seed_a_week_or_ratio_one() {
-        let s = ArrdSettings::default();
-        assert!(!s.enabled && !s.keep_running && s.downloads.is_none());
-        assert_eq!((s.seed_ratio, s.seed_hours), (1.0, 168));
+    fn config_defaults_are_off_on_loopback_8100() {
+        let c = ServerConfig::default();
+        assert!(!c.library.enabled && !c.downloads.enabled && !c.requests.enabled);
+        assert!(!c.enabled("gateway") && c.sections.is_empty());
+        assert_eq!((c.http.binding, c.http.port), (Binding::Local, 8100));
+        assert_eq!((c.downloads.seed_ratio, c.downloads.seed_hours), (1.0, 168));
+        assert!(c.requests.auto_approve && c.validate().is_ok());
     }
 
     #[test]
-    fn load_reads_only_the_arrd_table() {
+    fn config_round_trips_atomically_and_refuses_bad_files() {
         let d = tempfile::tempdir().unwrap();
-        let p = d.path().join("settings.toml");
+        let p = d.path().join("cfg/server.toml");
+        assert_eq!(
+            ServerConfig::load_from(&p).unwrap(),
+            ServerConfig::default()
+        );
+        let mut c = ServerConfig::default();
+        c.library.enabled = true;
+        c.downloads.limits.up_bps = Some(1000);
+        c.save_to(&p).unwrap();
+        assert_eq!(ServerConfig::load_from(&p).unwrap(), c);
+        assert_eq!(std::fs::read_dir(p.parent().unwrap()).unwrap().count(), 1);
+        std::fs::write(&p, "version = 1\n[library]\nenabled = true\n").unwrap();
+        let c = ServerConfig::load_from(&p).unwrap();
+        assert!(c.library.enabled && !c.downloads.enabled);
+        std::fs::write(&p, "version = 99\n").unwrap();
+        assert!(ServerConfig::load_from(&p).unwrap_err().contains("newer"));
+        std::fs::write(&p, "[http]\nbinding = \"moon\"\n").unwrap();
+        assert!(ServerConfig::load_from(&p).is_err());
+        // Another module's section: typed on read, kept verbatim through load and save.
         std::fs::write(
             &p,
-            "version = 2\n[gateway]\nenabled = true\n[arrd]\nenabled = true\nseed_ratio = 2.0\n[arrd.limits]\nup_bps = 1000\n",
+            "[gateway]\nenabled = true\nport = 9000\n[storage]\nmounts = [\"a\"]\n",
         )
         .unwrap();
-        let s = ArrdSettings::load_from(&p);
-        assert!(s.enabled && s.seed_ratio == 2.0 && s.seed_hours == 168);
-        assert_eq!(s.limits.up_bps, Some(1000));
+        let mut c = ServerConfig::load_from(&p).unwrap();
+        assert!(c.enabled("gateway") && !c.enabled("storage") && !c.enabled("nothing"));
+        assert!(c.section::<crate::gateway::GatewaySettings>("gateway").port == 9000);
+        c.set_section("tunnel", &Switch { enabled: true }).unwrap();
+        c.save_to(&p).unwrap();
+        let c = ServerConfig::load_from(&p).unwrap();
+        assert!(c.enabled("tunnel") && c.sections["storage"]["mounts"][0].as_str() == Some("a"));
+        let j = serde_json::to_string(&c).unwrap();
         assert_eq!(
-            ArrdSettings::load_from(&d.path().join("none")),
-            ArrdSettings::default()
+            serde_json::from_str::<ServerConfig>(&j).unwrap(),
+            c,
+            "JSON for the API too"
         );
+        let mut r = ServerConfig::default();
+        r.http.binding = Binding::Remote;
+        assert!(r.validate().is_err());
     }
 
     #[test]
@@ -633,34 +720,23 @@ mod tests {
     }
 
     #[test]
-    fn protocol_round_trips() {
-        let reqs = [
-            Request::Status,
-            Request::Search {
-                title: 3,
-                units: vec![4],
-            },
-            Request::Monitor {
-                title: 1,
-                units: vec![],
-                monitored: false,
-            },
-            Request::RunJob(Job::RssSync),
-            Request::Titles(Some(MediaKind::Book)),
-            Request::Subscribe,
-        ];
-        for r in reqs {
-            let j = serde_json::to_string(&r).unwrap();
-            assert!(!j.contains('\n'));
-            assert_eq!(serde_json::from_str::<Request>(&j).unwrap(), r);
-        }
-        assert_eq!(
-            serde_json::to_string(&Request::DeleteIndexer(2)).unwrap(),
-            r#"{"cmd":"delete_indexer","arg":2}"#
+    fn events_have_the_documented_shape() {
+        let j = serde_json::to_string(&Event::Title(5)).unwrap();
+        assert_eq!(j, r#"{"type":"title","data":5}"#);
+        let e = Event::Job(JobEvent {
+            job: Job::RssSync,
+            running: true,
+            message: None,
+        });
+        let j = serde_json::to_string(&e).unwrap();
+        assert!(
+            j.starts_with(r#"{"type":"job","data":{"job":"rss_sync""#),
+            "{j}"
         );
-        let ev = Response::Event(Box::new(Event::Title(5)));
-        let j = serde_json::to_string(&ev).unwrap();
-        assert_eq!(serde_json::from_str::<Response>(&j).unwrap(), ev);
-        assert!(serde_json::from_str::<Request>(r#"{"cmd":"rm_rf"}"#).is_err());
+        assert_eq!(serde_json::from_str::<Event>(&j).unwrap(), e);
+        assert_eq!(
+            serde_json::to_string(&Monitor::Seasons(vec![1])).unwrap(),
+            r#"{"seasons":[1]}"#
+        );
     }
 }

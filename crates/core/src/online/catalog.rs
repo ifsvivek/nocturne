@@ -1,8 +1,8 @@
-//! The unit lists of the native *arr engine (`nocturne-arrd`, docs/dev/ARR_PLAN.md): a series' episodes (TVmaze), an artist's albums (MusicBrainz) and an author's books (Open Library). No keys. What is sent: the title's name or its provider id, never a path.
+//! The unit lists of the library manager of `nocturne-server` (docs/dev/SERVER_PLAN.md): a series' episodes (TVmaze), an artist's albums (MusicBrainz) and an author's books (Open Library). No keys. What is sent: the title's name or its provider id, never a path.
 use super::Engine;
 use super::http::Err;
-use crate::arrd::Unit;
-use crate::arrd::types::Ids;
+use crate::server::Unit;
+use crate::server::types::Ids;
 use serde_json::Value;
 
 pub const OPENLIBRARY_CREDIT: &str = "Book data from Open Library (openlibrary.org).";

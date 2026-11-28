@@ -203,8 +203,6 @@ pub struct Settings {
     pub sonarr: ArrCfg,
     /// The optional gateway companion (`nocturne-gateway`, docs/dev/GATEWAY_PLAN.md); the same `[gateway]` table is read by that process.
     pub gateway: GatewaySettings,
-    /// The optional native *arr engine (`nocturne-arrd`, docs/dev/ARR_PLAN.md); the same `[arrd]` table is read by that process. Off by default.
-    pub arrd: crate::arrd::ArrdSettings,
 }
 
 /// Non-secret state of a Radarr or Sonarr connection (the API key is in the keyring, never here).
@@ -272,7 +270,6 @@ impl Default for Settings {
             radarr: ArrCfg::default(),
             sonarr: ArrCfg::default(),
             gateway: GatewaySettings::default(),
-            arrd: crate::arrd::ArrdSettings::default(),
         }
     }
 }
@@ -1188,13 +1185,6 @@ mod tests {
         assert_eq!(
             toml::from_str::<Settings>("version = 2").unwrap().gateway,
             GatewaySettings::default()
-        );
-        // Same for the [arrd] table: off unless the file says otherwise.
-        assert!(
-            !toml::from_str::<Settings>("version = 2")
-                .unwrap()
-                .arrd
-                .enabled
         );
     }
 
