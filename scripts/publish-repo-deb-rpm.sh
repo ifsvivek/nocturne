@@ -11,7 +11,9 @@ OUT=$(realpath -m "${OUT:-website/static/repo}"); PROFILE="${PROFILE:-release}";
 ver=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 gpg --list-secret-keys "$FPR" >/dev/null 2>&1 || { echo "signing key $FPR not in this keyring" >&2; exit 1; }
 if [ -z "${SKIP_BUILD:-}" ]; then scripts/package.sh deb; scripts/package.sh rpm; fi
-deb=$(ls dist/nocturne_"$ver"*_amd64.deb | sort -V | tail -1); rpm=$(ls dist/nocturne-"$ver"-*.x86_64.rpm | sort -V | tail -1)
+# Two packages each: the app (nocturne) and the headless server it depends on (nocturne-server).
+debs="$(ls dist/nocturne_"$ver"*_amd64.deb | sort -V | tail -1) $(ls dist/nocturne-server_"$ver"*_amd64.deb | sort -V | tail -1)"
+rpms="$(ls dist/nocturne-"$ver"-*.x86_64.rpm | sort -V | tail -1) $(ls dist/nocturne-server-"$ver"-*.x86_64.rpm | sort -V | tail -1)"
 
 # Small local images with the repo tools (built once).
 docker image inspect nocturne-build:debian-repo >/dev/null 2>&1 || docker build -q -t nocturne-build:debian-repo - >/dev/null <<'D'
@@ -30,8 +32,8 @@ gpg --batch --yes --export "$FPR" > "$OUT/NOCTURNE-GPG-KEY.gpg"   # binary: apt 
 # ---- apt ----
 d="$OUT/deb"; pool="$d/pool/main/n/nocturne"
 mkdir -p "$pool" "$d/dists/stable/main/binary-amd64"
-cp "$deb" "$pool/"
-ls -1 "$pool"/nocturne_*_amd64.deb | sort -V | head -n -2 | xargs -r rm -f   # keep the newest two versions
+cp $debs "$pool/"
+for n in nocturne nocturne-server; do ls -1 "$pool"/"$n"_*_amd64.deb | sort -V | head -n -2 | xargs -r rm -f; done   # keep the newest two versions of each
 docker run --rm --user "$(id -u):$(id -g)" -v "$d":/r -w /r nocturne-build:debian-repo bash -euc '
   apt-ftparchive packages pool > dists/stable/main/binary-amd64/Packages
   gzip -9nf -k dists/stable/main/binary-amd64/Packages
@@ -45,8 +47,8 @@ gpg --batch --yes --use-agent -u "$FPR" --detach-sign --armor -o "$rel/Release.g
 
 # ---- dnf ----
 r="$OUT/rpm"; mkdir -p "$r"
-cp "$rpm" "$r/"
-ls -1 "$r"/nocturne-*.rpm | sort -V | head -n -2 | xargs -r rm -f
+cp $rpms "$r/"
+for n in nocturne nocturne-server; do ls -1 "$r"/"$n"-[0-9]*.rpm | sort -V | head -n -2 | xargs -r rm -f; done
 sock=$(gpgconf --list-dirs agent-extra-socket)
 docker run --rm -v "$r":/r -v "$sock":/root/.gnupg/S.gpg-agent -v "$PWD/packaging/repo/ARCH-GPG-KEY":/key:ro -e FPR="$FPR" -e UID_="$(id -u):$(id -g)" nocturne-build:fedora-repo bash -euc '
   gpg --batch --import /key 2>/dev/null
@@ -68,7 +70,9 @@ EOT
 # ---- verify ----
 good() { gpg --verify --status-fd 1 "$@" 2>/dev/null | grep -q "VALIDSIG $FPR" || { echo "BAD signature: $*" >&2; exit 1; }; }
 good "$rel/InRelease"; good "$rel/Release.gpg" "$rel/Release"; good "$r/repodata/repomd.xml.asc" "$r/repodata/repomd.xml"
-grep -q "^Filename: pool/main/n/nocturne/$(basename "$deb")" "$d/dists/stable/main/binary-amd64/Packages" || { echo "Packages lacks $(basename "$deb")" >&2; exit 1; }
+for deb in $debs; do
+  grep -q "^Filename: pool/main/n/nocturne/$(basename "$deb")" "$d/dists/stable/main/binary-amd64/Packages" || { echo "Packages lacks $(basename "$deb")" >&2; exit 1; }
+done
 docker run --rm -v "$r":/r:ro -v "$PWD/packaging/repo/ARCH-GPG-KEY":/key:ro nocturne-build:fedora-repo bash -euc '
   rpm --import /key; rpm -K /r/nocturne-*.rpm | tee /dev/stderr | grep -q "signatures OK"'
 big=$(find "$d" "$r" -type f -size +25M); [ -z "$big" ] || { echo "over the 25 MiB per-file limit of the Worker: $big" >&2; exit 1; }

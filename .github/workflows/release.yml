@@ -77,7 +77,7 @@ jobs:
       - name: Checksums and sizes
         run: |
           cd dist
-          for f in nocturne_*_amd64.deb nocturne-*.rpm; do sha256sum "$f" > "$f.sha256"; done
+          for f in nocturne_*_amd64.deb nocturne-server_*_amd64.deb nocturne-*.rpm; do sha256sum "$f" > "$f.sha256"; done
           ls -l ./*.tar.gz ./*.deb ./*.rpm ./*.sha256
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -87,6 +87,8 @@ jobs:
             dist/nocturne-*-linux.tar.gz.sha256
             dist/nocturne_*_amd64.deb
             dist/nocturne_*_amd64.deb.sha256
+            dist/nocturne-server_*_amd64.deb
+            dist/nocturne-server_*_amd64.deb.sha256
             dist/nocturne-*.rpm
             dist/nocturne-*.rpm.sha256
           retention-days: 7

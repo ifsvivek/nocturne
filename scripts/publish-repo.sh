@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the Arch package in a clean container and (re)generate the signed pacman repository under
+# Build the Arch packages (split: nocturne and nocturne-server) in a clean container and (re)generate the signed pacman repository under
 # website/static/repo/ (generated, git-ignored; shipped by deploying the website).   usage: scripts/publish-repo.sh [VERSION]
 # VERSION must match pkgver in packaging/PKGBUILD (its sha256 is for that tag's source archive). Needs docker, gpg, repo-add. Also builds the apt and dnf repositories (scripts/publish-repo-deb-rpm.sh).
 set -euo pipefail
@@ -23,23 +23,27 @@ docker run --rm "${mirror[@]}" -v "$pkgcache:/var/cache/pacman/pkg" -v "$work:/b
   sed -i "s/^#\?ParallelDownloads.*/ParallelDownloads = 16/" /etc/pacman.conf
   pacman -Syu --noconfirm
   cd /build
-  # runtime + build deps as root; any vulkan-driver satisfies the dependency in the container
-  deps=$(bash -c "source PKGBUILD; printf \"%s\n\" \"\${depends[@]}\" \"\${makedepends[@]}\"" | sed "s/^vulkan-driver\$/vulkan-swrast/")
+  # build deps as root (a split package has its run-time deps inside the package functions)
+  deps=$(bash -c "source PKGBUILD; printf \"%s\n\" \"\${makedepends[@]}\"")
   pacman -S --noconfirm --needed $deps
   useradd -m builder
   su builder -c "cd /build && makepkg --noconfirm --nocheck"
 '
-pkg=$(ls "$work"/nocturne-"$ver"-*-x86_64.pkg.tar.zst)
+pkgs=$(ls "$work"/nocturne-"$ver"-*-x86_64.pkg.tar.zst "$work"/nocturne-server-"$ver"-*-x86_64.pkg.tar.zst)
 
 repo=website/static/repo/arch/x86_64
 mkdir -p "$repo"
-cp "$pkg" "$repo/"
+cp $pkgs "$repo/"
 cd "$repo"
-p=$(basename "$pkg")
-gpg --batch --yes --use-agent -u "$FPR" --detach-sign --no-armor "$p"
-repo-add --sign --key "$FPR" --remove nocturne.db.tar.gz "$p"
-# keep the newest two package versions
-ls -1 nocturne-*.pkg.tar.zst | sort -V | head -n -2 | while read -r old; do rm -f "$old" "$old.sig"; done
+for pkg in $pkgs; do
+  p=$(basename "$pkg")
+  gpg --batch --yes --use-agent -u "$FPR" --detach-sign --no-armor "$p"
+  repo-add --sign --key "$FPR" --remove nocturne.db.tar.gz "$p"
+done
+# keep the newest two versions of each package
+for n in nocturne nocturne-server; do
+  ls -1 "$n"-[0-9]*.pkg.tar.zst | sort -V | head -n -2 | while read -r old; do rm -f "$old" "$old.sig"; done
+done
 # static hosting cannot serve symlinks
 for n in db files; do rm -f "nocturne.$n" "nocturne.$n.sig"; cp "nocturne.$n.tar.gz" "nocturne.$n"; cp "nocturne.$n.tar.gz.sig" "nocturne.$n.sig"; done
 cd - >/dev/null
@@ -56,7 +60,8 @@ Add to /etc/pacman.conf:
 SigLevel = Required TrustedOnly
 Server = https://nocturne.ifsvivek.in/repo/arch/\$arch
 
-Then: sudo pacman -Syu nocturne
+Then: sudo pacman -Syu nocturne   (the desktop app; pulls in nocturne-server)
+  or: sudo pacman -Syu nocturne-server   (the headless server alone)
 EOT
 
 # apt (deb/) and dnf (rpm/) repositories from the same key; SKIP_DEB_RPM=1 leaves them out
@@ -68,6 +73,8 @@ for f in nocturne-*.pkg.tar.zst nocturne.db.tar.gz nocturne.files.tar.gz nocturn
   gpg --verify "$f.sig" "$f" 2>&1 | grep -q "Good signature" || { echo "BAD signature: $f" >&2; exit 1; }
   gpg --verify --status-fd 1 "$f.sig" "$f" 2>/dev/null | grep -q "VALIDSIG $FPR" || { echo "wrong key: $f" >&2; exit 1; }
 done
-tar -tzf nocturne.db | grep -q "^nocturne-$ver-" || { echo "db lacks nocturne-$ver" >&2; exit 1; }
+for n in nocturne nocturne-server; do
+  tar -tzf nocturne.db | grep -q "^$n-$ver-" || { echo "db lacks $n-$ver" >&2; exit 1; }
+done
 du -h nocturne-*.pkg.tar.zst
 echo "OK. Next: deploy the website (website/README.md) to publish https://nocturne.ifsvivek.in/repo/arch/x86_64/"

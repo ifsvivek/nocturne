@@ -6,6 +6,8 @@ Built and checked on Arch Linux, x86_64, Wayland (Hyprland), mpv 0.41.0, Rust 1.
 
 Linux formats: Arch package, tarball, **.deb** and **.rpm** (0.4, built in distro containers, see below). Since 0.5.0 an AppImage is built by the release workflow and shipped as **experimental** (about 107 MB, bundles its own libraries; the repositories are the recommended way). The Windows installer is built (wine-tested; first native run is the manual CI workflow) and the macOS script is written, first run also via that workflow (below). Per-platform libmpv handling and the footprint budget are in [PLATFORMS.md](PLATFORMS.md).
 
+**Two packages from one build (0.7.5).** `nocturne-server` is the headless server alone: `/usr/bin/nocturne-server` and its licence files. It links only glibc, `libgcc_s` and `libdbus-1` (keyring) and opens nothing with `dlopen`, so it pulls in no mpv, Vulkan, Wayland or fonts and fits a headless machine; optional: a Secret Service provider (indexer keys, source tokens), `cloudflared` (tunnel module), SMB/NFS tools (storage mounts). No systemd unit is shipped: `nocturne-server install` writes the user unit with the real binary path (`core/user_unit.rs`). `nocturne` is the desktop app plus `nocturne-gateway` and depends on the same version of `nocturne-server`, so the local server the app manages is always there. Arch: one split PKGBUILD (`pkgbase=nocturne`, `pkgname=(nocturne nocturne-server)`); Debian: two .deb from `scripts/package-deb.sh`; Fedora: the spec's `server` subpackage. The tarball and the in-app updater keep shipping all three binaries side by side. Installing the app from a downloaded file (not the repositories) needs both files: `apt install ./nocturne-server_<ver>_amd64.deb ./nocturne_<ver>_amd64.deb`.
+
 **libmpv version the app really needs: mpv 0.40 or newer.** The embedded player sets `background=color` (`crates/player/src/embedded.rs`), which mpv 0.35 and 0.37 reject (`mpv_set_option_string` returns -7, verified on Debian 12's 0.35.1 and Ubuntu 24.04's 0.37.0; accepted by Debian 13's 0.40.0 and Arch's 0.41). With an older libmpv the app does not crash: it logs `embedded unavailable (mpv: init: error setting option), using the external player` and plays through the external `mpv` binary (hence `mpv` is a Recommends in the .deb). A code change (set that option after init and ignore the error, or drop it when unsupported) would make in-window video work on Ubuntu 24.04; it is not part of the packaging.
 
 ## Install paths
@@ -37,7 +39,7 @@ Because libmpv is not linked, a missing `libmpv.so.2` does not stop the app from
 
 How each artifact handles them:
 
-- **Arch package (PKGBUILD)**: `depends` lists all of the above, including `mpv` for the dlopen'd libmpv.
+- **Arch package (PKGBUILD)**: `package_nocturne`'s `depends` lists all of the above, including `mpv` for the dlopen'd libmpv, plus `nocturne-server`; `package_nocturne-server` depends on `dbus gcc-libs glibc` only.
 - **Tarball `install.sh`**: on `install` it checks each soname with `ldconfig -p` and the `mpv` binary, installs the missing packages with the distro's package manager (via `sudo` unless root; the exact command is printed first), then runs `ldd` on the installed binary and warns about anything "not found". The soname-to-package table is the `pkg_for` function at the top of the script, the single place to edit. `--no-deps` skips this; `NOCTURNE_YES=1` makes the package manager non-interactive; an unrecognised distribution fails with the list of what is missing; `DESTDIR` (staging) skips dependency handling.
 - **.deb / .rpm**: `Depends`/`Requires` list the dlopen()ed libraries by hand (the package tools only see the linked ones); libmpv comes from the distribution (`libmpv2` / `mpv-libs`). See "Linux packages".
 - **AppImage**: experimental since 0.5.0, built by `release.yml` (best effort; a failed build only drops it from the release).
@@ -55,11 +57,11 @@ sudo ./install.sh            # installs missing runtime libraries first (--no-de
 sudo ./install.sh uninstall
 
 # .deb (debian:stable container), .rpm (fedora:latest container), AppImage (debian:bookworm container, evaluation only):
-scripts/package.sh deb        # -> dist/nocturne_<ver>_amd64.deb
-scripts/package.sh rpm        # -> dist/nocturne-<ver>-1.fc<N>.x86_64.rpm
+scripts/package.sh deb        # -> dist/nocturne_<ver>_amd64.deb and dist/nocturne-server_<ver>_amd64.deb
+scripts/package.sh rpm        # -> dist/nocturne-<ver>-1.fc<N>.x86_64.rpm and dist/nocturne-server-<ver>-1.fc<N>.x86_64.rpm
 scripts/package.sh appimage   # -> dist/NOCTURNE-<ver>-x86_64.AppImage (experimental release artifact since 0.5.0)
 
-# Arch package (set the real sha256 first; builds from the GitHub source archive of the v<version> tag)
+# Arch packages nocturne and nocturne-server (split PKGBUILD; set the real sha256 first; builds from the GitHub source archive of the v<version> tag)
 cd packaging && makepkg -si
 ```
 
@@ -77,7 +79,7 @@ To rebuild a tag (a failed job, a flaky runner): Actions > Release > Run workflo
 
 ## Pacman repository
 
-Served from the website at `https://nocturne.ifsvivek.in/repo/arch/x86_64/` (`nocturne.db`, `nocturne.files`, the two newest `nocturne-*.pkg.tar.zst`, each with a `.sig`); `repo/ARCH-GPG-KEY` is the public key, `repo/index.txt` the instructions. The directory `website/static/repo/` is generated and git-ignored; it ships when the website is deployed. Package, database and files database are all signed, so users set `SigLevel = Required TrustedOnly` (setup commands in the README). Static hosting cannot serve symlinks, so `nocturne.db`/`nocturne.files` are real copies.
+Served from the website at `https://nocturne.ifsvivek.in/repo/arch/x86_64/` (`nocturne.db`, `nocturne.files`, the two newest `nocturne-*.pkg.tar.zst` and `nocturne-server-*.pkg.tar.zst`, each with a `.sig`); `repo/ARCH-GPG-KEY` is the public key, `repo/index.txt` the instructions. The directory `website/static/repo/` is generated and git-ignored; it ships when the website is deployed. Package, database and files database are all signed, so users set `SigLevel = Required TrustedOnly` (setup commands in the README). Static hosting cannot serve symlinks, so `nocturne.db`/`nocturne.files` are real copies.
 
 Signing key: "NOCTURNE Package Signing", fingerprint `5204B42AF768DE210D4979E397FA02EFCF1A4E3B`, ed25519, no passphrase. The public key is committed at `packaging/repo/ARCH-GPG-KEY`. The secret key exists only in the maintainer's GPG keyring: back it up offline (`gpg --export-secret-keys` to encrypted removable storage, never to the repository or the website), and keep the revocation certificate from `~/.gnupg/openpgp-revocs.d/` offline too. Rotating the key means a new fingerprint, a new `ARCH-GPG-KEY`, and users re-running the two `pacman-key` commands.
 

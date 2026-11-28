@@ -12,6 +12,7 @@ URL:            https://nocturne.ifsvivek.in
 Source0:        %{name}-%{version}.tar.gz
 
 # mpv-libs provides libmpv.so.2; on Fedora it comes from RPM Fusion (free).
+Requires:       nocturne-server = %{version}-%{release}
 Requires:       mpv-libs
 Requires:       systemd-libs
 Requires:       libglvnd-egl
@@ -31,6 +32,19 @@ One cinematic, searchable library over local media and any number of Jellyfin
 servers, playing video inside the app window through libmpv. Not affiliated
 with the Jellyfin project.
 
+%package server
+Summary:        NOCTURNE headless media server
+# Linked libraries (glibc, libgcc_s, libdbus-1) are found by rpm's automatic requirements; nothing is dlopen()ed.
+Recommends:     gnome-keyring
+Suggests:       cloudflared
+Suggests:       gvfs-smb
+Suggests:       nfs-utils
+
+%description server
+Library manager, downloads, requests, gateway and storage modules behind one
+REST and WebSocket API, with a web dashboard. Used by the NOCTURNE desktop
+app; runs alone on a headless machine.
+
 %prep
 %autosetup
 
@@ -45,13 +59,18 @@ done
 install -Dm644 packaging/nocturne.svg -t %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 install -Dm644 packaging/io.github.ifsvivek.nocturne.metainfo.xml -t %{buildroot}%{_datadir}/metainfo
 install -Dm644 LICENSE THIRD_PARTY_NOTICES.md -t %{buildroot}%{_datadir}/licenses/%{name}
+install -Dm644 LICENSE THIRD_PARTY_NOTICES.md -t %{buildroot}%{_datadir}/licenses/%{name}-server
 
 %files
 %license %{_datadir}/licenses/%{name}/LICENSE
 %{_datadir}/licenses/%{name}/THIRD_PARTY_NOTICES.md
 %{_bindir}/nocturne
 %{_bindir}/nocturne-gateway
-%{_bindir}/nocturne-server
 %{_datadir}/applications/io.github.ifsvivek.nocturne.desktop
 %{_datadir}/icons/hicolor/*/apps/nocturne.*
 %{_datadir}/metainfo/io.github.ifsvivek.nocturne.metainfo.xml
+
+%files server
+%license %{_datadir}/licenses/%{name}-server/LICENSE
+%{_datadir}/licenses/%{name}-server/THIRD_PARTY_NOTICES.md
+%{_bindir}/nocturne-server
