@@ -4126,6 +4126,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nocturne-storage"
+version = "0.7.0"
+dependencies = [
+ "libc",
+ "reqwest",
+ "serde",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "nocturne-style"
 version = "0.7.0"
 dependencies = [
