@@ -57,6 +57,7 @@ impl App {
             || self.src_open
             || self.th.open
             || self.rq.page_open()
+            || self.ns.page.is_some()
     }
 
     pub(super) fn header(&self) -> El<'_> {
@@ -221,38 +222,49 @@ impl App {
             }),
             "Search (Ctrl+K or /)",
         );
-        let requests =
-            self.requests_available().then(|| {
-                tip(
-                    Press::new(text("Requests").size(t::CAPTION + 1.0).color(
-                        if self.rq.page_open() {
-                            t::text()
+        // An outlined text button at the right (Requests, the NOCTURNE server's pages).
+        let pill = |label: &'static str, on: bool, msg: Message, tip_text: &'static str| {
+            tip(
+                Press::new(text(label).size(t::CAPTION + 1.0).color(if on {
+                    t::text()
+                } else {
+                    t::text_secondary()
+                }))
+                .height(32)
+                .padding([6.0, t::S3])
+                .on_press(msg)
+                .style(move |s| Style {
+                    text_color: t::text(),
+                    border: border(
+                        if on || matches!(s, Status::Hovered | Status::Pressed) {
+                            t::accent()
                         } else {
-                            t::text_secondary()
+                            t::edge()
                         },
-                    ))
-                    .height(32)
-                    .padding([6.0, t::S3])
-                    .on_press(Message::Requests(super::requests::Msg::PageOpen))
-                    .style({
-                        let on = self.rq.page_open();
-                        move |s| Style {
-                            text_color: t::text(),
-                            border: border(
-                                if on || matches!(s, Status::Hovered | Status::Pressed) {
-                                    t::accent()
-                                } else {
-                                    t::edge()
-                                },
-                                1.0,
-                                6.0,
-                            ),
-                            ..Default::default()
-                        }
-                    }),
-                    "Requests: ask for movies and shows, and discover new ones",
-                )
-            });
+                        1.0,
+                        6.0,
+                    ),
+                    ..Default::default()
+                }),
+                tip_text,
+            )
+        };
+        let requests = self.requests_available().then(|| {
+            pill(
+                "Requests",
+                self.rq.page_open(),
+                Message::Requests(super::requests::Msg::PageOpen),
+                "Requests: ask for movies and shows, and discover new ones",
+            )
+        });
+        let server = self.ns.tabs().first().map(|tab| {
+            pill(
+                "Server",
+                self.ns.page.is_some(),
+                Message::Servers(super::servers::Msg::Open(*tab)),
+                "Your NOCTURNE server: downloads, library, requests and storage",
+            )
+        });
         let mut right = row![].spacing(t::S4).align_y(Alignment::Center);
         if self.catalog.online().count() > 1 {
             right = right.push(tip(
@@ -275,6 +287,9 @@ impl App {
             ));
         }
         if let Some(r) = requests {
+            right = right.push(r);
+        }
+        if let Some(r) = server {
             right = right.push(r);
         }
         if t::header_item(t::HeaderItem::Search) {
@@ -681,7 +696,10 @@ impl App {
 
     /// Chevrons and fades at the ends of the strip when links are hidden past them.
     fn nav_strip<'a>(&'a self, nav: iced::widget::Row<'a, Message>) -> El<'a> {
-        use iced::widget::Stack;
+        use iced::widget::{Stack, sensor};
+        // The scrollable reports nothing while its content fits, so a widened window would keep the last
+        // overflowing geometry (and a stray chevron): both widths are measured directly instead.
+        let nav = sensor(nav).on_resize(|s| Message::NavSize(true, s.width));
         let strip = scrollable(nav)
             .id(NAV_ID)
             .direction(scrollable::Direction::Horizontal(
@@ -695,6 +713,7 @@ impl App {
                 )
             })
             .width(Length::Fill);
+        let strip = sensor(strip).on_resize(|s| Message::NavSize(false, s.width));
         let (off, vw, content) = self.nav_geom();
         let (left, right) = nav_more(off, vw, content);
         if !left && !right {

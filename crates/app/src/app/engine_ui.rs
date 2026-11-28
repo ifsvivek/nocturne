@@ -290,6 +290,7 @@ impl App {
             && !self.src_open
             && !self.settings_open
             && !self.rq.page_open()
+            && self.ns.page.is_none()
             && self.adm.is_none()
             && self.player.is_none()
             && self.ob.is_none()

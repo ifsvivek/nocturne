@@ -92,19 +92,24 @@ fn ok_or(r: Result<Response, String>) -> Result<(), String> {
     }
 }
 
-/// `nocturne-gateway` next to the app binary, then on `PATH`.
-pub fn find_binary(exe_dir: Option<&Path>, path_var: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
-    let beside = exe_dir.map(|d| d.join(BINARY));
+/// Helper binary `name` (`nocturne-gateway`, `nocturne-server`) next to the app binary, then on `PATH`.
+pub fn find_binary(
+    name: &str,
+    exe_dir: Option<&Path>,
+    path_var: Option<&std::ffi::OsStr>,
+) -> Option<PathBuf> {
+    let beside = exe_dir.map(|d| d.join(name));
     let on_path = path_var
         .into_iter()
         .flat_map(std::env::split_paths)
-        .map(|d| d.join(BINARY));
+        .map(|d| d.join(name));
     beside.into_iter().chain(on_path).find(|p| p.is_file())
 }
 
-fn locate() -> Option<PathBuf> {
+pub fn locate(name: &str) -> Option<PathBuf> {
     let exe = std::env::current_exe().ok();
     find_binary(
+        name,
         exe.as_deref().and_then(Path::parent),
         std::env::var_os("PATH").as_deref(),
     )
@@ -249,7 +254,7 @@ impl App {
         if !s::keep_running_supported() {
             return Task::none();
         }
-        let exe = locate();
+        let exe = locate(BINARY);
         if on {
             let _ = self.gw.child.take();
             self.gw.status = None;
@@ -309,7 +314,7 @@ impl App {
             self.gw.note = Some(e);
             return;
         }
-        let Some(bin) = locate() else {
+        let Some(bin) = locate(BINARY) else {
             self.gw.note = Some(format!(
                 "nocturne-gateway was not found next to NOCTURNE or on PATH. {}",
                 "Install the gateway package or build it with cargo build -p nocturne-gateway."
@@ -806,18 +811,18 @@ mod tests {
         std::fs::create_dir_all(&beside).unwrap();
         std::fs::create_dir_all(&other).unwrap();
         let path = std::env::join_paths([d.path().join("nowhere"), other.clone()]).unwrap();
-        assert_eq!(find_binary(Some(&beside), Some(&path)), None);
+        assert_eq!(find_binary(BINARY, Some(&beside), Some(&path)), None);
         std::fs::write(other.join(BINARY), "x").unwrap();
         assert_eq!(
-            find_binary(Some(&beside), Some(&path)),
+            find_binary(BINARY, Some(&beside), Some(&path)),
             Some(other.join(BINARY))
         );
         std::fs::write(beside.join(BINARY), "x").unwrap();
         assert_eq!(
-            find_binary(Some(&beside), Some(&path)),
+            find_binary(BINARY, Some(&beside), Some(&path)),
             Some(beside.join(BINARY))
         );
-        assert_eq!(find_binary(None, None), None);
+        assert_eq!(find_binary(BINARY, None, None), None);
     }
 
     #[test]

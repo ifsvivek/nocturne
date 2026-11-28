@@ -210,6 +210,8 @@ pub enum Message {
     Rescale,
     /// The header link strip scrolled: offset, viewport width, content width.
     NavScrolled(f32, f32, f32),
+    /// Measured width of the header link strip: its content (`true`) or its viewport.
+    NavSize(bool, f32),
     /// A chevron on the link strip: page it left (-1) or right (+1).
     NavPage(f32),
     /// Gamepad: connected count / a button press.
@@ -285,6 +287,8 @@ pub enum Message {
     Online(super::online::Msg),
     Trakt(super::trakt::Msg),
     Gateway(super::gateway::Msg),
+    /// NOCTURNE servers (Settings > NOCTURNE Servers and the module pages).
+    Servers(super::servers::Msg),
     Smart(super::smart::Msg),
     Cascade(super::cascade::Msg),
     Downloads(super::downloads::Msg),

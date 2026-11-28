@@ -400,6 +400,21 @@ impl App {
             tree.act(s, Message::Requests(super::requests::Msg::PageOpen));
             d = &mut tree.doc;
         }
+        // The NOCTURNE server's pages: the Requests button's look (themes style both through `a.header-requests`).
+        if let Some(tab) = self.ns.tabs().first().copied() {
+            let s = d.add(right, "a.header-requests.header-server");
+            d.focusable(s);
+            d.attr(
+                s,
+                "title",
+                "Your NOCTURNE server: downloads, library, requests and storage",
+            );
+            let l = d.add(s, "span.header-requests-label");
+            d.text(l, "Server");
+            d.inline(l, "font-size: 13px; color: var(--nocturne-text-secondary)");
+            tree.act(s, Message::Servers(super::servers::Msg::Open(tab)));
+            d = &mut tree.doc;
+        }
         if t::header_item(t::HeaderItem::Search) {
             let s = d.add(right, "a.header-search");
             d.essential(s);

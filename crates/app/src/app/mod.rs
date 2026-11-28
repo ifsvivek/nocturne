@@ -47,7 +47,9 @@ mod requests_view;
 pub(crate) mod search;
 #[cfg(feature = "theme-engine")]
 mod search_tree;
+mod server_pages;
 mod server_ui;
+pub(crate) mod servers;
 mod settings;
 pub(crate) mod smart;
 mod sources;
@@ -281,6 +283,8 @@ pub struct App {
     trakt: trakt::State,
     /// The optional gateway helper: child process, last status, Settings > Gateway.
     gw: gateway::State,
+    /// NOCTURNE servers: the list, the active one's status and its module pages.
+    ns: servers::State,
     /// Seerr: sign-in, requests, the Requests page.
     rq: requests::State,
     dl: downloads::State,
@@ -440,6 +444,7 @@ impl App {
             online: Default::default(),
             trakt: Default::default(),
             gw: Default::default(),
+            ns: servers::State::load(),
             rq: Default::default(),
             dl: downloads::State::new(&catalog::app_data_dir()),
             smart: smart::State::load(),
@@ -544,6 +549,7 @@ impl App {
             scale,
             check,
             me.load_sources(),
+            me.ns_boot(),
             open_disk,
             crate::snap::on_boot(),
         ]);
@@ -606,6 +612,7 @@ impl App {
             subs.push(iced::time::every(d).map(|_| Message::Gateway(gateway::Msg::Poll)));
         }
         subs.push(self.sp.subscription().map(Message::SyncPlay));
+        subs.push(self.ns_subscription());
         if self.settings.couch != nocturne_core::settings::CouchMode::Off {
             subs.push(Subscription::run(crate::pad::events).map(Message::Pad));
         }
@@ -798,6 +805,11 @@ impl App {
             Message::Pad(e) => self.on_pad(e),
             Message::NavScrolled(o, w, c) => {
                 self.nav_vp = Some((o, w, c));
+                Task::none()
+            }
+            Message::NavSize(content, w) => {
+                let (o, vw, c) = self.nav_geom();
+                self.nav_vp = Some(if content { (o, vw, w) } else { (o, w, c) });
                 Task::none()
             }
             Message::NavPage(d) => {
@@ -1088,6 +1100,7 @@ impl App {
             Message::Online(m) => self.online_msg(m),
             Message::Trakt(m) => self.trakt_msg(m),
             Message::Gateway(m) => self.gateway_msg(m),
+            Message::Servers(m) => self.ns_msg(m),
             Message::Requests(m) => self.rq_msg(m),
             Message::Discover(m) => self.disc_msg(m),
             Message::Smart(m) => self.smart_msg(m),
@@ -1935,6 +1948,7 @@ impl App {
     fn close_admin(&mut self) {
         self.settings_open = false;
         self.rq.page = None;
+        self.ns.page = None;
         self.src_open = false;
         self.th.open = false;
         self.menu = false;
@@ -2241,6 +2255,10 @@ impl App {
     // ---- view ----
 
     pub fn view(&self) -> Element<'_, Message> {
+        crate::snap::mark(self.view_inner())
+    }
+
+    fn view_inner(&self) -> Element<'_, Message> {
         if let Some(o) = self.ob.as_deref().filter(|_| self.ob_away.is_none()) {
             let layer = |h: &Handle, op: f32| -> Element<Message> {
                 image(h.clone())
@@ -2318,6 +2336,7 @@ impl App {
             Phase::Ready if self.src_open => self.sources_page(),
             Phase::Ready if self.settings_open => self.settings_page(),
             Phase::Ready if self.rq.page_open() => self.requests_page(),
+            Phase::Ready if self.ns.page.is_some() => self.ns_page(),
             Phase::Ready if self.adm.is_some() => match self.adm.as_deref() {
                 Some(a) => a.view().map(Message::Admin),
                 None => space().into(),
@@ -2409,6 +2428,7 @@ impl App {
             if !self.admin_open
                 && !self.settings_open
                 && !self.rq.page_open()
+                && self.ns.page.is_none()
                 && !self.th.open
                 && !self.src_open
                 && self.folders.is_none()
