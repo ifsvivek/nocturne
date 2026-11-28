@@ -665,7 +665,7 @@ impl From<TokenRec> for AuthCtx {
 pub fn user_dto(st: &State) -> Value {
     let now = iso(unix_now());
     let remote = st.cfg().gw.remote_control;
-    json!({
+    let mut v = json!({
         "Name": st.users.name(),
         "ServerId": st.users.server_id(),
         "Id": st.users.user_id(),
@@ -700,7 +700,17 @@ pub fn user_dto(st: &State) -> Value {
             "PasswordResetProviderId": "Jellyfin.Server.Implementations.Users.DefaultPasswordResetProvider",
             "SyncPlayAccess": "None"
         }
-    })
+    });
+    // What the client saved on its settings pages goes over the defaults (kept by the gateway, never on a server).
+    if let (Some(saved), Some(cfg)) = (
+        crate::misc::user_config(st),
+        v["Configuration"].as_object_mut(),
+    ) {
+        for (k, val) in saved.as_object().into_iter().flatten() {
+            cfg.insert(k.clone(), val.clone());
+        }
+    }
+    v
 }
 
 /// The session object of the sign-in result. The session module owns the live session table; this is only the shape clients read right after signing in.

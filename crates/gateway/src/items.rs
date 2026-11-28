@@ -1219,9 +1219,17 @@ async fn item_proxy(
             .find(|m| m.source == s.key)
             .map(|m| (s.clone(), m.id.clone()))
     }) else {
+        // A local item: the empty answer in the shape the route has (the web client calls `.find` on Ancestors).
+        let empty = list_json(vec![], 0, 0);
         return json_out(
             &st,
-            &json!({"Items": [], "TotalRecordCount": 0, "StartIndex": 0}),
+            &match tail {
+                "Ancestors" | "SpecialFeatures" | "LocalTrailers" => json!([]),
+                "ThemeMedia" => json!({
+                    "ThemeVideosResult": empty, "ThemeSongsResult": empty, "SoundtrackSongsResult": empty
+                }),
+                _ => empty,
+            },
         );
     };
     let Some(mut pairs) = translate(&st.ids, &q, &s.key) else {
@@ -1264,7 +1272,11 @@ macro_rules! proxy {
 /// `GET /Genres`, `/Studios`, `/Persons`, `/Artists`...: names merged across sources (case-insensitive), with a gateway id that maps back to each source's own.
 async fn names(st: State, path: &'static str, headers: HeaderMap, uri: Uri) -> Response {
     let (q, tok) = (q_of(&uri), client_token(&headers, &uri));
-    let w = Window::of(&q);
+    json_out(&st, &names_value(&st, path, &q, tok.as_deref()).await)
+}
+
+async fn names_value(st: &State, path: &'static str, q: &Query, tok: Option<&str>) -> Value {
+    let w = Window::of(q);
     let c = collect(
         &st,
         &Spec {
@@ -1301,15 +1313,28 @@ async fn names(st: State, path: &'static str, headers: HeaderMap, uri: Uri) -> R
     groups.sort_by(|a, b| lists::compare(&a.copies[0].dto, &b.copies[0].dto, &sort));
     let total = groups.len() as u64;
     let groups: Vec<Group> = groups.into_iter().skip(w.start).take(w.size()).collect();
-    json_out(
-        &st,
-        &list_json(finish(&st, groups, tok.as_deref()), total, w.start),
-    )
+    list_json(finish(st, groups, tok), total, w.start)
 }
 
 /// `GET /Items/Filters`: the union of every server's filter values.
 async fn filters(St(st): St<State>, uri: Uri) -> Response {
-    let q = q_of(&uri);
+    json_out(&st, &filters_value(&st, &q_of(&uri)).await)
+}
+
+/// `GET /Items/Filters2`: genres as merged name items (their gateway ids work in `GenreIds`), tags from the legacy filters.
+async fn filters2(St(st): St<State>, headers: HeaderMap, uri: Uri) -> Response {
+    let (q, tok) = (q_of(&uri), client_token(&headers, &uri));
+    let genres = names_value(&st, "/Genres", &q, tok.as_deref()).await;
+    let genres: Vec<Value> = items_of(&genres)
+        .0
+        .iter()
+        .map(|g| json!({"Name": g["Name"], "Id": g["Id"]}))
+        .collect();
+    let tags = filters_value(&st, &q).await["Tags"].take();
+    json_out(&st, &json!({"Genres": genres, "Tags": tags.as_array().cloned().unwrap_or_default()}))
+}
+
+async fn filters_value(st: &State, q: &Query) -> Value {
     let mut futs = vec![];
     for s in servers(&st) {
         let Some(mut pairs) = translate(&st.ids, &q, &s.key) else {
@@ -1339,7 +1364,7 @@ async fn filters(St(st): St<State>, uri: Uri) -> Response {
         a.sort_by_key(|x| x.to_string().to_lowercase());
         a.dedup_by_key(|x| x.to_string().to_lowercase());
     }
-    json_out(&st, &Value::Object(out))
+    Value::Object(out)
 }
 
 /// `GET /Items/Counts`: sums.
@@ -1483,6 +1508,7 @@ pub fn routes(r: Routes) -> Routes {
             get(recommendations),
         )
         .add("/Items/Filters", Access::Auth, get(filters))
+        .add("/Items/Filters2", Access::Auth, get(filters2))
         .add("/Items/Counts", Access::Auth, get(counts))
         .add("/Search/Hints", Access::Auth, get(search_hints))
         .add("/Items/{itemId}", Access::Auth, get(item_detail))
@@ -1534,6 +1560,11 @@ pub fn routes(r: Routes) -> Routes {
             "/Albums/{itemId}/Similar",
             Access::Auth,
             get(proxy!("Similar", false)),
+        )
+        .add(
+            "/Items/{itemId}/Collections",
+            Access::Auth,
+            get(proxy!("Collections", false)),
         )
         .add(
             "/Items/{itemId}/Ancestors",

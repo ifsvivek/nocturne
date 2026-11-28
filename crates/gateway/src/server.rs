@@ -311,6 +311,8 @@ fn public(r: Routes) -> Routes {
         get(|St(st): St<State>| async move {
             let mut v = public_info(&st);
             v["LocalAddress"] = json!("");
+            // The web client's playback settings page iterates this list.
+            v["CastReceiverApplications"] = json!([]);
             Json(v)
         }),
     )
