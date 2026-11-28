@@ -534,14 +534,15 @@ impl App {
             Load::Ready(all) => {
                 let shown: Vec<&Request> = all.iter().filter(|r| p.tab.admits(r)).collect();
                 if shown.is_empty() {
-                    page = page.push(
-                        container(dim(if all.is_empty() {
-                            "You have not requested anything yet. Search for a title that is not in your library to request it."
-                        } else {
-                            "Nothing in this tab."
-                        }))
-                        .padding([t::S4, t::page_pad()]),
-                    );
+                    page = page.push(if all.is_empty() {
+                        crate::widget::empty_state(
+                            "inbox",
+                            "No requests yet",
+                            "Search for a title that is not in your library to request it.",
+                        )
+                    } else {
+                        crate::widget::empty_state("inbox", "Nothing in this tab", "Requests in another state show under the other tabs.")
+                    });
                 }
                 for r in shown {
                     page = page.push(container(column![self.rq_row(r, p.busy), rule()]).padding([0.0, t::page_pad()]));
