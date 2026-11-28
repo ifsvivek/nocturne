@@ -118,6 +118,14 @@ paths:
       responses:
         "101": {description: switching protocols; messages are `Event`, content: {application/json: {schema: {$ref: "#/components/schemas/Event"}}}}
 
+  /api/v1/logs:
+    get:
+      summary: The newest server log lines, oldest first (redacted when written; admin only)
+      parameters:
+        - {name: lines, in: query, required: false, schema: {type: integer, default: 200, maximum: 1000}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {type: object, properties: {at: {type: integer}, line: {type: string}}}}}}}
+
   /api/v1/library/libraries:
     get:
       summary: Library folders (module library)
@@ -303,6 +311,22 @@ paths:
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses:
         "200": {description: ok}
+  /api/v1/library/calendar:
+    get:
+      summary: Units of monitored titles dated in a range, by date
+      parameters:
+        - {name: from, in: query, required: false, schema: {type: string, description: "YYYY-MM-DD, default today"}}
+        - {name: to, in: query, required: false, schema: {type: string, description: "YYYY-MM-DD, default today + 30 days"}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/CalendarEntry"}}}}}
+  /api/v1/library/lookup:
+    get:
+      summary: "Search a metadata provider by name to add a title: TMDB for movies (needs the user's TMDB key, else 400), TVmaze for series, MusicBrainz for artists, Open Library for authors"
+      parameters:
+        - {name: kind, in: query, required: true, schema: {$ref: "#/components/schemas/MediaKind"}}
+        - {name: q, in: query, required: true, schema: {type: string}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/LookupHit"}}}}}
   /api/v1/library/jobs:
     get:
       summary: Scheduled jobs and their last and next runs
@@ -353,7 +377,7 @@ paths:
 
   /:
     get:
-      summary: The web dashboard (static files embedded in the binary, no auth for the files themselves)
+      summary: "The web dashboard (static files embedded in the binary, no auth for the files themselves). Sent with Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
       security: []
       responses:
         "200": {description: index.html}
@@ -442,6 +466,25 @@ components:
         down_rate: {type: integer}
         up_rate: {type: integer}
         jobs: {type: array, items: {$ref: "#/components/schemas/JobInfo"}}
+        disk: {type: array, items: {$ref: "#/components/schemas/Disk"}, description: "one entry per file system the server writes to (data, downloads, library folders, storage mounts)"}
+    Disk:
+      type: object
+      properties: {path: {type: string}, total: {type: integer}, free: {type: integer}}
+    CalendarEntry:
+      type: object
+      properties:
+        title: {type: integer}
+        title_name: {type: string}
+        kind: {$ref: "#/components/schemas/MediaKind"}
+        unit: {$ref: "#/components/schemas/Unit"}
+    LookupHit:
+      type: object
+      properties:
+        kind: {$ref: "#/components/schemas/MediaKind"}
+        name: {type: string}
+        year: {type: [integer, "null"]}
+        overview: {type: string}
+        ids: {$ref: "#/components/schemas/Ids", description: "the provider's id (tmdb, tvmaze, musicbrainz or openlibrary); pass it on in NewTitle"}
     MediaKind: {type: string, enum: [movie, series, music, book]}
     Protocol: {type: string, enum: [torrent, usenet]}
     Quality:

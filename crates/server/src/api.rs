@@ -171,6 +171,7 @@ fn routes(r: ApiRouter) -> ApiRouter {
         .post("/apikeys", create_apikey)
         .delete("/apikeys/{id}", revoke_apikey)
         .get("/events", events)
+        .get("/logs", logs)
 }
 
 async fn health() -> Json<Value> {
@@ -199,7 +200,76 @@ async fn status(State(sh): State<Shared>) -> Json<Status> {
         down_rate,
         up_rate,
         jobs: sh.ext::<JobSlot>().0.lock().unwrap().clone(),
+        disk: disks(&disk_paths(&sh)),
     })
+}
+
+#[derive(Deserialize)]
+struct LogsQ {
+    lines: Option<usize>,
+}
+
+/// The newest server log lines (redacted when written), oldest first. Admin only.
+async fn logs(
+    Extension(c): Extension<Caller>,
+    axum::extract::Query(q): axum::extract::Query<LogsQ>,
+) -> ApiResult<Vec<Value>> {
+    if !c.admin() {
+        return Err(ApiErr::forbidden("only an admin may read the log"));
+    }
+    Ok(Json(
+        crate::log::recent(q.lines.unwrap_or(200).min(crate::log::KEEP))
+            .into_iter()
+            .map(|(at, line)| json!({"at": at, "line": line}))
+            .collect(),
+    ))
+}
+
+/// More folders whose file systems `/status` reports (the storage module adds its mounts here).
+#[derive(Default)]
+pub struct DiskPaths(pub std::sync::Mutex<Vec<std::path::PathBuf>>);
+
+/// Total and free bytes per file system of `paths` (one entry per file system, the first path naming it).
+pub fn disks(paths: &[std::path::PathBuf]) -> Vec<nocturne_core::server::Disk> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = vec![];
+    for p in paths {
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let Ok(c) = std::ffi::CString::new(p.as_os_str().as_bytes()) else {
+                continue;
+            };
+            // SAFETY: statvfs fills the struct we own from a NUL-terminated path.
+            let mut s: libc::statvfs = unsafe { std::mem::zeroed() };
+            if unsafe { libc::statvfs(c.as_ptr(), &mut s) } != 0 || !seen.insert(s.f_fsid) {
+                continue;
+            }
+            let unit = s.f_frsize as u64;
+            out.push(nocturne_core::server::Disk {
+                path: p.clone(),
+                total: s.f_blocks as u64 * unit,
+                free: s.f_bavail as u64 * unit,
+            });
+        }
+    }
+    out
+}
+
+fn disk_paths(sh: &Shared) -> Vec<std::path::PathBuf> {
+    let mut v = vec![sh.paths.data.clone()];
+    if let Some(d) = sh.cfg().downloads.dir_or_default() {
+        v.push(d);
+    }
+    v.extend(
+        sh.db
+            .all::<nocturne_core::server::Library>()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|l| l.root),
+    );
+    v.extend(sh.ext::<DiskPaths>().0.lock().unwrap().iter().cloned());
+    v
 }
 
 async fn get_config(State(sh): State<Shared>) -> Json<ServerConfig> {

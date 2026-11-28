@@ -422,7 +422,7 @@ impl Engine {
                             }
                         }
                     }
-                    Err(e) => eprintln!("nocturne-server: indexer {}: {e}", d.name),
+                    Err(e) => crate::slog!("indexer {}: {e}", d.name),
                 }
             }
         }
@@ -507,7 +507,7 @@ impl Engine {
         for (rel, units) in decide::choose(ok, p) {
             match self.grab(sh, t, rel, units).await {
                 Ok(_) => n += 1,
-                Err(e) => eprintln!("nocturne-server: grab for {}: {e}", t.name),
+                Err(e) => crate::slog!("grab for {}: {e}", t.name),
             }
         }
         Ok(n)
@@ -914,7 +914,7 @@ impl Engine {
                 let rels = match self.ix.rss(d, key.as_deref(), kind).await {
                     Ok(r) => r,
                     Err(e) => {
-                        eprintln!("nocturne-server: RSS of {}: {e}", d.name);
+                        crate::slog!("RSS of {}: {e}", d.name);
                         continue;
                     }
                 };
@@ -960,7 +960,7 @@ impl Engine {
             .filter(|t| t.kind != MediaKind::Movie)
         {
             if let Err(e) = self.refresh_title(sh, t.id).await {
-                eprintln!("nocturne-server: refresh {}: {e}", t.name);
+                crate::slog!("refresh {}: {e}", t.name);
             }
         }
         Ok(())

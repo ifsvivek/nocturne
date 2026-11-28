@@ -6,6 +6,9 @@ use axum::response::{IntoResponse, Response};
 
 include!(concat!(env!("OUT_DIR"), "/web_files.rs"));
 
+/// Strict: the dashboard loads only its own files and talks only to this server.
+pub const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+
 /// Shown until the dashboard files exist.
 const PLACEHOLDER: &str = "<!doctype html><meta charset=utf-8><title>NOCTURNE server</title><p>The NOCTURNE server is running. The dashboard is not part of this build; use the API at <code>/api/v1</code>.";
 
@@ -44,13 +47,19 @@ pub async fn serve(req: Request) -> Response {
                 (header::CONTENT_TYPE, m),
                 (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
                 (header::CACHE_CONTROL, "no-cache"),
+                (header::CONTENT_SECURITY_POLICY, CSP),
+                (header::X_FRAME_OPTIONS, "DENY"),
+                (header::REFERRER_POLICY, "no-referrer"),
             ],
             b,
         )
             .into_response(),
         None => (
             StatusCode::OK,
-            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            [
+                (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                (header::CONTENT_SECURITY_POLICY, CSP),
+            ],
             PLACEHOLDER,
         )
             .into_response(),

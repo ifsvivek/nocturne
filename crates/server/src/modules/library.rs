@@ -7,8 +7,8 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use nocturne_arr_types::{Caps, IndexerDef, MediaKind, Release};
 use nocturne_core::server::{
-    BlockEntry, Candidate, HistoryEntry, Job, JobInfo, Library as Lib, NewTitle, Profile,
-    QueueItem, Title, TitleDetail,
+    BlockEntry, CalendarEntry, Candidate, HistoryEntry, Job, JobInfo, Library as Lib, LookupHit,
+    NewTitle, Profile, QueueItem, Title, TitleDetail,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -79,6 +79,8 @@ impl Module for Library {
             .get("/history", history)
             .get("/blocklist", blocklist)
             .delete("/blocklist/{id}", unblock)
+            .get("/calendar", calendar)
+            .get("/lookup", lookup)
             .get("/jobs", jobs)
             .post("/jobs/{job}/run", run_job)
     }
@@ -282,7 +284,7 @@ async fn search(
     let (sh2, u) = (sh.clone(), units(b));
     tokio::spawn(async move {
         if let Err(err) = e.search(&sh2, id, u).await {
-            eprintln!("nocturne-server: search: {err}");
+            crate::slog!("search: {err}");
         }
     });
     ok()
@@ -366,6 +368,64 @@ async fn blocklist(State(sh): State<Shared>) -> ApiResult<Vec<BlockEntry>> {
 async fn unblock(State(sh): State<Shared>, Path(id): Path<u64>) -> ApiResult<Value> {
     sh.db.delete::<BlockEntry>(&[id])?;
     ok()
+}
+
+#[derive(Deserialize)]
+struct Range {
+    from: Option<String>,
+    to: Option<String>,
+}
+
+/// Units of monitored titles dated in `[from, to]` (default: today and the next 30 days), by date.
+async fn calendar(
+    State(sh): State<Shared>,
+    Query(r): Query<Range>,
+) -> ApiResult<Vec<CalendarEntry>> {
+    let today = crate::library::today();
+    let from = r.from.unwrap_or_else(|| today.clone());
+    let to = r.to.unwrap_or_else(|| {
+        nocturne_core::calendar::Day((crate::state::now() / 86_400) as i64 + 30).iso()
+    });
+    let titles: Vec<Title> = sh.db.all()?;
+    let mut out: Vec<CalendarEntry> = sh
+        .db
+        .all::<nocturne_core::server::Unit>()?
+        .into_iter()
+        .filter(|u| {
+            u.air_date
+                .as_deref()
+                .is_some_and(|d| d >= from.as_str() && d <= to.as_str())
+        })
+        .filter_map(|u| {
+            let t = titles.iter().find(|t| t.id == u.title && t.monitored)?;
+            Some(CalendarEntry {
+                title: t.id,
+                title_name: t.name.clone(),
+                kind: t.kind,
+                unit: u,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        a.unit
+            .air_date
+            .cmp(&b.unit.air_date)
+            .then(a.title_name.cmp(&b.title_name))
+    });
+    Ok(Json(out))
+}
+
+#[derive(Deserialize)]
+struct LookupQ {
+    kind: MediaKind,
+    q: String,
+}
+
+async fn lookup(State(sh): State<Shared>, Query(l): Query<LookupQ>) -> ApiResult<Vec<LookupHit>> {
+    if l.q.trim().is_empty() {
+        return Err(ApiErr::bad("type a name to search for"));
+    }
+    Ok(Json(eng(&sh)?.meta.lookup(l.kind, l.q.trim()).await?))
 }
 
 async fn jobs(State(sh): State<Shared>) -> ApiResult<Vec<JobInfo>> {
