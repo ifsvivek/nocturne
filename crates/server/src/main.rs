@@ -53,6 +53,13 @@ async fn serve() -> Result<(), String> {
         Secrets::Keyring,
         Registry::new(nocturne_server::modules::all()),
     )?;
+    // One-time import of the 0.7 gateway settings and the app's Jellyfin accounts (reads the app's files and keyring only).
+    let s3 = sh.clone();
+    if let Ok(Err(e)) =
+        tokio::task::spawn_blocking(move || nocturne_server::modules::gateway::migrate(&s3)).await
+    {
+        eprintln!("nocturne-server: import from 0.7: {e}");
+    }
     let s2 = sh.clone();
     tokio::spawn(async move {
         use tokio::signal::unix::{SignalKind, signal};

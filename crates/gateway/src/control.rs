@@ -70,6 +70,10 @@ pub async fn handle(st: &State, req: Request) -> (Response, bool) {
             }
             Err(e) => Response::Err(format!("could not save the new password: {e}")),
         },
+        Request::CreateApiKey(name) => match st.tokens.create_api_key(&name) {
+            Ok((key, _)) => Response::Key(key),
+            Err(e) => Response::Err(e),
+        },
         Request::RevealPassword => match st.users.take_unseen() {
             Some(pw) => Response::Password(pw),
             None => Response::Err("the password was already shown; regenerate it".into()),

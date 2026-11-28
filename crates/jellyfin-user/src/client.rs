@@ -28,7 +28,17 @@ fn http_err(e: reqwest::Error) -> Error {
     Error::Http(e.without_url())
 }
 
+static DEVICE_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Sign in as another device than the desktop app (the NOCTURNE server calls this once at start): a server signs out an older session of the same user and device id, so the server and the app on one machine must not share one.
+pub fn set_device_id(id: &str) {
+    let _ = DEVICE_ID.set(id.to_string());
+}
+
 fn device_id() -> String {
+    if let Some(d) = DEVICE_ID.get() {
+        return d.clone();
+    }
     // Two accounts of one machine that are signed in at once need different ids (the server keys
     // sessions by app + device); also lets tests run two instances.
     if let Some(d) = std::env::var("NOCTURNE_DEVICE_ID")
@@ -77,6 +87,8 @@ impl UserClient {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(20))
             .default_headers(headers)
+            // Servers behind Cloudflare refuse requests without a User-Agent (error 1010).
+            .user_agent(concat!("NOCTURNE/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(http_err)?;
         Ok(Self {

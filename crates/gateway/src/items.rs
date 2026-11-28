@@ -904,7 +904,51 @@ async fn items_list(St(st): St<State>, headers: HeaderMap, uri: Uri) -> Response
         // Random is per request: the sort key is derived from the id, so the order is stable inside one page but not shown twice the same way.
         c.entries.reverse();
     }
-    json_out(&st, &page(&st, c, &Order::Sort(sort), w, tok.as_deref()))
+    let mut v = page(&st, c, &Order::Sort(sort.clone()), w, tok.as_deref());
+    let favs = q.flag("IsFavorite") == Some(true)
+        || q.csv("Filters")
+            .iter()
+            .any(|f| f.eq_ignore_ascii_case("IsFavorite"));
+    if favs {
+        overlay_favourites(&st, &q, &sort, w.start, tok.as_deref(), &mut v).await;
+    }
+    json_out(&st, &v)
+}
+
+/// With server writes off a favourite lives only in the gateway overlay, so a server does not list it: add those (first page only) and drop what the overlay un-favourited.
+/// ponytail: overlay favourites are merged into the first page only; page them properly if someone keeps hundreds of them.
+async fn overlay_favourites(
+    st: &State,
+    q: &Query,
+    sort: &Sort,
+    start: usize,
+    tok: Option<&str>,
+    v: &mut Value,
+) {
+    let mut items: Vec<Value> = v["Items"].as_array().cloned().unwrap_or_default();
+    let before = items.len();
+    if start == 0 {
+        let types = q.csv("IncludeItemTypes");
+        for gid in overlay(st).favourites() {
+            if items.iter().any(|i| i["Id"] == gid.to_string()) {
+                continue;
+            }
+            if let Some(d) = detail(st, gid, tok).await
+                && (types.is_empty()
+                    || d["Type"]
+                        .as_str()
+                        .is_some_and(|t| types.iter().any(|w| w.eq_ignore_ascii_case(t))))
+            {
+                items.push(d);
+            }
+        }
+    }
+    items.retain(|i| i["UserData"]["IsFavorite"] == true);
+    items.sort_by(|a, b| lists::compare(a, b, sort));
+    let total =
+        v["TotalRecordCount"].as_u64().unwrap_or(0) as i64 + items.len() as i64 - before as i64;
+    v["TotalRecordCount"] = total.max(items.len() as i64).into();
+    v["Items"] = items.into();
 }
 
 async fn views_handler(St(st): St<State>) -> Response {
@@ -1035,10 +1079,9 @@ async fn resume(St(st): St<State>, headers: HeaderMap, uri: Uri) -> Response {
             items.push(d);
         }
     }
-    // Played, or without a position once the overlay is applied: not resumable.
+    // Without a position once the overlay is applied: not resumable (a played title watched again does resume).
     items.retain(|i| {
-        i["UserData"]["Played"] != true
-            && i["UserData"]["PlaybackPositionTicks"].as_i64().unwrap_or(0) > 0
+        i["UserData"]["PlaybackPositionTicks"].as_i64().unwrap_or(0) > 0
             && (want.is_empty()
                 || i["MediaType"]
                     .as_str()
@@ -1269,9 +1312,17 @@ async fn item_proxy(
             .find(|m| m.source == s.key)
             .map(|m| (s.clone(), m.id.clone()))
     }) else {
+        // A local item: the empty answer in the shape the route has (the web client calls `.find` on Ancestors).
+        let empty = list_json(vec![], 0, 0);
         return json_out(
             &st,
-            &json!({"Items": [], "TotalRecordCount": 0, "StartIndex": 0}),
+            &match tail {
+                "Ancestors" | "SpecialFeatures" | "LocalTrailers" => json!([]),
+                "ThemeMedia" => json!({
+                    "ThemeVideosResult": empty, "ThemeSongsResult": empty, "SoundtrackSongsResult": empty
+                }),
+                _ => empty,
+            },
         );
     };
     let Some(mut pairs) = translate(&st.ids, &q, &s.key) else {
@@ -1314,12 +1365,16 @@ macro_rules! proxy {
 /// `GET /Genres`, `/Studios`, `/Persons`, `/Artists`...: names merged across sources (case-insensitive), with a gateway id that maps back to each source's own.
 async fn names(st: State, path: &'static str, headers: HeaderMap, uri: Uri) -> Response {
     let (q, tok) = (q_of(&uri), client_token(&headers, &uri));
-    let w = Window::of(&q);
+    json_out(&st, &names_value(&st, path, &q, tok.as_deref()).await)
+}
+
+async fn names_value(st: &State, path: &'static str, q: &Query, tok: Option<&str>) -> Value {
+    let w = Window::of(q);
     let c = collect(
-        &st,
+        st,
         &Spec {
             path,
-            q: &q,
+            q,
             fetch: Some(w.fetch()),
             forced: &[],
             local: None,
@@ -1337,7 +1392,7 @@ async fn names(st: State, path: &'static str, headers: HeaderMap, uri: Uri) -> R
             None => buckets.push((k, vec![e])),
         }
     }
-    let sort = Sort::of(&q);
+    let sort = Sort::of(q);
     let mut groups: Vec<Group> = buckets
         .into_iter()
         .map(|(k, mut copies)| {
@@ -1351,26 +1406,42 @@ async fn names(st: State, path: &'static str, headers: HeaderMap, uri: Uri) -> R
     groups.sort_by(|a, b| lists::compare(&a.copies[0].dto, &b.copies[0].dto, &sort));
     let total = groups.len() as u64;
     let groups: Vec<Group> = groups.into_iter().skip(w.start).take(w.size()).collect();
-    json_out(
-        &st,
-        &list_json(finish(&st, groups, tok.as_deref()), total, w.start),
-    )
+    list_json(finish(st, groups, tok), total, w.start)
 }
 
 /// `GET /Items/Filters`: the union of every server's filter values.
 async fn filters(St(st): St<State>, uri: Uri) -> Response {
-    let q = q_of(&uri);
+    json_out(&st, &filters_value(&st, &q_of(&uri)).await)
+}
+
+/// `GET /Items/Filters2`: genres as merged name items (their gateway ids work in `GenreIds`), tags from the legacy filters.
+async fn filters2(St(st): St<State>, headers: HeaderMap, uri: Uri) -> Response {
+    let (q, tok) = (q_of(&uri), client_token(&headers, &uri));
+    let genres = names_value(&st, "/Genres", &q, tok.as_deref()).await;
+    let genres: Vec<Value> = items_of(&genres)
+        .0
+        .iter()
+        .map(|g| json!({"Name": g["Name"], "Id": g["Id"]}))
+        .collect();
+    let tags = filters_value(&st, &q).await["Tags"].take();
+    json_out(
+        &st,
+        &json!({"Genres": genres, "Tags": tags.as_array().cloned().unwrap_or_default()}),
+    )
+}
+
+async fn filters_value(st: &State, q: &Query) -> Value {
     let mut futs = vec![];
-    for s in servers(&st) {
-        let Some(mut pairs) = translate(&st.ids, &q, &s.key) else {
-            continue;
-        };
-        pairs.push(("userId".into(), s.user_id.clone()));
-        let (st2, pq) = (
-            st.clone(),
-            format!("/Items/Filters?{}", encode_query(&pairs)),
-        );
-        futs.push(async move { get_json(&st2, &s, &pq, true).await });
+    for s in servers(st) {
+        for mut pairs in translate_each(&st.ids, q, &s.key) {
+            pairs.push(("userId".into(), s.user_id.clone()));
+            let (st2, s, pq) = (
+                st.clone(),
+                s.clone(),
+                format!("/Items/Filters?{}", encode_query(&pairs)),
+            );
+            futs.push(async move { get_json(&st2, &s, &pq, true).await });
+        }
     }
     let mut out = serde_json::Map::new();
     for v in fan_out(futs).await.into_iter().flatten() {
@@ -1389,7 +1460,7 @@ async fn filters(St(st): St<State>, uri: Uri) -> Response {
         a.sort_by_key(|x| x.to_string().to_lowercase());
         a.dedup_by_key(|x| x.to_string().to_lowercase());
     }
-    json_out(&st, &Value::Object(out))
+    Value::Object(out)
 }
 
 /// `GET /Items/Counts`: sums.
@@ -1533,6 +1604,7 @@ pub fn routes(r: Routes) -> Routes {
             get(recommendations),
         )
         .add("/Items/Filters", Access::Auth, get(filters))
+        .add("/Items/Filters2", Access::Auth, get(filters2))
         .add("/Items/Counts", Access::Auth, get(counts))
         .add("/Search/Hints", Access::Auth, get(search_hints))
         .add("/Items/{itemId}", Access::Auth, get(item_detail))
@@ -1584,6 +1656,11 @@ pub fn routes(r: Routes) -> Routes {
             "/Albums/{itemId}/Similar",
             Access::Auth,
             get(proxy!("Similar", false)),
+        )
+        .add(
+            "/Items/{itemId}/Collections",
+            Access::Auth,
+            get(proxy!("Collections", false)),
         )
         .add(
             "/Items/{itemId}/Ancestors",
