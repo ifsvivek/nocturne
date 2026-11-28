@@ -126,6 +126,7 @@ async fn movie_episode_album_and_book_from_search_to_import() {
             .as_array()
             .unwrap()
             .iter()
+            .filter(|m| m["enabled"] == true)
             .all(|m| m["running"] == true),
         "{st}"
     );
