@@ -11,7 +11,9 @@ info:
 
     Conventions: JSON bodies; ids are integers unless noted; times are unix seconds; enums are snake_case strings. Errors are `{"error": "message"}` with 400 (bad input), 401 (no or bad credential), 403 (not allowed), 404, 409 (conflict, e.g. already set up), 503 (module off). A route of a module that is switched off answers 503.
 
-    Every route below is served; `crates/server/tests/openapi.rs` fails when a registered route is missing here.
+    Modules: every feature is a module with its own `server.toml` section and its routes under `/api/v1/<module>/` (library, downloads, requests here; gateway, tunnel, discovery and storage are documented by their modules as they land). A module's routes answer 503 while it is off.
+
+    Every registered route must be listed here; `crates/server/tests/openapi.rs` fails otherwise. Changes: docs/api/CHANGES.md.
 servers:
   - url: http://127.0.0.1:8100
 security:
@@ -74,8 +76,8 @@ paths:
         "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/User"}}}}
   /api/v1/auth/password:
     put:
-      summary: Change the admin password; every session is revoked (API keys stay)
-      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [current, new], properties: {current: {type: string}, new: {type: string, minLength: 8}}}}}}
+      summary: Change the caller's password (needs `current`), or as the local admin (unix socket) any user's by `user`; every session is revoked (API keys stay)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [new], properties: {current: {type: string}, new: {type: string, minLength: 8}, user: {type: string, description: "local admin only: the user whose password is reset"}}}}}}
       responses:
         "200": {description: ok}
         "403": {description: wrong current password}
@@ -116,7 +118,7 @@ paths:
       responses:
         "101": {description: switching protocols; messages are `Event`, content: {application/json: {schema: {$ref: "#/components/schemas/Event"}}}}
 
-  /api/v1/libraries:
+  /api/v1/library/libraries:
     get:
       summary: Library folders (module library)
       responses:
@@ -126,7 +128,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Library"}}}}
       responses:
         "200": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
-  /api/v1/libraries/{id}:
+  /api/v1/library/libraries/{id}:
     put:
       summary: Change a library folder
       parameters: [{$ref: "#/components/parameters/Id"}]
@@ -139,7 +141,7 @@ paths:
       responses:
         "200": {description: ok}
         "409": {description: in use}
-  /api/v1/profiles:
+  /api/v1/library/profiles:
     get:
       summary: Quality profiles
       responses:
@@ -149,7 +151,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Profile"}}}}
       responses:
         "200": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
-  /api/v1/profiles/{id}:
+  /api/v1/library/profiles/{id}:
     put:
       summary: Change a quality profile
       parameters: [{$ref: "#/components/parameters/Id"}]
@@ -162,7 +164,7 @@ paths:
       responses:
         "200": {description: ok}
         "409": {description: in use}
-  /api/v1/indexers:
+  /api/v1/library/indexers:
     get:
       summary: User-added Torznab / Newznab indexers (API keys are never returned)
       responses:
@@ -172,7 +174,7 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/IndexerSave"}}}}
       responses:
         "200": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
-  /api/v1/indexers/{id}:
+  /api/v1/library/indexers/{id}:
     put:
       summary: Change an indexer; `api_key` null keeps the stored key, "" deletes it
       parameters: [{$ref: "#/components/parameters/Id"}]
@@ -184,14 +186,14 @@ paths:
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses:
         "200": {description: ok}
-  /api/v1/indexers/{id}/test:
+  /api/v1/library/indexers/{id}/test:
     post:
       summary: Fetch the indexer's caps
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses:
         "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Caps"}}}}
 
-  /api/v1/titles:
+  /api/v1/library/titles:
     get:
       summary: Monitored movies, series, artists and authors
       parameters:
@@ -204,7 +206,7 @@ paths:
       responses:
         "200": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
         "409": {description: already monitored}
-  /api/v1/titles/{id}:
+  /api/v1/library/titles/{id}:
     get:
       summary: A title with its units
       parameters: [{$ref: "#/components/parameters/Id"}]
@@ -215,34 +217,34 @@ paths:
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses:
         "200": {description: ok}
-  /api/v1/titles/{id}/refresh:
+  /api/v1/library/titles/{id}/refresh:
     post:
       summary: Refresh the unit list from the metadata provider
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses:
         "200": {description: ok}
-  /api/v1/titles/{id}/monitor:
+  /api/v1/library/titles/{id}/monitor:
     put:
       summary: Monitor or unmonitor the title (`units` empty) or some of its units
       parameters: [{$ref: "#/components/parameters/Id"}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [monitored], properties: {units: {type: array, items: {type: integer}}, monitored: {type: boolean}}}}}}
       responses:
         "200": {description: ok}
-  /api/v1/titles/{id}/search:
+  /api/v1/library/titles/{id}/search:
     post:
       summary: Automatic search and grab in the background (`units` empty = every wanted unit); results arrive as events
       parameters: [{$ref: "#/components/parameters/Id"}]
       requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/Units"}}}}
       responses:
         "200": {description: started}
-  /api/v1/titles/{id}/releases:
+  /api/v1/library/titles/{id}/releases:
     post:
       summary: Interactive search; every release found with the decision on it
       parameters: [{$ref: "#/components/parameters/Id"}]
       requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/Units"}}}}
       responses:
         "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Candidate"}}}}}
-  /api/v1/titles/{id}/grab:
+  /api/v1/library/titles/{id}/grab:
     post:
       summary: Grab one release from the interactive search (overrides rejections except Usenet and the blocklist)
       parameters: [{$ref: "#/components/parameters/Id"}]
@@ -250,12 +252,12 @@ paths:
       responses:
         "200": {description: grabbed, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
 
-  /api/v1/queue:
+  /api/v1/library/queue:
     get:
       summary: Grabs that are downloading, seeding or waiting for an import fix
       responses:
         "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/QueueItem"}}}}}
-  /api/v1/queue/{id}:
+  /api/v1/library/queue/{id}:
     delete:
       summary: Remove a grab with its torrent and download data; optionally blocklist the release and search again
       parameters:
@@ -264,25 +266,25 @@ paths:
         - {name: search, in: query, required: false, schema: {type: boolean}}
       responses:
         "200": {description: ok}
-  /api/v1/queue/{id}/retry:
+  /api/v1/library/queue/{id}/retry:
     post:
       summary: Retry the import of a grab in `import_blocked`
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses:
         "200": {description: ok}
-  /api/v1/queue/{id}/pause:
+  /api/v1/library/queue/{id}/pause:
     post:
       summary: Pause the grab's torrent
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses:
         "200": {description: ok}
-  /api/v1/queue/{id}/resume:
+  /api/v1/library/queue/{id}/resume:
     post:
       summary: Resume the grab's torrent
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses:
         "200": {description: ok}
-  /api/v1/history:
+  /api/v1/library/history:
     get:
       summary: Newest first
       parameters:
@@ -290,23 +292,23 @@ paths:
         - {name: limit, in: query, required: false, schema: {type: integer, default: 100}}
       responses:
         "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/HistoryEntry"}}}}}
-  /api/v1/blocklist:
+  /api/v1/library/blocklist:
     get:
       summary: Blocklisted releases
       responses:
         "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/BlockEntry"}}}}}
-  /api/v1/blocklist/{id}:
+  /api/v1/library/blocklist/{id}:
     delete:
       summary: Remove from the blocklist
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses:
         "200": {description: ok}
-  /api/v1/jobs:
+  /api/v1/library/jobs:
     get:
       summary: Scheduled jobs and their last and next runs
       responses:
         "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/JobInfo"}}}}}
-  /api/v1/jobs/{job}/run:
+  /api/v1/library/jobs/{job}/run:
     post:
       summary: Run a job now (in the background)
       parameters:
@@ -346,17 +348,6 @@ paths:
     post:
       summary: Approve a pending request (adds the title)
       parameters: [{$ref: "#/components/parameters/Id"}]
-      responses:
-        "200": {description: ok}
-
-  /api/v1/gateway:
-    get:
-      summary: The supervised gateway (module gateway) as its control socket reports it; `null` when not running
-      responses:
-        "200": {description: ok, content: {application/json: {schema: {type: [object, "null"], description: "`Status` of `nocturne_core::gateway`"}}}}
-  /api/v1/gateway/restart:
-    post:
-      summary: Restart the gateway process
       responses:
         "200": {description: ok}
 
@@ -431,10 +422,13 @@ components:
             seed_hours: {type: integer, default: 168}
             limits: {$ref: "#/components/schemas/Limits"}
         requests: {type: object, properties: {enabled: {type: boolean}, auto_approve: {type: boolean, default: true}}}
-        gateway: {type: object, properties: {enabled: {type: boolean}}}
+      additionalProperties:
+        type: object
+        description: "the section of another module (`gateway`, `tunnel`, `discovery`, `storage`, ...): at least `enabled`, the rest defined by that module"
+        properties: {enabled: {type: boolean}}
     ModuleStatus:
       type: object
-      properties: {name: {type: string, enum: [library, downloads, requests, gateway]}, enabled: {type: boolean}, running: {type: boolean}, error: {type: [string, "null"]}}
+      properties: {name: {type: string, description: "module name: library, downloads, requests, gateway, tunnel, discovery, storage, ..."}, enabled: {type: boolean}, running: {type: boolean}, error: {type: [string, "null"]}}
     Status:
       type: object
       properties:
@@ -723,3 +717,4 @@ components:
         - {type: object, properties: {type: {const: job}, data: {type: object, properties: {job: {$ref: "#/components/schemas/Job"}, running: {type: boolean}, message: {type: [string, "null"]}}}}}
         - {type: object, properties: {type: {const: request}, data: {type: integer, description: request id that changed}}}
         - {type: object, properties: {type: {const: health}, data: {$ref: "#/components/schemas/ModuleStatus"}}}
+        - {type: object, properties: {type: {const: module}, data: {type: object, properties: {module: {type: string}, kind: {type: string, description: the module's own event name}, data: {description: any JSON}}}}}
