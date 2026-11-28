@@ -310,6 +310,40 @@ pub fn translate(ids: &IdMap, q: &Query, key: &str) -> Option<Vec<(String, Strin
     Some(out)
 }
 
+/// [`translate`], once per library: a merged view can hold several libraries of the same server (two movie libraries), and an upstream `ParentId` names only one, so the query is repeated for each of them.
+pub fn translate_each(ids: &IdMap, q: &Query, key: &str) -> Vec<Vec<(String, String)>> {
+    let Some(base) = translate(ids, q, key) else {
+        return vec![];
+    };
+    let many: Vec<String> = q
+        .get("ParentId")
+        .filter(|g| is_id(g))
+        .and_then(|g| ids.resolve_str(g))
+        .map(|(_, m)| {
+            m.into_iter()
+                .filter(|m| m.source == key)
+                .map(|m| m.id)
+                .collect()
+        })
+        .unwrap_or_default();
+    if many.len() < 2 {
+        return vec![base];
+    }
+    many.into_iter()
+        .map(|up| {
+            base.iter()
+                .map(|(k, v)| {
+                    if k.eq_ignore_ascii_case("ParentId") {
+                        (k.clone(), up.clone())
+                    } else {
+                        (k.clone(), v.clone())
+                    }
+                })
+                .collect()
+        })
+        .collect()
+}
+
 fn fields_of(q: &Query) -> String {
     match q.get("Fields") {
         Some(f) if !f.is_empty() => format!("{f},{FIELDS}"),
@@ -531,31 +565,31 @@ pub async fn collect(st: &State, sp: &Spec<'_>) -> Collected {
     let fields = fields_of(sp.q);
     let mut futs = vec![];
     for s in servers(st) {
-        let Some(mut pairs) = translate(&st.ids, sp.q, &s.key) else {
-            continue;
-        };
-        pairs.push(("userId".into(), s.user_id.clone()));
-        pairs.push(("fields".into(), fields.clone()));
-        if let Some(n) = sp.fetch {
-            pairs.push(("limit".into(), n.to_string()));
-            pairs.push(("startIndex".into(), "0".into()));
+        for mut pairs in translate_each(&st.ids, sp.q, &s.key) {
+            let s = s.clone();
+            pairs.push(("userId".into(), s.user_id.clone()));
+            pairs.push(("fields".into(), fields.clone()));
+            if let Some(n) = sp.fetch {
+                pairs.push(("limit".into(), n.to_string()));
+                pairs.push(("startIndex".into(), "0".into()));
+            }
+            pairs.extend(
+                sp.forced
+                    .iter()
+                    .map(|(k, v)| ((*k).to_string(), (*v).to_string())),
+            );
+            let pq = format!("{}?{}", sp.path, encode_query(&pairs));
+            let (st2, rw2) = (st.clone(), rw.clone());
+            futs.push(async move {
+                let v = get_json(&st2, &s, &pq, true).await?;
+                let (items, total) = items_of(&v);
+                let e: Vec<Entry> = items
+                    .into_iter()
+                    .filter_map(|d| server_entry(&st2, &rw2, &s, d))
+                    .collect();
+                Some((e, total))
+            });
         }
-        pairs.extend(
-            sp.forced
-                .iter()
-                .map(|(k, v)| ((*k).to_string(), (*v).to_string())),
-        );
-        let pq = format!("{}?{}", sp.path, encode_query(&pairs));
-        let (st2, rw2) = (st.clone(), rw.clone());
-        futs.push(async move {
-            let v = get_json(&st2, &s, &pq, true).await?;
-            let (items, total) = items_of(&v);
-            let e: Vec<Entry> = items
-                .into_iter()
-                .filter_map(|d| server_entry(&st2, &rw2, &s, d))
-                .collect();
-            Some((e, total))
-        });
     }
     let mut c = Collected {
         entries: vec![],
@@ -948,8 +982,20 @@ async fn resume(St(st): St<State>, headers: HeaderMap, uri: Uri) -> Response {
         },
     )
     .await;
+    // Some servers ignore MediaTypes on resume: keep only what was asked for (jellyfin-web's "Continue Listening").
+    let want = q.csv("MediaTypes");
+    if !want.is_empty() {
+        c.entries.retain(|e| {
+            e.dto["MediaType"]
+                .as_str()
+                .is_some_and(|m| want.iter().any(|w| w.eq_ignore_ascii_case(m)))
+        });
+    }
     let rw = Arc::new(rw(&st));
-    for l in locals(&st) {
+    // Local items are videos: "Continue Listening" (MediaTypes=Audio) and the like must not list them.
+    let types = q.csv("MediaTypes");
+    let locals_fit = types.is_empty() || types.iter().any(|t| t.eq_ignore_ascii_case("Video"));
+    for l in locals(&st).into_iter().filter(|_| locals_fit) {
         let (st2, rw2) = (st.clone(), rw.clone());
         let l2 = l.clone();
         let got = tokio::task::spawn_blocking(move || {
@@ -993,6 +1039,10 @@ async fn resume(St(st): St<State>, headers: HeaderMap, uri: Uri) -> Response {
     items.retain(|i| {
         i["UserData"]["Played"] != true
             && i["UserData"]["PlaybackPositionTicks"].as_i64().unwrap_or(0) > 0
+            && (want.is_empty()
+                || i["MediaType"]
+                    .as_str()
+                    .is_some_and(|m| want.iter().any(|w| w.eq_ignore_ascii_case(m))))
     });
     items.sort_by(|a, b| lists::compare(a, b, &sort));
     items.truncate(n);
