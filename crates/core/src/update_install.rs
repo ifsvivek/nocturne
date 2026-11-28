@@ -231,27 +231,29 @@ fn extract(artifact: &Path, work: &Path) -> Result<PathBuf, String> {
     Ok(new)
 }
 
-/// The optional gateway helper next to the app binary (Linux tarballs ship `<name>/nocturne-gateway`). A second `tar` run because
-/// a pattern that matches nothing is an error for tar; an archive without it (older releases, other platforms) is fine.
-const GATEWAY: &str = "nocturne-gateway";
+/// The companion binaries next to the app binary (Linux tarballs ship `<name>/nocturne-gateway` from 0.7 and `<name>/nocturne-server` from 0.7.5); each is optional in an archive.
+const COMPANIONS: &[&str] = &["nocturne-gateway", "nocturne-server"];
 
-fn extract_gateway(artifact: &Path, work: &Path) -> Option<PathBuf> {
+/// Unpack one companion from the archive. A separate `tar` run per name because a pattern that matches nothing is an error
+/// for tar; an archive without it (older releases, other platforms) is fine.
+fn extract_companion(artifact: &Path, work: &Path, name: &str) -> Option<PathBuf> {
     if !cfg!(target_os = "linux") {
         return None;
     }
-    let dir = work.join("gateway");
+    let dir = work.join(format!("companion-{name}"));
     std::fs::create_dir_all(&dir).ok()?;
     let ok = std::process::Command::new("tar")
         .arg("-xzf")
         .arg(artifact)
         .arg("-C")
         .arg(&dir)
-        .args(["--strip-components=1", "--wildcards", "*/nocturne-gateway"])
+        .args(["--strip-components=1", "--wildcards"])
+        .arg(format!("*/{name}"))
         .output()
         .ok()?
         .status
         .success();
-    let new = dir.join(GATEWAY);
+    let new = dir.join(name);
     if !ok || !new.is_file() {
         return None;
     }
@@ -261,11 +263,6 @@ fn extract_gateway(artifact: &Path, work: &Path) -> Option<PathBuf> {
         std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755)).ok()?;
     }
     Some(new)
-}
-
-/// Where the gateway helper lives for an app binary at `target`.
-fn gateway_target(target: &Path) -> PathBuf {
-    target.with_file_name(GATEWAY)
 }
 
 /// Like [`swap`], but a missing target is simply filled.
@@ -326,9 +323,12 @@ pub fn install(kind: InstallKind, artifact: &Path, exe: &Path) -> Result<PathBuf
     let target = swap_target(exe);
     let work = work_dir(&target).ok_or("no install directory")?;
     let res = extract(artifact, &work).and_then(|new| {
-        // The helper first and best effort: a version bump of it is harmless, and a failure here must not stop the app's own update.
-        if let Some(g) = extract_gateway(artifact, &work) {
-            let _ = place(&gateway_target(&target), &g);
+        // The companions first and best effort: a version bump of one is harmless, and a failure here must not stop the app's own update.
+        // A running server keeps its old inode; it runs the new binary after its next restart.
+        for name in COMPANIONS {
+            if let Some(g) = extract_companion(artifact, &work, name) {
+                let _ = place(&target.with_file_name(name), &g);
+            }
         }
         swap(&target, &new)
     });
@@ -358,7 +358,9 @@ pub async fn update(
 pub fn cleanup(exe: &Path) {
     let target = swap_target(exe);
     remove_any(&with_suffix(&target, ".old"));
-    remove_any(&with_suffix(&gateway_target(&target), ".old"));
+    for name in COMPANIONS {
+        remove_any(&with_suffix(&target.with_file_name(name), ".old"));
+    }
     if let Some(w) = work_dir(&target) {
         let _ = std::fs::remove_dir_all(w);
     }
@@ -567,14 +569,15 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&exe).unwrap(), "new");
     }
 
-    /// A release tarball laid out like scripts/package-linux.sh: `<name>/nocturne` and, from 0.7, `<name>/nocturne-gateway`.
+    /// A release tarball laid out like scripts/package.sh: `<name>/nocturne` and the given companions (`new <companion>` inside).
     #[cfg(target_os = "linux")]
-    fn tarball(d: &Path, with_gateway: bool) -> PathBuf {
+    fn tarball(d: &Path, companions: &[&str]) -> PathBuf {
         let (src, name) = (d.join("src"), "nocturne-9.9.9-x86_64-linux");
+        let _ = std::fs::remove_dir_all(&src);
         std::fs::create_dir_all(src.join(name)).unwrap();
         std::fs::write(src.join(name).join("nocturne"), "new app").unwrap();
-        if with_gateway {
-            std::fs::write(src.join(name).join("nocturne-gateway"), "new gateway").unwrap();
+        for c in companions {
+            std::fs::write(src.join(name).join(c), format!("new {c}")).unwrap();
         }
         let tgz = d.join("b.tar.gz");
         let made = std::process::Command::new("tar")
@@ -597,12 +600,12 @@ mod tests {
         std::fs::create_dir_all(&bin).unwrap();
         let exe = bin.join("nocturne");
         std::fs::write(&exe, "old app").unwrap();
-        let tgz = tarball(d.path(), true);
+        let tgz = tarball(d.path(), &["nocturne-gateway"]);
         // No helper installed yet (an install from before 0.7): it is added.
         install(InstallKind::PerUser, &tgz, &exe).unwrap();
         assert_eq!(std::fs::read_to_string(&exe).unwrap(), "new app");
         let g = bin.join("nocturne-gateway");
-        assert_eq!(std::fs::read_to_string(&g).unwrap(), "new gateway");
+        assert_eq!(std::fs::read_to_string(&g).unwrap(), "new nocturne-gateway");
         {
             use std::os::unix::fs::PermissionsExt;
             assert_eq!(
@@ -613,7 +616,7 @@ mod tests {
         // An installed one is replaced and the old one kept until the next start, like the app itself.
         std::fs::write(&g, "old gateway").unwrap();
         install(InstallKind::PerUser, &tgz, &exe).unwrap();
-        assert_eq!(std::fs::read_to_string(&g).unwrap(), "new gateway");
+        assert_eq!(std::fs::read_to_string(&g).unwrap(), "new nocturne-gateway");
         assert_eq!(
             std::fs::read_to_string(with_suffix(&g, ".old")).unwrap(),
             "old gateway"
@@ -631,11 +634,49 @@ mod tests {
         std::fs::create_dir_all(&bin).unwrap();
         let exe = bin.join("nocturne");
         std::fs::write(&exe, "old app").unwrap();
-        install(InstallKind::PerUser, &tarball(d.path(), false), &exe).unwrap();
+        install(InstallKind::PerUser, &tarball(d.path(), &[]), &exe).unwrap();
         assert_eq!(std::fs::read_to_string(&exe).unwrap(), "new app");
         assert!(!bin.join("nocturne-gateway").exists());
         std::fs::write(bin.join("nocturne-gateway"), "mine").unwrap();
-        install(InstallKind::PerUser, &tarball(d.path(), false), &exe).unwrap();
+        install(InstallKind::PerUser, &tarball(d.path(), &[]), &exe).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(bin.join("nocturne-gateway")).unwrap(),
+            "mine"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn install_places_every_companion_the_archive_has() {
+        let d = tempfile::tempdir().unwrap();
+        let bin = d.path().join("prefix/bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let exe = bin.join("nocturne");
+        std::fs::write(&exe, "old app").unwrap();
+        std::fs::write(bin.join("nocturne-server"), "old server").unwrap();
+        let tgz = tarball(d.path(), &["nocturne-gateway", "nocturne-server"]);
+        install(InstallKind::PerUser, &tgz, &exe).unwrap();
+        for c in COMPANIONS {
+            assert_eq!(
+                std::fs::read_to_string(bin.join(c)).unwrap(),
+                format!("new {c}")
+            );
+        }
+        let s = bin.join("nocturne-server");
+        assert_eq!(
+            std::fs::read_to_string(with_suffix(&s, ".old")).unwrap(),
+            "old server"
+        );
+        cleanup(&exe);
+        assert!(!with_suffix(&s, ".old").exists());
+        // An archive with only the server (no gateway) leaves an installed gateway alone.
+        std::fs::write(bin.join("nocturne-gateway"), "mine").unwrap();
+        install(
+            InstallKind::PerUser,
+            &tarball(d.path(), &["nocturne-server"]),
+            &exe,
+        )
+        .unwrap();
         assert_eq!(
             std::fs::read_to_string(bin.join("nocturne-gateway")).unwrap(),
             "mine"
