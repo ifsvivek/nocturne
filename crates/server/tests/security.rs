@@ -317,6 +317,19 @@ async fn a_remote_session_cannot_choose_a_program_to_run() {
     assert_eq!(code, 200, "{v}");
 }
 
+/// Finding: `state.redb` (password hashes, token hashes, the library) was created with the umask, readable by other users of the machine wherever the home directory is not private. Now 0600.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn the_store_is_private_to_its_owner() {
+    use std::os::unix::fs::PermissionsExt;
+    let s = start().await;
+    let mode = std::fs::metadata(s.sh.paths.db())
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o077, 0, "{mode:o}");
+}
+
 /// Finding: the storage agent client followed redirects, and `X-Api-Key` (unlike `Authorization`) survives a redirect to another host, so an agent address that redirects handed the key to whatever host it named.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_agent_key_never_follows_a_redirect() {

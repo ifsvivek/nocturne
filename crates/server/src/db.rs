@@ -69,6 +69,12 @@ impl Db {
             std::fs::create_dir_all(d).map_err(e)?;
         }
         let db = Database::create(path).map_err(e)?;
+        // Password and token hashes: only the owner reads the file.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(e)?;
+        }
         let tx = db.begin_write().map_err(e)?;
         {
             let mut meta = tx.open_table(META).map_err(e)?;
