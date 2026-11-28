@@ -20,6 +20,10 @@ fn harden() {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("agent") {
+        harden();
+        std::process::exit(nocturne_server::modules::storage::agent_main(&args[1..]));
+    }
     if let Some(r) = nocturne_server::cli::run(&args) {
         if let Err(e) = r {
             eprintln!("nocturne-server: {e}");

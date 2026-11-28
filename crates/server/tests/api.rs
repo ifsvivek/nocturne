@@ -296,6 +296,13 @@ async fn setup_login_keys_local_admin_and_gating() {
             .contains("[probe]")
     );
 
+    // Disk space of the data folder's file system; the log (admin) holds the listening line.
+    let (_, st) = call("GET", &format!("{b}/status"), Some(&tok), None).await;
+    assert!(st["disk"][0]["total"].as_u64().unwrap() > 0, "{st}");
+    let (code, logs) = call("GET", &format!("{b}/logs?lines=50"), Some(&tok), None).await;
+    assert_eq!(code, 200);
+    assert!(logs.to_string().contains("listening on"), "{logs}");
+
     // Unknown API paths are JSON 404s; other paths get the dashboard (or its placeholder).
     assert_eq!(
         call("GET", &format!("{b}/nothing"), Some(&tok), None)
@@ -305,6 +312,11 @@ async fn setup_login_keys_local_admin_and_gating() {
     );
     let page = reqwest::get(b.replace("/api/v1", "/")).await.unwrap();
     assert_eq!(page.status(), 200);
+    let csp = page.headers()["content-security-policy"].to_str().unwrap();
+    assert!(
+        csp.starts_with("default-src 'self'; script-src 'self'"),
+        "{csp}"
+    );
 
     // Password change revokes sessions.
     let (code, _) = call(

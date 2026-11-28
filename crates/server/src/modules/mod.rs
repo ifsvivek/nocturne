@@ -9,6 +9,8 @@ use std::sync::Arc;
 pub mod downloads;
 pub mod library;
 pub mod requests;
+pub mod storage;
+pub mod storage_agent;
 
 /// The real modules. A debug build run with `NOCTURNE_SERVER_FAKE=1` uses the in-memory torrent engine, indexer and metadata instead (nothing leaves the machine; for UI work).
 pub fn all() -> Vec<Arc<dyn Module>> {
@@ -39,5 +41,6 @@ pub fn with(dl: downloads::Backend, engine: Arc<Engine>) -> Vec<Arc<dyn Module>>
         Arc::new(downloads::Downloads::new(dl)),
         Arc::new(library::Library::new(engine)),
         Arc::new(requests::Requests),
+        Arc::new(storage::Storage::default()),
     ]
 }

@@ -126,6 +126,7 @@ async fn movie_episode_album_and_book_from_search_to_import() {
             .as_array()
             .unwrap()
             .iter()
+            .filter(|m| m["enabled"] == true)
             .all(|m| m["running"] == true),
         "{st}"
     );
@@ -508,6 +509,21 @@ async fn movie_episode_album_and_book_from_search_to_import() {
             .any(|i| i["grab"]["title"] == on),
         "{q}"
     );
+
+    // Calendar: the future episode of Show is listed with its title; lookup answers from the provider.
+    let cal = t
+        .get("/library/calendar?from=2099-01-01&to=2099-12-31")
+        .await;
+    assert_eq!(cal.as_array().unwrap().len(), 1, "{cal}");
+    assert_eq!(
+        (
+            cal[0]["title_name"].as_str(),
+            cal[0]["unit"]["episode"].as_u64()
+        ),
+        (Some("Show"), Some(3))
+    );
+    let hits = t.get("/library/lookup?kind=series&q=Show").await;
+    assert_eq!(hits[0]["name"], "Show");
 
     // Counters and jobs are reported.
     let st = t.get("/status").await;

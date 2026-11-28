@@ -6,7 +6,7 @@ use nocturne_arr_types::{
     ParsedRelease, Protocol, Quality, Release, Result, SearchQuery, TorrentFile, TorrentSource,
     TorrentState, TorrentStatus,
 };
-use nocturne_core::server::{Title, Unit};
+use nocturne_core::server::{LookupHit, Title, Unit};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -440,6 +440,22 @@ pub fn unit(name: &str, season: Option<u32>, episode: Option<u32>, date: &str) -
 }
 
 impl Metadata for FakeMeta {
+    fn lookup<'a>(
+        &'a self,
+        kind: MediaKind,
+        q: &'a str,
+    ) -> BoxFut<'a, std::result::Result<Vec<LookupHit>, String>> {
+        Box::pin(async move {
+            Ok(vec![LookupHit {
+                kind,
+                name: q.to_string(),
+                year: Some(2020),
+                overview: String::new(),
+                ids: Ids::default(),
+            }])
+        })
+    }
+
     fn units<'a>(
         &'a self,
         t: &'a Title,

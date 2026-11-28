@@ -1,11 +1,17 @@
 //! Where unit lists come from: episodes, albums and books (movies have one unit and need no lookup). [`Online`] uses the providers in `nocturne_core::online` (TVmaze, MusicBrainz, Open Library; no keys); tests use [`crate::fake::FakeMeta`].
 use crate::module::BoxFut;
 use nocturne_arr_types::{Ids, MediaKind};
-use nocturne_core::server::{Title, Unit};
+use nocturne_core::server::{LookupHit, Title, Unit};
 
 pub trait Metadata: Send + Sync + 'static {
     /// The units of a series, artist or author (`id` and `title` 0), with the ids learned on the way.
     fn units<'a>(&'a self, t: &'a Title) -> BoxFut<'a, Result<(Ids, Vec<Unit>), String>>;
+    /// Search by name to add a title.
+    fn lookup<'a>(
+        &'a self,
+        kind: MediaKind,
+        q: &'a str,
+    ) -> BoxFut<'a, Result<Vec<LookupHit>, String>>;
 }
 
 pub struct Online(pub nocturne_core::online::Engine);
@@ -20,6 +26,27 @@ impl Default for Online {
 }
 
 impl Metadata for Online {
+    fn lookup<'a>(
+        &'a self,
+        kind: MediaKind,
+        q: &'a str,
+    ) -> BoxFut<'a, Result<Vec<LookupHit>, String>> {
+        Box::pin(async move {
+            // Movies need the user's own TMDB key (the one NOCTURNE's online details use, in the keyring).
+            let key = nocturne_core::online::tmdb_key();
+            self.0
+                .search_titles(kind, q, key.as_deref())
+                .await
+                .map_err(|e| match e {
+                    nocturne_core::online::http::Err::Auth if kind == MediaKind::Movie => {
+                        "searching movies needs your TMDB key (NOCTURNE settings, online details)"
+                            .to_string()
+                    }
+                    e => format!("metadata search failed: {e:?}"),
+                })
+        })
+    }
+
     fn units<'a>(&'a self, t: &'a Title) -> BoxFut<'a, Result<(Ids, Vec<Unit>), String>> {
         Box::pin(async move {
             let mut ids = t.ids.clone();
