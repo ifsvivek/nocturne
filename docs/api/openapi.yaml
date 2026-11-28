@@ -375,6 +375,100 @@ paths:
       responses:
         "200": {description: ok}
 
+  /api/v1/storage/roots:
+    get:
+      summary: Storage roots with live health (module storage; administrators). Local folders, SMB/NFS shares and remote agents.
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/StorageRoot"}}}}}
+    post:
+      summary: Add a storage root. Local needs an existing folder; SMB/NFS use the given path, else an existing mount of the URL, else (SMB) the GVfs folder; NFS that is not mounted answers 409 with fstab instructions. Agent roots are checked against the agent first. Logins and keys go to the keyring.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/NewStorageRoot"}}}}
+      responses:
+        "200": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+        "400": {description: invalid, or the agent refused}
+        "409": {description: an NFS share that is not mounted; error holds the instructions}
+  /api/v1/storage/roots/{id}:
+    get:
+      summary: One storage root with live health
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/StorageRoot"}}}}
+    put:
+      summary: Change a root's label or role
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {label: {type: string}, role: {$ref: "#/components/schemas/StorageRole"}}}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+    delete:
+      summary: Forget a storage root and its login (files untouched)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+  /api/v1/storage/roots/{id}/mount:
+    post:
+      summary: Mount an SMB root in user space through GVfs (gio mount, no root). NFS, or a failed mount, returns instructions instead.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {mounted: {type: boolean}, path: {type: string}, error: {type: [string, "null"]}, instructions: {type: [string, "null"]}}}}}}
+  /api/v1/storage/roots/{id}/browse:
+    get:
+      summary: A folder of a root (path relative to the root; escapes refused)
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: path, in: query, schema: {type: string}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/StorageEntry"}}}}}
+  /api/v1/storage/mounts:
+    get:
+      summary: Network file systems mounted on this machine (cifs, nfs, GVfs), candidates for roots
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {type: object, properties: {point: {type: string}, fstype: {type: string}, source: {type: string}}}}}}}
+
+  /agent/v1/roots:
+    get:
+      summary: "Storage agent (`nocturne-server agent`, a separate process on another machine; X-Api-Key = the agent key): its roots with free space"
+      security: [{apiKey: []}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {type: object, properties: {name: {type: string}, writable: {type: boolean}, space: {$ref: "#/components/schemas/StorageSpace"}}}}}}}
+        "401": {description: wrong or missing key}
+  /agent/v1/roots/{root}/list:
+    get:
+      summary: "Storage agent: a folder's entries"
+      security: [{apiKey: []}]
+      parameters: [{name: root, in: path, required: true, schema: {type: string}}, {name: path, in: query, schema: {type: string}}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/StorageEntry"}}}}}
+  /agent/v1/roots/{root}/stat:
+    get:
+      summary: "Storage agent: one file or folder"
+      security: [{apiKey: []}]
+      parameters: [{name: root, in: path, required: true, schema: {type: string}}, {name: path, in: query, schema: {type: string}}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/StorageEntry"}}}}
+  /agent/v1/roots/{root}/file:
+    get:
+      summary: "Storage agent: a file, whole or one Range (206 with Content-Range; 416 when unsatisfiable)"
+      security: [{apiKey: []}]
+      parameters: [{name: root, in: path, required: true, schema: {type: string}}, {name: path, in: query, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: the file}
+        "206": {description: the range}
+    put:
+      summary: "Storage agent: create a file from the body (missing folders are made; 409 if it exists, never overwrites)"
+      security: [{apiKey: []}]
+      parameters: [{name: root, in: path, required: true, schema: {type: string}}, {name: path, in: query, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/octet-stream: {}}}
+      responses:
+        "200": {description: ok}
+  /agent/v1/roots/{root}/move:
+    post:
+      summary: "Storage agent: rename inside one root (refused if the target exists)"
+      security: [{apiKey: []}]
+      parameters: [{name: root, in: path, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [from, to], properties: {from: {type: string}, to: {type: string}}}}}}
+      responses:
+        "200": {description: ok}
+
   /:
     get:
       summary: "The web dashboard (static files embedded in the binary, no auth for the files themselves). Sent with Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
@@ -751,6 +845,43 @@ components:
         created: {type: integer}
         status: {$ref: "#/components/schemas/RequestStatus"}
         title: {type: [integer, "null"], description: the monitored title it became}
+    StorageKind: {type: string, enum: [local, smb, nfs, agent]}
+    StorageRole: {type: string, enum: [library, downloads, both]}
+    StorageSpace:
+      type: [object, "null"]
+      properties: {free: {type: integer}, total: {type: integer}}
+    StorageEntry:
+      type: object
+      properties: {name: {type: string}, dir: {type: boolean}, size: {type: integer}, modified: {type: integer}}
+    StorageRoot:
+      type: object
+      properties:
+        id: {type: integer}
+        label: {type: string}
+        kind: {$ref: "#/components/schemas/StorageKind"}
+        role: {$ref: "#/components/schemas/StorageRole"}
+        path: {type: string, description: "the folder on this machine (empty for agent roots)"}
+        url: {type: string, description: "smb://host/share[/dir], host:/export, or the agent's http://host:port"}
+        remote: {type: string, description: "agent roots: the root's name on the agent"}
+        mount_point: {type: string, description: "local roots: the mount the folder was on when added"}
+        available: {type: boolean, description: "the module runs and the share or disk was there at the last mount change"}
+        health:
+          type: object
+          properties: {reachable: {type: boolean}, writable: {type: boolean}, mounted: {type: boolean}, space: {$ref: "#/components/schemas/StorageSpace"}, error: {type: [string, "null"]}}
+    NewStorageRoot:
+      type: object
+      required: [kind]
+      properties:
+        kind: {$ref: "#/components/schemas/StorageKind"}
+        label: {type: string}
+        role: {$ref: "#/components/schemas/StorageRole"}
+        path: {type: string, description: absolute}
+        url: {type: string}
+        remote: {type: string}
+        key: {type: string, description: "agent roots: the agent's key (kept in the keyring)"}
+        user: {type: string, description: "SMB login (kept in the keyring); none = guest"}
+        domain: {type: string}
+        password: {type: string}
     Event:
       description: 'WebSocket message: {"type": ..., "data": ...}'
       oneOf:
@@ -760,4 +891,4 @@ components:
         - {type: object, properties: {type: {const: job}, data: {type: object, properties: {job: {$ref: "#/components/schemas/Job"}, running: {type: boolean}, message: {type: [string, "null"]}}}}}
         - {type: object, properties: {type: {const: request}, data: {type: integer, description: request id that changed}}}
         - {type: object, properties: {type: {const: health}, data: {$ref: "#/components/schemas/ModuleStatus"}}}
-        - {type: object, properties: {type: {const: module}, data: {type: object, properties: {module: {type: string}, kind: {type: string, description: the module's own event name}, data: {description: any JSON}}}}}
+        - {type: object, properties: {type: {const: module}, data: {type: object, properties: {module: {type: string}, kind: {type: string, description: "the module's own event name (storage: mount_lost and mount_back with {root, label, path})"}, data: {description: any JSON}}}}}

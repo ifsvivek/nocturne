@@ -7,6 +7,7 @@ One line per change to `docs/api/openapi.yaml` after its first commit (bf51f3f),
 - New `GET /api/v1/library/lookup?kind=&q=`: metadata search for adding a title (`LookupHit`).
 - `Status.disk`: free and total bytes per file system the server writes to.
 - Dashboard responses carry a strict Content-Security-Policy, `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`.
+- New module `storage`: `/api/v1/storage/roots` (GET, POST), `/roots/{id}` (GET, PUT, DELETE), `/roots/{id}/mount`, `/roots/{id}/browse`, `/mounts`; module events `mount_lost` and `mount_back`. The storage agent (`nocturne-server agent`, a separate process) serves `/agent/v1/roots...` with its own key.
 - Library-manager routes moved under the module prefix: `/api/v1/library/{libraries,profiles,indexers,titles,queue,history,blocklist,jobs}...` (was `/api/v1/<name>...`). Every module's routes live under `/api/v1/<module>/`.
 - `/api/v1/gateway` and `/api/v1/gateway/restart` removed: the gateway is an in-process module now and its worker documents its routes.
 - `ServerConfig`: the `gateway` section is no longer a fixed field; any module's section is an additional property with at least `enabled`.
