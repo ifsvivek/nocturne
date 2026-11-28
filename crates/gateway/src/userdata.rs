@@ -90,6 +90,15 @@ impl Overlay {
         ov
     }
 
+    /// Items the overlay marks favourite.
+    pub fn favourites(&self) -> Vec<Gid> {
+        let m = self.map.lock().unwrap();
+        m.iter()
+            .filter(|(_, o)| o.favorite == Some(true))
+            .filter_map(|(k, _)| Gid::parse(k))
+            .collect()
+    }
+
     /// Items with a stop position (a played title watched again included, as on a real server), most recent first (the Continue Watching of a gateway client when no server knows the position).
     pub fn resumable(&self, n: usize) -> Vec<(Gid, Ov)> {
         let m = self.map.lock().unwrap();
