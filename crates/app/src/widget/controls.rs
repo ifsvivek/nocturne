@@ -36,6 +36,12 @@ pub fn icon<'a>(name: &str, size: f32, color: Color) -> svg::Svg<'a> {
         "queue" => include_bytes!("../../assets/icons/queue.svg"),
         "search" => include_bytes!("../../assets/icons/search.svg"),
         "calendar" => include_bytes!("../../assets/icons/calendar.svg"),
+        "palette" => include_bytes!("../../assets/icons/palette.svg"),
+        "sync" => include_bytes!("../../assets/icons/sync.svg"),
+        "inbox" => include_bytes!("../../assets/icons/inbox.svg"),
+        "broadcast" => include_bytes!("../../assets/icons/broadcast.svg"),
+        "download" => include_bytes!("../../assets/icons/download.svg"),
+        "info" => include_bytes!("../../assets/icons/info.svg"),
         _ => include_bytes!("../../assets/icons/stop.svg"),
     };
     svg(svg::Handle::from_memory(bytes))

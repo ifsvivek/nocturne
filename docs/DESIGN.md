@@ -45,7 +45,7 @@ Do not hard-code text colours outside `theme.rs`; new text colours must be added
 - Value controls (Settings chips) are 32 px tall (`CONTROL_H`), 13 px sans medium text (`CONTROL_TEXT`), 12 px side padding, `control` fill and a 1 px `edge` outline, with a caret on drop-downs (flipped while open).
 - States: hover (lighter fill, outline to secondary text), keyboard focus (accent outline and glow), pressed (accent tint), open (accent tint and outline, caret up).
 - On / off settings are a switch: 40x22 track and knob (on = accent track, knob right) with the word ON or OFF beside it, so state is never colour alone.
-- A selected Settings row has the accent tint and a 3 px accent bar; hover is the glass fill. Row labels are 15 px semibold, descriptions 13 px secondary, section captions 13 px bold tracked caps.
+- A selected Settings row has the accent tint and a 3 px accent bar; hover is the glass fill. Row labels are 15 px semibold, descriptions 13 px secondary, group captions 12 px bold tracked caps.
 - Buttons, inputs and avatar buttons use `edge` for their outline.
 
 ## Typography
@@ -56,7 +56,21 @@ Do not hard-code text colours outside `theme.rs`; new text colours must be added
 
 ## Spacing and shape
 
-4 px scale (4, 8, 12, 16, 24, 32), page padding 48, header height 56. Radii: 10 for panels, 3 for small elements; cells are nearly square.
+4 px scale (4, 8, 12, 16, 24, 32), page padding 48, header height 56. Radii: 10 for panels and cards, 6 for controls (`R_CTL`), 3 for small elements; cells are nearly square. Page and section titles are 28 px (`TITLE`).
+
+## Elevation
+
+Three levels, one light source straight above (`theme.rs`, `style.rs`):
+
+- Page: the frame colour, flat.
+- Raised card (`style::card`): surface fill, hairline outline, `SHADOW_RAISED` (soft, 4 px drop). Settings groups, the Gateway panels, empty-state icons.
+- Overlay (`style::panel`, `style::raised_card`): surface or raised fill, strong hairline, `SHADOW_OVERLAY` (deep, 20 px drop). Dialogs over the scrim, menus, popovers, toasts, the search panel.
+
+The engine stylesheet gets the same shadows as `--nocturne-shadow-raised` and `--nocturne-shadow-overlay`. The header is opaque (the frame colour) unless a theme makes it translucent.
+
+## Settings
+
+A sidebar (about 20 % of the window, 248 to 300 px) with a search field and one entry per section (icon tile and title; the selected one has the accent tint and an accent tile), beside the section: a 28 px title with its icon tile, one sentence, then cards of rows. A row shows its title, the first sentence of its help (the whole help while selected) and its control on the right. Below 880 px the sidebar becomes a full-width grouped list that drills into a section with a back link. Empty views use `widget::empty_state` (icon in a ring, title, one sentence).
 
 ## Motion
 

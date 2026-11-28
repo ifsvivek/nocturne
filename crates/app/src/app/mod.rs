@@ -348,6 +348,11 @@ pub struct App {
     settings: Settings,
     settings_open: bool,
     settings_sel: usize,
+    /// Settings sidebar section shown, the search text, and (narrow windows) whether a section is
+    /// drilled into rather than the section list showing.
+    set_sec: nocturne_core::settings::Section,
+    set_q: String,
+    set_drill: bool,
     /// Open Settings drop-down.
     dd: Option<Dropdown>,
     /// Settings page scroll: absolute offset and viewport height.
@@ -485,6 +490,9 @@ impl App {
             settings,
             settings_open: false,
             settings_sel: 0,
+            set_sec: nocturne_core::settings::Section::General,
+            set_q: String::new(),
+            set_drill: false,
             dd: None,
             set_off: 0.0,
             set_h: 600.0,
@@ -1212,6 +1220,13 @@ impl App {
                 (self.set_off, self.set_h) = (off, h);
                 Task::none()
             }
+            Message::SetSection(sec) => self.settings_section(sec),
+            Message::SetQuery(q) => self.settings_query(q),
+            Message::SetBack => {
+                self.set_drill = false;
+                self.set_q.clear();
+                Task::none()
+            }
             Message::CloseOverlays => {
                 self.help_open = false;
                 Task::none()
@@ -1766,10 +1781,7 @@ impl App {
             AcctAct::Settings => {
                 self.close_admin();
                 self.refresh_profiles();
-                self.settings_open = true;
-                self.settings_sel = 0;
-                self.dd = None;
-                self.set_off = 0.0;
+                self.settings_reset();
             }
             AcctAct::Downloads => return self.dl_msg(downloads::Msg::Open),
             AcctAct::Devices => return self.open_devices(),
@@ -2068,7 +2080,7 @@ impl App {
             return t;
         }
         if self.settings_open {
-            return self.settings_key(key);
+            return self.settings_key(key, k.shift);
         }
         if self.menu {
             return self.menu_key(key);

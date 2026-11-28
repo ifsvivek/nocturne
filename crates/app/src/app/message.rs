@@ -320,6 +320,12 @@ pub enum Message {
     SetChoose(usize, usize),
     SetClose,
     SetScrolled(f32, f32),
+    /// A Settings sidebar section picked.
+    SetSection(nocturne_core::settings::Section),
+    /// The Settings search text changed.
+    SetQuery(String),
+    /// Narrow Settings: back from a section (or search) to the section list.
+    SetBack,
     CloseOverlays,
     PageRetry,
     Noop,

@@ -117,10 +117,7 @@ impl App {
                 admin::Outcome::Close => self.close_admin(),
                 admin::Outcome::OpenSettings => {
                     self.close_admin();
-                    self.settings_open = true;
-                    self.settings_sel = 0;
-                    self.dd = None;
-                    self.set_off = 0.0;
+                    self.settings_reset();
                 }
             }
         }
@@ -172,10 +169,7 @@ impl App {
                 syncplay::Outcome::Toast(s) => self.toast(s),
                 syncplay::Outcome::OpenSettings => {
                     self.close_admin();
-                    self.settings_open = true;
-                    self.settings_sel = 0;
-                    self.dd = None;
-                    self.set_off = 0.0;
+                    self.settings_reset();
                 }
                 syncplay::Outcome::OpenPlayer {
                     origin,

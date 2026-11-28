@@ -12,6 +12,41 @@ pub fn rule<'a, M: 'a>() -> Element<'a, M> {
         .into()
 }
 
+/// An empty state: an icon in a soft ring, a short title and one sentence, centred in the space it
+/// is given (instead of a blank area).
+pub fn empty_state<'a, M: 'a>(icon: &str, title: &str, body: &str) -> Element<'a, M> {
+    let ring = container(super::icon(icon, 24.0, t::text_secondary()))
+        .center(56)
+        .style(|_| container::Style {
+            background: Some(t::raised().into()),
+            border: style::border(t::hairline_strong(), 1.0, 28.0),
+            shadow: t::SHADOW_RAISED,
+            ..Default::default()
+        });
+    container(
+        column![
+            ring,
+            text(title.to_string())
+                .size(t::BODY_LG)
+                .font(t::semibold())
+                .color(t::text()),
+            container(
+                text(body.to_string())
+                    .size(t::CONTROL_TEXT + 1.0)
+                    .line_height(1.5)
+                    .color(t::text_secondary())
+                    .align_x(Alignment::Center)
+            )
+            .max_width(420),
+        ]
+        .spacing(t::S3)
+        .align_x(Alignment::Center),
+    )
+    .center_x(Length::Fill)
+    .padding([t::S8 + t::S6, t::S6])
+    .into()
+}
+
 /// Full-width band: hairline divider below, content spans the window.
 pub fn band<'a, M: 'a>(content: impl Into<Element<'a, M>>) -> Element<'a, M> {
     column![content.into(), rule()].width(Length::Fill).into()

@@ -37,21 +37,34 @@ pub fn page(_: &iced::Theme) -> container::Style {
     }
 }
 
-/// Panel on the surface colour with the strong hairline (dialogs, menus, account panel).
+/// Overlay level: panel on the surface colour with the strong hairline and the deep shadow
+/// (dialogs, menus, account panel).
 pub fn panel(_: &iced::Theme) -> container::Style {
     container::Style {
         background: Some(t::surface().into()),
         border: border(t::hairline_strong(), 1.0, t::r_panel()),
+        shadow: t::SHADOW_OVERLAY,
         ..Default::default()
     }
 }
 
-/// Raised card: toasts, the offline banner.
+/// Raised level: a card that groups content on the page (Settings groups, Gateway status).
+pub fn card(_: &iced::Theme) -> container::Style {
+    container::Style {
+        background: Some(t::surface().into()),
+        border: border(t::hairline(), 1.0, t::r_panel()),
+        shadow: t::SHADOW_RAISED,
+        ..Default::default()
+    }
+}
+
+/// Overlay level on the raised colour: toasts, the offline banner.
 pub fn raised_card(_: &iced::Theme) -> container::Style {
     container::Style {
         background: Some(t::raised().into()),
         border: border(t::hairline_strong(), 1.0, t::r_panel()),
         text_color: Some(t::text()),
+        shadow: t::SHADOW_OVERLAY,
         ..Default::default()
     }
 }
@@ -66,6 +79,7 @@ pub fn tip(_: &iced::Theme) -> container::Style {
         background: Some(t::raised().into()),
         border: border(t::hairline_strong(), 1.0, t::r_xs()),
         text_color: Some(t::text()),
+        shadow: t::SHADOW_RAISED,
         ..Default::default()
     }
 }
@@ -117,7 +131,7 @@ pub fn input(_: &iced::Theme, status: text_input::Status) -> text_input::Style {
     };
     text_input::Style {
         background: Background::Color(t::NONE),
-        border: border(ring, 1.0, 6.0),
+        border: border(ring, 1.0, t::R_CTL),
         icon: t::text_secondary(),
         placeholder: t::text_tertiary(),
         value: t::text(),

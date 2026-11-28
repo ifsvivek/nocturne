@@ -3,7 +3,7 @@
 use iced::Font;
 use iced::font::{Family, Weight};
 use iced::gradient::{self, Gradient};
-use iced::{Background, Color, Degrees};
+use iced::{Background, Color, Degrees, Shadow, Vector};
 use nocturne_core::customize::{self as cz, Fill};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
@@ -110,8 +110,9 @@ const fn rgba(hex: u32) -> Color {
 
 /// Fully transparent (the GPUI `rgba(0)`).
 pub const NONE: Color = Color::TRANSPARENT;
-/// Header / breadcrumb fill: the frame colour at 90%.
-pub const HEADER_BG: Color = rgba(0x07080ce6);
+/// Header / breadcrumb fill: the frame colour, opaque, so content scrolling under the header never
+/// shows through it (a theme may still make its header translucent).
+pub const HEADER_BG: Color = rgb(0x07080c);
 /// Tile / cell chrome that is neither text nor a control, kept here so no raw hex leaks out.
 pub const PROGRESS_TRACK: Color = rgba(0xffffff1f);
 pub const POSTER_DIM: Color = rgba(0x07080c40);
@@ -122,6 +123,21 @@ pub const DOT: [u8; 3] = [0xc8, 0xd4, 0xff];
 pub const BACKDROP_GLOW: [u8; 3] = [0x3b, 0x6b, 0xff];
 /// Modal scrim.
 pub const SCRIM: Color = rgba(0x000000b8);
+
+/// Elevation, one light source straight above. Three levels: the page (`frame`, flat), a raised
+/// card (`surface` fill, `hairline` outline, `SHADOW_RAISED`) and an overlay (dialogs, menus,
+/// popovers, toasts: `surface` or `raised` fill, `hairline_strong` outline, `SHADOW_OVERLAY`).
+/// Shadows are soft and black at any theme: they read on every dark ground.
+pub const SHADOW_RAISED: Shadow = Shadow {
+    color: rgba(0x00000073),
+    offset: Vector::new(0.0, 4.0),
+    blur_radius: 18.0,
+};
+pub const SHADOW_OVERLAY: Shadow = Shadow {
+    color: rgba(0x000000a6),
+    offset: Vector::new(0.0, 20.0),
+    blur_radius: 56.0,
+};
 
 // Surfaces.
 pub const FRAME: Color = rgb(0x07080c);
@@ -163,6 +179,8 @@ pub const CAPTION: f32 = 12.0;
 pub const BODY: f32 = 15.0;
 pub const BODY_LG: f32 = 16.0;
 pub const HEADING: f32 = 22.0;
+/// Page and section titles (Settings sections, Requests, Calendar).
+pub const TITLE: f32 = 28.0;
 pub const DISPLAY: f32 = 56.0;
 
 // Spacing (4px scale) and radii: panels ~10, cells square-ish.
@@ -173,6 +191,8 @@ pub const S4: f32 = 16.0;
 pub const S6: f32 = 24.0;
 pub const S8: f32 = 32.0;
 pub const R_XS: f32 = 3.0;
+/// Controls (buttons, chips, inputs, sidebar items).
+pub const R_CTL: f32 = 6.0;
 pub const R_PANEL: f32 = 10.0;
 pub const PAGE_PAD: f32 = 48.0;
 pub const HEADER_H: f32 = 56.0;
