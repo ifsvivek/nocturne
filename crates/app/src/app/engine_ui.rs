@@ -203,6 +203,15 @@ pub(crate) fn sheet_css() -> String {
     }
     // The colour of scrims and washes over pictures: the built-in frame whatever stage-1 theme is active (as the hand-written pages draw them); a Jellyfin theme's palette mirrors its background onto it.
     s += &format!(" --nocturne-ink: {};", c(t::FRAME));
+    // Elevation shadows (theme.rs `SHADOW_RAISED` / `SHADOW_OVERLAY`), for cards and overlays.
+    for (name, sh) in [("raised", t::SHADOW_RAISED), ("overlay", t::SHADOW_OVERLAY)] {
+        s += &format!(
+            " --nocturne-shadow-{name}: 0 {}px {}px {};",
+            sh.offset.y,
+            sh.blur_radius,
+            c(sh.color)
+        );
+    }
     s += &format!(
         " --nocturne-r-card: {}px; --nocturne-r-panel: {}px; --nocturne-page-pad: {}px; }}\n",
         k.r_card,

@@ -384,7 +384,7 @@ pub fn head(i: usize) -> Option<&'static str> {
         0 => Some("Server changes"),
         2 => Some("Playback"),
         11 => Some("Home"),
-        14 => Some("Appearance and storage"),
+        14 => Some("Look and feel"),
         17 => Some("Other devices"),
         18 => Some("Watched state"),
         19 => Some("Trakt"),
@@ -402,27 +402,167 @@ pub fn head(i: usize) -> Option<&'static str> {
     }
 }
 
-/// Index of row `i` among the Settings page's scroll children: a title, then each row preceded by its
-/// section header, if it starts one. Lets the page scroll the focused row into view.
-pub fn scroll_child(i: usize) -> usize {
-    1 + i + (0..=i).filter(|r| head(*r).is_some()).count()
+/// A page of the Settings sidebar. Every row belongs to exactly one (`Section::rows`); within a
+/// section, `head` still splits the rows into titled groups.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Section {
+    General,
+    Appearance,
+    Home,
+    Playback,
+    Sources,
+    Sync,
+    Requests,
+    Gateway,
+    Privacy,
+    Updates,
+    About,
 }
 
-/// The row a navigation key lands on from `sel` (Up / Down / PgUp / PgDn / Home / End), clamped.
-pub fn nav_row(sel: usize, key: &str) -> Option<usize> {
-    const PAGE: usize = 5;
-    Some(
-        match key {
-            "up" => sel.saturating_sub(1),
-            "down" => sel + 1,
-            "pageup" => sel.saturating_sub(PAGE),
-            "pagedown" => sel + PAGE,
-            "home" => 0,
-            "end" => ROWS - 1,
-            _ => return None,
+impl Section {
+    /// Sidebar order.
+    pub const ALL: [Section; 11] = [
+        Section::General,
+        Section::Appearance,
+        Section::Home,
+        Section::Playback,
+        Section::Sources,
+        Section::Sync,
+        Section::Requests,
+        Section::Gateway,
+        Section::Privacy,
+        Section::Updates,
+        Section::About,
+    ];
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Section::General => "General",
+            Section::Appearance => "Appearance & Themes",
+            Section::Home => "Home",
+            Section::Playback => "Playback",
+            Section::Sources => "Sources & Servers",
+            Section::Sync => "Sync & Trakt",
+            Section::Requests => "Requests",
+            Section::Gateway => "Gateway",
+            Section::Privacy => "Privacy & Data",
+            Section::Updates => "Updates",
+            Section::About => "About",
         }
-        .min(ROWS - 1),
-    )
+    }
+
+    /// One sentence under the section title.
+    pub fn blurb(self) -> &'static str {
+        match self {
+            Section::General => "Who opens at launch and how NOCTURNE fits the room.",
+            Section::Appearance => "Themes, poster size and how much the interface moves.",
+            Section::Home => "What the Home page shows and how its banner behaves.",
+            Section::Playback => "Languages, subtitles, buffering and where video plays.",
+            Section::Sources => "Your servers and folders, and what NOCTURNE may change on them.",
+            Section::Sync => "Watched state across your sources, and your Trakt account.",
+            Section::Requests => "Ask for movies and shows that are not in your library yet.",
+            Section::Gateway => "One address over every source, for phone and TV apps.",
+            Section::Privacy => "What NOCTURNE keeps on this computer and what it may download.",
+            Section::Updates => "Whether NOCTURNE looks for a newer version.",
+            Section::About => "Version, licence and where NOCTURNE comes from.",
+        }
+    }
+
+    /// The rows of this section in display order.
+    pub fn rows(self) -> &'static [usize] {
+        match self {
+            Section::General => &[PROFILE_ROW, COUCH_ROW],
+            Section::Appearance => &[14, 16],
+            Section::Home => &[11, 12, 13, HERO_AUTOPLAY_ROW, HERO_INTERVAL_ROW, COMING_ROW],
+            Section::Playback => &[2, 3, 4, 5, 6, 7, PLAYER_ROW, 8, 9, 10],
+            Section::Sources => &[0, 17],
+            Section::Sync => &[1, 18, TRAKT_ROW, 20, 21],
+            Section::Requests => &[
+                SEERR_ROW,
+                SEERR_ALLOW_ROW,
+                NATIVE_ROW,
+                RADARR_ROW,
+                SONARR_ROW,
+                ARR_ALLOW_ROW,
+            ],
+            Section::Gateway => &[
+                GATEWAY_ROW,
+                GATEWAY_BINDING_ROW,
+                GATEWAY_PORT_ROW,
+                GATEWAY_CACHE_ROW,
+                GATEWAY_KEEP_ROW,
+                GATEWAY_REMOTE_ROW,
+                GATEWAY_VIEWS_ROW,
+                GATEWAY_ANNOUNCE_ROW,
+            ],
+            Section::Privacy => &[15, REMOTE_CSS_ROW],
+            Section::Updates => &[UPDATES_ROW],
+            Section::About => &[],
+        }
+    }
+
+    /// The section row `i` belongs to.
+    pub fn of(i: usize) -> Section {
+        Section::ALL
+            .into_iter()
+            .find(|s| s.rows().contains(&i))
+            .unwrap_or(Section::General)
+    }
+}
+
+/// Every row in sidebar order: the arrow keys walk this list across sections.
+pub fn order() -> Vec<usize> {
+    Section::ALL
+        .iter()
+        .flat_map(|s| s.rows().iter().copied())
+        .collect()
+}
+
+/// Rows whose label, help or section title contains every word of `query` (case-insensitive), in
+/// sidebar order. An empty query matches nothing (the page shows sections then).
+pub fn search(rows: &[Row], query: &str) -> Vec<usize> {
+    let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    if words.is_empty() {
+        return vec![];
+    }
+    order()
+        .into_iter()
+        .filter(|&i| {
+            let r = &rows[i];
+            let hay = format!("{} {} {}", r.label, r.hint, Section::of(i).title()).to_lowercase();
+            words.iter().all(|w| hay.contains(w.as_str()))
+        })
+        .collect()
+}
+
+/// The row a navigation key lands on from `sel` (Up / Down / PgUp / PgDn / Home / End) within
+/// `list` (the display order), clamped. A `sel` outside the list starts at its first entry.
+pub fn nav_row(list: &[usize], sel: usize, key: &str) -> Option<usize> {
+    const PAGE: usize = 5;
+    let last = list.len().checked_sub(1)?;
+    let Some(at) = list.iter().position(|r| *r == sel) else {
+        return matches!(key, "up" | "down" | "pageup" | "pagedown" | "home" | "end")
+            .then(|| list[0]);
+    };
+    let to = match key {
+        "up" => at.saturating_sub(1),
+        "down" => at + 1,
+        "pageup" => at.saturating_sub(PAGE),
+        "pagedown" => at + PAGE,
+        "home" => 0,
+        "end" => last,
+        _ => return None,
+    };
+    Some(list[to.min(last)])
+}
+
+/// The first sentence of a row's help: the one line shown under its label (the full text shows
+/// while the row is selected).
+pub fn summary(hint: &str) -> &str {
+    match hint.find(". ") {
+        Some(n) => &hint[..=n],
+        None => hint,
+    }
 }
 
 /// Two plain sentences under the "Server changes" title.
@@ -493,7 +633,7 @@ impl Settings {
         vec![
             r(
                 "Allow NOCTURNE to change data on the server",
-                "Off by default. Needed for watched, favourites, progress sync, admin changes and password change.",
+                "Needed for watched, favourites, progress sync, admin changes and password change. Off by default.",
                 onoff(self.allow_server_writes),
             ),
             r(
@@ -1638,23 +1778,58 @@ mod tests {
 
     #[test]
     fn scroll_and_focus_logic() {
-        // Child 0 is the title; heads sit before rows 0, 2, 11, 14, 17, 18, 19, 22, 23, 24, 25, 26, 28, 29, 30, 32 and 36.
-        assert_eq!(scroll_child(0), 2);
-        assert_eq!(scroll_child(1), 3);
-        assert_eq!(scroll_child(2), 5);
-        assert_eq!(scroll_child(11), 15);
-        assert_eq!(scroll_child(ROWS - 1), 1 + ROWS - 1 + 17);
-        assert!((1..ROWS).all(|i| scroll_child(i) > scroll_child(i - 1)));
-        assert_eq!(nav_row(0, "up"), Some(0));
-        assert_eq!(nav_row(ROWS - 1, "down"), Some(ROWS - 1));
-        assert_eq!(nav_row(3, "pagedown"), Some(8));
-        assert_eq!(nav_row(ROWS - 3, "pagedown"), Some(ROWS - 1));
-        assert_eq!(nav_row(3, "pageup"), Some(0));
+        let list = [5, 9, 2, 7, 1, 3, 8];
+        assert_eq!(nav_row(&list, 5, "up"), Some(5));
+        assert_eq!(nav_row(&list, 8, "down"), Some(8));
+        assert_eq!(nav_row(&list, 9, "down"), Some(2));
+        assert_eq!(nav_row(&list, 9, "pagedown"), Some(8));
+        assert_eq!(nav_row(&list, 3, "pageup"), Some(5));
         assert_eq!(
-            (nav_row(7, "home"), nav_row(7, "end")),
-            (Some(0), Some(ROWS - 1))
+            (nav_row(&list, 7, "home"), nav_row(&list, 7, "end")),
+            (Some(5), Some(8))
         );
-        assert_eq!(nav_row(7, "x"), None);
+        assert_eq!(nav_row(&list, 7, "x"), None);
+        // A selection outside the list (search results changed) lands on the first entry.
+        assert_eq!(nav_row(&list, 40, "down"), Some(5));
+        assert_eq!(nav_row(&[], 0, "down"), None);
+    }
+
+    #[test]
+    fn every_row_belongs_to_exactly_one_section() {
+        for i in 0..ROWS {
+            let n = Section::ALL
+                .iter()
+                .filter(|s| s.rows().contains(&i))
+                .count();
+            assert_eq!(n, 1, "row {i} is in {n} sections");
+            assert!(Section::of(i).rows().contains(&i));
+        }
+        let o = order();
+        assert_eq!(o.len(), ROWS);
+        assert!(Section::About.rows().is_empty());
+        assert_eq!(Section::of(GATEWAY_PORT_ROW), Section::Gateway);
+        assert_eq!(Section::of(TRAKT_ROW), Section::Sync);
+    }
+
+    #[test]
+    fn search_matches_labels_help_and_section_titles() {
+        let rows = Settings::default().rows();
+        assert!(search(&rows, "  ").is_empty());
+        assert_eq!(search(&rows, "SUBTITLE language"), vec![3]);
+        // Help text counts, and the result keeps sidebar order.
+        let hits = search(&rows, "keyring");
+        assert!(hits.contains(&SEERR_ROW) && hits.contains(&RADARR_ROW));
+        // A section title finds all of its rows.
+        let gw = search(&rows, "gateway");
+        assert!(Section::Gateway.rows().iter().all(|r| gw.contains(r)));
+        assert!(search(&rows, "zzzz nothing").is_empty());
+    }
+
+    #[test]
+    fn summary_is_the_first_sentence() {
+        assert_eq!(summary("One. Two."), "One.");
+        assert_eq!(summary("Only one."), "Only one.");
+        assert_eq!(summary("No stop"), "No stop");
     }
 
     #[test]

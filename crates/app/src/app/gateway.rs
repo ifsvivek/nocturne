@@ -538,7 +538,7 @@ impl App {
         )
         .padding(t::S4)
         .width(Length::Fill)
-        .style(style::panel)
+        .style(style::card)
         .into()
     }
 
@@ -791,9 +791,7 @@ impl App {
                 .spacing(t::S2),
             ));
         }
-        container(col)
-            .padding([t::S4, t::page_pad() + t::S6])
-            .into()
+        container(col).width(Length::Fill).into()
     }
 }
 

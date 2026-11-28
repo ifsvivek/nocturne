@@ -128,7 +128,7 @@ impl Registry {
                 Ok(()) => (true, None),
                 Err(e) if e.is_empty() => (false, None),
                 Err(e) => {
-                    eprintln!("nocturne-server: module {name}: {e}");
+                    crate::slog!("module {name}: {e}");
                     (false, Some(e))
                 }
             };

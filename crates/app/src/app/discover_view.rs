@@ -171,7 +171,11 @@ impl App {
         let have = self.disc_have();
         match (&d.cards, d.src) {
             (_, None) if d.sources_ready() => {
-                page = page.push(pad(dim(dc::connect_text(have))));
+                page = page.push(crate::widget::empty_state(
+                    "film",
+                    "Connect a source of titles",
+                    dc::connect_text(have),
+                ));
             }
             (None, _) | (Some(Load::Loading), _) => page = page.push(pad(dim("Loading"))),
             (Some(Load::Failed), _) => {
@@ -187,11 +191,19 @@ impl App {
             }
             (Some(Load::Ready(cards)), _) => {
                 if cards.is_empty() {
-                    page = page.push(pad(dim(if f.searching() {
-                        "Nothing found for that search."
+                    page = page.push(if f.searching() {
+                        crate::widget::empty_state(
+                            "search",
+                            "Nothing found",
+                            "Try another title, or fewer words.",
+                        )
                     } else {
-                        "Nothing in this list."
-                    })));
+                        crate::widget::empty_state(
+                            "film",
+                            "Nothing in this list",
+                            "Pick another list or genre above.",
+                        )
+                    });
                 }
                 let grid = row(cards.iter().map(|c| self.card_view(c)))
                     .spacing(t::S4)
@@ -303,9 +315,11 @@ impl App {
     pub(super) fn native_list<'a>(&'a self, mut page: Column<'a, Message>) -> Column<'a, Message> {
         let w = &self.rq.disc.wish;
         if w.entries.is_empty() {
-            return page.push(pad(dim(
-                "You have not requested anything yet. Open Discover to find a title, or use Request on a Calendar entry.",
-            )));
+            return page.push(crate::widget::empty_state(
+                "inbox",
+                "No requests yet",
+                "Open Discover to find a title, or use Request on a Calendar entry.",
+            ));
         }
         for e in &w.entries {
             page = page

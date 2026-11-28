@@ -1,4 +1,4 @@
-//! `nocturne-server`: `serve` (what the systemd unit runs; also the default without arguments). The CLI subcommands come in `cli.rs`.
+//! `nocturne-server`: `serve` (what the systemd unit runs; also the default without arguments) and the CLI commands of `cli.rs`.
 use nocturne_core::server::ServerConfig;
 use nocturne_server::module::Registry;
 use nocturne_server::state::{Paths, Secrets, Shared};
@@ -20,12 +20,16 @@ fn harden() {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.first().map(String::as_str) {
-        None | Some("serve") => {}
-        Some(other) => {
-            eprintln!("nocturne-server: unknown command {other:?}");
-            std::process::exit(2);
+    if args.first().map(String::as_str) == Some("agent") {
+        harden();
+        std::process::exit(nocturne_server::modules::storage::agent_main(&args[1..]));
+    }
+    if let Some(r) = nocturne_server::cli::run(&args) {
+        if let Err(e) = r {
+            eprintln!("nocturne-server: {e}");
+            std::process::exit(1);
         }
+        return;
     }
     harden();
     let rt = tokio::runtime::Builder::new_multi_thread()

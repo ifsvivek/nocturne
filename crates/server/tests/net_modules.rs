@@ -389,6 +389,10 @@ fn the_0_7_settings_are_imported_once_and_the_app_files_are_left_alone() {
         }]
     );
     assert!(nocturne_server::modules::gateway::imported(&sh));
+    assert!(
+        nocturne_server::cli::gateway_marker(&sh.paths.data).exists(),
+        "the installer may remove the 0.7 unit now"
+    );
     // Once only: a later change of the server's own section is not overwritten.
     let mut c = sh.cfg();
     c.set_section("gateway", &GatewayCfg::default()).unwrap();

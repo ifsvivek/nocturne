@@ -211,6 +211,7 @@ pub enum LibraryMode {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Library {
     /// 0 when saving a new one.
+    #[serde(default)]
     pub id: u64,
     pub name: String,
     pub kind: MediaKind,
@@ -218,8 +219,10 @@ pub struct Library {
     /// Absolute. Imports write only below it.
     pub root: PathBuf,
     /// Per title, relative to `root` (tokens: docs/dev/ARR_PLAN.md section 6).
+    #[serde(default)]
     pub folder_template: String,
     /// Per file, relative to the title folder, without extension.
+    #[serde(default)]
     pub file_template: String,
 }
 
@@ -549,6 +552,36 @@ pub struct Status {
     pub down_rate: u64,
     pub up_rate: u64,
     pub jobs: Vec<JobInfo>,
+    /// Free space of the file systems the server writes to (data, downloads, library folders, mounts), one entry per file system.
+    #[serde(default)]
+    pub disk: Vec<Disk>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Disk {
+    /// One of the folders on this file system.
+    pub path: PathBuf,
+    pub total: u64,
+    pub free: u64,
+}
+
+/// One upcoming (or recent) unit for the calendar.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CalendarEntry {
+    pub title: u64,
+    pub title_name: String,
+    pub kind: MediaKind,
+    pub unit: Unit,
+}
+
+/// A metadata search result for adding a title (`ids` carries the provider's id).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LookupHit {
+    pub kind: MediaKind,
+    pub name: String,
+    pub year: Option<u16>,
+    pub overview: String,
+    pub ids: Ids,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

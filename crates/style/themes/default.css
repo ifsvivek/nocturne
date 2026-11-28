@@ -139,7 +139,7 @@ page { display: flex; flex-direction: column; background: var(--nocturne-bg, tra
 
 /* ---- search overlay ---- */
 .search-layer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; padding-top: 80px; background: alpha(var(--nocturne-ink), 0.69); }
-.search-panel { display: flex; flex-direction: column; flex: none; width: 720px; max-width: 100%; max-height: 520px; position: relative; overflow: hidden; background: var(--nocturne-surface); border-radius: var(--nocturne-r-panel); }
+.search-panel { display: flex; flex-direction: column; flex: none; width: 720px; max-width: 100%; max-height: 520px; position: relative; overflow: hidden; background: var(--nocturne-surface); border-radius: var(--nocturne-r-panel); box-shadow: var(--nocturne-shadow-overlay); }
 .search-frame { position: absolute; top: 0; left: 0; right: 0; bottom: 0; border: 1px solid var(--nocturne-hairline-strong); border-radius: var(--nocturne-r-panel); pointer-events: none; }
 .search-head { display: flex; flex-direction: row; align-items: center; flex: none; gap: 12px; height: 56px; padding: 0 16px; }
 .search-tag { flex: none; color: var(--nocturne-text-tertiary); font-family: monospace; font-size: 11px; }

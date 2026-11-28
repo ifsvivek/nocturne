@@ -4099,9 +4099,12 @@ dependencies = [
  "nocturne-arr-types",
  "nocturne-core",
  "nocturne-gateway",
+ "nocturne-indexer",
  "nocturne-jellyfin-admin",
  "nocturne-jellyfin-user",
  "nocturne-session",
+ "nocturne-storage",
+ "nocturne-torrent",
  "redb",
  "reqwest",
  "rustls",
@@ -4112,6 +4115,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-rustls",
+ "tokio-util",
  "toml",
  "tower",
 ]
@@ -4126,6 +4130,17 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "toml",
+]
+
+[[package]]
+name = "nocturne-storage"
+version = "0.7.0"
+dependencies = [
+ "libc",
+ "reqwest",
+ "serde",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

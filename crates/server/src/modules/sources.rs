@@ -356,6 +356,155 @@ async fn check_all(sh: &Shared) {
     }
 }
 
+// ---------------------------------------------------------------- catalog for the library manager
+
+/// What the Jellyfin sources hold, for the library manager ([`crate::library::Catalog`]): a monitored movie or episode found here counts as available and is never grabbed. Built from one listing per source (movies, series, episodes with provider ids) and rebuilt with every health round.
+/// ponytail: movies and episodes only; music and books are never matched (add albums and books when the library manager monitors them from Jellyfin sources).
+#[derive(Default)]
+pub struct SourceCatalog {
+    movies: std::sync::RwLock<std::collections::HashSet<String>>,
+    episodes: std::sync::RwLock<std::collections::HashSet<(String, u32, u32)>>,
+}
+
+/// Match keys of a title: provider ids, then lowercased name with year.
+fn keys(ids: &nocturne_core::server::types::Ids, name: &str, year: Option<u16>) -> Vec<String> {
+    let mut k = vec![];
+    if let Some(i) = &ids.imdb {
+        k.push(format!("imdb:{}", i.to_ascii_lowercase()));
+    }
+    if let Some(i) = ids.tmdb {
+        k.push(format!("tmdb:{i}"));
+    }
+    if let Some(i) = ids.tvdb {
+        k.push(format!("tvdb:{i}"));
+    }
+    if !name.is_empty() {
+        k.push(format!(
+            "name:{}:{}",
+            name.trim().to_lowercase(),
+            year.unwrap_or(0)
+        ));
+    }
+    k
+}
+
+/// The same keys from a Jellyfin item (`ProviderIds`, `Name`, `ProductionYear`).
+fn item_keys(v: &Value) -> Vec<String> {
+    let p = &v["ProviderIds"];
+    let pid = |n: &str| {
+        p.as_object()
+            .and_then(|o| o.iter().find(|(k, _)| k.eq_ignore_ascii_case(n)))
+            .and_then(|(_, v)| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+    };
+    let ids = nocturne_core::server::types::Ids {
+        imdb: pid("Imdb"),
+        tmdb: pid("Tmdb").and_then(|s| s.parse().ok()),
+        tvdb: pid("Tvdb").and_then(|s| s.parse().ok()),
+        ..Default::default()
+    };
+    let year = v["ProductionYear"]
+        .as_u64()
+        .and_then(|y| u16::try_from(y).ok());
+    keys(&ids, v["Name"].as_str().unwrap_or(""), year)
+}
+
+impl crate::library::Catalog for SourceCatalog {
+    fn has(&self, t: &nocturne_core::server::Title, u: &nocturne_core::server::Unit) -> bool {
+        use nocturne_core::server::types::MediaKind;
+        let tk = keys(&t.ids, &t.name, t.year);
+        match t.kind {
+            MediaKind::Movie => {
+                let m = self.movies.read().unwrap();
+                tk.iter().any(|k| m.contains(k))
+            }
+            MediaKind::Series => {
+                let (Some(se), Some(ep)) = (u.season, u.episode) else {
+                    return false;
+                };
+                let e = self.episodes.read().unwrap();
+                tk.iter().any(|k| e.contains(&(k.clone(), se, ep)))
+            }
+            _ => false,
+        }
+    }
+}
+
+async fn jf_items(s: &Source, t: &Token, query: &str) -> Vec<Value> {
+    let r = http()
+        .get(format!("{}/Items?userId={}&Recursive=true&{query}", s.rec.url, s.rec.user_id))
+        .timeout(Duration::from_secs(120))
+        .header(
+            "Authorization",
+            format!(r#"MediaBrowser Client="NOCTURNE Server", Device="server", DeviceId="nocturne-server", Version="{}", Token="{}""#, env!("CARGO_PKG_VERSION"), t.expose()),
+        )
+        .send()
+        .await;
+    let Some(r) = r.ok().filter(|r| r.status().is_success()) else {
+        return vec![];
+    };
+    r.json::<Value>()
+        .await
+        .ok()
+        .and_then(|v| v["Items"].as_array().cloned())
+        .unwrap_or_default()
+}
+
+/// Rebuild the catalog from every enabled, signed-in Jellyfin source.
+async fn refresh_catalog(sh: &Shared) {
+    let (mut movies, mut episodes) = (
+        std::collections::HashSet::new(),
+        std::collections::HashSet::new(),
+    );
+    for s in load(sh)
+        .await
+        .into_iter()
+        .filter(|s| s.rec.enabled && s.rec.kind == SourceKind::Jellyfin)
+    {
+        let Some(t) = &s.token else { continue };
+        for m in jf_items(
+            &s,
+            t,
+            "IncludeItemTypes=Movie&Fields=ProviderIds,ProductionYear",
+        )
+        .await
+        {
+            movies.extend(item_keys(&m));
+        }
+        let series: std::collections::HashMap<String, Vec<String>> = jf_items(
+            &s,
+            t,
+            "IncludeItemTypes=Series&Fields=ProviderIds,ProductionYear",
+        )
+        .await
+        .iter()
+        .filter_map(|v| Some((v["Id"].as_str()?.to_string(), item_keys(v))))
+        .collect();
+        for e in jf_items(
+            &s,
+            t,
+            "IncludeItemTypes=Episode&Fields=ParentIndexNumber,IndexNumber",
+        )
+        .await
+        {
+            let (Some(sid), Some(se), Some(ep)) = (
+                e["SeriesId"].as_str(),
+                e["ParentIndexNumber"].as_u64(),
+                e["IndexNumber"].as_u64(),
+            ) else {
+                continue;
+            };
+            for k in series.get(sid).into_iter().flatten() {
+                episodes.insert((k.clone(), se as u32, ep as u32));
+            }
+        }
+    }
+    let c = sh.ext::<SourceCatalog>();
+    *c.movies.write().unwrap() = movies;
+    *c.episodes.write().unwrap() = episodes;
+}
+
 // ---------------------------------------------------------------- import from the desktop app
 
 /// Once per server data directory: the desktop app's Jellyfin accounts (`sources.toml` next to `server.toml`, tokens from the app's keyring entries, which are only read, never changed or deleted). Only with the real keyring: tests (memory secrets) never touch the user's keyring. Returns how many were added.
@@ -751,8 +900,11 @@ impl Module for Sources {
             *self.stop.lock().unwrap() = Some(tx);
             let sh = sh.clone();
             tokio::spawn(async move {
+                *sh.ext::<crate::library::CatalogSlot>().0.write().unwrap() =
+                    Some(sh.ext::<SourceCatalog>() as std::sync::Arc<dyn crate::library::Catalog>);
                 loop {
                     check_all(&sh).await;
+                    refresh_catalog(&sh).await;
                     tokio::select! {
                         () = sh.stopped() => return,
                         _ = rx.changed() => return,
@@ -764,8 +916,9 @@ impl Module for Sources {
         })
     }
 
-    fn stop<'a>(&'a self, _: &'a Shared) -> BoxFut<'a, ()> {
+    fn stop<'a>(&'a self, sh: &'a Shared) -> BoxFut<'a, ()> {
         Box::pin(async move {
+            *sh.ext::<crate::library::CatalogSlot>().0.write().unwrap() = None;
             if let Some(tx) = self.stop.lock().unwrap().take() {
                 let _ = tx.send(true);
             }
@@ -797,6 +950,82 @@ mod tests {
         ] {
             assert!(normalize_url(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn the_catalog_matches_by_provider_id_then_name_and_year() {
+        use crate::library::Catalog;
+        use nocturne_core::server::types::{Ids, MediaKind};
+        use nocturne_core::server::{Title, Unit};
+        let c = SourceCatalog::default();
+        c.movies.write().unwrap().extend(item_keys(
+            &json!({"Name": "Heat", "ProductionYear": 1995, "ProviderIds": {"Imdb": "tt0113277"}}),
+        ));
+        c.movies.write().unwrap().extend(item_keys(
+            &json!({"Name": "Local Film", "ProductionYear": 2010}),
+        ));
+        let series = item_keys(&json!({"Name": "Dark", "ProviderIds": {"Tvdb": "334824"}}));
+        c.episodes
+            .write()
+            .unwrap()
+            .extend(series.into_iter().map(|k| (k, 1, 2)));
+        let title = |kind, name: &str, year, ids| Title {
+            id: 1,
+            kind,
+            name: name.into(),
+            year,
+            ids,
+            profile: 0,
+            library: 0,
+            monitored: true,
+            added: 0,
+        };
+        let unit = |season, episode| Unit {
+            id: 1,
+            title: 1,
+            name: String::new(),
+            season,
+            episode,
+            year: None,
+            air_date: None,
+            ids: Ids::default(),
+            monitored: true,
+            file: None,
+        };
+        let imdb = Ids {
+            imdb: Some("TT0113277".into()),
+            ..Default::default()
+        };
+        assert!(
+            c.has(
+                &title(MediaKind::Movie, "Other name", None, imdb),
+                &unit(None, None)
+            ),
+            "by imdb id"
+        );
+        assert!(
+            c.has(
+                &title(MediaKind::Movie, "local film", Some(2010), Ids::default()),
+                &unit(None, None)
+            ),
+            "by name and year"
+        );
+        assert!(!c.has(
+            &title(MediaKind::Movie, "local film", Some(2011), Ids::default()),
+            &unit(None, None)
+        ));
+        let tvdb = Ids {
+            tvdb: Some(334824),
+            ..Default::default()
+        };
+        assert!(c.has(
+            &title(MediaKind::Series, "Dark", None, tvdb.clone()),
+            &unit(Some(1), Some(2))
+        ));
+        assert!(!c.has(
+            &title(MediaKind::Series, "Dark", None, tvdb),
+            &unit(Some(1), Some(3))
+        ));
     }
 
     #[test]

@@ -5,11 +5,19 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 ## [Unreleased]
 
 ### Added
+- `nocturne-server`: a headless server with independently enabled modules behind one REST + WebSocket API, first-run admin setup, session tokens and API keys, a local-admin unix socket, and a CLI (`install`, `status`, `config`, `apikey`, ...).
+- Library manager in the server: monitored movies, shows, music and books, quality profiles, user-added Torznab / Newznab indexers, automatic and interactive search, a download queue on the built-in torrent engine, import into your library folders under naming templates, failed-download handling, RSS, missing and upgrade searches, and native requests.
 - Gateway: the Jellyfin web client, and the official phone apps that wrap it, work through the gateway: sign-in by password or Quick Connect, Home, libraries, item pages, search, favourites, playback (direct play, transcoding when the browser needs it, subtitle and audio track changes, resume), the display, home, playback and subtitle settings (kept by the gateway, never written to a server), the cast menu and sign-out.
 - Gateway: named API keys for clients that sign in with a key instead of the password; they are stored hashed, can be revoked one by one and survive a password change.
 - Server: sources (Jellyfin servers by password, Quick Connect or API key, and other NOCTURNE servers; tokens in the keyring), the gateway as a module of the server with its management in the server API, optional remote access through your installed `cloudflared` (a dashboard-made tunnel or a quick test address), and a scan of the local network for Jellyfin and NOCTURNE servers. On first start the server takes over the 0.7 gateway settings, devices and ids and the app's Jellyfin accounts without changing the app's own files or keyring entries.
 
+### Changed
+- Settings is a two-pane page: a sidebar of sections (General, Appearance & Themes, Home, Playback, Sources & Servers, Sync & Trakt, Requests, Gateway, Privacy & Data, Updates, About) with icons, and the selected section with its rows in rounded cards. A search field at the top of the sidebar (or `/`) filters rows across all sections. Tab and Shift+Tab move between sections; the arrow keys walk every row and cross into the next section. Narrow windows show the section list and drill into one section.
+- One elevation scale: raised cards and overlays (dialogs, menus, toasts, tooltips, the search panel) get soft shadows over the existing hairline outlines.
+- Empty Requests, Discover, Calendar and My themes views show an icon and a sentence instead of a bare line of text.
+
 ### Fixed
+- The header is opaque, so page text no longer shows through it while scrolling (Settings content now also starts below the header).
 - Gateway: favourites kept in the gateway (server changes off) now show in the Favourites tab, and a watched title started again keeps its resume point.
 
 ## [0.7.0] - 2026-11-27

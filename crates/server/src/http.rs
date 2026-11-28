@@ -166,8 +166,8 @@ pub async fn run(
         .iter()
         .filter_map(|l| l.local_addr().ok())
         .collect();
-    eprintln!(
-        "nocturne-server: listening on {}",
+    crate::slog!(
+        "listening on {}",
         addrs
             .iter()
             .map(|a| a.to_string())

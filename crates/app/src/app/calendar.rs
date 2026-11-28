@@ -575,15 +575,18 @@ impl App {
         let mut list = column![].spacing(t::S2);
         let shown = cal::by_day(&c.entries, s, e);
         if shown.is_empty() {
-            list = list.push(
-                text(if c.pending > 0 {
-                    "Loading upcoming episodes"
-                } else {
-                    "Nothing airing in this range"
-                })
-                .size(t::BODY)
-                .color(t::text_secondary()),
-            );
+            list = list.push(if c.pending > 0 {
+                text("Loading upcoming episodes")
+                    .size(t::BODY)
+                    .color(t::text_secondary())
+                    .into()
+            } else {
+                crate::widget::empty_state(
+                    "calendar",
+                    "Nothing airing in this range",
+                    "Step to the next period, or follow more shows on your servers.",
+                )
+            });
         }
         for (day, group) in shown {
             list = list.push(

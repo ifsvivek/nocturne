@@ -1,6 +1,6 @@
 //! "Keep running when NOCTURNE is closed": the systemd user units that start the companion processes (`nocturne-gateway`, docs/dev/GATEWAY_PLAN.md section 5; `nocturne-server`, docs/dev/SERVER_PLAN.md) at login. Linux only; launchd and a Windows login task come with those platforms.
 //!
-//! A user unit starts when the user logs in, which is also when the Secret Service is available; `loginctl enable-linger` is not supported because the keyring would be locked. The text and the file handling are pure and tested; `enable` / `disable` call `systemctl --user`.
+//! A user unit starts when the user logs in, which is also when the Secret Service is available. Lingering (`loginctl enable-linger`, offered by `nocturne-server install --linger`) starts it at boot instead, but the keyring stays locked until the user logs in, so stored keys are unavailable until then. The text and the file handling are pure and tested; `enable` / `disable` call `systemctl --user`.
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -13,6 +13,8 @@ pub struct Service {
     pub data: &'static str,
     /// Also writes the cache directory.
     pub cache: bool,
+    /// File-system confinement: the system and home read-only except the listed folders. Off for the server, which writes into library folders the user picks at run time (anywhere); it still gets `ProtectSystem=full` (`/usr`, `/boot`, `/etc` read-only).
+    pub confined: bool,
 }
 
 pub const GATEWAY: Service = Service {
@@ -20,6 +22,7 @@ pub const GATEWAY: Service = Service {
     description: "NOCTURNE gateway (one Jellyfin-compatible address over your sources)",
     data: "gateway",
     cache: true,
+    confined: true,
 };
 
 pub const SERVER: Service = Service {
@@ -27,6 +30,7 @@ pub const SERVER: Service = Service {
     description: "NOCTURNE server (library manager, downloads, requests, gateway)",
     data: "server",
     cache: false,
+    confined: false,
 };
 
 /// `$XDG_CONFIG_HOME/systemd/user`.
@@ -63,6 +67,14 @@ pub fn unit_text(svc: &Service, exe: &Path, writable: &[&Path]) -> io::Result<St
         rw.push_str(" -");
         rw.push_str(&quote(p)?.trim_matches('"').replace(' ', "\\x20"));
     }
+    // The runtime directory (socket, lock) is made by systemd and kept across restarts: without `RuntimeDirectoryPreserve` a crash removes it under the next start (a reboot crash-loop was seen).
+    let fs = if svc.confined {
+        format!(
+            "ProtectSystem=strict\nProtectHome=read-only\n{rw}\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX"
+        )
+    } else {
+        "ProtectSystem=full\nRuntimeDirectory=nocturne\nRuntimeDirectoryPreserve=yes\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK".to_string()
+    };
     Ok(format!(
         "[Unit]\n\
          Description={desc}\n\
@@ -74,11 +86,8 @@ pub fn unit_text(svc: &Service, exe: &Path, writable: &[&Path]) -> io::Result<St
          Restart=on-failure\n\
          RestartSec=5\n\
          NoNewPrivileges=yes\n\
-         ProtectSystem=strict\n\
-         ProtectHome=read-only\n\
-         {rw}\n\
+         {fs}\n\
          PrivateTmp=yes\n\
-         RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX\n\
          \n\
          [Install]\n\
          WantedBy=default.target\n",
@@ -112,7 +121,8 @@ pub fn remove_unit(svc: &Service, dir: &Path) -> io::Result<bool> {
     }
 }
 
-fn systemctl(args: &[&str]) -> io::Result<()> {
+/// `systemctl --user <args>`; the error is its stderr.
+pub fn systemctl(args: &[&str]) -> io::Result<()> {
     let out = std::process::Command::new("systemctl")
         .arg("--user")
         .args(args)
@@ -203,16 +213,21 @@ mod tests {
     }
 
     #[test]
-    fn server_unit_lists_its_library_folders() {
-        let t = unit_text(
-            &SERVER,
-            Path::new("/usr/bin/nocturne-server"),
-            &[Path::new("/data/server"), Path::new("/mnt/media/Movies")],
-        )
-        .unwrap();
+    fn server_unit_keeps_its_runtime_dir_and_may_write_library_folders() {
+        let t = unit_text(&SERVER, Path::new("/usr/bin/nocturne-server"), &[]).unwrap();
         assert!(t.contains("Description=NOCTURNE server"));
-        assert!(t.contains("ReadWritePaths=-%t/nocturne -/data/server -/mnt/media/Movies\n"));
-        assert!(t.contains("ProtectSystem=strict") && t.contains("ProtectHome=read-only"));
+        for must in [
+            "RuntimeDirectory=nocturne\n",
+            "RuntimeDirectoryPreserve=yes\n",
+            "ProtectSystem=full\n",
+            "NoNewPrivileges=yes",
+            "PrivateTmp=yes",
+        ] {
+            assert!(t.contains(must), "{must}\n{t}");
+        }
+        assert!(!t.contains("ProtectHome") && !t.contains("ReadWritePaths"));
+        let g = unit_text(&GATEWAY, Path::new("/g"), &[]).unwrap();
+        assert!(!g.contains("RuntimeDirectory=") && g.contains("ProtectSystem=strict"));
     }
 
     /// `systemd-analyze verify` is offline (it reads the file, starts nothing, never talks to the user's manager). Skipped where the tool is missing.

@@ -109,7 +109,7 @@ pub fn imported(sh: &Shared) -> bool {
 
 /// Once, at server start: the 0.7 gateway settings (the app's `settings.toml` `[gateway]` table, its write switches, and its local folders from `sources.toml`) become the `[gateway]` section unless the server already has one, and the app's Jellyfin accounts become sources ([`sources::import_app_accounts`]). Reads the app's files and keyring only; changes nothing of them. The gateway's own files need no copy: the module uses the 0.7 directory. Blocking.
 pub fn migrate(sh: &Shared) -> Result<(), String> {
-    if imported(sh) {
+    if imported(sh) && crate::cli::gateway_marker(&sh.paths.data).exists() {
         return Ok(());
     }
     let mut cfg = sh.cfg();
@@ -147,7 +147,12 @@ pub fn migrate(sh: &Shared) -> Result<(), String> {
         }
     }
     sources::import_app_accounts(sh);
-    sh.db.set_meta(MIGRATED, 1)
+    sh.db.set_meta(MIGRATED, 1)?;
+    // `nocturne-server install` removes the 0.7 gateway unit only once this marker exists.
+    let marker = crate::cli::gateway_marker(&sh.paths.data);
+    std::fs::create_dir_all(&sh.paths.data)
+        .and_then(|()| std::fs::write(&marker, b""))
+        .map_err(|e| format!("{}: {e}", marker.display()))
 }
 
 // ---------------------------------------------------------------- module

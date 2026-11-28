@@ -457,15 +457,15 @@ impl App {
                     }
                 }
                 if cards.is_empty() {
-                    col = col.push(small(
-                        if q.is_empty() {
-                            "No saved themes yet. Install one from Official or Community, or make one in the Editor."
-                        } else {
-                            "No themes match the search."
-                        }
-                        .into(),
-                        t::text_secondary(),
-                    ));
+                    col = col.push(if q.is_empty() {
+                        crate::widget::empty_state(
+                            "palette",
+                            "No saved themes yet",
+                            "Install one from Official or Community, or make one in the Editor.",
+                        )
+                    } else {
+                        crate::widget::empty_state("search", "No themes match", "Try another word.")
+                    });
                 }
             }
         }

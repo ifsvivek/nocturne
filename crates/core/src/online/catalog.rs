@@ -1,8 +1,8 @@
 //! The unit lists of the library manager of `nocturne-server` (docs/dev/SERVER_PLAN.md): a series' episodes (TVmaze), an artist's albums (MusicBrainz) and an author's books (Open Library). No keys. What is sent: the title's name or its provider id, never a path.
 use super::Engine;
 use super::http::Err;
-use crate::server::Unit;
-use crate::server::types::Ids;
+use crate::server::types::{Ids, MediaKind};
+use crate::server::{LookupHit, Unit};
 use serde_json::Value;
 
 pub const OPENLIBRARY_CREDIT: &str = "Book data from Open Library (openlibrary.org).";
@@ -74,6 +74,53 @@ pub fn parse_first_id(v: &Value) -> Option<String> {
         .map(|k| k.trim_start_matches("/authors/").to_string())
 }
 
+/// MusicBrainz `/artist?query=` or Open Library `/search/authors.json`: every hit.
+pub fn parse_people(v: &Value, kind: MediaKind) -> Vec<LookupHit> {
+    let rows = if kind == MediaKind::Music {
+        &v["artists"]
+    } else {
+        &v["docs"]
+    };
+    rows.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|r| {
+            let mut ids = Ids::default();
+            let (name, year, overview) = if kind == MediaKind::Music {
+                ids.musicbrainz = Some(r["id"].as_str()?.to_string());
+                (
+                    r["name"].as_str()?,
+                    r["life-span"]["begin"]
+                        .as_str()
+                        .and_then(|d| d.get(..4)?.parse().ok()),
+                    r["disambiguation"].as_str().unwrap_or_default(),
+                )
+            } else {
+                ids.openlibrary = Some(
+                    r["key"]
+                        .as_str()?
+                        .trim_start_matches("/authors/")
+                        .to_string(),
+                );
+                (
+                    r["name"].as_str()?,
+                    r["birth_date"]
+                        .as_str()
+                        .and_then(|d| d.rsplit(' ').next()?.parse().ok()),
+                    r["top_work"].as_str().unwrap_or_default(),
+                )
+            };
+            Some(LookupHit {
+                kind,
+                name: name.into(),
+                year,
+                overview: overview.into(),
+                ids,
+            })
+        })
+        .collect()
+}
+
 /// Open Library `/authors/{id}/works.json`.
 pub fn parse_works(v: &Value) -> Vec<Unit> {
     v["entries"]
@@ -93,6 +140,67 @@ pub fn parse_works(v: &Value) -> Vec<Unit> {
 }
 
 impl Engine {
+    /// Search a provider by name to add a title: TMDB for movies (needs the user's key), TVmaze for series, MusicBrainz for artists, Open Library for authors.
+    pub async fn search_titles(
+        &self,
+        kind: MediaKind,
+        q: &str,
+        tmdb_key: Option<&str>,
+    ) -> Result<Vec<LookupHit>, Err> {
+        let hit = |h: super::matching::Hit, ids: Ids| LookupHit {
+            kind,
+            name: h.title,
+            year: h.year,
+            overview: h.overview,
+            ids,
+        };
+        Ok(match kind {
+            MediaKind::Movie => {
+                let key = tmdb_key.ok_or(Err::Auth)?;
+                self.tmdb_client(key)
+                    .search(false, q, None)
+                    .await?
+                    .into_iter()
+                    .map(|h| {
+                        let ids = Ids {
+                            tmdb: h.id.parse().ok(),
+                            ..Default::default()
+                        };
+                        hit(h, ids)
+                    })
+                    .collect()
+            }
+            MediaKind::Series => self
+                .tvmaze_client()
+                .search(q)
+                .await?
+                .into_iter()
+                .map(|h| {
+                    let ids = Ids {
+                        tvmaze: h.id.parse().ok(),
+                        ..Default::default()
+                    };
+                    hit(h, ids)
+                })
+                .collect(),
+            MediaKind::Music => {
+                let query = format!("artist:\"{}\"", q.replace(['\\', '"'], " "));
+                let rb = self
+                    .http
+                    .get(&format!("{}/artist", self.ep.musicbrainz))
+                    .query(&[("query", query.as_str()), ("fmt", "json"), ("limit", "10")]);
+                parse_people(&self.http.json(&self.mb, rb).await?, kind)
+            }
+            MediaKind::Book => {
+                let rb = self
+                    .http
+                    .get(&format!("{}/search/authors.json", self.ep.openlibrary))
+                    .query(&[("q", q), ("limit", "10")]);
+                parse_people(&self.http.json(&self.ol, rb).await?, kind)
+            }
+        })
+    }
+
     /// A series' episodes, found by TVmaze id, else IMDb / TVDB id, else name. Returns the TVmaze id too.
     pub async fn series_units(&self, ids: &Ids, name: &str) -> Result<(u64, Vec<Unit>), Err> {
         let tv = self.tvmaze_client();
@@ -211,6 +319,35 @@ mod tests {
                 u[0].ids.musicbrainz.as_deref()
             ),
             ("Bookends", Some(1968), Some("a"))
+        );
+    }
+
+    #[test]
+    fn people_searches_list_every_hit() {
+        let a = parse_people(
+            &json!({"artists": [{"id": "x", "name": "Simon & Garfunkel", "life-span": {"begin": "1956"}, "disambiguation": "duo"}, {"name": "no id"}]}),
+            MediaKind::Music,
+        );
+        assert_eq!(a.len(), 1);
+        assert_eq!(
+            (
+                a[0].name.as_str(),
+                a[0].year,
+                a[0].ids.musicbrainz.as_deref()
+            ),
+            ("Simon & Garfunkel", Some(1956), Some("x"))
+        );
+        let b = parse_people(
+            &json!({"docs": [{"key": "OL31A", "name": "Ursula K. Le Guin", "birth_date": "21 October 1929", "top_work": "A Wizard of Earthsea"}]}),
+            MediaKind::Book,
+        );
+        assert_eq!(
+            (
+                b[0].year,
+                b[0].ids.openlibrary.as_deref(),
+                b[0].overview.as_str()
+            ),
+            (Some(1929), Some("OL31A"), "A Wizard of Earthsea")
         );
     }
 

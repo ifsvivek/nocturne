@@ -17,6 +17,8 @@ pub fn on_boot() -> Task<Message> {
             "open-admin" => Some(Message::OpenAdmin),
             "run-setup" => Some(Message::RunSetup),
             "open-settings" => Some(Message::MenuAct(crate::app::message::AcctAct::Settings)),
+            // Settings QA: `settings-q-<text>` types into its search field (`_` is a space).
+            n if n.starts_with("settings-q-") => Some(Message::SetQuery(n[11..].replace('_', " "))),
             "smart-menu" => Some(Message::Smart(crate::app::smart::Msg::Menu)),
             "smart-manage" => Some(Message::Smart(crate::app::smart::Msg::Manage)),
             "smart-new" => Some(Message::Smart(crate::app::smart::Msg::New)),
