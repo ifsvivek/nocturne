@@ -7,6 +7,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 ### Added
 - Gateway: the Jellyfin web client, and the official phone apps that wrap it, work through the gateway: sign-in by password or Quick Connect, Home, libraries, item pages, search, favourites, playback (direct play, transcoding when the browser needs it, subtitle and audio track changes, resume), the display, home, playback and subtitle settings (kept by the gateway, never written to a server), the cast menu and sign-out.
 - Gateway: named API keys for clients that sign in with a key instead of the password; they are stored hashed, can be revoked one by one and survive a password change.
+- Server: sources (Jellyfin servers by password, Quick Connect or API key, and other NOCTURNE servers; tokens in the keyring), the gateway as a module of the server with its management in the server API, optional remote access through your installed `cloudflared` (a dashboard-made tunnel or a quick test address), and a scan of the local network for Jellyfin and NOCTURNE servers. On first start the server takes over the 0.7 gateway settings, devices and ids and the app's Jellyfin accounts without changing the app's own files or keyring entries.
 
 ### Fixed
 - Gateway: favourites kept in the gateway (server changes off) now show in the Favourites tab, and a watched title started again keeps its resume point.

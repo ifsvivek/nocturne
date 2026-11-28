@@ -2,6 +2,16 @@
 use crate::module::Module;
 use std::sync::Arc;
 
+pub mod discovery;
+pub mod gateway;
+pub mod sources;
+pub mod tunnel;
+
 pub fn all() -> Vec<Arc<dyn Module>> {
-    vec![]
+    vec![
+        Arc::new(sources::Sources::default()),
+        Arc::new(gateway::Gateway::default()),
+        Arc::new(tunnel::Tunnel),
+        Arc::new(discovery::Discovery),
+    ]
 }

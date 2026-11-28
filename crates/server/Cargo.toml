@@ -28,7 +28,7 @@ redb = "3.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 toml = "1.2.1"
-tokio = { version = "1.54.1", features = ["rt-multi-thread", "net", "time", "sync", "io-util", "signal", "macros", "fs"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "net", "time", "sync", "io-util", "signal", "macros", "fs", "process"] }
 libc = "0.2"
 # The same minimal HTTP stack as the gateway (already in the tree): HTTP/1, WebSocket, query and JSON extractors.
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "ws", "query", "json"] }
@@ -42,7 +42,13 @@ argon2 = { version = "0.5", default-features = false, features = ["alloc", "pass
 sha2 = "0.10"
 getrandom = "0.3"
 futures-util = { version = "0.3.34", default-features = false }
+# The gateway module runs the Jellyfin-compatible gateway in this process; sources sign in to Jellyfin servers like the app does.
+nocturne-gateway = { path = "../gateway" }
+nocturne-jellyfin-user = { path = "../jellyfin-user" }
+# Calls to other servers (sources, NOCTURNE servers); redirects are never followed.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
 reqwest = { version = "0.13.5", default-features = false, features = ["json"] }
+nocturne-jellyfin-admin = { path = "../jellyfin-admin" } # TestServerGuard for the live sources test

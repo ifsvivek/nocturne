@@ -351,6 +351,132 @@ paths:
       responses:
         "200": {description: ok}
 
+  /api/v1/sources:
+    get:
+      summary: Servers this server connects to (module sources; administrators). Never a token.
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Source"}}}}}
+    post:
+      summary: Add a Jellyfin or NOCTURNE server by signing in with a user name and password, or an API key (a Jellyfin key needs the user name it acts for). The token goes to the keyring only.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SourceSignIn"}}}}
+      responses:
+        "200": {description: added, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+        "409": {description: this account on this server is already a source}
+  /api/v1/sources/quickconnect:
+    post:
+      summary: Quick Connect step 1 for a Jellyfin server; show `code` to the user, keep `secret` for step 2
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [url], properties: {url: {type: string}}}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {code: {type: string}, secret: {type: string}}}}}}
+  /api/v1/sources/quickconnect/complete:
+    post:
+      summary: Quick Connect step 2; 409 while the code is not approved yet (ask again)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [url, secret], properties: {url: {type: string}, secret: {type: string}, label: {type: string}}}}}}
+      responses:
+        "200": {description: added, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+        "409": {description: not approved yet, or already a source}
+  /api/v1/sources/{id}:
+    get:
+      summary: One source with its last health
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Source"}}}}
+    put:
+      summary: Rename or switch a source on or off
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {label: {type: string}, enabled: {type: boolean}}}}}}
+      responses:
+        "200": {description: ok}
+    delete:
+      summary: Remove a source and its token here (nothing is sent to the server)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok}
+  /api/v1/sources/{id}/signin:
+    post:
+      summary: Sign in again (same server; keeps the id, label and switch)
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SourceSignIn"}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Saved"}}}}
+  /api/v1/sources/{id}/check:
+    post:
+      summary: Check reachability and sign-in now
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/SourceHealth"}}}}
+
+  /api/v1/gateway/status:
+    get:
+      summary: The Jellyfin-compatible gateway (module gateway; administrators), as the 0.7 control socket reported it
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object}}}}
+  /api/v1/gateway/restart:
+    post:
+      summary: Stop and start the gateway (signed-in devices stay signed in)
+      responses:
+        "200": {description: ok}
+  /api/v1/gateway/devices:
+    get:
+      summary: Signed-in devices and named API keys of the gateway (`api_key` marks a key); never a token
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {type: object}}}}}
+  /api/v1/gateway/devices/{id}:
+    delete:
+      summary: Sign a device out, or revoke an API key
+      parameters: [{$ref: "#/components/parameters/StrId"}]
+      responses:
+        "200": {description: ok}
+  /api/v1/gateway/quickconnect/{code}:
+    post:
+      summary: Approve the Quick Connect code a Jellyfin app shows
+      parameters: [{name: code, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: ok}
+  /api/v1/gateway/password:
+    post:
+      summary: New gateway password; every device is signed out (API keys stay)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {password: {type: string}}}}}}
+  /api/v1/gateway/password/reveal:
+    post:
+      summary: The password made at first start, once
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {password: {type: string}}}}}}
+  /api/v1/gateway/apikeys:
+    post:
+      summary: A named API key for a Jellyfin client (shown only here); listed and revoked under devices
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}}}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {key: {type: string}}}}}}
+
+  /api/v1/tunnel/status:
+    get:
+      summary: Remote access through the installed cloudflared (module tunnel; administrators)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/TunnelStatus"}}}}
+  /api/v1/tunnel/restart:
+    post:
+      summary: Restart cloudflared
+      responses:
+        "200": {description: ok}
+  /api/v1/tunnel/token:
+    put:
+      summary: Store the token of a tunnel made in the Cloudflare dashboard (keyring only; used on the next start)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [token], properties: {token: {type: string}}}}}}
+      responses:
+        "200": {description: ok}
+    delete:
+      summary: Forget the tunnel token
+      responses:
+        "200": {description: ok}
+
+  /api/v1/discovery/servers:
+    get:
+      summary: Scan the local network for Jellyfin and NOCTURNE servers (two seconds; module discovery; administrators)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/FoundServer"}}}}}
+
   /:
     get:
       summary: The web dashboard (static files embedded in the binary, no auth for the files themselves)
@@ -374,6 +500,47 @@ components:
     Id: {name: id, in: path, required: true, schema: {type: integer}}
     StrId: {name: id, in: path, required: true, schema: {type: string}}
   schemas:
+    Source:
+      type: object
+      properties:
+        id: {type: integer}
+        kind: {type: string, enum: [jellyfin, nocturne]}
+        label: {type: string}
+        url: {type: string}
+        enabled: {type: boolean}
+        user_id: {type: string}
+        user_name: {type: string}
+        server_id: {type: string}
+        sign_in: {type: string, enum: [password, quick_connect, api_key, imported]}
+        added: {type: integer}
+        signed_in: {type: boolean, description: a token is stored}
+        health: {$ref: "#/components/schemas/SourceHealth"}
+    SourceHealth:
+      type: object
+      properties: {reachable: {type: boolean}, signed_in: {type: boolean}, checked: {type: integer}, error: {type: [string, "null"]}}
+    SourceSignIn:
+      type: object
+      required: [url]
+      properties:
+        kind: {type: string, enum: [jellyfin, nocturne], default: jellyfin}
+        url: {type: string}
+        label: {type: string}
+        username: {type: string}
+        password: {type: string}
+        api_key: {type: string}
+    TunnelStatus:
+      type: object
+      properties:
+        state: {type: string, enum: [starting, connected, restarting, stopped]}
+        mode: {type: string, enum: [token, quick]}
+        url: {type: [string, "null"], description: the address of a quick tunnel}
+        targets: {type: array, items: {type: string}, description: dashboard and gateway addresses a token tunnel's hostnames should point at}
+        token_set: {type: boolean}
+        restarts: {type: integer}
+        error: {type: [string, "null"]}
+    FoundServer:
+      type: object
+      properties: {kind: {type: string, enum: [jellyfin, nocturne]}, id: {type: string}, name: {type: string}, address: {type: string}}
     Saved:
       type: object
       properties: {id: {type: integer}}
