@@ -244,10 +244,19 @@ impl State {
     /// Re-read settings and sources (control `Reload`). Rebinds the listeners when a listener setting changed.
     pub async fn reload(&self) -> Result<(), String> {
         let new = Config::load(&self.paths);
+        let paths = self.paths.clone();
+        let list = tokio::task::spawn_blocking(move || load_upstreams(&paths))
+            .await
+            .unwrap_or_default();
+        self.apply(new, list)
+    }
+
+    /// Take new settings and sources from the embedding process (the server's `gateway` module) instead of the app's files: what [`State::reload`] does after reading them.
+    pub fn apply(&self, new: Config, upstreams: Vec<Upstream>) -> Result<(), String> {
         new.gw.validate()?;
         let changed = listener_part(&self.cfg()) != listener_part(&new);
         *self.cfg.write().unwrap() = Arc::new(new);
-        self.refresh_upstreams().await;
+        self.set_upstreams(upstreams);
         // The sources may hold different things now. The gateway keeps no upstream socket (it polls, with short caches), so this and a playback stop are its only library news.
         crate::items::hub(self).cache.clear();
         self.ext::<crate::sessions::Hub>().library_changed();

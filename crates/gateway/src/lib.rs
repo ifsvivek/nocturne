@@ -24,6 +24,7 @@ pub mod auth;
 pub mod config;
 pub mod control;
 pub mod discovery;
+pub mod embed;
 pub mod idmap;
 pub mod images;
 pub mod items;
