@@ -1,0 +1,27 @@
+[package]
+name = "nocturne-torrent"
+description = "Torrent engine for NOCTURNE (librqbit): fast resume, limits, queueing, seeding goals and a bind-interface kill switch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Pinned: resume format and path checks are re-verified on every bump. No web UI, no HTTP API, rustls like the rest of the workspace.
+librqbit = { version = "=9.1.0", default-features = false, features = ["rust-tls"] }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "time", "macros", "fs"] }
+bytes = "1.12.1"
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+libc = "0.2.191"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+
+[dev-dependencies]
+tempfile = "3.27.0"

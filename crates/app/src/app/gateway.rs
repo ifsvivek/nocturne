@@ -264,11 +264,19 @@ impl App {
                         // Let our own child leave before the service starts.
                         let _ = ask(&Request::Stop);
                         std::thread::sleep(Duration::from_millis(700));
-                        nocturne_core::gateway_unit::enable(&exe).map_err(|e| e.to_string())?;
+                        nocturne_core::user_unit::enable(
+                            &nocturne_core::user_unit::GATEWAY,
+                            &exe,
+                            &[],
+                        )
+                        .map_err(|e| e.to_string())?;
                     } else {
-                        nocturne_core::gateway_unit::disable().map_err(|e| e.to_string())?;
+                        nocturne_core::user_unit::disable(&nocturne_core::user_unit::GATEWAY)
+                            .map_err(|e| e.to_string())?;
                     }
-                    Ok(nocturne_core::gateway_unit::installed())
+                    Ok(nocturne_core::user_unit::installed(
+                        &nocturne_core::user_unit::GATEWAY,
+                    ))
                 })
                 .await
                 .map_err(|e| e.to_string())?
@@ -491,7 +499,8 @@ impl App {
             Msg::Unit(r) => match r {
                 Ok(on) => self.settings.gateway.keep_running = on,
                 Err(e) => {
-                    self.settings.gateway.keep_running = nocturne_core::gateway_unit::installed();
+                    self.settings.gateway.keep_running =
+                        nocturne_core::user_unit::installed(&nocturne_core::user_unit::GATEWAY);
                     self.toast(format!("Keep running: {e}"));
                 }
             },

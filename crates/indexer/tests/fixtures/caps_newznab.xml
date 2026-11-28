@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<caps>
+  <server version="1.0" title="Example Newznab" strapline="An example feed" email="nobody@example.invalid" url="https://nzb.example.invalid/" />
+  <limits max="100" default="50"/>
+  <registration available="no" open="no" />
+  <searching>
+    <search available="yes" supportedParams="q,group"/>
+    <tv-search available="yes" supportedParams="q,rid,tvdbid,tvmazeid,season,ep"/>
+    <movie-search available="yes" supportedParams="q,imdbid"/>
+    <audio-search available="yes" supportedParams="q,artist,album"/>
+    <book-search available="yes" supportedParams="q,author,title"/>
+  </searching>
+  <categories>
+    <category id="2000" name="Movies"><subcat id="2040" name="HD"/></category>
+    <category id="5000" name="TV"><subcat id="5030" name="SD"/><subcat id="5040" name="HD"/></category>
+    <category id="7000" name="Books"><subcat id="7020" name="Ebook"/></category>
+  </categories>
+</caps>
