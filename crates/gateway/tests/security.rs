@@ -367,6 +367,33 @@ async fn crafted_ids_and_paths_never_leave_the_servers_route_templates() {
     g.st.stop();
 }
 
+/// Review 2026-11-28: `/web/...` is public and was fetched from the server with the server account's token, so anyone could reach the server's non-file routes under `/web` (`/web/ConfigurationPages` lists plugin pages for a signed-in account). Only file names pass now.
+#[tokio::test]
+async fn the_web_pass_through_fetches_only_files() {
+    let (url, seen, _) = mock().await;
+    let g = start(false, false).await;
+    g.st.set_upstreams(vec![upstream(url)]);
+    for p in [
+        "/web/ConfigurationPages",
+        "/web/configurationpages?enableInMainMenu=true",
+        "/web/ConfigurationPage?name=x",
+        "/web/a/b",
+    ] {
+        let s = g.http.get(g.url(p)).send().await.unwrap().status();
+        assert_eq!(s, Sc::NOT_FOUND, "{p}");
+    }
+    assert!(seen.all().is_empty(), "{:?}", seen.all());
+    for p in [
+        "/web/",
+        "/web/main.jellyfin.bundle.js",
+        "/web/themes/dark/theme.css",
+    ] {
+        g.http.get(g.url(p)).send().await.unwrap();
+    }
+    assert_eq!(seen.all().len(), 3, "{:?}", seen.all());
+    g.st.stop();
+}
+
 // ---------------------------------------------------------------- write gating
 
 /// Every route that can cause a POST or DELETE to a server, called as a signed-in client.

@@ -18,6 +18,9 @@ async fn file(St(st): St<State>, uri: Uri) -> Response {
     // `/web` and `/web/` are the client's start page, as on a real server.
     let pq = if path.eq_ignore_ascii_case("/web") || path.eq_ignore_ascii_case("/web/") {
         "/web/index.html".to_string()
+    } else if !path.rsplit('/').next().is_some_and(|f| f.contains('.')) {
+        // Only file names: the request goes out with the server account's token, and a server also answers API routes under `/web` (`/web/ConfigurationPages`).
+        return StatusCode::NOT_FOUND.into_response();
     } else {
         match uri.query() {
             Some(q) => format!("{path}?{q}"),
