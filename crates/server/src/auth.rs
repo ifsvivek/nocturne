@@ -191,6 +191,9 @@ pub fn mint(sh: &Shared, user: u64, kind: TokenKind, name: &str) -> Res<(String,
     Ok((token, r))
 }
 
+/// A session unused this long (seconds) is gone; API keys stay until revoked.
+pub const SESSION_IDLE: u64 = 30 * 86_400;
+
 /// The caller a presented token stands for.
 pub fn lookup(sh: &Shared, token: &str) -> Option<Caller> {
     if token.len() < 20 {
@@ -204,6 +207,10 @@ pub fn lookup(sh: &Shared, token: &str) -> Option<Caller> {
         .ok()?
         .into_iter()
         .find(|t| t.hash == h)?;
+    if t.kind == TokenKind::Session && now() > t.last_used + SESSION_IDLE {
+        let _ = sh.db.delete::<TokenRec>(&[t.id]);
+        return None;
+    }
     let u = sh.db.get::<UserRec>(t.user).ok()??;
     if now() > t.last_used + 60 {
         t.last_used = now();

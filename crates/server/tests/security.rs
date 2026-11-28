@@ -330,6 +330,26 @@ async fn the_store_is_private_to_its_owner() {
     assert_eq!(mode & 0o077, 0, "{mode:o}");
 }
 
+/// Finding: session tokens never expired, so a token copied from a forgotten browser worked for ever. A session unused for 30 days is gone now; API keys stay until revoked.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_idle_session_expires_and_an_api_key_does_not() {
+    use nocturne_server::auth::{self, TokenKind, TokenRec};
+    let s = start().await;
+    setup_locally(&s).await;
+    let user = s.sh.db.all::<auth::UserRec>().unwrap()[0].id;
+    let old = nocturne_server::state::now() - 31 * 86_400;
+    let age = |kind| {
+        let (tok, mut r): (String, TokenRec) = auth::mint(&s.sh, user, kind, "old").unwrap();
+        r.last_used = old;
+        s.sh.db.put(&mut r).unwrap();
+        tok
+    };
+    let session = age(TokenKind::Session);
+    let key = age(TokenKind::ApiKey);
+    assert!(auth::lookup(&s.sh, &session).is_none());
+    assert!(auth::lookup(&s.sh, &key).is_some());
+}
+
 /// Finding: the storage agent client followed redirects, and `X-Api-Key` (unlike `Authorization`) survives a redirect to another host, so an agent address that redirects handed the key to whatever host it named.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_agent_key_never_follows_a_redirect() {
