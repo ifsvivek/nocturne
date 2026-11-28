@@ -3026,6 +3026,7 @@ dependencies = [
  "getrandom 0.4.3",
  "libc",
  "nocturne-arr",
+ "nocturne-arr-types",
  "nocturne-jellyfin",
  "nocturne-jellyfin-admin",
  "nocturne-jellyfin-user",

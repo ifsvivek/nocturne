@@ -4,6 +4,7 @@ pub mod account;
 /// Per-OS config/data/cache/runtime dirs (lives in `nocturne-session`, which core builds on).
 pub use nocturne_session::paths;
 pub mod admin;
+pub mod arrd;
 pub mod backend;
 pub mod blurhash;
 pub mod bridge;
