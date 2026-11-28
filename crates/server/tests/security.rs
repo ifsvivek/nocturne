@@ -229,3 +229,35 @@ async fn no_spelling_of_a_route_skips_authentication() {
         assert!(ok, "{p}: {}", out.lines().next().unwrap_or(""));
     }
 }
+
+/// Finding: the listener had no connection limit, so one peer could hold every socket and file descriptor. Now 64 per address (256 in all), like the gateway.
+#[tokio::test(flavor = "multi_thread")]
+async fn one_peer_cannot_hold_every_connection() {
+    use std::io::{Read, Write};
+    let s = start().await;
+    let addr = s.addr;
+    let out = tokio::task::spawn_blocking(move || {
+        let held: Vec<_> = (0..nocturne_gateway::limits::MAX_CONNECTIONS_PER_IP)
+            .map(|_| std::net::TcpStream::connect(addr).unwrap())
+            .collect();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let mut c = std::net::TcpStream::connect(addr).unwrap();
+        c.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let _ = write!(
+            c,
+            "GET /api/v1/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+        );
+        let mut out = String::new();
+        let _ = c.read_to_string(&mut out);
+        drop(held);
+        out
+    })
+    .await
+    .unwrap();
+    assert!(!out.starts_with("HTTP/1.1 200"), "{out}");
+    // The slots come back when the connections close.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let r = reqwest::get(format!("{}/health", s.base)).await.unwrap();
+    assert_eq!(r.status(), 200);
+}
