@@ -23,6 +23,7 @@ path = "src/main.rs"
 nocturne-arr-types = { path = "../arr-types" }
 nocturne-core = { path = "../core" } # API model, config, metadata providers
 nocturne-session = { path = "../session" } # paths, keyring
+nocturne-storage = { path = "../storage" } # storage roots, mounts, agent client
 # Pure-Rust embedded key-value store (MIT/Apache). 3.1 is the last line with MSRV 1.89; 4.x needs 1.90.
 redb = "3.1"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -42,6 +43,8 @@ argon2 = { version = "0.5", default-features = false, features = ["alloc", "pass
 sha2 = "0.10"
 getrandom = "0.3"
 futures-util = { version = "0.3.34", default-features = false }
+# The storage agent streams file ranges.
+tokio-util = { version = "0.7", default-features = false, features = ["io"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

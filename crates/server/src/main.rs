@@ -22,6 +22,10 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         None | Some("serve") => {}
+        Some("agent") => {
+            harden();
+            std::process::exit(nocturne_server::modules::storage::agent_main(&args[1..]));
+        }
         Some(other) => {
             eprintln!("nocturne-server: unknown command {other:?}");
             std::process::exit(2);

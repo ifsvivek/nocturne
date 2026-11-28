@@ -4099,6 +4099,7 @@ dependencies = [
  "nocturne-arr-types",
  "nocturne-core",
  "nocturne-session",
+ "nocturne-storage",
  "redb",
  "reqwest",
  "rustls",
@@ -4109,6 +4110,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-rustls",
+ "tokio-util",
  "toml",
  "tower",
 ]
