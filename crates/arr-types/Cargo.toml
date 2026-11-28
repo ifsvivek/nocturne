@@ -1,0 +1,17 @@
+[package]
+name = "nocturne-arr-types"
+description = "Shared types and traits of NOCTURNE's native *arr stack: the contract between the engine daemon, the torrent engine and the indexer client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+thiserror = "2.0.21"

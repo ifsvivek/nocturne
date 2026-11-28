@@ -3010,6 +3010,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nocturne-arr-types"
+version = "0.7.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "nocturne-core"
 version = "0.7.0"
 dependencies = [
