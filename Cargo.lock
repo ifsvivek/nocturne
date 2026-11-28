@@ -3938,6 +3938,7 @@ version = "0.7.0"
 dependencies = [
  "aws-lc-rs",
  "base64 0.23.1",
+ "futures-util",
  "getrandom 0.4.3",
  "libc",
  "nocturne-arr",
@@ -3955,6 +3956,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
+ "tokio-tungstenite 0.30.0",
  "toml",
  "ttf-parser",
  "wuff",

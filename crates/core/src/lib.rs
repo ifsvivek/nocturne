@@ -40,6 +40,7 @@ pub mod requests;
 pub mod search;
 pub mod secret;
 pub mod server;
+pub mod server_client;
 pub mod server_ui;
 pub mod settings;
 pub mod smart;
