@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:torznab="http://torznab.com/schemas/2015/feed">
+  <channel>
+    <atom:link href="http://127.0.0.1:9117/" rel="self" type="application/rss+xml" />
+    <title>Example Tracker</title>
+    <description>Example Tracker feed</description>
+    <link>http://tracker.example.invalid/</link>
+    <language>en-US</language>
+    <category>search</category>
+    <item>
+      <title>Night.Of.The.Example.1968.1080p.BluRay.x264-EXAMPLE</title>
+      <guid>http://tracker.example.invalid/torrent/1001</guid>
+      <jackettindexer id="example">Example Tracker</jackettindexer>
+      <type>public</type>
+      <comments>http://tracker.example.invalid/torrent/1001</comments>
+      <pubDate>Sat, 18 May 2024 10:00:00 +0200</pubDate>
+      <size>8589934592</size>
+      <grabs>1520</grabs>
+      <description />
+      <link>http://127.0.0.1:9117/dl/example/?jackett_apikey=FIXTUREKEY&amp;path=abc&amp;file=Night</link>
+      <category>2000</category>
+      <category>100014</category>
+      <enclosure url="http://127.0.0.1:9117/dl/example/?jackett_apikey=FIXTUREKEY&amp;path=abc&amp;file=Night" length="8589934592" type="application/x-bittorrent" />
+      <torznab:attr name="category" value="2000" />
+      <torznab:attr name="category" value="100014" />
+      <torznab:attr name="imdb" value="0063350" />
+      <torznab:attr name="tmdbid" value="10331" />
+      <torznab:attr name="seeders" value="87" />
+      <torznab:attr name="peers" value="96" />
+      <torznab:attr name="infohash" value="0123456789ABCDEF0123456789ABCDEF01234567" />
+      <torznab:attr name="downloadvolumefactor" value="0" />
+      <torznab:attr name="uploadvolumefactor" value="1" />
+    </item>
+    <item>
+      <title>Night of the Example (1968) [2160p] [4K] [WEB] [5.1]</title>
+      <guid>magnet:?xt=urn:btih:89ABCDEF0123456789ABCDEF0123456789ABCDEF&amp;dn=Night</guid>
+      <pubDate>Mon, 01 Jan 2024 00:00:00 -0000</pubDate>
+      <size>4294967296</size>
+      <link>magnet:?xt=urn:btih:89ABCDEF0123456789ABCDEF0123456789ABCDEF&amp;dn=Night&amp;tr=udp%3A%2F%2Ftracker.example.invalid%3A1337</link>
+      <category>2045</category>
+      <torznab:attr name="seeders" value="12" />
+      <torznab:attr name="leechers" value="3" />
+      <torznab:attr name="grabs" value="40" />
+    </item>
+    <item>
+      <title>Untitled without link</title>
+      <guid>nothing-to-download</guid>
+    </item>
+  </channel>
+</rss>

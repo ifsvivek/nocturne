@@ -1,0 +1,4 @@
+{"history": {"noofslots": 2, "slots": [
+  {"name": "Example.Show.S02E04.1080p.WEB.H264-GROUP", "nzo_id": "SABnzbd_nzo_done01", "category": "tv", "status": "Completed", "storage": "/downloads/complete/tv/Example.Show.S02E04.1080p.WEB.H264-GROUP", "bytes": 1932735283, "fail_message": ""},
+  {"name": "Broken.Release.2020.1080p.WEB-DL-X", "nzo_id": "SABnzbd_nzo_fail01", "category": "movies", "status": "Failed", "storage": "", "bytes": 0, "fail_message": "Repair failed, not enough repair blocks"}
+]}}

@@ -55,6 +55,8 @@ impl Raw {
             .read_timeout(Duration::from_secs(60))
             .redirect(reqwest::redirect::Policy::none())
             .default_headers(headers)
+            // Servers behind Cloudflare refuse requests without a User-Agent (error 1010).
+            .user_agent(concat!("NOCTURNE-Gateway/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(http_err)?;
         Ok(Self { http, base })

@@ -218,19 +218,20 @@ fn prefix(rest: &str) -> String {
     format!("Images/{rest}")
 }
 
+/// Public like on a real server: jellyfin-web and the apps load pictures with plain `<img>` links that carry no token. Item ids are the gateway's own unguessable ids, and only pictures are served.
 pub fn routes(r: Routes) -> Routes {
     let img = || get(image);
-    r.add_stream("/Items/{itemId}/Images/{imageType}", Access::Auth, img())
-        .add_stream("/Items/{itemId}/Images/{imageType}/{imageIndex}", Access::Auth, img())
-        .add_stream("/Items/{itemId}/Images/{imageType}/{imageIndex}/{tag}/{format}/{maxWidth}/{maxHeight}/{percentPlayed}/{unPlayedCount}", Access::Auth, img())
-        .add_stream("/Artists/{name}/Images/{imageType}/{imageIndex}", Access::Auth, img())
-        .add_stream("/Genres/{name}/Images/{imageType}/{imageIndex}", Access::Auth, img())
-        .add_stream("/Persons/{name}/Images/{imageType}/{imageIndex}", Access::Auth, img())
-        .add_stream("/Studios/{name}/Images/{imageType}/{imageIndex}", Access::Auth, img())
-        .add_stream("/Artists/{name}/Images/{imageType}", Access::Auth, img())
-        .add_stream("/Genres/{name}/Images/{imageType}", Access::Auth, img())
-        .add_stream("/Persons/{name}/Images/{imageType}", Access::Auth, img())
-        .add_stream("/Studios/{name}/Images/{imageType}", Access::Auth, img())
+    r.add_stream("/Items/{itemId}/Images/{imageType}", Access::Public, img())
+        .add_stream("/Items/{itemId}/Images/{imageType}/{imageIndex}", Access::Public, img())
+        .add_stream("/Items/{itemId}/Images/{imageType}/{imageIndex}/{tag}/{format}/{maxWidth}/{maxHeight}/{percentPlayed}/{unPlayedCount}", Access::Public, img())
+        .add_stream("/Artists/{name}/Images/{imageType}/{imageIndex}", Access::Public, img())
+        .add_stream("/Genres/{name}/Images/{imageType}/{imageIndex}", Access::Public, img())
+        .add_stream("/Persons/{name}/Images/{imageType}/{imageIndex}", Access::Public, img())
+        .add_stream("/Studios/{name}/Images/{imageType}/{imageIndex}", Access::Public, img())
+        .add_stream("/Artists/{name}/Images/{imageType}", Access::Public, img())
+        .add_stream("/Genres/{name}/Images/{imageType}", Access::Public, img())
+        .add_stream("/Persons/{name}/Images/{imageType}", Access::Public, img())
+        .add_stream("/Studios/{name}/Images/{imageType}", Access::Public, img())
 }
 
 #[cfg(test)]
