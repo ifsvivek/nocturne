@@ -142,6 +142,12 @@ pub fn enable(svc: &Service, exe: &Path, extra: &[&Path]) -> io::Result<()> {
         return Err(io::Error::other("Keep running is available on Linux only"));
     }
     let dir = unit_dir().ok_or_else(|| io::Error::other("no user config directory"))?;
+    // Ask the user manager first, so a machine without one (a container, a non-systemd distribution) is not left with a unit file.
+    systemctl(&["daemon-reload"]).map_err(|e| {
+        io::Error::other(format!(
+            "systemd user services are not available here ({e})"
+        ))
+    })?;
     let data = nocturne_session::paths::data_dir().map(|d| d.join(svc.data));
     let cache = nocturne_session::paths::cache_dir().filter(|_| svc.cache);
     let writable: Vec<&Path> = data

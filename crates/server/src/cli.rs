@@ -168,7 +168,11 @@ pub fn gateway_marker(data: &Path) -> PathBuf {
 
 fn install(linger: bool, paths: &crate::state::Paths) -> Res<()> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    user_unit::enable(&SERVER, &exe, &[]).map_err(|e| format!("installing the service: {e}"))?;
+    user_unit::enable(&SERVER, &exe, &[]).map_err(|e| {
+        format!(
+            "installing the service: {e}. Without it, run `nocturne-server serve` in a terminal or from your init system."
+        )
+    })?;
     println!("Installed and started {}.", SERVER.unit);
     if linger {
         let user = std::env::var("USER").unwrap_or_default();
