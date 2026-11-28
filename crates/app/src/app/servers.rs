@@ -7,17 +7,19 @@ use crate::theme as t;
 use crate::widget::{action_button, chip};
 use iced::widget::{Column, column, container, row, text, text_input};
 use iced::{Alignment, Element, Length, Subscription, Task};
+use nocturne_core::gateway::TokenInfo;
 use nocturne_core::server::types::{MediaKind, Release};
 use nocturne_core::server::{Candidate, Event, MediaRequest, QueueItem, Status, Title};
 use nocturne_core::server_client::{
-    self as sc, Client, Error, Feed, LOCAL, QueueAct, ServerList, StorageRoot, Target,
+    self as sc, Client, Error, Feed, Found, GatewayStatus, LOCAL, QueueAct, ServerList, Source,
+    StorageRoot, Target,
 };
 use std::collections::HashMap;
 use std::time::Duration;
 
 type El<'a> = Element<'a, Message>;
 /// An interactive search's answer.
-pub(super) type Found = Result<Vec<Candidate>, String>;
+pub(super) type ReleaseList = Result<Vec<Candidate>, String>;
 
 const BINARY: &str = "nocturne-server";
 /// Interactive searches ask every indexer: give them time.
@@ -31,10 +33,19 @@ pub enum Tab {
     Library,
     Requests,
     Storage,
+    Sources,
+    Gateway,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 4] = [Tab::Downloads, Tab::Library, Tab::Requests, Tab::Storage];
+    pub const ALL: [Tab; 6] = [
+        Tab::Downloads,
+        Tab::Library,
+        Tab::Requests,
+        Tab::Storage,
+        Tab::Sources,
+        Tab::Gateway,
+    ];
 
     /// The module the page needs.
     pub fn module(self) -> &'static str {
@@ -43,6 +54,8 @@ impl Tab {
             Tab::Library => "library",
             Tab::Requests => "requests",
             Tab::Storage => "storage",
+            Tab::Sources => "sources",
+            Tab::Gateway => "gateway",
         }
     }
 
@@ -52,6 +65,8 @@ impl Tab {
             Tab::Library => "Library",
             Tab::Requests => "Requests",
             Tab::Storage => "Storage",
+            Tab::Sources => "Sources",
+            Tab::Gateway => "Gateway",
         }
     }
 }
@@ -101,6 +116,21 @@ pub enum Msg {
     HideReleases,
     Approve(u64),
     CancelRequest(u64),
+    Sources(Result<Vec<Source>, String>),
+    SourceCheck(u64),
+    SourceEnable(u64, bool),
+    Gateway(Result<Box<(GatewayStatus, Vec<TokenInfo>)>, String>),
+    Revoke(String),
+    QcInput(String),
+    QcApprove(String),
+    KeyName(String),
+    MakeKey,
+    KeyMade(Result<String, String>),
+    CopyKey,
+    /// Servers found on the network by a server's discovery module.
+    Discovered(Result<Vec<Found>, String>),
+    /// Put a found server's address in the add card and check it.
+    UseFound(String),
 }
 
 #[derive(Default)]
@@ -129,12 +159,21 @@ pub struct State {
     pub(super) kind: Option<MediaKind>,
     pub(super) filter: String,
     /// The title whose releases are shown, and them (`None` while searching).
-    pub(super) releases: Option<(u64, Option<Found>)>,
+    pub(super) releases: Option<(u64, Option<ReleaseList>)>,
     pub(super) requests: Vec<MediaRequest>,
     pub(super) storage: Vec<StorageRoot>,
     pub(super) page_note: Option<String>,
     pub(super) loading: bool,
     pub(super) armed: Option<u64>,
+    pub(super) sources: Vec<Source>,
+    pub(super) gw: Option<(GatewayStatus, Vec<TokenInfo>)>,
+    pub(super) qc: String,
+    pub(super) key_name: String,
+    /// A gateway API key just made: shown once.
+    pub(super) new_key: Option<String>,
+    /// NOCTURNE servers found on the network that are not in the list yet; `None` while nobody looked.
+    found: Option<Vec<Found>>,
+    scanning: bool,
 }
 
 fn err(e: Error) -> String {
@@ -312,6 +351,7 @@ impl App {
         } else {
             self.ns.status.remove(LOCAL);
         }
+        self.ns.found = None;
         Task::batch(keys.into_iter().map(|k| self.ns_probe(k)))
     }
 
@@ -341,7 +381,21 @@ impl App {
                     s.live = false;
                     s.page_note = Some(e.clone());
                 }
+                let scan = !s.scanning
+                    && s.found.is_none()
+                    && matches!(&r, Ok(st) if sc::module_on(st, "discovery"));
+                let who = s.target(&k);
                 s.status.insert(k, r.map(|b| *b));
+                if scan && self.settings_open {
+                    self.ns.scanning = true;
+                    return call(
+                        who,
+                        QUICK,
+                        |c| async move { c.discover().await },
+                        Msg::Discovered,
+                    );
+                }
+                let s = &mut self.ns;
                 // A page whose module went away closes.
                 if let Some(p) = s.page
                     && !s.module_on(p.module())
@@ -618,6 +672,109 @@ impl App {
                 );
             }
             Msg::HideReleases => s.releases = None,
+            Msg::Sources(r) => {
+                s.loading = false;
+                match r {
+                    Ok(v) => s.sources = v,
+                    Err(e) => s.page_note = Some(e),
+                }
+            }
+            Msg::SourceCheck(id) => {
+                let t = s.active();
+                return call(
+                    t,
+                    QUICK,
+                    move |c| async move { c.source_check(id).await },
+                    Msg::Done,
+                )
+                .chain(self.ns_load(Tab::Sources));
+            }
+            Msg::SourceEnable(id, on) => {
+                let t = s.active();
+                return call(
+                    t,
+                    QUICK,
+                    move |c| async move { c.source_enable(id, on).await },
+                    Msg::Done,
+                )
+                .chain(self.ns_load(Tab::Sources));
+            }
+            Msg::Gateway(r) => {
+                s.loading = false;
+                match r {
+                    Ok(b) => s.gw = Some(*b),
+                    Err(e) => s.page_note = Some(e),
+                }
+            }
+            Msg::Revoke(id) => {
+                s.armed = None;
+                let t = s.active();
+                return call(
+                    t,
+                    QUICK,
+                    move |c| async move { c.gateway_revoke(&id).await },
+                    Msg::Done,
+                )
+                .chain(self.ns_load(Tab::Gateway));
+            }
+            Msg::QcInput(v) => s.qc = v.chars().filter(char::is_ascii_digit).take(12).collect(),
+            Msg::QcApprove(code) => {
+                s.qc.clear();
+                let t = s.active();
+                return call(
+                    t,
+                    QUICK,
+                    move |c| async move { c.gateway_approve(&code).await },
+                    Msg::Done,
+                )
+                .chain(self.ns_load(Tab::Gateway));
+            }
+            Msg::KeyName(v) => s.key_name = v,
+            Msg::MakeKey => {
+                let name = s.key_name.trim().to_string();
+                if name.is_empty() {
+                    return Task::none();
+                }
+                let t = s.active();
+                return call(
+                    t,
+                    QUICK,
+                    move |c| async move { c.gateway_key(&name).await },
+                    Msg::KeyMade,
+                );
+            }
+            Msg::KeyMade(r) => match r {
+                Ok(k) => {
+                    s.key_name.clear();
+                    s.new_key = Some(k);
+                    return self.ns_load(Tab::Gateway);
+                }
+                Err(e) => self.toast(e),
+            },
+            Msg::CopyKey => {
+                if let Some(k) = s.new_key.clone() {
+                    self.toast("Key copied.");
+                    return iced::clipboard::write(k);
+                }
+            }
+            Msg::Discovered(r) => {
+                s.scanning = false;
+                let known: Vec<String> = s.list.servers.iter().map(|x| x.url.clone()).collect();
+                s.found = Some(
+                    r.unwrap_or_default()
+                        .into_iter()
+                        .filter(|f| f.kind == "nocturne")
+                        .filter(|f| {
+                            sc::normalize_url(&f.address).is_ok_and(|u| !known.contains(&u))
+                        })
+                        .collect(),
+                );
+            }
+            Msg::UseFound(addr) => {
+                s.url = addr;
+                s.checked = None;
+                return self.ns_msg(Msg::Check);
+            }
             Msg::Approve(id) => {
                 let t = s.active();
                 return call(
@@ -677,6 +834,16 @@ impl App {
                 Msg::Requests,
             ),
             Tab::Storage => call(t, QUICK, |c| async move { c.storage().await }, Msg::Storage),
+            Tab::Sources => call(t, QUICK, |c| async move { c.sources().await }, Msg::Sources),
+            Tab::Gateway => call(
+                t,
+                QUICK,
+                |c| async move {
+                    let st = c.gateway().await?;
+                    Ok(Box::new((st, c.gateway_devices().await?)))
+                },
+                Msg::Gateway,
+            ),
         }
     }
 
@@ -711,8 +878,11 @@ impl App {
                 Event::Request(_) if s.page == Some(Tab::Requests) => {
                     return self.ns_load(Tab::Requests);
                 }
-                Event::Module(m) if m.module == "storage" && s.page == Some(Tab::Storage) => {
-                    return self.ns_load(Tab::Storage);
+                Event::Module(m) => {
+                    let tab = Tab::ALL.into_iter().find(|t| t.module() == m.module);
+                    if let Some(t) = tab.filter(|t| s.page == Some(*t)) {
+                        return self.ns_load(t);
+                    }
                 }
                 Event::Health(m) => {
                     if let Some(Ok(st)) = s.list.active.clone().and_then(|k| s.status.get_mut(&k)) {
@@ -758,6 +928,9 @@ impl App {
                     )],
                 ),
             );
+        }
+        if s.scanning || s.found.as_ref().is_some_and(|f| !f.is_empty()) {
+            col = col.push(self.ns_found_card());
         }
         col.push(self.ns_add_card()).into()
     }
@@ -891,6 +1064,54 @@ impl App {
             buttons = buttons.push(e);
         }
         container(body.push(buttons.wrap().vertical_spacing(t::S2)))
+            .padding(t::S4 + 2.0)
+            .width(Length::Fill)
+            .style(style::card)
+            .into()
+    }
+
+    /// NOCTURNE servers a server's discovery module saw on the network.
+    fn ns_found_card(&self) -> El<'_> {
+        let s = &self.ns;
+        let mut col = column![
+            text("Found on your network")
+                .size(t::BODY)
+                .font(t::semibold()),
+        ]
+        .spacing(t::S3);
+        match &s.found {
+            None => col = col.push(note("Looking for NOCTURNE servers\u{2026}".into())),
+            Some(v) => {
+                for f in v {
+                    col = col.push(
+                        row![
+                            column![
+                                text(if f.name.is_empty() {
+                                    f.address.clone()
+                                } else {
+                                    f.name.clone()
+                                })
+                                .size(t::BODY),
+                                note(f.address.clone()),
+                            ]
+                            .spacing(2)
+                            .width(Length::Fill),
+                            action_button(
+                                "Add",
+                                false,
+                                false,
+                                false,
+                                s.busy,
+                                Message::Servers(Msg::UseFound(f.address.clone())),
+                            ),
+                        ]
+                        .spacing(t::S3)
+                        .align_y(Alignment::Center),
+                    );
+                }
+            }
+        }
+        container(col)
             .padding(t::S4 + 2.0)
             .width(Length::Fill)
             .style(style::card)

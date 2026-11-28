@@ -32,6 +32,8 @@ pub fn on_boot() -> Task<Message> {
                     "library" => Msg::Open(Tab::Library),
                     "requests" => Msg::Open(Tab::Requests),
                     "storage" => Msg::Open(Tab::Storage),
+                    "sources" => Msg::Open(Tab::Sources),
+                    "gateway" => Msg::Open(Tab::Gateway),
                     r if r.starts_with("releases-") => Msg::Releases(r[9..].parse().ok()?),
                     "fill" => Msg::Fill,
                     "check" => Msg::Check,

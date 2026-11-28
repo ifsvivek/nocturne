@@ -464,6 +464,111 @@ impl Client {
     pub async fn storage(&self) -> Result<Vec<StorageRoot>, Error> {
         self.get("/storage/roots").await
     }
+
+    /// A two-second scan of the server's network for Jellyfin and NOCTURNE servers.
+    pub async fn discover(&self) -> Result<Vec<Found>, Error> {
+        self.get("/discovery/servers").await
+    }
+
+    pub async fn sources(&self) -> Result<Vec<Source>, Error> {
+        self.get("/sources").await
+    }
+
+    pub async fn source_check(&self, id: u64) -> Result<(), Error> {
+        self.post(&format!("/sources/{id}/check"), None).await
+    }
+
+    pub async fn source_enable(&self, id: u64, on: bool) -> Result<(), Error> {
+        self.call::<serde_json::Value>(
+            Method::PUT,
+            &format!("/sources/{id}"),
+            Some(serde_json::json!({"enabled": on})),
+        )
+        .await
+        .map(drop)
+    }
+
+    pub async fn gateway(&self) -> Result<GatewayStatus, Error> {
+        self.get("/gateway/status").await
+    }
+
+    pub async fn gateway_devices(&self) -> Result<Vec<crate::gateway::TokenInfo>, Error> {
+        self.get("/gateway/devices").await
+    }
+
+    /// Sign a device out or revoke an API key.
+    pub async fn gateway_revoke(&self, id: &str) -> Result<(), Error> {
+        self.call::<serde_json::Value>(Method::DELETE, &format!("/gateway/devices/{id}"), None)
+            .await
+            .map(drop)
+    }
+
+    pub async fn gateway_approve(&self, code: &str) -> Result<(), Error> {
+        self.post(&format!("/gateway/quickconnect/{code}"), None)
+            .await
+    }
+
+    /// A named API key for a Jellyfin client; the key is returned only here.
+    pub async fn gateway_key(&self, name: &str) -> Result<String, Error> {
+        #[derive(Deserialize)]
+        struct K {
+            key: String,
+        }
+        self.call::<K>(
+            Method::POST,
+            "/gateway/apikeys",
+            Some(serde_json::json!({"name": name})),
+        )
+        .await
+        .map(|k| k.key)
+    }
+}
+
+/// A server found on the network (`FoundServer`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct Found {
+    /// jellyfin or nocturne.
+    pub kind: String,
+    pub id: String,
+    pub name: String,
+    pub address: String,
+}
+
+/// A server the server connects to (`Source`): never a token. Only what the page shows is read.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct Source {
+    pub id: u64,
+    /// jellyfin or nocturne.
+    pub kind: String,
+    pub label: String,
+    pub url: String,
+    pub enabled: bool,
+    pub user_name: String,
+    pub sign_in: String,
+    pub signed_in: bool,
+    pub health: SourceHealth,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct SourceHealth {
+    pub reachable: bool,
+    pub signed_in: bool,
+    pub checked: u64,
+    pub error: Option<String>,
+}
+
+/// The gateway module's status, read leniently (its full shape is `gateway::Status`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct GatewayStatus {
+    pub address: String,
+    pub user_name: String,
+    pub devices: usize,
+    pub pending_codes: Vec<crate::gateway::PendingCode>,
+    pub error: Option<String>,
 }
 
 /// `MediaKind` as its query value.
@@ -743,6 +848,26 @@ mod tests {
         assert_eq!(r[0].health.space, Some(Space { free: 5, total: 10 }));
         let bare: StorageRoot = serde_json::from_str(r#"{"id":2}"#).unwrap();
         assert!(bare.health.space.is_none());
+    }
+
+    #[test]
+    fn sources_discovery_and_gateway_read_leniently() {
+        let s: Vec<Source> = serde_json::from_str(
+            r#"[{"id":3,"kind":"jellyfin","label":"Den","url":"http://den:8096","enabled":true,"user_id":"u","user_name":"ann","server_id":"x",
+                "sign_in":"password","added":1,"signed_in":true,"health":{"reachable":false,"signed_in":true,"checked":9,"error":"timed out"}}]"#,
+        )
+        .unwrap();
+        assert_eq!(s[0].health.error.as_deref(), Some("timed out"));
+        let f: Vec<Found> = serde_json::from_str(
+            r#"[{"kind":"nocturne","id":"a","name":"Attic","address":"http://10.0.0.5:8100"}]"#,
+        )
+        .unwrap();
+        assert_eq!(f[0].address, "http://10.0.0.5:8100");
+        let g: GatewayStatus = serde_json::from_str(
+            r#"{"version":"0.7.5","address":"http://127.0.0.1:8099","user_name":"nocturne","devices":2,"pending_codes":[{"code":"123456","device":"TV"}],"error":null,"tls":false}"#,
+        )
+        .unwrap();
+        assert_eq!((g.devices, g.pending_codes[0].code.as_str()), (2, "123456"));
     }
 
     #[test]

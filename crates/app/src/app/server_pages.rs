@@ -103,6 +103,8 @@ impl App {
             Tab::Library => self.ns_library(),
             Tab::Requests => self.ns_requests(),
             Tab::Storage => self.ns_storage(),
+            Tab::Sources => self.ns_sources(),
+            Tab::Gateway => self.ns_gateway(),
         });
         let body = scroll(container(col).center_x(Length::Fill).padding(Padding {
             top: t::S8,
@@ -471,6 +473,240 @@ impl App {
             );
         }
         card(s.storage.iter().map(storage_row).collect())
+    }
+
+    fn ns_sources(&self) -> El<'_> {
+        let s = &self.ns;
+        if s.sources.is_empty() {
+            return empty_state(
+                "server",
+                if s.loading {
+                    "Loading sources"
+                } else {
+                    "No sources"
+                },
+                "Jellyfin and NOCTURNE servers this server reads from; add them in its dashboard.",
+            );
+        }
+        card(
+            s.sources
+                .iter()
+                .map(|x| {
+                    let h = &x.health;
+                    let (word, ok) = match (&h.error, h.reachable, h.signed_in && x.signed_in) {
+                        (_, true, true) => ("Ready", true),
+                        (_, true, false) => ("Signed out", false),
+                        _ if h.checked == 0 => ("Not checked", false),
+                        _ => ("Unreachable", false),
+                    };
+                    let who = if x.user_name.is_empty() {
+                        x.sign_in.replace('_', " ")
+                    } else {
+                        x.user_name.clone()
+                    };
+                    let mut c = column![
+                        row![
+                            column![
+                                text(if x.label.is_empty() {
+                                    x.url.clone()
+                                } else {
+                                    x.label.clone()
+                                })
+                                .size(t::BODY)
+                                .font(t::semibold()),
+                                small(format!("{} \u{00B7} {} \u{00B7} {}", x.kind, x.url, who)),
+                            ]
+                            .spacing(3)
+                            .width(Length::Fill),
+                            chip(word, ok),
+                            action_button(
+                                "Check now",
+                                false,
+                                false,
+                                false,
+                                false,
+                                m(Msg::SourceCheck(x.id))
+                            ),
+                            switch(x.enabled, false, m(Msg::SourceEnable(x.id, !x.enabled))),
+                        ]
+                        .spacing(t::S3)
+                        .align_y(Alignment::Center),
+                    ]
+                    .spacing(t::S2);
+                    if let Some(e) = &h.error {
+                        c = c.push(small(e.clone()).color(t::warn()));
+                    }
+                    c.into()
+                })
+                .collect(),
+        )
+    }
+
+    fn ns_gateway(&self) -> El<'_> {
+        let s = &self.ns;
+        let Some((st, devices)) = &s.gw else {
+            return empty_state(
+                "broadcast",
+                "Loading the gateway",
+                "One Jellyfin-compatible address over every source, for phone and TV apps.",
+            );
+        };
+        let mut col = column![].spacing(t::S4);
+        let mut status = column![
+            row![
+                column![
+                    text("Address").size(t::BODY).font(t::semibold()),
+                    small(format!("Apps sign in as {} with the gateway password, a Quick Connect code or an API key.", st.user_name)),
+                ]
+                .spacing(3)
+                .width(Length::Fill),
+                mono(st.address.clone()),
+            ]
+            .spacing(t::S3)
+            .align_y(Alignment::Center),
+        ]
+        .spacing(t::S2);
+        if let Some(e) = &st.error {
+            status = status.push(small(e.clone()).color(t::warn()));
+        }
+        let mut qc = column![
+            text("Quick Connect").size(t::BODY).font(t::semibold()),
+            small("Enter the code a Jellyfin app shows to sign it in."),
+        ]
+        .spacing(t::S2);
+        for p in &st.pending_codes {
+            qc = qc.push(
+                row![
+                    small(format!("{} is waiting with {}", p.device, p.code)).width(Length::Fill),
+                    action_button(
+                        "Approve",
+                        true,
+                        false,
+                        false,
+                        false,
+                        m(Msg::QcApprove(p.code.clone()))
+                    ),
+                ]
+                .spacing(t::S3)
+                .align_y(Alignment::Center),
+            );
+        }
+        qc = qc.push(
+            row![
+                text_input("Code", &s.qc)
+                    .on_input(|v| m(Msg::QcInput(v)))
+                    .on_submit(m(Msg::QcApprove(s.qc.clone())))
+                    .size(t::BODY)
+                    .padding([t::S2, t::S3])
+                    .width(200)
+                    .style(style::input),
+                action_button(
+                    "Approve",
+                    false,
+                    false,
+                    false,
+                    s.qc.len() < 6,
+                    m(Msg::QcApprove(s.qc.clone()))
+                ),
+            ]
+            .spacing(t::S2)
+            .align_y(Alignment::Center),
+        );
+        let mut keys = column![
+            text("API keys").size(t::BODY).font(t::semibold()),
+            small("For apps that sign in with a key instead of the password. A key is shown once."),
+            row![
+                text_input("Name, for example Living room TV", &s.key_name)
+                    .on_input(|v| m(Msg::KeyName(v)))
+                    .on_submit(m(Msg::MakeKey))
+                    .size(t::BODY)
+                    .padding([t::S2, t::S3])
+                    .style(style::input),
+                action_button(
+                    "Create key",
+                    false,
+                    false,
+                    false,
+                    s.key_name.trim().is_empty(),
+                    m(Msg::MakeKey)
+                ),
+            ]
+            .spacing(t::S2)
+            .align_y(Alignment::Center),
+        ]
+        .spacing(t::S2);
+        if let Some(k) = &s.new_key {
+            keys = keys.push(
+                row![
+                    mono(k.clone()).width(Length::Fill),
+                    action_button("Copy", true, false, false, false, m(Msg::CopyKey)),
+                ]
+                .spacing(t::S3)
+                .align_y(Alignment::Center),
+            );
+        }
+        col = col.push(card(vec![status.into(), qc.into(), keys.into()]));
+        let rows: Vec<El> = devices
+            .iter()
+            .map(|d| {
+                let key = u64::MAX / 2 + d.created;
+                row![
+                    column![
+                        text(d.device_name.clone())
+                            .size(t::BODY)
+                            .font(t::semibold()),
+                        small(if d.api_key {
+                            "API key".to_string()
+                        } else {
+                            d.client.clone()
+                        }),
+                    ]
+                    .spacing(3)
+                    .width(Length::Fill),
+                    if self.ns.armed == Some(key) {
+                        action_button(
+                            if d.api_key {
+                                "Revoke key"
+                            } else {
+                                "Sign out device"
+                            },
+                            false,
+                            true,
+                            false,
+                            false,
+                            m(Msg::Revoke(d.id.clone())),
+                        )
+                    } else {
+                        action_button(
+                            if d.api_key { "Revoke" } else { "Sign out" },
+                            false,
+                            true,
+                            false,
+                            false,
+                            m(Msg::Arm(key)),
+                        )
+                    },
+                ]
+                .spacing(t::S3)
+                .align_y(Alignment::Center)
+                .into()
+            })
+            .collect();
+        col = col.push(if rows.is_empty() {
+            empty_state(
+                "people",
+                "No devices yet",
+                "Phones and TVs signed in to the gateway show here.",
+            )
+        } else {
+            column![
+                text("Devices and keys").size(t::BODY).font(t::semibold()),
+                card(rows)
+            ]
+            .spacing(t::S3)
+            .into()
+        });
+        col.into()
     }
 }
 
