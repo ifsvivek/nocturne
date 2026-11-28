@@ -286,6 +286,18 @@ async fn put_config(
             "only an admin may change the configuration",
         ));
     }
+    // Programs the server runs: a session token (stolen through a tunnel, say) must not turn into a shell on this machine.
+    let program = |c: &ServerConfig, sec: &str, key: &str| {
+        c.sections.get(sec).and_then(|t| t.get(key)).cloned()
+    };
+    let cur = sh.cfg();
+    for (sec, key) in [("tunnel", "cloudflared"), ("storage", "gio")] {
+        if c != Caller::Local && program(&cur, sec, key) != program(&new, sec, key) {
+            return Err(ApiErr::forbidden(format!(
+                "{sec}.{key} names a program the server runs: change it in server.toml or with `nocturne-server config set` on the server"
+            )));
+        }
+    }
     sh.save_cfg(new)?;
     sh.modules().apply(&sh).await;
     Ok(Json(sh.cfg()))

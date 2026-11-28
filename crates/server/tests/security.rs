@@ -262,6 +262,61 @@ async fn one_peer_cannot_hold_every_connection() {
     assert_eq!(r.status(), 200);
 }
 
+/// Finding: `PUT /config` let any admin session choose the programs the server runs (`tunnel.cloudflared`, `storage.gio`), so a stolen session token (through a tunnel, say) became a shell on the machine. Only the local admin (unix socket, or editing `server.toml`) may change them now.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_remote_session_cannot_choose_a_program_to_run() {
+    let s = start().await;
+    let code = nocturne_server::auth::setup_code(&s.sh.paths).unwrap();
+    let (_, v) = post(
+        &format!("{}/setup", s.base),
+        &[],
+        json!({"username": "admin", "password": "correct horse", "code": code}),
+    )
+    .await;
+    let tok = v["token"].as_str().unwrap().to_string();
+    let c = reqwest::Client::new();
+    let mut cfg: Value = c
+        .get(format!("{}/config", s.base))
+        .bearer_auth(&tok)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    for (sec, key) in [("tunnel", "cloudflared"), ("storage", "gio")] {
+        let mut bad = cfg.clone();
+        bad[sec] = json!({ key: "/bin/sh" });
+        let r = c
+            .put(format!("{}/config", s.base))
+            .bearer_auth(&tok)
+            .json(&bad)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 403, "{sec}.{key}");
+    }
+    // Other changes still work over TCP, and the local admin may set the program.
+    cfg["requests"]["auto_approve"] = json!(false);
+    let r = c
+        .put(format!("{}/config", s.base))
+        .bearer_auth(&tok)
+        .json(&cfg)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    cfg["tunnel"] = json!({"cloudflared": "/usr/bin/cloudflared"});
+    let sock = s.sh.paths.socket().unwrap();
+    let (code, v) = tokio::task::spawn_blocking(move || {
+        nocturne_server::cli::call(&sock, "PUT", "/api/v1/config", Some(&cfg))
+    })
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(code, 200, "{v}");
+}
+
 /// Finding: the storage agent client followed redirects, and `X-Api-Key` (unlike `Authorization`) survives a redirect to another host, so an agent address that redirects handed the key to whatever host it named.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_agent_key_never_follows_a_redirect() {
