@@ -239,6 +239,22 @@ async fn setup_login_keys_local_admin_and_gating() {
         "{out}"
     );
 
+    // The CLI's client: the local admin creates an API key without any credential.
+    let sock = s.sh.paths.socket().unwrap();
+    let (code, k) = tokio::task::spawn_blocking(move || {
+        nocturne_server::cli::call(
+            &sock,
+            "POST",
+            "/api/v1/apikeys",
+            Some(&json!({"name": "from cli"})),
+        )
+    })
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(code, 200, "{k}");
+    assert!(k["key"].as_str().unwrap().starts_with("nsk_"));
+
     // A module's routes: 503 while off, served once its section is enabled through PUT /config.
     assert_eq!(
         call("GET", &format!("{b}/probe/ping"), Some(&tok), None)
