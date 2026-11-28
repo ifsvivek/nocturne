@@ -301,22 +301,38 @@ async fn rename(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
-fn new_key(paths: &Paths) -> Result<(), String> {
+/// A new agent key; only its hash is stored. A running server holds the configuration in memory and writes all of it back on every change, so while one answers on the socket the hash goes through it; editing the file behind its back was undone by the next save.
+pub fn new_key(paths: &Paths) -> Result<String, String> {
     let mut b = [0u8; 32];
     getrandom::fill(&mut b).map_err(|e| e.to_string())?;
     let key: String = b.iter().map(|x| format!("{x:02x}")).collect();
     let key = format!("nsa_{key}");
-    let mut cfg = ServerConfig::load_from(&paths.config)?;
-    let mut s: StorageConfig = cfg.section("storage");
-    s.agent.key_sha256 = sha256_hex(&key);
-    cfg.set_section("storage", &s)?;
-    cfg.save_to(&paths.config)?;
-    eprintln!(
-        "New agent key below (shown once; only its hash is kept in {}). Give it to the main server when adding this agent as a storage root:",
-        paths.config.display()
-    );
-    println!("{key}");
-    Ok(())
+    let hash = sha256_hex(&key);
+    let running = paths
+        .socket()
+        .filter(|s| std::os::unix::net::UnixStream::connect(s).is_ok());
+    if let Some(sock) = running {
+        let ok = |(code, v): (u16, serde_json::Value)| {
+            if (200..300).contains(&code) {
+                Ok(v)
+            } else {
+                Err(v["error"]
+                    .as_str()
+                    .unwrap_or("the server refused")
+                    .to_string())
+            }
+        };
+        let mut v = ok(crate::cli::call(&sock, "GET", "/api/v1/config", None)?)?;
+        v["storage"]["agent"]["key_sha256"] = hash.into();
+        ok(crate::cli::call(&sock, "PUT", "/api/v1/config", Some(&v))?)?;
+    } else {
+        let mut cfg = ServerConfig::load_from(&paths.config)?;
+        let mut s: StorageConfig = cfg.section("storage");
+        s.agent.key_sha256 = hash;
+        cfg.set_section("storage", &s)?;
+        cfg.save_to(&paths.config)?;
+    }
+    Ok(key)
 }
 
 /// `nocturne-server agent [--new-key]`. Returns the exit code.
@@ -324,7 +340,13 @@ pub fn agent_main(args: &[String]) -> i32 {
     let result = (|| {
         let paths = Paths::system()?;
         if args.first().map(String::as_str) == Some("--new-key") {
-            return new_key(&paths);
+            let key = new_key(&paths)?;
+            eprintln!(
+                "New agent key below (shown once; only its hash is kept in {}). Give it to the main server when adding this agent as a storage root:",
+                paths.config.display()
+            );
+            println!("{key}");
+            return Ok(());
         }
         if let Some(a) = args.first() {
             return Err(format!(

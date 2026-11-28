@@ -335,3 +335,30 @@ async fn setup_login_keys_local_admin_and_gating() {
     );
     s.sh.stop();
 }
+
+/// `nocturne-server agent --new-key` while the server runs: the hash goes through the server, so its next config save keeps it (it used to edit the file behind the server's back, and the next save dropped it). Without a server it goes to the file.
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_key_survives_config_saves_of_a_running_server() {
+    use nocturne_server::modules::storage::StorageConfig;
+    use nocturne_server::modules::storage_agent::{new_key, sha256_hex};
+    let s = start().await;
+    let paths = s.sh.paths.clone();
+    let key = tokio::task::spawn_blocking(move || new_key(&paths))
+        .await
+        .unwrap()
+        .unwrap();
+    let hash = |c: &ServerConfig| c.section::<StorageConfig>("storage").agent.key_sha256;
+    assert_eq!(hash(&s.sh.cfg()), sha256_hex(&key));
+    s.sh.save_cfg(s.sh.cfg()).unwrap(); // any later change, e.g. from the dashboard
+    let on_disk = ServerConfig::load_from(&s.sh.paths.config).unwrap();
+    assert_eq!(hash(&on_disk), sha256_hex(&key));
+    s.sh.stop();
+
+    let d = tempfile::tempdir().unwrap();
+    let p = Paths::under(d.path());
+    let key = new_key(&p).unwrap();
+    assert_eq!(
+        hash(&ServerConfig::load_from(&p.config).unwrap()),
+        sha256_hex(&key)
+    );
+}
