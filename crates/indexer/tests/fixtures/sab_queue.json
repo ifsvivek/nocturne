@@ -1,0 +1,4 @@
+{"queue": {"status": "Downloading", "paused": false, "kbpersec": "12045.32", "noofslots": 2, "slots": [
+  {"status": "Downloading", "index": 0, "password": "", "avg_age": "2d", "script": "None", "mb": "1843.20", "mbleft": "921.60", "mbmissing": "0.0", "size": "1.8 GB", "sizeleft": "921 MB", "filename": "Example.Show.S02E05.1080p.WEB.H264-GROUP", "labels": [], "priority": "Normal", "cat": "tv", "timeleft": "0:01:15", "percentage": "50", "nzo_id": "SABnzbd_nzo_p86tgx", "unpackopts": "3"},
+  {"status": "Queued", "index": 1, "mb": "700", "mbleft": "700", "filename": "Example.Film.2001.720p.BluRay.x264-GRP", "cat": "movies", "percentage": "0", "nzo_id": "SABnzbd_nzo_aaaa11"}
+]}}

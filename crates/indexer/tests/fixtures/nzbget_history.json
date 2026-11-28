@@ -1,0 +1,4 @@
+{"version": "1.1", "id": 1, "result": [
+  {"NZBID": 12, "Name": "Example.Show.S02E04.1080p.WEB.H264-GROUP", "Kind": "NZB", "Category": "tv", "Status": "SUCCESS/ALL", "FileSizeMB": 1843, "DestDir": "/downloads/complete/tv/Example.Show.S02E04", "FinalDir": ""},
+  {"NZBID": 11, "Name": "Broken.Release.2020.1080p.WEB-DL-X", "Kind": "NZB", "Category": "movies", "Status": "FAILURE/PAR", "FileSizeMB": 900, "DestDir": "/downloads/x", "FinalDir": ""}
+]}

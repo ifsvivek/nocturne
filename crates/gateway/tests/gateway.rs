@@ -320,6 +320,16 @@ async fn routes_are_gated() {
         "/web/",
         "/web/{*path}",
     ];
+    // Pictures are public too (plain <img> links), as on a real server.
+    let allowed_public: Vec<&str> = allowed_public
+        .into_iter()
+        .chain(
+            public
+                .iter()
+                .copied()
+                .filter(|p| p.contains("/Images/") || p.ends_with("/Images/{imageType}")),
+        )
+        .collect();
     for p in &public {
         assert!(
             allowed_public.contains(p),

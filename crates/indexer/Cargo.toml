@@ -1,0 +1,26 @@
+[package]
+name = "nocturne-indexer"
+description = "Torznab/Newznab indexer client, release-name parser, quality profiles and SABnzbd/NZBGet clients for NOCTURNE's native *arr stack (user-added feeds only; no site definitions, no scraping)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+base64 = "0.23"
+regex = "1.13.2"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json"] }
+roxmltree = "0.20"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["time"] }
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "time", "net", "io-util"] }
