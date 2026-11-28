@@ -13,7 +13,7 @@ info:
 
     Every route below is served; `crates/server/tests/openapi.rs` fails when a registered route is missing here.
 servers:
-  - url: http://127.0.0.1:8098
+  - url: http://127.0.0.1:8100
 security:
   - bearer: []
   - apiKey: []
@@ -417,7 +417,7 @@ components:
           type: object
           properties:
             binding: {$ref: "#/components/schemas/Binding"}
-            port: {type: integer, default: 8098}
+            port: {type: integer, default: 8100}
             cert_path: {type: [string, "null"]}
             key_path: {type: [string, "null"]}
             trusted_proxy: {type: [string, "null"], description: "X-Forwarded-For is believed only from this address"}
