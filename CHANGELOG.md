@@ -22,6 +22,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Settings rows no longer repeat their section in the label ("Home: Latest" is "Latest" under Home).
 - A stray › chevron no longer stays in the header after the window is widened so that every link fits.
 - Gateway: favourites kept in the gateway (server changes off) now show in the Favourites tab, and a watched title started again keeps its resume point.
+- Server security review: first-run setup over the network needs a one-time setup code (`nocturne-server open` prints the link with it), so nobody else can claim the admin account first; sign-in is limited to 5 failures per address and name in 10 minutes in the server and the gateway, also against parallel guesses; sessions unused for 30 days expire; at most 64 connections per address; the programs the server runs can be changed only on the server itself; the server's database is readable by its owner only; the gateway's web client pass-through fetches only files; the storage agent key never follows a redirect.
 
 ## [0.7.0] - 2026-11-27
 
