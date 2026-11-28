@@ -56,7 +56,11 @@ pub fn status(sh: &Shared, r: &MediaRequest) -> RequestStatus {
         .iter()
         .filter(|u| u.monitored && decide::released(u, &today))
         .collect();
-    if !wanted.is_empty() && wanted.iter().all(|u| u.file.is_some()) && title.monitored {
+    if !wanted.is_empty()
+        && wanted
+            .iter()
+            .all(|u| u.file.is_some() || crate::library::on_source(sh, &title, u))
+    {
         RequestStatus::Available
     } else {
         RequestStatus::Approved

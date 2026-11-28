@@ -1,7 +1,8 @@
 //! The library manager end to end through the REST API, with the in-memory torrent engine, indexer and metadata: add an indexer, libraries and titles; search; grab the best release; finish the download; import under the naming templates; history. For a movie, an episode, an album and a book, plus a failed download (blocklist, search again) and a request.
 use nocturne_core::server::ServerConfig;
+use nocturne_core::server::{Title, Unit};
 use nocturne_server::fake::{self, FakeDownloader, FakeIndexer, FakeMeta};
-use nocturne_server::library::Engine;
+use nocturne_server::library::{Catalog, CatalogSlot, Engine};
 use nocturne_server::module::Registry;
 use nocturne_server::modules::{downloads::Backend, with};
 use nocturne_server::state::{Paths, Secrets, Shared};
@@ -464,9 +465,53 @@ async fn movie_episode_album_and_book_from_search_to_import() {
         libs[0]
     );
 
+    // A title a source already has: available at once, never grabbed.
+    struct OnSource;
+    impl Catalog for OnSource {
+        fn has(&self, t: &Title, _: &Unit) -> bool {
+            t.name == "On Source"
+        }
+    }
+    *sh.ext::<CatalogSlot>().0.write().unwrap() = Some(Arc::new(OnSource));
+    ix.set(
+        ixid,
+        vec![fake::release(
+            ixid,
+            "On.Source.2020.1080p.BluRay.x264-GRP",
+            1500 << 20,
+            10,
+        )],
+    );
+    let r = t
+        .post(
+            "/requests",
+            json!({"kind": "movie", "name": "On Source", "year": 2020}),
+        )
+        .await["id"]
+        .as_u64()
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let reqs = t.get("/requests").await;
+    let mine = reqs
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["id"] == r)
+        .unwrap();
+    assert_eq!(mine["status"], "available");
+    let on = mine["title"].as_u64().unwrap();
+    let q = t.get("/library/queue").await;
+    assert!(
+        !q.as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["grab"]["title"] == on),
+        "{q}"
+    );
+
     // Counters and jobs are reported.
     let st = t.get("/status").await;
-    assert_eq!(st["titles"], 6, "{st}");
+    assert_eq!(st["titles"], 7, "{st}");
     assert!(st["missing"].as_u64().unwrap() >= 2, "{st}");
     assert_eq!(t.get("/library/jobs").await.as_array().unwrap().len(), 4);
     sh.stop();

@@ -16,6 +16,25 @@ use nocturne_core::server::{
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
+/// What the media sources already hold (filled by the `sources` module): a unit present on a source counts as available and is never grabbed. Implement it for your module's state and put it in `sh.ext::<CatalogSlot>()` while running.
+pub trait Catalog: Send + Sync + 'static {
+    /// Whether a source has this unit (the movie, an episode, an album, a book) of the title. Match by ids first, then name, year, season and episode.
+    fn has(&self, title: &Title, unit: &Unit) -> bool;
+}
+
+#[derive(Default)]
+pub struct CatalogSlot(pub std::sync::RwLock<Option<Arc<dyn Catalog>>>);
+
+/// Whether a source already has the unit (false without a sources module).
+pub fn on_source(sh: &Shared, t: &Title, u: &Unit) -> bool {
+    sh.ext::<CatalogSlot>()
+        .0
+        .read()
+        .unwrap()
+        .as_ref()
+        .is_some_and(|c| c.has(t, u))
+}
+
 pub fn today() -> String {
     Day((now() / 86_400) as i64).iso()
 }
@@ -371,6 +390,7 @@ impl Engine {
             .iter()
             .filter(|u| units.is_empty() || units.contains(&u.id))
             .filter(|u| decide::wants(u, &p, &today))
+            .filter(|u| u.file.is_some() || !on_source(sh, &t, u))
             .map(|u| u.id)
             .collect();
         Ok((t, p, all, wanted))
