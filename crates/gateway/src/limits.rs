@@ -88,7 +88,18 @@ impl LoginLimiter {
 
     /// `Err(wait)` when this attempt must be refused with 429.
     pub fn check(&self, ip: IpAddr, user: &str, now: Instant) -> Result<(), Duration> {
+        Self::check_in(&mut self.inner.lock().unwrap(), ip, user, now)
+    }
+
+    /// [`Self::check`] and count the attempt as a failure in one step, before the password is checked: parallel requests cannot all pass the check before the first failure is counted. A right password then takes it back with [`Self::succeeded`].
+    pub fn begin(&self, ip: IpAddr, user: &str, now: Instant) -> Result<(), Duration> {
         let mut s = self.inner.lock().unwrap();
+        Self::check_in(&mut s, ip, user, now)?;
+        Self::count(&mut s, ip, user, now);
+        Ok(())
+    }
+
+    fn check_in(s: &mut LoginState, ip: IpAddr, user: &str, now: Instant) -> Result<(), Duration> {
         s.all
             .retain(|t| now.saturating_duration_since(*t) < LOGIN_WINDOW);
         if s.all.len() >= LOGIN_GLOBAL {
@@ -114,7 +125,10 @@ impl LoginLimiter {
     }
 
     pub fn failed(&self, ip: IpAddr, user: &str, now: Instant) {
-        let mut s = self.inner.lock().unwrap();
+        Self::count(&mut self.inner.lock().unwrap(), ip, user, now);
+    }
+
+    fn count(s: &mut LoginState, ip: IpAddr, user: &str, now: Instant) {
         if s.by_key.len() >= MAP_CAP {
             s.by_key.clear();
         }
@@ -122,12 +136,12 @@ impl LoginLimiter {
         s.all.push(now);
     }
 
+    /// Clears the count of (address, name); after [`Self::begin`] it also takes back that attempt from the global count.
     pub fn succeeded(&self, ip: IpAddr, user: &str) {
-        self.inner
-            .lock()
-            .unwrap()
-            .by_key
-            .remove(&Self::key(ip, user));
+        let mut s = self.inner.lock().unwrap();
+        if s.by_key.remove(&Self::key(ip, user)).is_some() {
+            s.all.pop();
+        }
     }
 
     pub fn prune(&self, now: Instant) {

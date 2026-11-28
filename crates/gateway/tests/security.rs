@@ -535,6 +535,37 @@ async fn spoofed_forwarded_for_does_not_dodge_the_login_limit() {
     g.st.stop();
 }
 
+/// Review 2026-11-28: the limit was checked before the password and counted after it, so parallel requests all passed the check and every one was a guess. Now each attempt is counted before the check of the password.
+#[tokio::test(flavor = "multi_thread")]
+async fn parallel_guesses_cannot_outrun_the_login_limit() {
+    let g = start(false, false).await;
+    let tries: Vec<_> = (0..16)
+        .map(|i| {
+            let req = g
+                .http
+                .post(g.url("/Users/AuthenticateByName"))
+                .json(&json!({"Username": "nocturne", "Pw": format!("guess {i}")}))
+                .send();
+            tokio::spawn(async move { req.await.unwrap().status().as_u16() })
+        })
+        .collect();
+    let mut codes = vec![];
+    for t in tries {
+        codes.push(t.await.unwrap());
+    }
+    let checked = codes.iter().filter(|c| **c == 401).count();
+    assert!(checked <= 5, "{checked} passwords were checked: {codes:?}");
+    let r = g
+        .http
+        .post(g.url("/Users/AuthenticateByName"))
+        .json(&json!({"Username": "nocturne", "Pw": g.pw}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 429);
+    g.st.stop();
+}
+
 // ---------------------------------------------------------------- WebSocket caps
 
 async fn open_socket(

@@ -811,11 +811,10 @@ async fn by_name(
     let name = b.username.unwrap_or_default();
     let pw = b.pw.or(b.password).unwrap_or_default();
     let now = Instant::now();
-    if let Err(wait) = st.limits.login.check(ip.0, &name, now) {
+    if let Err(wait) = st.limits.login.begin(ip.0, &name, now) {
         return too_many(wait);
     }
     if !st.users.verify(&name, &pw).await {
-        st.limits.login.failed(ip.0, &name, now);
         return status_json(StatusCode::UNAUTHORIZED, "Invalid username or password");
     }
     st.limits.login.succeeded(ip.0, &name);
