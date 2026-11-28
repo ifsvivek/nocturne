@@ -3984,6 +3984,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "nocturne-indexer"
+version = "0.7.0"
+dependencies = [
+ "base64 0.23.1",
+ "regex",
+ "reqwest",
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "nocturne-jellyfin"
 version = "0.7.0"
 dependencies = [

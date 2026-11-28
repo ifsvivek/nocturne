@@ -1,0 +1,4 @@
+{"version": "1.1", "id": 1, "result": [
+  {"NZBID": 17, "NZBName": "Example.Show.S02E05.1080p.WEB.H264-GROUP", "Kind": "NZB", "Category": "tv", "Status": "DOWNLOADING", "FileSizeMB": 1000, "RemainingSizeMB": 250, "DestDir": "/downloads/intermediate/Example.Show.S02E05.1080p.WEB.H264-GROUP.#17"},
+  {"NZBID": 18, "NZBName": "Example.Film.2001.720p.BluRay.x264-GRP", "Kind": "NZB", "Category": "movies", "Status": "PP_QUEUED", "FileSizeMB": 700, "RemainingSizeMB": 0, "DestDir": "/downloads/intermediate/x"}
+]}
