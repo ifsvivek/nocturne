@@ -73,6 +73,8 @@ function authScreen(setup) {
   const fill = `${setup ? "new" : "current"}-password`;
   const pass = h("input", { type: "password", name: "password", autocomplete: fill, required: true, minlength: setup ? 8 : undefined });
   const pass2 = setup ? h("input", { type: "password", name: "password2", autocomplete: "new-password", required: true, minlength: 8 }) : null;
+  // The one-time setup code: `nocturne-server open` puts it in the link.
+  const code = setup ? h("input", { type: "text", name: "code", autocomplete: "off", required: true, spellcheck: "false", value: new URLSearchParams(location.search).get("code") || "" }) : null;
   const btn = h("button.btn.primary", { type: "submit" }, setup ? "Create admin account" : "Sign in");
   const form = h("form", { on: { submit: async (ev) => {
     ev.preventDefault();
@@ -84,7 +86,9 @@ function authScreen(setup) {
     }
     btn.disabled = true;
     try {
-      const r = await post(setup ? "/setup" : "/auth/login", { username: user.value.trim(), password: pass.value });
+      const body = { username: user.value.trim(), password: pass.value };
+      if (setup) body.code = code.value.trim();
+      const r = await post(setup ? "/setup" : "/auth/login", body);
       token.set(r.token);
       if (location.pathname === "/login" || location.pathname === "/setup") history.replaceState(null, "", "/");
       start();
@@ -96,11 +100,12 @@ function authScreen(setup) {
     }
   } } },
     h("h1", setup ? "Welcome" : "Sign in"),
-    setup ? h("p.muted", "Create the administrator account for this server. Passwords need at least 8 characters.") : null,
+    setup ? h("p.muted", "Create the administrator account for this server. Passwords need at least 8 characters. The setup code is in the link that nocturne-server open prints on the server.") : null,
     err,
     h("label.field", h("span", "Name"), user),
     h("label.field", h("span", "Password"), pass),
     setup ? h("label.field", h("span", "Repeat password"), pass2) : null,
+    setup ? h("label.field", h("span", "Setup code"), code) : null,
     btn);
   clear(app, h("main.auth#main", h("div.card", brand(), form)));
   user.focus();

@@ -108,7 +108,7 @@ async fn movie_episode_album_and_book_from_search_to_import() {
     let base = format!("http://{addr}/api/v1");
     let v: Value = http
         .post(format!("{base}/setup"))
-        .json(&json!({"username": "admin", "password": "correct horse"}))
+        .json(&json!({"username": "admin", "password": "correct horse", "code": nocturne_server::auth::setup_code(&sh.paths)}))
         .send()
         .await
         .unwrap()

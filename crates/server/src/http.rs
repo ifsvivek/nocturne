@@ -5,9 +5,11 @@ use axum::Router;
 use axum::body::Body;
 use hyper_util::rt::{TokioIo, TokioTimer};
 use nocturne_core::gateway::{Binding, bind_addrs, peer_allowed};
+use nocturne_gateway::limits::{ConnLimits, MAX_CONNECTIONS};
 use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use tower::ServiceExt;
 
@@ -100,6 +102,7 @@ async fn accept_tcp(
     binding: Binding,
     router: Router,
     tls: Option<tokio_rustls::TlsAcceptor>,
+    conns: Arc<ConnLimits>,
 ) {
     loop {
         let Ok((stream, peer)) = l.accept().await else {
@@ -109,9 +112,14 @@ async fn accept_tcp(
         if !peer_allowed(binding, peer.ip()) {
             continue;
         }
+        // 64 connections per address, 256 in all (the gateway's limits): one peer cannot hold every socket.
+        let Some(slot) = conns.try_acquire(peer.ip()) else {
+            continue;
+        };
         let _ = stream.set_nodelay(true);
         let (router, tls) = (router.clone(), tls.clone());
         tokio::spawn(async move {
+            let _slot = slot;
             match tls {
                 None => serve_conn(stream, Peer::Tcp(peer), router).await,
                 Some(a) => {
@@ -162,6 +170,13 @@ pub async fn run(
             format!("cannot listen on port {}: {e}", cfg.http.port),
         )
     })?;
+    crate::auth::prepare_setup_code(&sh).map_err(io::Error::other)?;
+    if crate::auth::setup_needed(&sh) {
+        crate::slog!(
+            "first-run setup is waiting: run `nocturne-server open` on this machine (the setup code is in {})",
+            crate::auth::setup_code_path(&sh.paths).display()
+        );
+    }
     let addrs: Vec<SocketAddr> = listeners
         .iter()
         .filter_map(|l| l.local_addr().ok())
@@ -177,9 +192,18 @@ pub async fn run(
     if let Some(b) = bound {
         let _ = b.send(addrs);
     }
+    let conns = Arc::new(ConnLimits::new(MAX_CONNECTIONS));
     let mut tasks: Vec<_> = listeners
         .into_iter()
-        .map(|l| tokio::spawn(accept_tcp(l, cfg.http.binding, router.clone(), tls.clone())))
+        .map(|l| {
+            tokio::spawn(accept_tcp(
+                l,
+                cfg.http.binding,
+                router.clone(),
+                tls.clone(),
+                conns.clone(),
+            ))
+        })
         .collect();
     #[cfg(unix)]
     if let (Some(dir), Some(sock)) = (sh.paths.runtime.clone(), sh.paths.socket()) {

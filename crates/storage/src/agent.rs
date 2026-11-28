@@ -62,6 +62,8 @@ impl AgentClient {
             key: key.to_string(),
             http: reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(5))
+                // `x-api-key` would go along to wherever a redirect points.
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .unwrap_or_default(),
         }

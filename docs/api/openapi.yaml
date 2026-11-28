@@ -7,7 +7,7 @@ info:
 
     Transport: HTTP on the configured address (loopback by default) and the same API on the unix socket `$XDG_RUNTIME_DIR/nocturne/server.sock`. A unix-socket peer with the server's own uid is the local admin and needs no credential.
 
-    Auth: `Authorization: Bearer <session token or API key>` or `X-Api-Key: <API key>`. Every route needs it except `GET /api/v1/health`, `GET /api/v1/setup`, `POST /api/v1/setup` (only until an admin exists) and `POST /api/v1/auth/login`. The WebSocket also accepts `?token=` because browsers cannot set headers on it.
+    Auth: `Authorization: Bearer <session token or API key>` or `X-Api-Key: <API key>`. Every route needs it except `GET /api/v1/health`, `GET /api/v1/setup`, `POST /api/v1/setup` (only until an admin exists; over TCP it needs the one-time setup code) and `POST /api/v1/auth/login`. The WebSocket also accepts `?token=` because browsers cannot set headers on it.
 
     Conventions: JSON bodies; ids are integers unless noted; times are unix seconds; enums are snake_case strings. Errors are `{"error": "message"}` with 400 (bad input), 401 (no or bad credential), 403 (not allowed), 404, 409 (conflict, e.g. already set up), 503 (module off). A route of a module that is switched off answers 503.
 
@@ -55,15 +55,17 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Credentials"}}}}
       responses:
         "200": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/LoginResult"}}}}
+        "403": {description: setup code missing or wrong (TCP only)}
         "409": {description: already set up}
   /api/v1/auth/login:
     post:
-      summary: Sign in; failed attempts are slowed down
+      summary: Sign in; 5 failures per address and name in 10 minutes, then 429 with Retry-After
       security: []
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Credentials"}}}}
       responses:
         "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/LoginResult"}}}}
         "401": {description: wrong name or password}
+        "429": {description: too many failed sign-ins}
   /api/v1/auth/logout:
     post:
       summary: Revoke the session token used for this call
@@ -668,7 +670,7 @@ components:
     Credentials:
       type: object
       required: [username, password]
-      properties: {username: {type: string}, password: {type: string, minLength: 8}}
+      properties: {username: {type: string}, password: {type: string, minLength: 8}, code: {type: string, description: "First-run setup over TCP only: the one-time code in <data>/setup-code (0600); `nocturne-server open` puts it in the link. Not needed on the unix socket."}}
     LoginResult:
       type: object
       properties: {token: {type: string}, user: {$ref: "#/components/schemas/User"}}

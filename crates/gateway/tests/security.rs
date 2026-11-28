@@ -367,6 +367,33 @@ async fn crafted_ids_and_paths_never_leave_the_servers_route_templates() {
     g.st.stop();
 }
 
+/// Review 2026-11-28: `/web/...` is public and was fetched from the server with the server account's token, so anyone could reach the server's non-file routes under `/web` (`/web/ConfigurationPages` lists plugin pages for a signed-in account). Only file names pass now.
+#[tokio::test]
+async fn the_web_pass_through_fetches_only_files() {
+    let (url, seen, _) = mock().await;
+    let g = start(false, false).await;
+    g.st.set_upstreams(vec![upstream(url)]);
+    for p in [
+        "/web/ConfigurationPages",
+        "/web/configurationpages?enableInMainMenu=true",
+        "/web/ConfigurationPage?name=x",
+        "/web/a/b",
+    ] {
+        let s = g.http.get(g.url(p)).send().await.unwrap().status();
+        assert_eq!(s, Sc::NOT_FOUND, "{p}");
+    }
+    assert!(seen.all().is_empty(), "{:?}", seen.all());
+    for p in [
+        "/web/",
+        "/web/main.jellyfin.bundle.js",
+        "/web/themes/dark/theme.css",
+    ] {
+        g.http.get(g.url(p)).send().await.unwrap();
+    }
+    assert_eq!(seen.all().len(), 3, "{:?}", seen.all());
+    g.st.stop();
+}
+
 // ---------------------------------------------------------------- write gating
 
 /// Every route that can cause a POST or DELETE to a server, called as a signed-in client.
@@ -532,6 +559,37 @@ async fn spoofed_forwarded_for_does_not_dodge_the_login_limit() {
         assert_eq!(attempt("wrong".into(), i).await.unwrap().status(), 401);
     }
     assert_eq!(attempt(g.pw.clone(), 99).await.unwrap().status(), 429);
+    g.st.stop();
+}
+
+/// Review 2026-11-28: the limit was checked before the password and counted after it, so parallel requests all passed the check and every one was a guess. Now each attempt is counted before the check of the password.
+#[tokio::test(flavor = "multi_thread")]
+async fn parallel_guesses_cannot_outrun_the_login_limit() {
+    let g = start(false, false).await;
+    let tries: Vec<_> = (0..16)
+        .map(|i| {
+            let req = g
+                .http
+                .post(g.url("/Users/AuthenticateByName"))
+                .json(&json!({"Username": "nocturne", "Pw": format!("guess {i}")}))
+                .send();
+            tokio::spawn(async move { req.await.unwrap().status().as_u16() })
+        })
+        .collect();
+    let mut codes = vec![];
+    for t in tries {
+        codes.push(t.await.unwrap());
+    }
+    let checked = codes.iter().filter(|c| **c == 401).count();
+    assert!(checked <= 5, "{checked} passwords were checked: {codes:?}");
+    let r = g
+        .http
+        .post(g.url("/Users/AuthenticateByName"))
+        .json(&json!({"Username": "nocturne", "Pw": g.pw}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 429);
     g.st.stop();
 }
 

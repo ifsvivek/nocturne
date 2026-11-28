@@ -55,7 +55,7 @@ async fn start() -> Server {
         "POST",
         &format!("{base}/setup"),
         None,
-        Some(json!({"username": "admin", "password": "correct horse"})),
+        Some(json!({"username": "admin", "password": "correct horse", "code": nocturne_server::auth::setup_code(&sh.paths)})),
     )
     .await;
     assert_eq!(code, 200, "{v}");
