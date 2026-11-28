@@ -726,6 +726,7 @@ mod tests {
             down_rate: 0,
             up_rate: 0,
             jobs: vec![],
+            disk: vec![],
         };
         assert!(module_on(&st, "library"));
         assert!(!module_on(&st, "downloads"));

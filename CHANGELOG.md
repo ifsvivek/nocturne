@@ -11,9 +11,12 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Fixed
 - The header is opaque, so page text no longer shows through it while scrolling (Settings content now also starts below the header).
+- Settings rows no longer repeat their section in the label ("Home: Latest" is "Latest" under Home).
+- A stray › chevron no longer stays in the header after the window is widened so that every link fits.
 
 ### Added
 - `nocturne-server`: a headless server with independently enabled modules behind one REST + WebSocket API, first-run admin setup, session tokens and API keys, a local-admin unix socket, and a CLI (`install`, `status`, `config`, `apikey`, ...).
+- The app as a client of NOCTURNE servers: Settings > NOCTURNE Servers lists this computer's server (found by its local socket, where you are the administrator without a password) and servers added by address (sign in with a user and password or an API key; a link to the first-run setup when a server has no administrator yet), shows each one's status, version and modules, opens its dashboard, and installs, starts or stops this computer's service. A Server button in the header opens the active server's Downloads (live progress, pause, resume, retry, remove), Library (titles per kind, monitor, search now, releases with grab), Requests (approve, cancel) and Storage (roots, health, free space) pages, each only while its module runs. Tokens stay in the keyring.
 - Library manager in the server: monitored movies, shows, music and books, quality profiles, user-added Torznab / Newznab indexers, automatic and interactive search, a download queue on the built-in torrent engine, import into your library folders under naming templates, failed-download handling, RSS, missing and upgrade searches, and native requests.
 
 ## [0.7.0] - 2026-11-27
