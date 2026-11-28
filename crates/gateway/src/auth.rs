@@ -225,6 +225,9 @@ pub struct TokenRec {
     pub version: String,
     pub created: u64,
     pub last_used: u64,
+    /// A named API key: never evicted for room, kept when the password is regenerated.
+    #[serde(default)]
+    pub api_key: bool,
 }
 
 impl TokenRec {
@@ -236,6 +239,7 @@ impl TokenRec {
             device_id: self.device_id.clone(),
             created: self.created,
             last_used: self.last_used,
+            api_key: self.api_key,
         }
     }
 }
@@ -247,6 +251,8 @@ struct TokenFile {
 }
 
 const MAX_TOKENS: usize = 200;
+/// API keys are created by hand; a cap keeps the table bounded anyway.
+pub const MAX_API_KEYS: usize = 50;
 
 pub struct Tokens {
     path: Option<PathBuf>,
@@ -275,6 +281,33 @@ impl Tokens {
 
     /// A new token for this device (a second sign-in of the same device id replaces its old token). Returns the token (shown once, never stored) and its record.
     pub fn mint(&self, ci: &ClientInfo) -> (String, TokenRec) {
+        self.insert(ci, false)
+    }
+
+    /// A named API key (64 hex digits like a device token, so every token spelling a client uses works). `Err` for an empty or overlong name, a name in use, or too many keys.
+    pub fn create_api_key(&self, name: &str) -> Result<(String, TokenRec), String> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 64 || name.chars().any(char::is_control) {
+            return Err("an API key needs a name of 1 to 64 characters".into());
+        }
+        {
+            let v = self.inner.lock().unwrap();
+            if v.iter().any(|t| t.api_key && t.device_name == name) {
+                return Err("an API key with that name exists".into());
+            }
+            if v.iter().filter(|t| t.api_key).count() >= MAX_API_KEYS {
+                return Err(format!("at most {MAX_API_KEYS} API keys"));
+            }
+        }
+        let ci = ClientInfo {
+            client: "API key".into(),
+            device: name.into(),
+            ..Default::default()
+        };
+        Ok(self.insert(&ci, true))
+    }
+
+    fn insert(&self, ci: &ClientInfo, api_key: bool) -> (String, TokenRec) {
         let token = random_hex::<32>();
         let hash = sha256_hex(&token);
         let now = unix_now();
@@ -294,17 +327,19 @@ impl Tokens {
             version: ci.version.clone(),
             created: now,
             last_used: now,
+            api_key,
         };
         {
             let mut v = self.inner.lock().unwrap();
             if !rec.device_id.is_empty() {
-                v.retain(|t| t.device_id != rec.device_id);
+                v.retain(|t| t.api_key || t.device_id != rec.device_id);
             }
             v.push(rec.clone());
-            if v.len() > MAX_TOKENS {
-                v.sort_by_key(|t| t.last_used);
-                let drop = v.len() - MAX_TOKENS;
-                v.drain(..drop);
+            let devices = v.iter().filter(|t| !t.api_key).count();
+            if devices > MAX_TOKENS {
+                // The least recently used device tokens go; API keys only ever leave by revocation (they sort last).
+                v.sort_by_key(|t| (t.api_key, t.last_used));
+                v.drain(..devices - MAX_TOKENS);
             }
         }
         self.dirty.store(true, Ordering::Relaxed);
@@ -342,8 +377,9 @@ impl Tokens {
         gone
     }
 
+    /// Every device sign-in (the password changed); named API keys stay, as on a server.
     pub fn revoke_all(&self) {
-        self.inner.lock().unwrap().clear();
+        self.inner.lock().unwrap().retain(|t| t.api_key);
         self.dirty.store(true, Ordering::Relaxed);
         let _ = self.persist();
     }
@@ -1090,6 +1126,51 @@ mod tests {
         });
         t.revoke_all();
         assert!(t.is_empty());
+    }
+
+    #[test]
+    fn api_keys_are_named_survive_a_new_password_and_eviction() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("tokens.json");
+        let t = Tokens::open(Some(p.clone()));
+        let (key, rec) = t.create_api_key(" Living room TV ").unwrap();
+        assert_eq!(key.len(), 64);
+        assert!(rec.api_key && rec.device_name == "Living room TV");
+        assert!(
+            t.create_api_key("Living room TV").is_err(),
+            "names are unique"
+        );
+        assert!(t.create_api_key("  ").is_err() && t.create_api_key(&"x".repeat(65)).is_err());
+        assert!(t.create_api_key("a\nb").is_err());
+        assert!(
+            !std::fs::read_to_string(&p).unwrap().contains(&key),
+            "stored hashed"
+        );
+        assert_eq!(t.lookup(&key).unwrap().id, rec.id);
+        let listed = t.list();
+        assert!(listed.iter().any(|i| i.id == rec.id && i.api_key));
+        // Many device sign-ins do not push the key out, and a device with an empty id does not replace it.
+        for i in 0..MAX_TOKENS + 5 {
+            t.mint(&ClientInfo {
+                device_id: format!("d{i}"),
+                ..Default::default()
+            });
+        }
+        t.mint(&ClientInfo::default());
+        assert!(t.lookup(&key).is_some());
+        assert_eq!(t.len(), MAX_TOKENS + 1);
+        // A new password ends every device sign-in but not the key.
+        t.revoke_all();
+        assert_eq!(t.len(), 1);
+        assert!(
+            Tokens::open(Some(p)).lookup(&key).is_some(),
+            "kept across a restart"
+        );
+        assert!(t.revoke(&rec.id) && t.lookup(&key).is_none());
+        for i in 0..MAX_API_KEYS {
+            t.create_api_key(&format!("k{i}")).unwrap();
+        }
+        assert!(t.create_api_key("one more").is_err());
     }
 
     #[test]

@@ -675,7 +675,40 @@ async fn control_socket_drives_the_gateway() {
         Response::Ok
     );
 
-    // Regenerating the password invalidates every token and the old password.
+    // A named API key: shown once, listed with its kind, accepted in every token spelling clients use.
+    let Response::Key(key) = ask(Request::CreateApiKey("Living room".into())).await else {
+        panic!()
+    };
+    assert!(matches!(
+        ask(Request::CreateApiKey("".into())).await,
+        Response::Err(_)
+    ));
+    let Response::Tokens(list) = ask(Request::Tokens).await else {
+        panic!()
+    };
+    let k = list.iter().find(|t| t.api_key).expect("the key is listed");
+    assert_eq!(k.device_name, "Living room");
+    assert!(!serde_json::to_string(&list).unwrap().contains(&key));
+    let me = g.url("/Users/Me");
+    for r in [
+        g.http.get(&me).header(
+            "Authorization",
+            format!(r#"MediaBrowser Client="c", Token="{key}""#),
+        ),
+        g.http.get(&me).header(
+            "X-Emby-Authorization",
+            format!(r#"MediaBrowser Token="{key}""#),
+        ),
+        g.http.get(&me).header("X-Emby-Token", &key),
+        g.http.get(&me).header("X-MediaBrowser-Token", &key),
+        g.http.get(format!("{me}?api_key={key}")),
+        g.http.get(format!("{me}?ApiKey={key}")),
+    ] {
+        assert_eq!(r.send().await.unwrap().status(), 200);
+    }
+    let key_id = k.id.clone();
+
+    // Regenerating the password invalidates every device token and the old password; API keys stay, as on a server.
     assert!(
         matches!(ask(Request::RevealPassword).await, Response::Err(_)),
         "already taken in start()"
@@ -687,7 +720,10 @@ async fn control_socket_drives_the_gateway() {
     let Response::Tokens(list) = ask(Request::Tokens).await else {
         panic!()
     };
-    assert!(list.is_empty());
+    assert_eq!(list.len(), 1, "only the API key is left");
+    assert_eq!(g.status_with_token("/Users/Me", &key).await, 200);
+    assert_eq!(ask(Request::Revoke(key_id)).await, Response::Ok);
+    assert_eq!(g.status_with_token("/Users/Me", &key).await, 401);
     let r = g
         .http
         .post(g.url("/Users/AuthenticateByName"))
